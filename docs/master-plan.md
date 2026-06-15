@@ -1,61 +1,72 @@
-# OSINT World Monitor — Master Plan
+# OSINT World Monitor — Master Plan (Revised)
 
-*Working title. The system you build here is the foundation for both your MSc thesis (PX5928, "Open-Source Intelligence and Early-Warning Dashboard") and a personal infrastructure project intended to run for years. This document covers the full path: Pi setup, architecture, the thesis-scoped build, and the long-term roadmap beyond it.*
+*Working title. The system you build here is the foundation for both your MSc thesis (PX5928, "Open-Source Intelligence and Early-Warning Dashboard") and a personal infrastructure project intended to run for years.*
 
----
-
-## 0. The vision — what this looks like when it's working
-
-A self-hosted dashboard, reachable from anywhere, showing a world map with toggleable layers. At minimum: financial market sentiment (your existing Market Terminal engine), geopolitical event intensity from GDELT, and active disaster/climate alerts. Sitting above all three, a single composite score, your version of WorldMonitor's "Country Instability Index", updated continuously and tracked over time. When that score crosses a threshold for a region you care about, you get a push notification on your phone via Pushover, sometimes hours before it would show up as a headline.
-
-Underneath, a Raspberry Pi runs the ingestion and scoring continuously, writing to a database that has been accumulating since the day you started it. Six months from now that's six months of labelled, timestamped, multi-source risk data, a dataset nobody else has, because nobody else has been running this specific combination of sources with this specific scoring method since this date.
-
-The thesis is a snapshot of this system: how it's built, what the composite score is, how it compares to existing literature on instability indices, and what it found over the weeks it was running. The system itself keeps going afterward. The modules you don't get to this summer (aviation, maritime, satellites, the rest of the Shadowbroker/WorldMonitor catalogue) become the roadmap for the years after.
+**Revision note**: this version applies the methodology critique. Major changes: Module C demoted from composite, evaluation pivoted to historical data, JRC-handbook composite scoring, proper academic baselines (ViEWS / FSI / ACLED) replacing WorldMonitor as the comparator. See [`literature-baseline.md`](literature-baseline.md) for the required citations and [`evaluation-protocol.md`](evaluation-protocol.md) for the pre-registered evaluation methodology.
 
 ---
 
-## 1. Architecture — the pattern
+## Quick navigation
 
-Both reference projects converge on the same shape, and it's a good one:
-
-- **Frontend**: Next.js, map-based (MapLibre GL or similar), with toggleable layers per domain. This is a natural extension of your existing Market Terminal frontend.
-- **Backend**: FastAPI (Python), organised as one module per *domain* (finance, geopolitical, climate, ...). Each domain module owns its own config (what sources/entities it tracks), its own ingestion logic, and its own scoring logic.
-- **Storage**: a single database (start with SQLite, can move to Postgres later) holding raw ingested records plus computed scores, append-only by design, this is your growing dataset.
-- **Scheduling**: each domain module runs on its own schedule (financial news hourly, GDELT every 15-30 min, disaster feeds hourly) via systemd timers.
-- **Correlation layer**: a separate module that reads the latest scores from every domain and computes the composite index. This is what makes it an "early warning dashboard" rather than just four separate dashboards bolted together, and it's the centrepiece of your thesis methodology.
-- **Alerting**: a lightweight watcher that checks the composite score (and individual domain scores) against thresholds and pushes to Telegram.
-
-You already own most of the hard parts of domain A (finance). Domains B and C are new but use well-documented free APIs. The correlation layer is new work, but conceptually simple, a weighted combination of normalised scores, this is genuinely good Master's-level methodology, especially if you compare your weighting choices against how WorldMonitor's CII or the Buldú et al. football network papers justify their parameter choices.
+- [0. Vision](#0-vision)
+- [1. Architecture](#1-architecture)
+- [2. Standalone vs HomeForge spoke](#2-standalone-vs-homeforge-spoke)
+- [3. Raspberry Pi setup (Phase 0)](#3-raspberry-pi-setup-phase-0)
+- [4. Modules (Phase 1 — thesis scope)](#4-modules-phase-1--thesis-scope)
+- [5. Dashboard](#5-dashboard)
+- [6. Thesis mapping](#6-thesis-mapping)
+- [7. Ten-week timeline](#7-ten-week-timeline)
+- [8. Group presentation note](#8-group-presentation-note)
+- [9. Decade roadmap](#9-decade-roadmap)
+- [10. Naming](#10-naming)
+- [Appendix — reference links](#appendix--reference-links)
 
 ---
 
-## 2. Two paths: standalone vs HomeForge spoke
+## 0. Vision
 
-You asked to see both. Here they are, with a recommended progression rather than a hard either/or.
+A self-hosted dashboard, reachable from anywhere, showing a world map with toggleable layers: financial news sentiment (your Market Terminal pipeline, ported), geopolitical event intensity from GDELT (deduplicated, CAMEO-filtered), and a composite stress index per country. Above all three, a defensible composite score grounded in the [OECD/JRC composite indicator methodology][jrc-handbook], evaluated against [ACLED][acled]-labelled historical events, with [Pushover][pushover-api] notifications on threshold breach.
+
+The Pi runs ingestion and scoring continuously. The thesis is a methodology and retrospective evaluation paper, not a "look at our running system" demo — the literature on conflict early-warning ([ViEWS][views-paper], [ICEWS][icews-comparison], [Goldstone PITF][goldstone-pitf]) uses years of historical data, and so do you.
+
+---
+
+## 1. Architecture
+
+- **Frontend**: Next.js + MapLibre GL, extends your existing Market Terminal frontend
+- **Backend**: FastAPI (Python), one module per *domain* (finance, geopolitical, disaster), each owning its config, ingestion, scoring
+- **Storage**: single database (SQLite → Postgres later), append-only, common `events` table per Marco's brief (fields: `time, location, source, category, severity, keywords, confidence`)
+- **Scheduling**: systemd timers per module (finance hourly, GDELT every 30 min, disaster hourly)
+- **Composite layer**: separate module reading latest scores per domain, computing composite index per [JRC handbook][jrc-handbook] structure (normalisation → weighting → aggregation → sensitivity analysis)
+- **Alerting**: lightweight watcher → Pushover REST on threshold breach
+
+Reference projects ([WorldMonitor][worldmonitor-repo], [Shadowbroker][shadowbroker-repo]) are architectural inspiration only — neither has peer-reviewed methodology, so they do **not** appear in the thesis literature review.
+
+---
+
+## 2. Standalone vs HomeForge spoke
 
 ### Path A — Standalone
 
-The Pi runs its own complete stack: Docker + Docker Compose, its own SQLite (or Postgres container), its own lightweight reverse proxy (Caddy is simpler than Traefik for a single-purpose box), and its own Tailscale identity purely for remote SSH access. LLM calls (FinBERT sentiment, any summarisation) continue exactly as Market Terminal does now, your existing idempotent caching keeps costs near zero.
+The Pi runs its own complete stack: Docker, SQLite (or Postgres container), Caddy reverse proxy, Tailscale for SSH. LLM calls (FinBERT) continue as Market Terminal does now.
 
-**Why this first**: zero risk to HomeForge while you're under thesis pressure. If something breaks at 1am two days before the presentation, the blast radius is one Pi, not your entire homelab. Fully self-contained, easy to document in the thesis ("the system runs on a dedicated Raspberry Pi"), easy to demo, easy to wipe and restart if you need to.
+Why first: zero risk to HomeForge under thesis pressure; if something breaks at 1am two days before submission, blast radius is one Pi.
 
 ### Path B — HomeForge spoke
 
-The Pi joins your existing Tailscale tailnet as a new spoke. Traefik on the HomeForge hub gets a routing rule for the dashboard (matching your existing `*.nip.io` pattern). The backend writes to a new schema on HomeForge's existing Postgres instance, which means it inherits your existing Restic backup sidecar automatically, your growing dataset gets backed up for free. NLP tasks (sentiment, summarisation) call HomeForge's Ollama instance over the tailnet instead of an external API, fully local-first, zero marginal cost, and the Pi itself becomes a lighter-weight ingestion/edge node since the heavy model inference happens on the more powerful hub.
+Pi joins Tailscale tailnet as new spoke. Traefik on HomeForge gets a routing rule. Backend writes to a new schema on HomeForge's Postgres → inherits Restic backup. FinBERT inference moves to HomeForge's Ollama → fully local, zero marginal cost.
 
-**Why this second**: architecturally better long-term (free backups, free local inference, unified access), but it means making changes to a homelab that's currently stable and serving other things (Nextcloud, Matrix, etc.) right when you can least afford an outage.
+Why second: architecturally better long-term but changes a stable homelab when you can least afford an outage.
 
 ### Recommended progression
 
-Build on Path A for the first 3-4 weeks, get the financial and GDELT modules running reliably, get the presentation done. Once the core pipeline is proven and you're past the immediate deadline pressure, migrate to Path B: join the tailnet, point the database connection string at HomeForge's Postgres, swap the LLM endpoint to Ollama. Each of those is a small, isolated change you can do one at a time, with the standalone version as a fallback if anything goes wrong.
+**Path A for thesis.** Path B is post-submission. Do not migrate during writing weeks. (Revised from earlier plan — Section 7 timeline removed the HomeForge migration window entirely.)
 
 ---
 
 ## 3. Raspberry Pi setup (Phase 0)
 
-### 3.1 First, check what you actually have
-
-Before anything else, SSH into a fresh boot (or boot Pi OS Lite once with a keyboard attached) and run:
+### Step 3.1 — Hardware audit
 
 ```bash
 cat /proc/cpuinfo | grep Model
@@ -63,59 +74,46 @@ free -h
 lsblk
 ```
 
-This tells us the Pi model (affects how comfortable FinBERT inference is, a Pi 4/4GB+ or any Pi 5 is fine for hourly batches; a Pi 3 or Zero 2W can still do it but with smaller batches and longer windows), available RAM, and what drives are visible once you plug in the hard drives you mentioned.
+Pi 4 (4GB+) or Pi 5 → fine for hourly FinBERT batches. Pi 3 / Zero 2W → smaller batches, longer windows.
 
-### 3.2 Flash the OS
+### Step 3.2 — Flash OS
 
-Raspberry Pi OS Lite, 64-bit. Use Raspberry Pi Imager on your laptop, not a desktop environment, you don't need one and it just consumes RAM. In the Imager's advanced options (gear icon / Ctrl+Shift+X), set:
+Raspberry Pi OS Lite, 64-bit. In Imager advanced options (Ctrl+Shift+X):
 
-- hostname (suggest `osint-node` or similar, something that reads cleanly in `tailscale status` later)
-- enable SSH, paste your public key (no password auth from day one)
-- set locale/timezone
+- hostname (`osint-node` or similar)
+- enable SSH, paste your public key (no password auth)
+- locale/timezone
 
-### 3.3 Storage layout
+### Step 3.3 — Storage layout
 
-OS lives on the microSD card. All application data (database, Docker volumes, logs) lives on one of your external hard drives, connected via USB. This is the single most important reliability decision for a "runs for years" system, SD cards degrade under sustained write loads, and you do not want your multi-month dataset to evaporate because of a worn-out card.
-
-After first boot:
+OS on microSD. All application data (DB, Docker volumes, logs) on external USB drive. Non-negotiable for a multi-year system — SD cards die under sustained writes.
 
 ```bash
-lsblk                          # identify the external drive, e.g. /dev/sda1
+lsblk                          # identify external drive, e.g. /dev/sda1
 sudo mkdir /mnt/data
 sudo mount /dev/sda1 /mnt/data
-# add to /etc/fstab for persistence across reboots
+# add to /etc/fstab for persistence
 ```
 
-Everything in the project (database file, Docker volume mounts) points at `/mnt/data/...` from here on.
+Everything in the project points at `/mnt/data/...`.
 
-### 3.4 Base software
+### Step 3.4 — Base software
 
 ```bash
 sudo apt update && sudo apt full-upgrade -y
-sudo apt install -y docker.io docker-compose-plugin git python3-venv
+sudo apt install -y docker.io docker-compose-plugin git python3-venv watchdog
 sudo usermod -aG docker $USER
-```
-
-A hardware watchdog is worth enabling now while you're in the config, so the Pi auto-reboots if it ever hangs unattended:
-
-```bash
-sudo apt install -y watchdog
-# enable in /etc/watchdog.conf, set watchdog-device and max-load
 sudo systemctl enable watchdog
 ```
 
-### 3.5 Tailscale
+### Step 3.5 — Tailscale
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
-From this point on, every remaining step can be done from Edinburgh, Aberdeen, or anywhere else, SSH over Tailscale works identically regardless of network.
-
-### 3.6 Repo and project skeleton
-
-Following your existing 1:1:1 workflow conventions, create a new repo (e.g. `osint-world-monitor`). Suggested skeleton:
+### Step 3.6 — Project skeleton
 
 ```
 osint-world-monitor/
@@ -123,92 +121,107 @@ osint-world-monitor/
 │   ├── domains/
 │   │   ├── finance/        # ported from news-intelligence-platform
 │   │   ├── geopolitical/    # GDELT
-│   │   └── climate/         # disaster/weather
-│   ├── correlation/          # composite index
-│   ├── alerting/             # Pushover notifications
-│   └── api/                  # FastAPI app tying it together
-├── frontend/                  # Next.js, extends Market Terminal UI
+│   │   └── disaster/        # optional dashboard layer, not in composite
+│   ├── composite/            # JRC-handbook composite indicator
+│   ├── evaluation/           # ACLED ground-truth, AUROC/AUPR/Brier
+│   ├── alerting/             # Pushover
+│   └── api/                  # FastAPI
+├── frontend/                  # Next.js + MapLibre GL
 ├── data/                       # gitignored, points at /mnt/data
 ├── docker-compose.yml
 └── docs/
-    └── thesis/                # working notes that become the report
+    └── thesis/
 ```
-
-Clone this onto the Pi, set up a Python venv under `backend/`, and you're ready for Phase 1.
 
 ---
 
-## 4. The modules (Phase 1 — thesis scope)
+## 4. Modules (Phase 1 — thesis scope)
 
-Four modules. The first three feed data in; the fourth synthesises and alerts. This is the scope for the thesis, deliberately smaller than the 60-feed reference projects, focused and defensible beats broad and shallow for a Master's report.
+Three modules feed data in; one synthesises; one evaluates. Scope deliberately smaller than 60-feed reference projects. Marco's brief says "small-scale" — focused beats broad.
 
-**Shared schema**: every module writes into a common `events` table with the same fields, time, location, source, category, severity, keywords, confidence. This is the schema Marco's brief specifies directly, and it's what makes the correlation layer (Module D) possible, three domains, one table, one set of fields to reason about.
+**Shared schema**: every module writes into a common `events` table with fields `time, location, source, category, severity, keywords, confidence`. This is Marco's explicit specification — single schema is what enables the composite.
 
-### Module A — Financial risk (porting Market Terminal)
-
-| | |
-|---|---|
-| **Source** | Your existing news-intelligence-platform pipeline: financial news ingestion, FinBERT sentiment, TF-IDF clustering, NER |
-| **What changes** | Mostly environment migration. Move the ingestion + scoring scripts onto the Pi, wrap as a systemd timer (hourly), point output at the shared database instead of (or in addition to) wherever it currently writes |
-| **New work** | Confirm your existing Geopolitical Risk Index engine, audit what it currently ingests. If it already pulls GDELT or similar, Module B below may be largely done already and just needs porting + extending rather than building fresh |
-| **Storage** | `finance_articles` (raw + sentiment score + entities + timestamp), `finance_daily_score` (aggregated per-day, per-sector or per-region) |
-| **Frontend layer** | Map markers/regions coloured by financial sentiment, time-series chart of the aggregate score |
-
-### Module B — Geopolitical risk (GDELT)
+### Module A — Financial news sentiment (porting Market Terminal)
 
 | | |
 |---|---|
-| **Source** | [GDELT GKG 2.0](https://www.gdeltproject.org/data.html), updated every 15 minutes, downloadable as CSV files, no API key required for the raw feed |
-| **Ingestion** | Pull latest GKG file every 15-30 min, filter to themes relevant to instability (conflict, political turmoil, economic crisis themes are tagged in GDELT's theme taxonomy), aggregate "tone" and event count per country/day |
-| **Storage** | `gdelt_events` (raw filtered records), `gdelt_daily_score` (per-country tone + event volume) |
-| **Frontend layer** | Country-level choropleth or markers, coloured by tone/event intensity |
-| **Note** | This directly satisfies the "not a single data source" requirement in the project brief, and gives you a genuinely independent signal to correlate against Module A |
+| **Source** | Existing [news-intelligence-platform](https://github.com/BasilSuhail) pipeline: financial news ingestion, FinBERT sentiment, TF-IDF clustering, NER |
+| **Framing** | Call it "financial **news** sentiment" everywhere. FinBERT predictive validity for prices is documented as low (R²≈0.01) — see [Predicting Stock Prices with FinBERT-LSTM (arXiv 2412.06837)][finbert-arxiv]. Do **not** claim it predicts markets. It's one signal of news framing tone toward sectors/regions. |
+| **Changes** | Port scripts to Pi, wrap as systemd timer (hourly), write to shared `events` table |
+| **Storage** | `events` (with `source='finance'`), aggregated `finance_daily_score` per country |
+| **Frontend** | Map markers/regions coloured by sentiment, time-series |
 
-### Module C — Disaster and climate early warning
-
-| | |
-|---|---|
-| **Sources** | [USGS Earthquake API](https://earthquake.usgs.gov/earthquakes/feed/) (free, no key, real-time GeoJSON), [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) (active fire/hotspot data, free API key via NASA Earthdata), [Open-Meteo](https://open-meteo.com/) (severe weather alerts, free, no key) |
-| **Ingestion** | Each source has a simple REST/JSON endpoint, poll hourly, store events above a magnitude/severity threshold |
-| **Storage** | `disaster_events` (type, location, severity, timestamp) |
-| **Frontend layer** | Markers for active fires, recent significant earthquakes, severe weather warnings |
-| **Why this matters academically** | This is your "weather alerts" requirement satisfied with minimal complexity, and it's a third *independent* signal type (physical/environmental, vs financial and political), which makes the correlation layer genuinely interesting rather than two flavours of the same thing |
-
-### Module D — Composite early-warning index + alerting
-
-This is the academic core, and it's a direct match for the last item in Marco's signal-detection list: "co-occurrence of multiple risk signals." For each tracked region, combine the normalised scores from A, B, and C into a single index, your equivalent of WorldMonitor's Country Instability Index, but with your own weighting and justification, which is exactly the kind of methodological choice a thesis examiner wants to see you defend.
-
-Start simple and defensible: z-score normalise each domain's daily score, combine via a weighted sum (equal weights as a baseline, then optionally explore whether weighting by historical correlation with known events improves things, this is good "results" material). Track the composite score over time per region.
-
-**Alerting**: Marco's brief names [Pushover](https://pushover.net/api) specifically for phone notifications, simple REST API, a few lines of Python, cheap one-time cost for the app. A script checks the composite score against a threshold every time it updates and fires a Pushover notification on breach. This is also your most demoable feature, a phone notification during your presentation lands well.
+### Module B — Geopolitical events (GDELT, deduplicated)
 
 | | |
 |---|---|
-| **Storage** | `composite_scores` (region, date, component scores, combined score) |
-| **Frontend layer** | The headline number/chart on the dashboard, plus an alert log |
+| **Source** | [GDELT GKG 2.0][gdelt-data], every 15 min, no API key |
+| **Critical step** | **Mandatory deduplication and CAMEO theme filtering** before scoring. Raw GDELT has documented ~55% key field accuracy and ~20% redundancy ([MDPI 2025][gdelt-mdpi], [Political Violence at a Glance][gdelt-pvg]). Use CAMEO codebook ([Schrodt][cameo-codebook]) to filter conflict / political turmoil / economic crisis themes. |
+| **Score** | Aggregate event count + Goldstein-scale weighted intensity per country-day. Use Goldstein, **not** raw tone — tone construct validity is contested. |
+| **Storage** | `events` (with `source='gdelt'`), `gdelt_daily_score` |
+| **Frontend** | Country choropleth coloured by event intensity |
+
+### Module C — Disaster / climate dashboard layer (NOT in composite)
+
+| | |
+|---|---|
+| **Sources** | [USGS Earthquake API][usgs-quakes], [NASA FIRMS][nasa-firms], [Open-Meteo][open-meteo] |
+| **Role** | Dashboard layer + alerting only. **Excluded from the composite index** — earthquakes and fires are exogenous shocks, not leading indicators of political/financial instability at weekly timescales. Including them in the composite would inject spurious noise (a Japan earthquake → composite spike → "Japan unstable?" with no defence). |
+| **Use as null control** | Optional secondary analysis — does your composite *not* react to earthquake events? Good robustness check. |
+| **Storage** | `events` (with `source='disaster'`), `disaster_events` |
+| **Frontend** | Markers for active fires, significant earthquakes, severe weather |
+
+### Module D — Composite stress index (JRC-handbook methodology)
+
+The academic core. Built per [OECD/JRC Handbook on Constructing Composite Indicators][jrc-handbook] — this is the standard reference and what an examiner will compare your methodology against.
+
+**Steps (JRC structure)**:
+
+1. **Theoretical framework** — declare which indicators belong together and why. Two domains: financial news sentiment (Module A) + geopolitical event intensity (Module B). Justification: both reflect public information environment for instability; both are commonly used in conflict / sovereign-risk forecasting literature ([ViEWS][views-paper], [Goldstone PITF][goldstone-pitf]).
+2. **Multivariate analysis** — correlation structure between A and B, PCA loading inspection. If A and B are too correlated, the composite is redundant; if too uncorrelated, they may be measuring different things.
+3. **Normalisation** — z-score across rolling window (defensible vs min-max because outliers matter). Document the rolling window choice with sensitivity analysis.
+4. **Weighting** — start equal-weighted (default JRC choice when no prior). Then **sensitivity analysis** across alternative weights (PCA-derived, equal, single-signal-dominant).
+5. **Aggregation** — linear weighted sum baseline. Optionally geometric mean as robustness alternative (less compensability — a country can't fully offset bad finance with good politics).
+6. **Robustness** — bootstrap confidence intervals, Monte Carlo over weight perturbations. Does country ranking change?
+7. **Alerting** — threshold on composite → [Pushover][pushover-api] notification. Threshold chosen via ROC analysis on historical labelled events.
+
+**Storage**: `composite_scores` (country, date, component scores, combined score, percentile)
+
+### Module E — Evaluation (historical, pre-registered)
+
+This is what makes the thesis defensible. See [`evaluation-protocol.md`](evaluation-protocol.md) for the full pre-registered protocol.
+
+**Summary**:
+
+- **Ground truth**: [ACLED][acled] event data (peer-reviewed, human-validated, free for academic use). Pre-specified event types: armed conflict onset, mass protest, civil unrest escalation.
+- **Time period**: historical evaluation on GDELT archive (back to 2015) + ACLED labels, country-month panel.
+- **Metrics**: AUROC, AUPR, Brier score (standard in conflict forecasting per [ViEWS comparison review][cews-review]).
+- **Baselines**: (1) persistence model (yesterday's score), (2) single-signal (finance only, GDELT only), (3) the composite.
+- **Question**: does the composite beat each baseline at AUROC/AUPR?
+- **Detection delay**: distribution of lead time (composite breach → ACLED-confirmed event), reported as median + IQR.
+- **Pi prospective data**: live demo only. Not the primary evaluation.
 
 ---
 
 ## 5. Dashboard
 
-Extends your existing Market Terminal Next.js frontend rather than replacing it. Add a map view (MapLibre GL is free and well-documented, same library Shadowbroker uses) with layer toggles for each module, plus a sidebar showing the composite index per region and recent alerts. For the 22nd June presentation, this doesn't need to be polished, it needs to show real data flowing from a real running system. Polish comes later.
+Next.js + MapLibre GL, extends Market Terminal frontend. Layer toggles per module, sidebar with composite per region + recent alerts. For the 22 June presentation: needs real data flowing from a real running system, not polish.
 
 ---
 
-## 6. Mapping to the thesis
+## 6. Thesis mapping
 
-The 4,000-word main report maps onto this system fairly directly:
+| Section | Content | Word budget (target) |
+|---|---|---|
+| Abstract | 300 words separate | — |
+| Introduction + literature | OSINT/EWS background, ViEWS/FSI/ICEWS comparison, gap statement | ~700 |
+| Data | GDELT (with quality caveats), ACLED, financial news corpus | ~500 |
+| Methods | JRC composite methodology, deduplication pipeline, FinBERT + Goldstein, evaluation protocol | ~1,200 |
+| Results | Composite vs baselines (AUROC/AUPR/Brier), detection delay analysis, case-study narratives, sensitivity analysis | ~900 |
+| Discussion | Limitations (FinBERT validity, GDELT noise, ground-truth gaps), industrial applications, future work | ~400 |
+| **Total** | | **4,000** |
 
-| Thesis section | Content |
-|---|---|
-| **Introduction** | Background on OSINT/early-warning systems, instability indices in the literature (WorldMonitor's CII, academic instability index papers), how passive news monitoring (your starting point) differs from active multi-source early warning |
-| **Data** | Describe the three source types (financial news, GDELT, disaster feeds), volumes, time ranges covered by your running system |
-| **Methods** | FinBERT sentiment methodology (you can reuse/adapt explanation from your existing project), GDELT filtering/aggregation approach, normalisation and composite scoring methodology, alerting threshold logic |
-| **Results** | Time-series of the composite score for selected regions, case studies where a spike in the composite preceded a real-world event covered in the news (this is your strongest result if you can find even one or two clean examples), comparison of your composite's behaviour against any single component alone |
-| **Discussion** | How your approach compares to WorldMonitor's CII and to the academic literature on early-warning/instability indices, limitations (number of sources, time window, weighting choices), future work, this is where the unbuilt modules (Section 9 below) go explicitly |
-| **Supplementary material** | All code, well-commented, runnable, this is your actual repo |
-
-Getting the system running continuously as early as possible matters a lot here, the Results section is only as good as the data you've accumulated by the time you write it. Every week the pipeline runs from now is a week of real data for Results.
+The Results section is only as good as historical data + ground truth permit. The Pi's accumulated prospective data is a **demonstration**, not the evaluation.
 
 ---
 
@@ -216,54 +229,100 @@ Getting the system running continuously as early as possible matters a lot here,
 
 | Week | Dates | Focus |
 |---|---|---|
-| 1 | 15-21 Jun | Pi setup (Section 3), port Module A (financial), get it running on a schedule. Goal: real data flowing before the presentation |
-| 2 | 22-28 Jun | **Presentation week (slides due 22nd)**. In parallel, start Module B (GDELT) |
-| 3 | 29 Jun-5 Jul | Finish Module B, start Module C (disaster/climate) |
-| 4 | 6-12 Jul | Finish Module C, start Module D (composite index + Pushover alerting) |
-| 5 | 13-19 Jul | Finish Module D. Dashboard pass, add map view with layer toggles. **System should be fully running end-to-end by end of this week**, every subsequent week adds to your dataset |
-| 6 | 20-26 Jul | Begin writing: Introduction, Data, Methods sections, drawing on literature (WorldMonitor docs, GDELT papers, instability index literature, the football-network papers' approach to justifying parameters is a useful structural template) |
-| 7 | 27 Jul-2 Aug | Results section: pull accumulated data, generate figures, look for case studies (composite spikes vs real events) |
-| 8 | 3-9 Aug | Discussion/Conclusion, literature comparison. **Send first full draft to Marco** with time for feedback |
-| 9 | 10-16 Aug | Incorporate feedback, refine figures and writing |
-| 10 | 17-23 Aug | Final polish, supplementary material cleanup (code comments, README), word count check |
-| Buffer | 24-28 Aug | Submission |
+| 1 | 15-21 Jun | Pi setup, port Module A, **start GDELT historical pull (2015→present)** in parallel |
+| 2 | 22-28 Jun | **Presentation week (slides due 22nd)**. Start Module B (live GDELT every 30 min) |
+| 3 | 29 Jun-5 Jul | Finish Module B (deduplication + CAMEO filter), start Module C (dashboard layer only) |
+| 4 | 6-12 Jul | Module D composite (JRC steps 1-5). Start Module E evaluation harness (ACLED join, AUROC/AUPR/Brier) |
+| 5 | 13-19 Jul | Finish Module D (steps 6-7), Pushover wiring. System running E2E. **Lock evaluation protocol with Marco before looking at results.** |
+| 6 | 20-26 Jul | Start writing: Intro + Lit review + Data. Run historical evaluation. |
+| 7 | 27 Jul-2 Aug | Methods + Results sections. Sensitivity analysis. Case-study selection (pre-specified, not cherry-picked). |
+| 8 | 3-9 Aug | Discussion + Conclusion. **Send first full draft to Marco.** |
+| 9 | 10-16 Aug | Incorporate feedback, refine figures. |
+| 10 | 17-23 Aug | Final polish, supplementary material (code comments, README, replication notes). |
+| Buffer | 24-28 Aug | Submission. |
 
-If you've migrated to Path B (HomeForge spoke), the natural window is weeks 6-8, once the pipeline is proven and you're in writing mode rather than active feature development, so a brief outage while reconfiguring doesn't cost you data-collection time.
+**HomeForge migration is explicitly excluded** from this timeline. Defer to post-submission.
 
 ---
 
 ## 8. Group presentation note
 
-Your individual section (2-2.5 min) can present Module A specifically (financial risk, your head-start, easiest to show concrete preliminary results from week 1) as your contribution to the shared "early-warning dashboard" concept the group intro establishes. If your groupmates are building geopolitical or supply-chain modules, your composite index in Module D is naturally where all three could converge later, worth a one-line mention in the "how our ideas connect" closing section the group discussed, even if the actual integration isn't built yet.
+Individual section (2-2.5 min): present Module A specifically as your contribution. If groupmates build geopolitical or supply-chain modules, the **shared `events` schema** is the natural integration point — raise this in week 1 so all three modules write to a compatible table from day one. If schema-sharing politically fails, drop the group integration framing in your individual thesis writing and present as a solo project under shared theme.
 
 ---
 
-## 9. Decade roadmap (Phase 2 and beyond)
+## 9. Decade roadmap (post-thesis)
 
-This is the backlog. None of this is needed for the thesis, but it's where the system goes afterward, and it's legitimate "future work" material for the Discussion section. Roughly in order of how cleanly they extend the existing architecture:
+Future-work material for the Discussion section, in roughly the order they cleanly extend the architecture:
 
-- **Aviation tracking** ([OpenSky Network](https://opensky-network.org/), free ADS-B data) — military/government aircraft movement as a geopolitical signal, mirrors Shadowbroker's approach
-- **Maritime tracking** (AIS vessel data) — shipping/supply-chain disruption signals
-- **Cyber threat feeds** (abuse.ch Feodo Tracker, URLhaus, both free) — adds a cyber dimension to the composite index
-- **Supply-chain risk overlay** — cross-reference semiconductor/battery fab locations against Module C's disaster events, directly extends existing infrastructure
-- **Satellite tracking** (SatNOGS, free) — space domain awareness
-- **Additional languages/regions** — broaden GDELT and news coverage beyond English-language sources
-- **Public-facing variant** — once stable, a public read-only dashboard (à la `finance.worldmonitor.app`) becomes a strong portfolio centrepiece, and a natural seed for "decide monetisation later", a paid API tier for the composite index data is the most obvious model if you go that route
+- **Aviation tracking** ([OpenSky Network][opensky], free ADS-B) — military/government movement signal
+- **Maritime tracking** (AIS vessel data via [aisstream.io][aisstream]) — supply-chain disruption signal (**this** is the supply-chain extension Marco's brief mentions, not Module C)
+- **Cyber threat feeds** ([abuse.ch][abuse-ch], CISA KEV) — cyber dimension
+- **Supply-chain risk overlay** — cross-reference semiconductor/battery fab locations against disruption events
+- **Satellite tracking** ([SatNOGS][satnogs])
+- **Additional languages/regions** — beyond English-language sources
+- **HomeForge migration** — Path B from Section 2
+- **Public-facing variant** — read-only dashboard (à la `finance.worldmonitor.app`), potential paid API tier for composite index data
 
 ---
 
 ## 10. Naming
 
-Worth giving this its own identity rather than "the Pi thing", fits your pattern with HomeForge/deerflow/Felix. No pressure to decide now, but when you do, it propagates into the repo name, hostname, and eventually a subdomain. Park it, revisit once the system is actually running and has a personality.
+Give it its own identity post-launch. No pressure to decide now; propagates into repo name, hostname, subdomain when done. Revisit once running and has a personality.
 
 ---
 
-## Appendix — key reference links
+## Appendix — reference links
 
-- GDELT data: https://www.gdeltproject.org/data.html
-- USGS earthquake feeds: https://earthquake.usgs.gov/earthquakes/feed/
-- NASA FIRMS: https://firms.modaps.eosdis.nasa.gov/
-- Open-Meteo: https://open-meteo.com/
-- Pushover API: https://pushover.net/api
-- Reference project (architecture/category catalogue): https://github.com/koala73/worldmonitor
-- Reference project (stack closest to yours): https://github.com/BigBodyCobain/Shadowbroker
+### Academic baselines (required reading — see [`literature-baseline.md`](literature-baseline.md))
+- [ViEWS: A Political Violence Early-Warning System (Hegre et al, 2019)][views-paper]
+- [Review and Comparison of Conflict Early Warning Systems (ScienceDirect 2023)][cews-review]
+- [Fragile States Index methodology][fsi-methodology]
+- [ICEWS / GDELT comparison (ACLED 2019)][icews-comparison]
+- [Goldstone PITF — political instability foundational work][goldstone-pitf]
+- [OECD/JRC Handbook on Composite Indicators][jrc-handbook]
+- [Öberg & Yilmaz 2025 — measurement issues in event data][oberg-yilmaz]
+
+### Data sources
+- [GDELT GKG 2.0][gdelt-data]
+- [ACLED][acled] + [ACLED CAST forecast system][acled-cast]
+- [USGS Earthquake feeds][usgs-quakes]
+- [NASA FIRMS][nasa-firms]
+- [Open-Meteo][open-meteo]
+- [Pushover API][pushover-api]
+
+### Critique / validity papers
+- [GDELT accuracy audit (MDPI 2025)][gdelt-mdpi]
+- [GDELT tone critique (Political Violence at a Glance)][gdelt-pvg]
+- [FinBERT predictive validity issues (arXiv 2412.06837)][finbert-arxiv]
+- [Predicting Country Instability — Bayesian + RF on GDELT (arXiv 2411.06639)][instability-arxiv]
+
+### Reference architectures (NOT methodology comparators)
+- [WorldMonitor repo][worldmonitor-repo]
+- [Shadowbroker repo][shadowbroker-repo]
+
+[views-paper]: https://journals.sagepub.com/doi/full/10.1177/0022343319823860
+[cews-review]: https://www.sciencedirect.com/science/article/pii/S0169207023000018
+[fsi-methodology]: https://fragilestatesindex.org/methodology/
+[icews-comparison]: https://acleddata.com/sites/default/files/wp-content-archive/uploads/2022/02/ACLED_WorkingPaper_ComparisonAnalysis_2019.pdf
+[goldstone-pitf]: https://www.tandfonline.com/doi/abs/10.1111/j.1540-5907.2009.00426.x
+[jrc-handbook]: https://www.oecd.org/content/dam/oecd/en/publications/reports/2008/08/handbook-on-constructing-composite-indicators-methodology-and-user-guide_g1gh9301/9789264043466-en.pdf
+[oberg-yilmaz]: https://journals.sagepub.com/doi/10.1177/20531680251362440
+[gdelt-data]: https://www.gdeltproject.org/data.html
+[acled]: https://acleddata.com/
+[acled-cast]: https://acleddata.com/conflict-alert-system/
+[usgs-quakes]: https://earthquake.usgs.gov/earthquakes/feed/
+[nasa-firms]: https://firms.modaps.eosdis.nasa.gov/
+[open-meteo]: https://open-meteo.com/
+[pushover-api]: https://pushover.net/api
+[gdelt-mdpi]: https://www.mdpi.com/2306-5729/10/10/158
+[gdelt-pvg]: https://politicalviolenceataglance.org/2014/02/20/raining-on-the-parade-some-cautions-regarding-the-global-database-of-events-language-and-tone-dataset/
+[finbert-arxiv]: https://arxiv.org/pdf/2412.06837
+[instability-arxiv]: https://arxiv.org/abs/2411.06639
+[worldmonitor-repo]: https://github.com/koala73/worldmonitor
+[shadowbroker-repo]: https://github.com/BigBodyCobain/Shadowbroker
+[cameo-codebook]: http://eventdata.parusanalytics.com/data.dir/cameo.html
+[opensky]: https://opensky-network.org/
+[aisstream]: https://aisstream.io/
+[abuse-ch]: https://abuse.ch/
+[satnogs]: https://satnogs.org/
