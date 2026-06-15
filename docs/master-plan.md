@@ -6,7 +6,7 @@
 
 ## 0. The vision — what this looks like when it's working
 
-A self-hosted dashboard, reachable from anywhere, showing a world map with toggleable layers. At minimum: financial market sentiment (your existing Market Terminal engine), geopolitical event intensity from GDELT, and active disaster/climate alerts. Sitting above all three, a single composite score, your version of WorldMonitor's "Country Instability Index", updated continuously and tracked over time. When that score crosses a threshold for a region you care about, you get a Telegram message on your phone, sometimes hours before it would show up as a headline.
+A self-hosted dashboard, reachable from anywhere, showing a world map with toggleable layers. At minimum: financial market sentiment (your existing Market Terminal engine), geopolitical event intensity from GDELT, and active disaster/climate alerts. Sitting above all three, a single composite score, your version of WorldMonitor's "Country Instability Index", updated continuously and tracked over time. When that score crosses a threshold for a region you care about, you get a push notification on your phone via Pushover, sometimes hours before it would show up as a headline.
 
 Underneath, a Raspberry Pi runs the ingestion and scoring continuously, writing to a database that has been accumulating since the day you started it. Six months from now that's six months of labelled, timestamped, multi-source risk data, a dataset nobody else has, because nobody else has been running this specific combination of sources with this specific scoring method since this date.
 
@@ -125,7 +125,7 @@ osint-world-monitor/
 │   │   ├── geopolitical/    # GDELT
 │   │   └── climate/         # disaster/weather
 │   ├── correlation/          # composite index
-│   ├── alerting/             # Telegram bot
+│   ├── alerting/             # Pushover notifications
 │   └── api/                  # FastAPI app tying it together
 ├── frontend/                  # Next.js, extends Market Terminal UI
 ├── data/                       # gitignored, points at /mnt/data
@@ -141,6 +141,8 @@ Clone this onto the Pi, set up a Python venv under `backend/`, and you're ready 
 ## 4. The modules (Phase 1 — thesis scope)
 
 Four modules. The first three feed data in; the fourth synthesises and alerts. This is the scope for the thesis, deliberately smaller than the 60-feed reference projects, focused and defensible beats broad and shallow for a Master's report.
+
+**Shared schema**: every module writes into a common `events` table with the same fields, time, location, source, category, severity, keywords, confidence. This is the schema Marco's brief specifies directly, and it's what makes the correlation layer (Module D) possible, three domains, one table, one set of fields to reason about.
 
 ### Module A — Financial risk (porting Market Terminal)
 
@@ -174,11 +176,11 @@ Four modules. The first three feed data in; the fourth synthesises and alerts. T
 
 ### Module D — Composite early-warning index + alerting
 
-This is the academic core. For each tracked region, combine the normalised scores from A, B, and C into a single index, your equivalent of WorldMonitor's Country Instability Index, but with your own weighting and justification, which is exactly the kind of methodological choice a thesis examiner wants to see you defend.
+This is the academic core, and it's a direct match for the last item in Marco's signal-detection list: "co-occurrence of multiple risk signals." For each tracked region, combine the normalised scores from A, B, and C into a single index, your equivalent of WorldMonitor's Country Instability Index, but with your own weighting and justification, which is exactly the kind of methodological choice a thesis examiner wants to see you defend.
 
 Start simple and defensible: z-score normalise each domain's daily score, combine via a weighted sum (equal weights as a baseline, then optionally explore whether weighting by historical correlation with known events improves things, this is good "results" material). Track the composite score over time per region.
 
-**Alerting**: a script checks the composite score against a threshold every time it updates. On breach, send a Telegram message via the [Telegram Bot API](https://core.telegram.org/bots/api) (free, a few lines of Python). This is also your most demoable feature, a phone notification during your presentation lands well.
+**Alerting**: Marco's brief names [Pushover](https://pushover.net/api) specifically for phone notifications, simple REST API, a few lines of Python, cheap one-time cost for the app. A script checks the composite score against a threshold every time it updates and fires a Pushover notification on breach. This is also your most demoable feature, a phone notification during your presentation lands well.
 
 | | |
 |---|---|
@@ -217,7 +219,7 @@ Getting the system running continuously as early as possible matters a lot here,
 | 1 | 15-21 Jun | Pi setup (Section 3), port Module A (financial), get it running on a schedule. Goal: real data flowing before the presentation |
 | 2 | 22-28 Jun | **Presentation week (slides due 22nd)**. In parallel, start Module B (GDELT) |
 | 3 | 29 Jun-5 Jul | Finish Module B, start Module C (disaster/climate) |
-| 4 | 6-12 Jul | Finish Module C, start Module D (composite index + Telegram alerting) |
+| 4 | 6-12 Jul | Finish Module C, start Module D (composite index + Pushover alerting) |
 | 5 | 13-19 Jul | Finish Module D. Dashboard pass, add map view with layer toggles. **System should be fully running end-to-end by end of this week**, every subsequent week adds to your dataset |
 | 6 | 20-26 Jul | Begin writing: Introduction, Data, Methods sections, drawing on literature (WorldMonitor docs, GDELT papers, instability index literature, the football-network papers' approach to justifying parameters is a useful structural template) |
 | 7 | 27 Jul-2 Aug | Results section: pull accumulated data, generate figures, look for case studies (composite spikes vs real events) |
@@ -262,6 +264,6 @@ Worth giving this its own identity rather than "the Pi thing", fits your pattern
 - USGS earthquake feeds: https://earthquake.usgs.gov/earthquakes/feed/
 - NASA FIRMS: https://firms.modaps.eosdis.nasa.gov/
 - Open-Meteo: https://open-meteo.com/
-- Telegram Bot API: https://core.telegram.org/bots/api
+- Pushover API: https://pushover.net/api
 - Reference project (architecture/category catalogue): https://github.com/koala73/worldmonitor
 - Reference project (stack closest to yours): https://github.com/BigBodyCobain/Shadowbroker
