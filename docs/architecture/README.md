@@ -10,7 +10,7 @@ This directory specifies **how the system is built**. Each section is a standalo
 |---|---|---|---|
 | 01 | [`01-overview.md`](01-overview.md) | High-level architecture, module map, feed taxonomy (thesis core vs Layer 3) | Draft |
 | 02 | [`02-storage.md`](02-storage.md) | btrfs RAID1 layout, hot/cold split, snapshots, off-site backup | Draft |
-| 03 | [`03-ingestion.md`](03-ingestion.md) | Celery queue tiers, dedup, retry, rate limiting | Pending |
+| 03 | [`03-ingestion.md`](03-ingestion.md) | Celery queue tiers, fetcher contract, dedup, retry, rate limiting | Draft |
 | 04 | [`04-schema.md`](04-schema.md) | Common event schema across all feeds | Pending |
 | 05 | [`05-originality.md`](05-originality.md) | Defense against "copied Shadowbroker" charge | Pending |
 | 06 | [`06-validation.md`](06-validation.md) | Linkage to evaluation protocol, dashboard validation hooks | Pending |
