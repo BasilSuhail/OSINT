@@ -4,6 +4,8 @@ Companion to the top-level [`../../README.md`](../../README.md) (project plan), 
 
 This directory specifies **how the system is built**. Each section is a standalone file so it can be reviewed, linked, and updated independently. Start at section 01 and read in order; each section assumes the previous ones.
 
+**Status**: spec is fully drafted (sections 01-07). Next phase is code implementation, scoped separately.
+
 ## Sections
 
 | # | File | What it covers | Status |
@@ -14,7 +16,7 @@ This directory specifies **how the system is built**. Each section is a standalo
 | 04 | [`04-schema.md`](04-schema.md) | `events`, `scores`, `labels`, supporting tables, indexes, category vocabulary | Draft |
 | 05 | [`05-originality.md`](05-originality.md) | Defense against "copied Shadowbroker" charge (three flavours), thesis claims and disclaimers, provenance trail | Draft |
 | 06 | [`06-validation.md`](06-validation.md) | Methodological hooks for `methodology.md`, runtime health + plausibility + snapshot tests, replayability, pre-evaluation checklist | Draft |
-| 07 | [`07-risks.md`](07-risks.md) | Risks + mitigations | Pending |
+| 07 | [`07-risks.md`](07-risks.md) | Risk register: hardware, data, methodology, schedule, operations, legal/policy. Includes load-bearing Week-7 Layer 3 hard-stop and Tier-1-only thesis-report scope rule | Draft |
 
 ## Quick context
 
