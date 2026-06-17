@@ -13,7 +13,7 @@ This directory specifies **how the system is built**. Each section is a standalo
 | 03 | [`03-ingestion.md`](03-ingestion.md) | Celery queue tiers, fetcher contract, dedup, retry, rate limiting | Draft |
 | 04 | [`04-schema.md`](04-schema.md) | `events`, `scores`, `labels`, supporting tables, indexes, category vocabulary | Draft |
 | 05 | [`05-originality.md`](05-originality.md) | Defense against "copied Shadowbroker" charge (three flavours), thesis claims and disclaimers, provenance trail | Draft |
-| 06 | [`06-validation.md`](06-validation.md) | Linkage to evaluation protocol, dashboard validation hooks | Pending |
+| 06 | [`06-validation.md`](06-validation.md) | Methodological hooks for `methodology.md`, runtime health + plausibility + snapshot tests, replayability, pre-evaluation checklist | Draft |
 | 07 | [`07-risks.md`](07-risks.md) | Risks + mitigations | Pending |
 
 ## Quick context
