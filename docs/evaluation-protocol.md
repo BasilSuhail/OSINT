@@ -34,21 +34,25 @@ This is the difference between "I built something" and "I evaluated something."
 
 ---
 
-## Step 2 — Ground truth
+## Step 2 — Ground truth (hybrid, multi-modal)
 
-**Source**: [ACLED][acled] event data.
+**Sources**: [ACLED][acled] conflict event data + market-crisis label set + hazard-induced disruption label set. Multi-modal composite requires multi-modal ground truth to test fairly — labelling against ACLED alone would bias the evaluation toward the geopolitical input domain.
 
-**Why ACLED, not GDELT-as-truth**: GDELT cannot be both the input and the label — circular. ACLED is human-validated, peer-reviewed, and the [ACLED-vs-ICEWS-vs-GDELT comparison paper][icews-comparison] documents ACLED's lower noise.
+**Why this combination, not GDELT-as-truth**: GDELT cannot be both the input and the label — circular. ACLED is human-validated, peer-reviewed ([ACLED-vs-ICEWS-vs-GDELT comparison paper][icews-comparison]). Market-crisis dates come from authoritative external sources (NBER Business Cycle Dating Committee, IMF currency-crisis dataset, FRED VIX series). Hazard-induced disruption labels are pulled from [EM-DAT](https://www.emdat.be/) disaster declarations cross-referenced with [GDACS](https://www.gdacs.org/) red alerts.
 
 **Event types treated as "positive" labels** (country-month level):
 
-| Code | Event type | Threshold |
-|---|---|---|
-| `P1` | Armed conflict onset | ≥1 ACLED "Battle" event with ≥10 reported fatalities |
-| `P2` | Mass protest escalation | ≥5 ACLED "Protests" events with violent escalation in 7-day window |
-| `P3` | State-based violence intensification | month-over-month doubling of ACLED state-based fatalities |
+| Code | Domain | Event type | Threshold / source |
+|---|---|---|---|
+| `P1` | Geopolitical | Armed conflict onset | ≥1 ACLED "Battle" event with ≥10 reported fatalities |
+| `P2` | Geopolitical | Mass protest escalation | ≥5 ACLED "Protests" events with violent escalation in 7-day window |
+| `P3` | Geopolitical | State-based violence intensification | Month-over-month doubling of ACLED state-based fatalities |
+| `P4` | Market | Country-level market crisis | One of: NBER recession onset (US only); IMF currency-crisis dataset entry; sovereign 10y-yield month-over-month spike > 200bps; equity index drawdown > 20% from rolling 12-month peak; VIX > 30 sustained 5 trading days (global, mapped to country exposure) |
+| `P5` | Hazard | Hazard-induced societal disruption | EM-DAT disaster declaration with ≥100 deaths OR ≥100,000 affected, OR GDACS red-alert level, with composite stress sustained in following 30 days (the "induced disruption" filter, not raw hazard occurrence) |
 
-**Access**: ACLED is free for academic use with registered account. Pull historical data via [ACLED API][acled-api]. Mirror locally to `/mnt/data/acled/` for reproducibility.
+**Multi-label handling**: a single country-month can carry multiple positive labels (e.g. P1 + P4 in a war + market-crash month). The primary classification target is **any-positive** (`P1 ∪ P2 ∪ P3 ∪ P4 ∪ P5`); per-domain breakdowns are reported in Step 9 sensitivity.
+
+**Access**: ACLED is free for academic use with registered account. Pull historical data via [ACLED API][acled-api]. NBER + IMF + FRED + EM-DAT are all freely accessible with academic-use registration. Mirror locally under `/mnt/data/parquet/labels/` for reproducibility.
 
 ---
 
@@ -69,11 +73,16 @@ This is the difference between "I built something" and "I evaluated something."
 
 ## Step 4 — Prediction task definition
 
-**Task**: At time `t`, given composite stress index value `S(c, t)` for country `c`, predict whether any of `{P1, P2, P3}` occurs in country `c` during `[t+1, t+k]`, where `k` = horizon length.
+**Primary task**: At time `t`, given composite stress index value `S(c, t)` for country `c`, predict whether any of `{P1, P2, P3, P4, P5}` occurs in country `c` during `[t+1, t+k]`, where `k` = horizon length.
+
+**Per-domain subtasks** (reported as secondary results, not the headline claim):
+- Geopolitical-only target: any of `{P1, P2, P3}` in `[t+1, t+k]`
+- Market-only target: `P4` in `[t+1, t+k]`
+- Hazard-only target: `P5` in `[t+1, t+k]`
 
 **Horizons evaluated**: `k ∈ {1, 3, 6}` months.
 
-**Output**: per (country, month, horizon), the composite produces a continuous risk score, thresholded for classification. We report ROC and PR curves across all thresholds (not just one).
+**Output**: per (country, month, horizon, target), the composite produces a continuous risk score, thresholded for classification. We report ROC and PR curves across all thresholds (not just one).
 
 ---
 
@@ -86,12 +95,14 @@ The composite must **beat** these to be worth keeping. List finalised before eva
 | `B0` | **Random** | Sanity check. AUROC ≈ 0.5. |
 | `B1` | **Persistence** | "Same as last month." Strong baseline in autocorrelated systems. |
 | `B2` | **Base rate** | Predict country's historical positive rate. |
-| `B3` | **GDELT only** | Module B score, no composite. |
-| `B4` | **Finance only** | Module A score, no composite. |
-| `B5` | **Composite (equal weights)** | Module D, equal-weighted A+B. |
-| `B6` | **Composite (PCA weights)** | Module D, weights from first PCA loadings. |
+| `B3` | **Geopolitical only** | Module B score (GDELT Goldstein), no composite. |
+| `B4` | **Market only** | Module A score (yfinance + FRED + optional FinBERT), no composite. |
+| `B5` | **Hazard only** | Module C score (USGS + GDACS + FIRMS), no composite. |
+| `B6` | **Composite — equal weights** | Module D, equal-weighted A + B + C. |
+| `B7` | **Composite — PCA weights** | Module D, weights from first PCA loading across A, B, C. |
+| `B8` | **Composite — geometric mean** | Module D, geometric aggregation (less-compensatory robustness alternative). |
 
-**Required result for thesis credibility**: `B5` or `B6` strictly dominate `B3` and `B4` on AUROC AND AUPR. If they don't, the composite adds no information — that is itself a defensible thesis result (negative findings count), but you must report it honestly.
+**Required result for thesis credibility**: `B6` or `B7` (or `B8`) strictly dominate **each** of `B3`, `B4`, `B5` on AUROC AND AUPR for the primary multi-label target. If they don't, the multi-modal claim fails — that is itself a defensible thesis result (negative findings count), and the Discussion must report it honestly. Per-domain subtasks (Step 4) are reported separately and are not required to beat the single-domain baseline of that same domain.
 
 ---
 
@@ -119,8 +130,8 @@ Per Marco's brief: "detection delay, false positives, missed events."
 **Report**:
 - Median + IQR of lead time
 - Histogram of lead times
-- Per-event-type breakdown (P1 / P2 / P3)
-- Comparison to baseline lead times (B3, B4)
+- Per-event-type breakdown (P1 / P2 / P3 / P4 / P5)
+- Comparison to single-domain baseline lead times (B3 geopolitical / B4 market / B5 hazard)
 
 **Caveat to document**: a composite that fires 6 months early on every country every month achieves great "lead time" and useless precision. Lead time **must** be reported alongside precision/recall, never alone.
 
@@ -130,13 +141,14 @@ Per Marco's brief: "detection delay, false positives, missed events."
 
 **Pre-register the case-study list before looking at composite output.** No cherry-picking.
 
-**Selection rule**: from the test set (2023-2024), select 3 case studies stratified by outcome:
+**Selection rule**: from the test set (2023-2024), select 4 case studies stratified by domain + outcome:
 
-- 1 × **clean true positive** (composite breached well in advance, ACLED-confirmed event followed)
-- 1 × **false positive** (composite breached, no event followed — explain why)
-- 1 × **missed event** (ACLED event occurred, composite did not breach — explain why)
+- 1 × **clean true positive (geopolitical)** — composite breached well in advance, ACLED-confirmed P1/P2/P3 event followed
+- 1 × **clean true positive (cross-domain)** — composite breached due to multi-domain signal, P4 or P5 followed (this is the multi-modal claim in case-study form)
+- 1 × **false positive** — composite breached, no labelled event followed in horizon; analyse why
+- 1 × **missed event** — labelled event occurred (any domain), composite did not breach; analyse why
 
-**Selection method**: pick the most ACLED-fatality-dense event of each type that occurs in the test set window, prior to running the composite. List the candidate events here once Marco confirms.
+**Selection method**: pick the densest event by primary-domain magnitude (ACLED fatalities for P1-3; max drawdown for P4; affected population for P5) in the test window, prior to running the composite. List candidate events here once Marco confirms.
 
 Pre-specified candidate countries (placeholder — finalise with Marco):
 1. _____________________
@@ -155,7 +167,7 @@ Per [JRC handbook][jrc-handbook] Step 8 (uncertainty / sensitivity analysis):
 2. **Normalisation alternatives**: z-score (primary) vs min-max vs ranking. Does ranking change materially?
 3. **Aggregation alternatives**: linear (primary) vs geometric mean. Does the geometric (less compensatory) hold up?
 4. **Rolling-window length**: 30d / 60d / 90d. Which gives best validation-set AUPR?
-5. **Source ablation**: drop GDELT — does finance alone do as well? Drop finance — does GDELT alone? (This is B3 / B4.)
+5. **Source ablation** (multi-modal): drop one domain at a time — A only (geo + hazard), B only (market + hazard), C only (geo + market). Compare two-domain composites against the full three-domain composite. Already partially covered by B3 / B4 / B5 single-domain baselines.
 6. **Country dropout**: leave-one-country-out cross-validation. Does any one country drive the result?
 
 Each gets a table or figure. Pages don't need to be many — one figure per sensitivity test is enough.
@@ -166,27 +178,29 @@ Each gets a table or figure. Pages don't need to be many — one figure per sens
 
 Before submission, the Results section must contain:
 
-- [ ] Per-baseline AUROC, AUPR, Brier for all 7 baselines × 3 horizons
-- [ ] ROC curves for B3, B4, B5, B6 (one figure)
-- [ ] PR curves for B3, B4, B5, B6 (one figure)
+- [ ] Per-baseline AUROC, AUPR, Brier for all 9 baselines × 3 horizons × 4 targets (primary + 3 per-domain)
+- [ ] ROC curves for B3, B4, B5, B6, B7 on the primary target (one figure)
+- [ ] PR curves for B3, B4, B5, B6, B7 on the primary target (one figure)
+- [ ] Per-domain breakdown table (does the composite beat each single-domain baseline on its own domain's target?)
 - [ ] Calibration plot for composite
-- [ ] Lead time histogram + median/IQR table
-- [ ] 3 case studies (1 TP, 1 FP, 1 missed), 1 paragraph each
-- [ ] Weight sensitivity Monte Carlo figure
-- [ ] Source-ablation table (Step 9.5)
+- [ ] Lead time histogram + median/IQR table, split by event-type domain
+- [ ] 4 case studies (geo TP / cross-domain TP / FP / missed), 1 paragraph each
+- [ ] Weight sensitivity Monte Carlo figure (Dirichlet over A, B, C weights)
+- [ ] Source-ablation table (two-domain composites vs full three-domain)
 - [ ] Country-LOOCV table or boxplot
-- [ ] Explicit list of **limitations** (FinBERT validity, GDELT noise, ACLED coverage gaps in some regions, short test window)
+- [ ] Explicit list of **limitations** (FinBERT validity as auxiliary signal, GDELT noise, hazard-induced-disruption filter sensitivity, market-coverage gaps for emerging markets, ACLED coverage gaps in some regions, short test window)
 - [ ] Statement on industrial applications (Marco's brief requirement)
 
 ---
 
 ## Open questions for Marco (raise at first meeting)
 
-1. Is ACLED the right ground-truth source, or would he prefer UCDP/GED? (UCDP has higher quality for state-based armed conflict but lower temporal resolution.)
+1. Is ACLED + NBER + IMF + EM-DAT the right combined ground-truth set for a multi-modal composite, or would he prefer a single-domain ground truth with multi-domain inputs?
 2. Is the 2015-2021 / 2022 / 2023-2024 split acceptable? Any specific historical event period he wants forced into the test window?
-3. Country panel: agree the list of 20-30 in advance, or stratify automatically by FSI?
-4. Does the negative-result framing (composite ≥ single-signal baselines) need a falsifiable threshold (e.g. "Δ AUPR > 0.05") to count as success?
-5. Acceptable for case studies to be selected by fatality density, or does he have specific events in mind?
+3. Country panel: agree the list of 20-30 in advance, or stratify automatically by FSI? Need balanced country exposure across geopolitical / market / hazard event density.
+4. Does the multi-modal-claim framing (B6/B7 strictly dominate each of B3, B4, B5) need a falsifiable margin (e.g. "Δ AUPR > 0.05") to count as success?
+5. Acceptable for case studies to be selected by per-domain magnitude, or does he have specific events in mind?
+6. Hazard inclusion: is `P5` (hazard-induced disruption with sustained composite stress) the right operationalisation, or would he prefer raw hazard occurrence as a positive label?
 
 ---
 
