@@ -2,7 +2,7 @@
 
 *Working title. The system you build here is the foundation for both your MSc thesis (PX5928, "Open-Source Intelligence and Early-Warning Dashboard") and a personal infrastructure project intended to run for years.*
 
-**Revision note**: this version applies the methodology critique. Major changes: Module C demoted from composite, evaluation pivoted to historical data, JRC-handbook composite scoring, proper academic baselines (ViEWS / FSI / ACLED) replacing WorldMonitor as the comparator. See [`literature-baseline.md`](literature-baseline.md) for the required citations and [`evaluation-protocol.md`](evaluation-protocol.md) for the pre-registered evaluation methodology.
+**Revision note (multi-modal re-anchor)**: thesis lens shifted from finance-anchored to **multi-modal OSINT composite** (geopolitical + market + disaster/hazard). Driven by the PX5901/02 guidelines confirming the thesis is individual work (group structure applies only to the oral presentation), which removes the constraint that the individual thesis must mirror the group-presentation finance lane. Module C is **promoted** back into the composite as the disaster/hazard domain. The earlier methodology critique (JRC handbook, ACLED ground truth, AUROC/AUPR/Brier evaluation, mandatory GDELT deduplication, FinBERT honesty) all carries over unchanged. See [`literature-baseline.md`](literature-baseline.md) for the required citations and [`evaluation-protocol.md`](evaluation-protocol.md) for the pre-registered evaluation methodology.
 
 ---
 
@@ -25,9 +25,15 @@
 
 ## 0. Vision
 
-A self-hosted dashboard, reachable from anywhere, showing a world map with toggleable layers: financial news sentiment (your Market Terminal pipeline, ported), geopolitical event intensity from GDELT (deduplicated, CAMEO-filtered), and a composite stress index per country. Above all three, a defensible composite score grounded in the [OECD/JRC composite indicator methodology][jrc-handbook], evaluated against [ACLED][acled]-labelled historical events, with [Pushover][pushover-api] notifications on threshold breach.
+A self-hosted dashboard, reachable from anywhere, showing a world map with toggleable layers across three input domains plus situational-awareness Layer 3 feeds:
 
-The Pi runs ingestion and scoring continuously. The thesis is a methodology and retrospective evaluation paper, not a "look at our running system" demo — the literature on conflict early-warning ([ViEWS][views-paper], [ICEWS][icews-comparison], [Goldstone PITF][goldstone-pitf]) uses years of historical data, and so do you.
+- **Geopolitical** — GDELT v2 events (deduplicated, CAMEO-filtered, Goldstein-weighted)
+- **Market / macro** — yfinance + FRED (vol, FX, yields, macro); FinBERT-on-news as an optional auxiliary signal
+- **Disaster / hazard** — USGS Quake + GDACS multi-hazard + NASA FIRMS fires
+
+Above the three domains, a defensible **multi-modal composite stress index** per country, grounded in the [OECD/JRC composite indicator methodology][jrc-handbook] and evaluated against a hybrid ground truth ([ACLED][acled] conflict events + market-crisis dates), with [Pushover][pushover-api] notifications on threshold breach.
+
+The Pi runs ingestion and scoring continuously. The thesis is a methodology and retrospective evaluation paper, not a "look at our running system" demo — the literature on conflict early-warning ([ViEWS][views-paper], [ICEWS][icews-comparison], [Goldstone PITF][goldstone-pitf]) uses years of historical data, and so do you. Layer 3 feeds (satellites, news RSS, aviation, maritime, weather, off-grid mesh — full list in [`architecture/01-overview.md`](architecture/01-overview.md#feed-taxonomy)) are dashboard breadth, not composite inputs.
 
 ---
 
@@ -141,15 +147,15 @@ Three modules feed data in; one synthesises; one evaluates. Scope deliberately s
 
 **Shared schema**: every module writes into a common `events` table with fields `time, location, source, category, severity, keywords, confidence`. This is Marco's explicit specification — single schema is what enables the composite.
 
-### Module A — Financial news sentiment (porting Market Terminal)
+### Module A — Market signals (yfinance + FRED + optional FinBERT)
 
 | | |
 |---|---|
-| **Source** | Existing [news-intelligence-platform](https://github.com/BasilSuhail) pipeline: financial news ingestion, FinBERT sentiment, TF-IDF clustering, NER |
-| **Framing** | Call it "financial **news** sentiment" everywhere. FinBERT predictive validity for prices is documented as low (R²≈0.01) — see [Predicting Stock Prices with FinBERT-LSTM (arXiv 2412.06837)][finbert-arxiv]. Do **not** claim it predicts markets. It's one signal of news framing tone toward sectors/regions. |
-| **Changes** | Port scripts to Pi, wrap as systemd timer (hourly), write to shared `events` table |
-| **Storage** | `events` (with `source='finance'`), aggregated `finance_daily_score` per country |
-| **Frontend** | Map markers/regions coloured by sentiment, time-series |
+| **Sources** | [`yfinance`](https://github.com/ranaroussi/yfinance) (equities, indices, FX, crypto, ETF flows), [FRED](https://fred.stlouisfed.org/docs/api/fred/) (CPI, unemployment, GDP, yield curves), optional FinBERT-on-news using the existing news-intelligence-platform pipeline |
+| **Framing** | Market-stress component of the composite. Per-country signals where possible (equity index drawdown, sovereign-yield blowout, FX depreciation, vol spike). FinBERT is **auxiliary**, not the anchor: predictive validity for downstream prices is documented as low (R²≈0.01) — see [Predicting Stock Prices with FinBERT-LSTM (arXiv 2412.06837)][finbert-arxiv]. Used as a news-tone signal, not a price predictor. |
+| **Changes** | Wrap as Celery worker (`worker-finance`), 5-min fast tier; write to shared `events` table |
+| **Storage** | `events` (with `source='yfinance'` / `source='fred'` / `source='finbert-rss'`), aggregated `market_daily_score` per country |
+| **Frontend** | Map markers/regions coloured by market-stress component, time-series per signal |
 
 ### Module B — Geopolitical events (GDELT, deduplicated)
 
@@ -161,15 +167,15 @@ Three modules feed data in; one synthesises; one evaluates. Scope deliberately s
 | **Storage** | `events` (with `source='gdelt'`), `gdelt_daily_score` |
 | **Frontend** | Country choropleth coloured by event intensity |
 
-### Module C — Disaster / climate dashboard layer (NOT in composite)
+### Module C — Hazards / disaster (promoted to composite input)
 
 | | |
 |---|---|
-| **Sources** | [USGS Earthquake API][usgs-quakes], [NASA FIRMS][nasa-firms], [Open-Meteo][open-meteo] |
-| **Role** | Dashboard layer + alerting only. **Excluded from the composite index** — earthquakes and fires are exogenous shocks, not leading indicators of political/financial instability at weekly timescales. Including them in the composite would inject spurious noise (a Japan earthquake → composite spike → "Japan unstable?" with no defence). |
-| **Use as null control** | Optional secondary analysis — does your composite *not* react to earthquake events? Good robustness check. |
-| **Storage** | `events` (with `source='disaster'`), `disaster_events` |
-| **Frontend** | Markers for active fires, significant earthquakes, severe weather |
+| **Sources** | [USGS Earthquake API][usgs-quakes], [GDACS multi-hazard alerts](https://www.gdacs.org/), [NASA FIRMS][nasa-firms] fire hotspots. [Open-Meteo][open-meteo] retained as Layer 3 dashboard weather layer. |
+| **Role (re-anchor)** | Now an input to the composite as the **hazard / disaster domain**. Earlier methodology critique objected that earthquakes are exogenous and risk spurious composite spikes; the multi-modal re-anchor accepts this as a *feature*: hazards are an exogenous stressor that interacts with geopolitical and market signals, and the composite's job is to discriminate which combinations precede instability. The risk of spurious spikes is handled at evaluation time — Module E checks whether the composite's response to isolated hazard events without geo/market corroboration is filtered out by the JRC normalisation step. |
+| **Engineering** | Per-country aggregated hazard intensity score (fatalities × magnitude weighting for quakes, GDACS alert level, FIRMS hotspot count weighted by population proximity). Computed as a Celery slow-tier task. |
+| **Storage** | `events` (with `source='usgs-quake'` / `source='gdacs'` / `source='nasa-firms'`), aggregated `hazard_daily_score` per country |
+| **Frontend** | Markers for active fires, significant earthquakes, GDACS alerts; choropleth for hazard component of composite |
 
 ### Module D — Composite stress index (JRC-handbook methodology)
 
@@ -177,15 +183,15 @@ The academic core. Built per [OECD/JRC Handbook on Constructing Composite Indica
 
 **Steps (JRC structure)**:
 
-1. **Theoretical framework** — declare which indicators belong together and why. Two domains: financial news sentiment (Module A) + geopolitical event intensity (Module B). Justification: both reflect public information environment for instability; both are commonly used in conflict / sovereign-risk forecasting literature ([ViEWS][views-paper], [Goldstone PITF][goldstone-pitf]).
-2. **Multivariate analysis** — correlation structure between A and B, PCA loading inspection. If A and B are too correlated, the composite is redundant; if too uncorrelated, they may be measuring different things.
-3. **Normalisation** — z-score across rolling window (defensible vs min-max because outliers matter). Document the rolling window choice with sensitivity analysis.
-4. **Weighting** — start equal-weighted (default JRC choice when no prior). Then **sensitivity analysis** across alternative weights (PCA-derived, equal, single-signal-dominant).
-5. **Aggregation** — linear weighted sum baseline. Optionally geometric mean as robustness alternative (less compensability — a country can't fully offset bad finance with good politics).
-6. **Robustness** — bootstrap confidence intervals, Monte Carlo over weight perturbations. Does country ranking change?
-7. **Alerting** — threshold on composite → [Pushover][pushover-api] notification. Threshold chosen via ROC analysis on historical labelled events.
+1. **Theoretical framework** — declare which indicators belong together and why. Three domains: market signals (Module A), geopolitical event intensity (Module B), and hazard / disaster intensity (Module C). Justification: all three reflect public observable stress in the country information environment; multi-modal fusion across heterogeneous OSINT modalities is the thesis's research contribution. Domain provenance: financial / sovereign-risk forecasting ([ViEWS][views-paper], [Goldstone PITF][goldstone-pitf]) plus disaster-instability interaction literature.
+2. **Multivariate analysis** — correlation structure across A, B, C; PCA loading inspection across three domains. Report whether any pair is too correlated (composite redundant) or too uncorrelated (measuring different latent factors).
+3. **Normalisation** — z-score across rolling window per signal (defensible vs min-max because outliers matter). Document the rolling window choice with sensitivity analysis.
+4. **Weighting** — start equal-weighted across the three domains (default JRC choice when no prior). Then **sensitivity analysis** across alternative weights (PCA-derived; equal; single-domain-dominant; expert-prior).
+5. **Aggregation** — linear weighted sum baseline. Geometric mean as a less-compensatory robustness alternative (so a country can't fully offset bad geopolitics with calm markets and no hazards).
+6. **Robustness** — bootstrap confidence intervals, Monte Carlo over weight perturbations from a Dirichlet prior. Does the country ranking change? Does dropping any one of A, B, C collapse the discrimination?
+7. **Alerting** — threshold on composite → [Pushover][pushover-api] notification. Threshold chosen via ROC analysis on historical labelled events (per [`evaluation-protocol.md`](evaluation-protocol.md)).
 
-**Storage**: `composite_scores` (country, date, component scores, combined score, percentile)
+**Storage**: `scores` (country, bucket_start, bucket_length, score_name, score_value, components JSONB with per-domain breakdown, method_version)
 
 ### Module E — Evaluation (historical, pre-registered)
 
@@ -193,12 +199,12 @@ This is what makes the thesis defensible. See [`evaluation-protocol.md`](evaluat
 
 **Summary**:
 
-- **Ground truth**: [ACLED][acled] event data (peer-reviewed, human-validated, free for academic use). Pre-specified event types: armed conflict onset, mass protest, civil unrest escalation.
-- **Time period**: historical evaluation on GDELT archive (back to 2015) + ACLED labels, country-month panel.
-- **Metrics**: AUROC, AUPR, Brier score (standard in conflict forecasting per [ViEWS comparison review][cews-review]).
-- **Baselines**: (1) persistence model (yesterday's score), (2) single-signal (finance only, GDELT only), (3) the composite.
-- **Question**: does the composite beat each baseline at AUROC/AUPR?
-- **Detection delay**: distribution of lead time (composite breach → ACLED-confirmed event), reported as median + IQR.
+- **Ground truth (hybrid)**: [ACLED][acled] conflict events + market-crisis dates (NBER recessions, country-level VIX-equivalent spikes > 30, sovereign yield blowouts, IMF currency-crisis dataset). Pre-specified event types per modality, declared before composite output is examined.
+- **Time period**: historical evaluation on GDELT archive (back to 2015) + ACLED + market-crisis labels, country-month panel.
+- **Metrics**: AUROC, AUPR, Brier score, lead-time distribution (standard in conflict forecasting per [ViEWS comparison review][cews-review]).
+- **Baselines**: B0 random, B1 persistence, B2 base rate, B3 geo-only (Module B), B4 market-only (Module A), B5 hazard-only (Module C), B6 equal-weight composite, B7 PCA-weight composite. Composite must beat **each** single-domain baseline on both AUROC and AUPR for the multi-modal claim to hold.
+- **Question**: does the multi-modal composite discriminate later instability events better than the best single-domain baseline?
+- **Detection delay**: distribution of lead time (composite breach → ground-truth event), reported as median + IQR, per event type.
 - **Pi prospective data**: live demo only. Not the primary evaluation.
 
 ---
@@ -214,14 +220,14 @@ Next.js + MapLibre GL, extends Market Terminal frontend. Layer toggles per modul
 | Section | Content | Word budget (target) |
 |---|---|---|
 | Abstract | 300 words separate | — |
-| Introduction + literature | OSINT/EWS background, ViEWS/FSI/ICEWS comparison, gap statement | ~700 |
-| Data | GDELT (with quality caveats), ACLED, financial news corpus | ~500 |
-| Methods | JRC composite methodology, deduplication pipeline, FinBERT + Goldstein, evaluation protocol | ~1,200 |
-| Results | Composite vs baselines (AUROC/AUPR/Brier), detection delay analysis, case-study narratives, sensitivity analysis | ~900 |
-| Discussion | Limitations (FinBERT validity, GDELT noise, ground-truth gaps), industrial applications, future work | ~400 |
+| Introduction + literature | OSINT/EWS background, ViEWS/FSI/ICEWS comparison, gap statement on multi-modal fusion | ~650 |
+| Data | GDELT (with quality caveats), ACLED + market-crisis label sources, yfinance/FRED, USGS/GDACS/FIRMS | ~600 |
+| Methods | JRC composite across three domains, deduplication pipeline, Goldstein + market-stress + hazard normalisation, evaluation protocol | ~1,300 |
+| Results | Composite vs per-domain and combined baselines (AUROC/AUPR/Brier), detection delay analysis, case-study narratives, sensitivity analysis | ~1,050 |
+| Discussion | Limitations (GDELT noise, market-data coverage gaps, hazard-as-exogenous-shock interpretation, ground-truth gaps), industrial applications, future work (Layer 3 feeds) | ~400 |
 | **Total** | | **4,000** |
 
-The Results section is only as good as historical data + ground truth permit. The Pi's accumulated prospective data is a **demonstration**, not the evaluation.
+The Results section is only as good as historical data + ground truth permit. The Pi's accumulated prospective data is a **demonstration**, not the evaluation. Layer 3 feeds (satellites, news RSS, aviation, maritime, weather, off-grid) appear only in the Discussion as future-work directions, not in the formal evaluation.
 
 ---
 
@@ -247,7 +253,15 @@ The Results section is only as good as historical data + ground truth permit. Th
 
 ## 8. Group presentation note
 
-Individual section (2-2.5 min): present Module A specifically as your contribution. If groupmates build geopolitical or supply-chain modules, the **shared `events` schema** is the natural integration point — raise this in week 1 so all three modules write to a compatible table from day one. If schema-sharing politically fails, drop the group integration framing in your individual thesis writing and present as a solo project under shared theme.
+**Per PX5901/02 guidelines**: the *thesis* is individual work; the *oral presentation* is the group component. Group-presentation lane assignments do not constrain what each student writes in their own thesis.
+
+For the group oral (15 min + 10 Q&A on 23-26 June, slides due 22 June 5pm):
+
+- Shared intro: OSINT / early-warning dashboard framing, common GDELT-as-baseline source
+- Your 2-2.5 min individual slot: **multi-modal OSINT composite** — three input domains (geopolitical / market / hazard), JRC methodology, ACLED + market-crisis hybrid ground truth, pre-registered AUROC/AUPR evaluation. This is the same story the thesis defends, in compressed form — no scope expansion between June presentation and August thesis.
+- Shared close: how the three group projects connect under the OSINT umbrella
+
+If groupmates would benefit from a shared `events` schema for integration on the dashboard, raise it in Week 1 — the common-table design in [`architecture/04-schema.md`](architecture/04-schema.md) is reusable. Schema-sharing is optional for the individual thesis.
 
 ---
 
