@@ -1,6 +1,6 @@
 # PX5928 — Requirements, Scope & Where You Stand
 
-*Companion to `master-plan.md`. That document is the "how to build it". This one is the "what's actually required, by whom, and where do things currently stand". Read this when you need to check whether something is mandatory, optional, or purely your own ambition.*
+*Companion to [`../README.md`](../README.md). That document is the "how to build it". This one is the "what's actually required, by whom, and where do things currently stand". Read this when you need to check whether something is mandatory, optional, or purely your own ambition.*
 
 ---
 
@@ -10,7 +10,7 @@
 - Group of 3 for the **oral presentation only**. Per PX5901/02 guidelines (slides 5-6): "Thesis: individual work. Each student needs to work individually on their own thesis"; "Oral presentation: teamwork." Group-presentation lane assignments do **not** constrain individual thesis scope.
 - Group presentation structure agreed: shared intro/outro, ~2-2.5 min individual sections each, total 15 min + 10 min Q&A
 - Your individual focus (re-anchored): **multi-modal OSINT composite stress index** across three input domains — geopolitical events (GDELT), market signals (yfinance + FRED + optional FinBERT), hazards (USGS + GDACS + NASA FIRMS). Evaluated against hybrid ground truth (ACLED + market-crisis dates + EM-DAT disruption labels). An earlier draft anchored the thesis on finance alone; finance is now one of three composite inputs, not the headline.
-- Technical master plan written (`master-plan.md`): Pi setup, four-module architecture (A market + B geo + C hazard + D composite + E eval), ten-week timeline
+- Technical master plan written ([`../README.md`](../README.md)): Pi setup, four-module architecture (A market + B geo + C hazard + D composite + E eval), ten-week timeline
 - Architecture spec started under `docs/architecture/` (sections 01-03 merged to main; sections 04-07 pending)
 - **Not yet started**: Pi setup itself, any code, GDELT ingestion, anything in the master plan's Section 3 onward
 - **Upcoming**: presentation slides due 22 June 5pm, group presentation 23-26 June, thesis due 28 August, viva 7-11 September
@@ -70,7 +70,7 @@ These apply to every Data Science project regardless of topic:
 
 ### 2.4 You (the personal layer)
 
-Everything in `master-plan.md` beyond the four core modules, the Pi infrastructure choices, the HomeForge integration question, the decade roadmap, is **your own addition**, made because it serves your career goals, not because anyone requires it. The good news, established above, is that this layer sits *on top of* Marco's brief rather than alongside it. Building it properly doesn't distract from the academic requirement, it largely *is* the academic requirement, just built with more care and a longer horizon than a typical student project.
+Everything in [`../README.md`](../README.md) beyond the four core modules, the Pi infrastructure choices, the HomeForge integration question, the decade roadmap, is **your own addition**, made because it serves your career goals, not because anyone requires it. The good news, established above, is that this layer sits *on top of* Marco's brief rather than alongside it. Building it properly doesn't distract from the academic requirement, it largely *is* the academic requirement, just built with more care and a longer horizon than a typical student project.
 
 The one place to stay disciplined: don't let the personal ambition (HomeForge integration, additional modules beyond A-D, polish on the public-facing dashboard) consume time that should go toward the 4,000-word report, the evaluation methodology, and the literature comparison. Those are 65% + 35% of your grade and have a hard deadline. The extra modules don't.
 
@@ -105,7 +105,7 @@ The one place to stay disciplined: don't let the personal ambition (HomeForge in
 | Signal detection method | Marco's brief, Layer 1 minimum | Spec'd (Module D + composite) |
 | Dashboard with maps/time series/filters | Marco's brief, Layer 1 minimum | Not started |
 | Pushover notification | Marco's brief, optional | Not started |
-| Retrospective evaluation (pre-registered) | Marco's brief, explicit | Protocol in `evaluation-protocol.md` v1.0 (locks with Marco before Week 4) |
+| Retrospective evaluation (pre-registered) | Marco's brief, explicit | Protocol in [`methodology.md`](methodology.md) Part A v1.0 (locks with Marco before Week 4) |
 | Documented GitHub repo | Marco's brief + University | In progress (this repo) |
 | 4,000-word report | University | Not started |
 | First draft to Marco | University (schedule with him) | Not yet scheduled |

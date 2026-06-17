@@ -1,6 +1,6 @@
 # Architecture Spec
 
-Companion to [`../master-plan.md`](../master-plan.md), [`../evaluation-protocol.md`](../evaluation-protocol.md), [`../literature-baseline.md`](../literature-baseline.md), and [`../px5928-requirements-and-status.md`](../px5928-requirements-and-status.md).
+Companion to the top-level [`../../README.md`](../../README.md) (project plan), [`../methodology.md`](../methodology.md) (evaluation protocol + literature baseline), and [`../requirements.md`](../requirements.md) (PX5928 university spec).
 
 This directory specifies **how the system is built**. Each section is a standalone file so it can be reviewed, linked, and updated independently. Start at section 01 and read in order; each section assumes the previous ones.
 

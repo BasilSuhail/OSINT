@@ -110,7 +110,7 @@ Critical split: **not every feed feeds the composite stress index.** The thesis 
 | NBER + IMF currency-crisis + FRED VIX | Ground truth — market | Market crisis labels (P4) | Yes |
 | [EM-DAT](https://www.emdat.be/) + GDACS red-alerts | Ground truth — hazard | Hazard-induced disruption labels (P5) | Yes (academic registration) |
 
-Three input domains (A + B + C), three label domains. The composite is evaluated against an any-positive multi-modal target per [`../evaluation-protocol.md`](../evaluation-protocol.md). Per the JRC composite indicator handbook ([source](https://composite-indicators.jrc.ec.europa.eu/?q=content/10-step-guide)), defensible weights on a small, justified domain set beats kitchen-sink aggregation.
+Three input domains (A + B + C), three label domains. The composite is evaluated against an any-positive multi-modal target per [`../methodology.md`](../methodology.md). Per the JRC composite indicator handbook ([source](https://composite-indicators.jrc.ec.europa.eu/?q=content/10-step-guide)), defensible weights on a small, justified domain set beats kitchen-sink aggregation.
 
 ### Tier 2 — Layer 3 dashboard (display, alerts, NOT in composite)
 
@@ -164,5 +164,5 @@ Explicitly not building (be honest with examiners):
 
 - It is not Palantir Foundry. No ontology, no analyst workflows, no enterprise auth.
 - It is not Shadowbroker. No mesh layer, no agentic AI channel, no decentralised governance. (Those can be added in Layer 3 if Basil wants, but they are not architectural commitments.)
-- It is not a prediction system. The composite reports stress level; it does not claim to forecast specific events. The evaluation in [`../evaluation-protocol.md`](../evaluation-protocol.md) tests **discrimination** (does high stress correlate with later labelled instability events across the three domains) rather than **prediction accuracy** in the strict sense.
+- It is not a prediction system. The composite reports stress level; it does not claim to forecast specific events. The evaluation in [`../methodology.md`](../methodology.md) tests **discrimination** (does high stress correlate with later labelled instability events across the three domains) rather than **prediction accuracy** in the strict sense.
 - It is not finance-anchored. An earlier draft framed the thesis as a finance-led composite. The current re-anchor treats market signals as one of three equal input domains in the multi-modal composite; finance is not the headline contribution.
