@@ -1,18 +1,19 @@
 # PX5928 — Requirements, Scope & Where You Stand
 
-*Companion to `master-plan.md`. That document is the "how to build it". This one is the "what's actually required, by whom, and where do things currently stand". Read this when you need to check whether something is mandatory, optional, or purely your own ambition.*
+*Companion to [`../README.md`](../README.md). That document is the "how to build it". This one is the "what's actually required, by whom, and where do things currently stand". Read this when you need to check whether something is mandatory, optional, or purely your own ambition.*
 
 ---
 
 ## 1. Where you are right now
 
 - Allocated to "Open-Source Intelligence and Early-Warning Dashboard", supervised by Marco Thiel
-- Group of 3 (Data Science / Business Management students), each taking an individual focus within the shared project umbrella
+- Group of 3 for the **oral presentation only**. Per PX5901/02 guidelines (slides 5-6): "Thesis: individual work. Each student needs to work individually on their own thesis"; "Oral presentation: teamwork." Group-presentation lane assignments do **not** constrain individual thesis scope.
 - Group presentation structure agreed: shared intro/outro, ~2-2.5 min individual sections each, total 15 min + 10 min Q&A
-- Your individual focus: financial/market risk module, building on your existing Market Terminal pipeline
-- Technical master plan written (`master-plan.md`): Pi setup, four-module architecture, ten-week timeline
-- **Not yet started**: Pi setup itself, porting any code, GDELT ingestion, anything in the master plan's Section 3 onward
-- **Upcoming**: presentation slides due 22 June, group presentation 23-26 June, thesis due 28 August, viva 7-11 September
+- Your individual focus (re-anchored): **multi-modal OSINT composite stress index** across three input domains — geopolitical events (GDELT), market signals (yfinance + FRED + optional FinBERT), hazards (USGS + GDACS + NASA FIRMS). Evaluated against hybrid ground truth (ACLED + market-crisis dates + EM-DAT disruption labels). An earlier draft anchored the thesis on finance alone; finance is now one of three composite inputs, not the headline.
+- Technical master plan written ([`../README.md`](../README.md)): Pi setup, four-module architecture (A market + B geo + C hazard + D composite + E eval), ten-week timeline
+- Architecture spec started under `docs/architecture/` (sections 01-03 merged to main; sections 04-07 pending)
+- **Not yet started**: Pi setup itself, any code, GDELT ingestion, anything in the master plan's Section 3 onward
+- **Upcoming**: presentation slides due 22 June 5pm, group presentation 23-26 June, thesis due 28 August, viva 7-11 September
 
 ---
 
@@ -64,11 +65,12 @@ These apply to every Data Science project regardless of topic:
 - Shared intro covering: what "OSINT/early-warning dashboard" means, why it matters, common data sources (GDELT mentioned)
 - Each person presents their individual angle for ~2-2.5 minutes
 - Shared close: how the individual approaches connect, next steps
-- Your slot: financial/market risk, framed as one of the indicator domains under the shared umbrella
+- Your slot (re-anchored): **multi-modal OSINT composite** with three input domains and hybrid ground truth. Presented as the methodology contribution within the shared umbrella. Mirrors the thesis frame, so there is no scope-expansion between June presentation and August thesis.
+- Group-presentation lane is independent of the thesis (per university guidelines). Even if the group conversation continues to treat your slot as "finance lens," the thesis is yours alone to scope and write.
 
 ### 2.4 You (the personal layer)
 
-Everything in `master-plan.md` beyond the four core modules, the Pi infrastructure choices, the HomeForge integration question, the decade roadmap, is **your own addition**, made because it serves your career goals, not because anyone requires it. The good news, established above, is that this layer sits *on top of* Marco's brief rather than alongside it. Building it properly doesn't distract from the academic requirement, it largely *is* the academic requirement, just built with more care and a longer horizon than a typical student project.
+Everything in [`../README.md`](../README.md) beyond the four core modules, the Pi infrastructure choices, the HomeForge integration question, the decade roadmap, is **your own addition**, made because it serves your career goals, not because anyone requires it. The good news, established above, is that this layer sits *on top of* Marco's brief rather than alongside it. Building it properly doesn't distract from the academic requirement, it largely *is* the academic requirement, just built with more care and a longer horizon than a typical student project.
 
 The one place to stay disciplined: don't let the personal ambition (HomeForge integration, additional modules beyond A-D, polish on the public-facing dashboard) consume time that should go toward the 4,000-word report, the evaluation methodology, and the literature comparison. Those are 65% + 35% of your grade and have a hard deadline. The extra modules don't.
 
@@ -78,7 +80,7 @@ The one place to stay disciplined: don't let the personal ambition (HomeForge in
 
 **Layer 1, the floor (Marco's minimum for "this is a valid project")**: ingestion from at least two independent public sources, a common event table, at least one signal-detection method, a dashboard with maps/time-series/filters, a written evaluation against historical events, a documented repo. No Pi required, no Pushover required (it's explicitly optional), this could technically be done on a laptop with a SQLite file.
 
-**Layer 2, your thesis build (Modules A-D from the master plan)**: financial sentiment + GDELT + disaster/climate feeds, a composite index using co-occurrence of multiple risk signals (his words, almost exactly what Module D does), Pushover alerting, evaluation against real historical events using your accumulated data. This is comfortably "strong project" territory per his own description, three independent sources (exceeds "not only one"), a principled composite score (directly answers "signal detection"), and a real evaluation with real data because the Pi has been running for weeks.
+**Layer 2, your thesis build (Modules A-E from the master plan)**: market signals (yfinance + FRED + optional FinBERT) + GDELT (deduplicated, CAMEO-filtered, Goldstein-weighted) + hazards (USGS + GDACS + NASA FIRMS), a multi-modal composite stress index per JRC handbook methodology, Pushover alerting, pre-registered evaluation against hybrid ground truth (ACLED + NBER + IMF currency-crisis + EM-DAT). This is comfortably "strong project" territory per Marco's own description: three independent input domains (exceeds "not only one"), a principled composite (directly answers "signal detection" with multi-modal fusion), and a real retrospective evaluation against documented event labels.
 
 **Layer 3, the decade roadmap**: everything in Section 9 of the master plan, plus HomeForge integration, plus any public-facing/monetisation work. Doesn't affect the grade. Doesn't have a deadline. Genuinely valuable, but Layer 1 and 2 come first, always.
 
@@ -90,17 +92,21 @@ The one place to stay disciplined: don't let the personal ambition (HomeForge in
 |---|---|---|
 | Project allocation | University | Done |
 | Group presentation structure | Group | Agreed |
-| Presentation slides | University (22 Jun) | Not started |
-| Pi setup | You (infrastructure for Layer 2) | Not started |
-| Module A (financial) ported | You | Not started |
+| Architecture spec sections 01-03 | You | Merged to main |
+| Architecture spec sections 04-07 | You | Pending |
+| Presentation slides | University (22 Jun 5pm) | Not started |
+| Pi 5 + 2x4TB btrfs RAID1 hardware | You (Layer 2 infrastructure) | Not started |
+| Module A (market signals) | You | Not started |
 | Module B (GDELT) | Marco's brief, Layer 1 minimum | Not started |
-| Module C (disaster/climate) | You, exceeds Layer 1 | Not started |
-| Common event table schema | Marco's brief, explicit | Not started |
-| Signal detection method | Marco's brief, Layer 1 minimum | Not started (Module D covers this) |
+| Module C (hazards, promoted to composite) | You | Not started |
+| Module D (multi-modal composite, JRC) | Thesis core | Not started |
+| Module E (evaluation harness) | Thesis core | Not started |
+| Common event table schema | Marco's brief, explicit | Spec'd in `architecture/04-schema.md` (pending) |
+| Signal detection method | Marco's brief, Layer 1 minimum | Spec'd (Module D + composite) |
 | Dashboard with maps/time series/filters | Marco's brief, Layer 1 minimum | Not started |
 | Pushover notification | Marco's brief, optional | Not started |
-| Retrospective evaluation | Marco's brief, explicit | Depends on accumulated data, start ingestion ASAP |
-| Documented GitHub repo | Marco's brief + University | Not started |
+| Retrospective evaluation (pre-registered) | Marco's brief, explicit | Protocol in [`methodology.md`](methodology.md) Part A v1.0 (locks with Marco before Week 4) |
+| Documented GitHub repo | Marco's brief + University | In progress (this repo) |
 | 4,000-word report | University | Not started |
 | First draft to Marco | University (schedule with him) | Not yet scheduled |
 
