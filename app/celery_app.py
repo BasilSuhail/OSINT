@@ -12,7 +12,7 @@ app = Celery(
     "osint",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=[],
+    include=["app.tasks"],
 )
 
 app.conf.update(
@@ -24,6 +24,5 @@ app.conf.update(
     broker_connection_retry_on_startup=True,
 )
 
-# Beat schedule will populate as workers are added.
-# See docs/architecture/03-ingestion.md for the planned cadences per source.
-app.conf.beat_schedule = {}
+# Beat schedule is populated by `app.tasks` so the schedule lives next to the
+# task definitions it triggers.
