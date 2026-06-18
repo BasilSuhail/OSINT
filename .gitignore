@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+.tox/
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Data / archives (never commit)
+data/
+/mnt/data/
+*.parquet
+*.csv
+*.zip
+
+# Logs
+*.log
+logs/
+
+# Course material (NEVER commit to OSINT repo)
+*.pptx
+*.pdf
+
+# Local dev artefacts
+.tmp/
+scratch/
