@@ -1,0 +1,18 @@
+# Runtime dependencies. Generate with `pip-compile pyproject.toml` once the venv is set up.
+# This file is the hand-pinned starter set used for local bring-up before pip-tools is wired in.
+
+fastapi>=0.115
+uvicorn[standard]>=0.32
+celery>=5.4
+redis>=5.2
+sqlalchemy>=2.0
+alembic>=1.14
+psycopg[binary]>=3.2
+pydantic>=2.10
+pydantic-settings>=2.7
+httpx>=0.28
+yfinance>=0.2.50
+fredapi>=0.5.2
+pandas>=2.2
+numpy>=2.2
+python-dateutil>=2.9
