@@ -98,4 +98,9 @@ app.conf.beat_schedule = {
         "args": ["fred"],
         "schedule": crontab(hour=7, minute=0),
     },
+    "gdelt-15min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["gdelt"],
+        "schedule": crontab(minute="0,15,30,45"),
+    },
 }
