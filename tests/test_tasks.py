@@ -126,7 +126,14 @@ def test_unknown_fetcher_raises_key_error(global_sqlite_db: Engine) -> None:
         tasks._run_fetcher_body("does-not-exist")
 
 
-def test_beat_schedule_has_yfinance_fred_and_gdelt() -> None:
+def test_beat_schedule_covers_all_thesis_core_fetchers() -> None:
     schedule = tasks.app.conf.beat_schedule
     names = {entry["args"][0] for entry in schedule.values()}
-    assert names == {"yfinance", "fred", "gdelt"}
+    assert names == {
+        "yfinance",
+        "fred",
+        "gdelt",
+        "usgs-quake",
+        "gdacs",
+        "nasa-firms",
+    }

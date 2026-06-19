@@ -103,4 +103,19 @@ app.conf.beat_schedule = {
         "args": ["gdelt"],
         "schedule": crontab(minute="0,15,30,45"),
     },
+    "usgs-quake-15min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["usgs-quake"],
+        "schedule": crontab(minute="2,17,32,47"),
+    },
+    "gdacs-15min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["gdacs"],
+        "schedule": crontab(minute="4,19,34,49"),
+    },
+    "nasa-firms-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["nasa-firms"],
+        "schedule": crontab(hour="*/1", minute=6),
+    },
 }
