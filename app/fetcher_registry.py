@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from app.sources.base import Fetcher
 from app.sources.fred_fetcher import FredFetcher
+from app.sources.gdelt_fetcher import GdeltFetcher
 from app.sources.yfinance_fetcher import YFinanceFetcher
 
 _REGISTRY: dict[str, Fetcher] = {
     "yfinance": YFinanceFetcher(),
     "fred": FredFetcher(),
+    "gdelt": GdeltFetcher(),
 }
 
 
