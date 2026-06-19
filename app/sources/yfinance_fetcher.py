@@ -67,8 +67,15 @@ def _compute_events(
     recent_index = df.index[-lookback_days:]
     events: list[Event] = []
     for ts in recent_index:
-        close = float(closes.loc[ts])
-        dd = float(drawdown_pct.loc[ts])
+        close_raw = closes.loc[ts]
+        dd_raw = drawdown_pct.loc[ts]
+        if pd.isna(close_raw) or pd.isna(dd_raw):
+            # yfinance returns NaN closes on non-trading days (weekends, holidays)
+            # or when a ticker has no data on the requested date. NaN is not valid
+            # JSON, so the row cannot reach Postgres JSONB — drop it here.
+            continue
+        close = float(close_raw)
+        dd = float(dd_raw)
         severity = max(0.0, min(dd / SEVERITY_SATURATION_PCT, 1.0))
 
         occurred_at = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
