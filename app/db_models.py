@@ -31,6 +31,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 JsonColumn = JSONB().with_variant(JSON(), "sqlite")
 StringArray = ARRAY(String).with_variant(JSON(), "sqlite")
 
+# SQLite only auto-increments columns typed exactly INTEGER PRIMARY KEY; a BIGINT
+# primary key on SQLite stays NULL on insert which fails the NOT NULL constraint.
+# Use BigInteger on Postgres (production) and Integer on SQLite (tests).
+BigIntPK = BigInteger().with_variant(Integer(), "sqlite")
+
 
 class Base(DeclarativeBase):
     pass
@@ -39,7 +44,7 @@ class Base(DeclarativeBase):
 class EventRow(Base):
     __tablename__ = "events"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(Text, nullable=False)
     source_event_id: Mapped[str] = mapped_column(Text, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -73,7 +78,7 @@ class EventRow(Base):
 class ScoreRow(Base):
     __tablename__ = "scores"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     country: Mapped[str] = mapped_column(String(2), nullable=False)
     bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     bucket_length: Mapped[timedelta] = mapped_column(Interval, nullable=False)
@@ -101,7 +106,7 @@ class ScoreRow(Base):
 class LabelRow(Base):
     __tablename__ = "labels"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     country: Mapped[str] = mapped_column(String(2), nullable=False)
     bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     bucket_length: Mapped[timedelta] = mapped_column(Interval, nullable=False)
@@ -133,7 +138,7 @@ class IngestHealthRow(Base):
 class IngestFailureRow(Base):
     __tablename__ = "ingest_failures"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(Text, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -148,7 +153,7 @@ class IngestFailureRow(Base):
 class DeadLetterRow(Base):
     __tablename__ = "dead_letter_queue"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     task_name: Mapped[str] = mapped_column(Text, nullable=False)
     fetcher_name: Mapped[str] = mapped_column(Text, nullable=False)
     enqueued_at: Mapped[datetime] = mapped_column(
@@ -162,7 +167,7 @@ class DeadLetterRow(Base):
 class HousekeepingRunRow(Base):
     __tablename__ = "housekeeping_runs"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     ran_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -176,7 +181,7 @@ class HousekeepingRunRow(Base):
 class NotificationRow(Base):
     __tablename__ = "notifications"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

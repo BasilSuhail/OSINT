@@ -148,13 +148,26 @@ class TestParseRssBody:
         assert parse_rss_body("not xml", fetched_at=datetime.now(timezone.utc)) == []
 
     def test_multiple_items_parsed(self) -> None:
-        body = _build_rss().replace(
-            "</channel>",
-            _build_rss(event_id="2000002", event_type="TC", alert_level="Red")
-            .split("<channel>")[1]
-            .replace("</channel>", "")
-            + "</channel>",
-        )
+        body = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:gdacs="http://www.gdacs.org" xmlns:georss="http://www.georss.org/georss">
+  <channel>
+    <title>GDACS</title>
+    <item>
+      <gdacs:eventid>1000001</gdacs:eventid>
+      <gdacs:eventtype>EQ</gdacs:eventtype>
+      <gdacs:alertlevel>Orange</gdacs:alertlevel>
+      <gdacs:iso3>JPN</gdacs:iso3>
+      <georss:point>35.0 140.0</georss:point>
+    </item>
+    <item>
+      <gdacs:eventid>2000002</gdacs:eventid>
+      <gdacs:eventtype>TC</gdacs:eventtype>
+      <gdacs:alertlevel>Red</gdacs:alertlevel>
+      <gdacs:iso3>PHL</gdacs:iso3>
+      <georss:point>14.0 121.0</georss:point>
+    </item>
+  </channel>
+</rss>"""
         events = parse_rss_body(body, fetched_at=datetime.now(timezone.utc))
         assert len(events) == 2
         ids = [e.source_event_id for e in events]

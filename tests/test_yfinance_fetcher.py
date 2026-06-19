@@ -96,6 +96,18 @@ class TestComputeEvents:
         )
         assert len(events) == 10
 
+    def test_nan_close_drops_row(self) -> None:
+        # yfinance returns NaN closes on non-trading days; those must not
+        # reach Postgres JSONB (which rejects the NaN literal).
+        prices = [100.0] * 40 + [float("nan")]
+        df = _make_price_history(prices)
+        events = _compute_events(
+            df, country="US", ticker="SPY", fetched_at=datetime.now(timezone.utc), lookback_days=2
+        )
+        # Only the non-NaN row should emit an event.
+        assert len(events) == 1
+        assert all(e.payload["close"] == 100.0 for e in events)
+
 
 class TestYFinanceFetcherContract:
     def test_name_and_queue(self) -> None:
