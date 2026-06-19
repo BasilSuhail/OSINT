@@ -33,6 +33,11 @@ Everything else (labels, ingest_health, etc.) is locked down. Service-role queri
 |---|---|---|
 | `/space` | 3D globe with satellite orbits + asteroids | CelesTrak TLE + NASA NEO (fetchers not yet built) |
 
+## Versions
+
+- `v0-prompt.md` — current spec: dual-pane map + globe, filters, time scrubber, Realtime fades. Inspired by WorldMonitor / Shadowbroker / Palantir.
+- `v0-prompt-v1-simple.md` — archived first draft: single-page world map + articles, no globe, no realtime scrub. Use as a fallback if v2 is too ambitious for v0 to generate cleanly in one pass.
+
 ## Setup
 
 1. **Apply RLS policies** in Supabase
