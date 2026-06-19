@@ -128,8 +128,12 @@ def test_unknown_fetcher_raises_key_error(global_sqlite_db: Engine) -> None:
 
 def test_beat_schedule_covers_all_thesis_core_fetchers() -> None:
     schedule = tasks.app.conf.beat_schedule
-    names = {entry["args"][0] for entry in schedule.values()}
-    assert names == {
+    fetcher_names = {
+        entry["args"][0]
+        for entry in schedule.values()
+        if entry["task"] == "app.tasks.run_fetcher"
+    }
+    assert fetcher_names == {
         "yfinance",
         "fred",
         "gdelt",
@@ -137,3 +141,11 @@ def test_beat_schedule_covers_all_thesis_core_fetchers() -> None:
         "gdacs",
         "nasa-firms",
     }
+
+
+def test_beat_schedule_includes_composite_worker() -> None:
+    schedule = tasks.app.conf.beat_schedule
+    composite_entries = [
+        entry for entry in schedule.values() if entry["task"] == "app.tasks.compute_composite"
+    ]
+    assert len(composite_entries) == 1
