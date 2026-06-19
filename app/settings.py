@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     redis_port: int = Field(default=6379)
 
     fred_api_key: str = Field(default="")
+    firms_map_key: str = Field(default="")
 
     pushover_token: str = Field(default="")
     pushover_user: str = Field(default="")

@@ -9,13 +9,19 @@ from __future__ import annotations
 
 from app.sources.base import Fetcher
 from app.sources.fred_fetcher import FredFetcher
+from app.sources.gdacs_fetcher import GdacsFetcher
 from app.sources.gdelt_fetcher import GdeltFetcher
+from app.sources.nasa_firms_fetcher import NasaFirmsFetcher
+from app.sources.usgs_quake_fetcher import UsgsQuakeFetcher
 from app.sources.yfinance_fetcher import YFinanceFetcher
 
 _REGISTRY: dict[str, Fetcher] = {
     "yfinance": YFinanceFetcher(),
     "fred": FredFetcher(),
     "gdelt": GdeltFetcher(),
+    "usgs-quake": UsgsQuakeFetcher(),
+    "gdacs": GdacsFetcher(),
+    "nasa-firms": NasaFirmsFetcher(),
 }
 
 
