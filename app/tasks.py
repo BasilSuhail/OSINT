@@ -17,6 +17,7 @@ from celery.schedules import crontab
 from sqlalchemy.orm import Session
 
 from app.celery_app import app
+from app.composite.task import _compute_composite_body
 from app.db import session_scope
 from app.db_models import IngestFailureRow, IngestHealthRow
 from app.fetcher_registry import get_fetcher
@@ -85,6 +86,19 @@ def run_fetcher(name: str) -> dict[str, Any]:
     return _run_fetcher_body(name)
 
 
+@app.task(
+    name="app.tasks.compute_composite",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
+    """Run the composite worker (read events, aggregate, normalise, score, upsert)."""
+    return _compute_composite_body(method_version=method_version)
+
+
 # Beat schedule — declarative cadence per source. Matches the table in
 # docs/architecture/03-ingestion.md.
 app.conf.beat_schedule = {
@@ -117,5 +131,9 @@ app.conf.beat_schedule = {
         "task": "app.tasks.run_fetcher",
         "args": ["nasa-firms"],
         "schedule": crontab(hour="*/1", minute=6),
+    },
+    "composite-hourly": {
+        "task": "app.tasks.compute_composite",
+        "schedule": crontab(hour="*/1", minute=10),
     },
 }
