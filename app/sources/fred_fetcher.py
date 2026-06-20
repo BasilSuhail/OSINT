@@ -11,7 +11,7 @@ source (ECB SDW, OECD MEI) tracked in a separate issue.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 from fredapi import Fred
@@ -25,8 +25,8 @@ from app.sources.base import Fetcher
 SERIES_BY_COUNTRY: dict[str, list[tuple[str, str]]] = {
     "US": [
         ("CPIAUCSL", "Index 1982-1984=100"),  # CPI All Urban Consumers
-        ("UNRATE", "Percent"),                # Civilian unemployment rate
-        ("DGS10", "Percent"),                 # 10-year Treasury constant maturity yield
+        ("UNRATE", "Percent"),  # Civilian unemployment rate
+        ("DGS10", "Percent"),  # 10-year Treasury constant maturity yield
     ],
 }
 
@@ -47,7 +47,7 @@ def _series_to_events(
         else:
             occurred_at = pd.Timestamp(raw_date).to_pydatetime()
         if occurred_at.tzinfo is None:
-            occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+            occurred_at = occurred_at.replace(tzinfo=UTC)
 
         events.append(
             Event(
@@ -85,7 +85,7 @@ class FredFetcher(Fetcher):
             return []
 
         fred = Fred(api_key=settings.fred_api_key)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         start_date = (now - timedelta(days=self.lookback_days)).date().isoformat()
 
         all_events: list[Event] = []
@@ -104,5 +104,5 @@ class FredFetcher(Fetcher):
         return all_events
 
     def archive_path(self) -> str:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return f"/mnt/data/parquet/fred/year={now.year}/month={now.month:02d}/"

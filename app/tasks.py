@@ -10,7 +10,7 @@ going through Celery's broker.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from celery.schedules import crontab
@@ -26,12 +26,10 @@ from app.persistence import upsert_events
 
 def _record_success(session: Session, *, source: str) -> None:
     today = date.today()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     row = session.get(IngestHealthRow, (source, today))
     if row is None:
-        session.add(
-            IngestHealthRow(source=source, day=today, success_n=1, last_success=now)
-        )
+        session.add(IngestHealthRow(source=source, day=today, success_n=1, last_success=now))
     else:
         row.success_n = (row.success_n or 0) + 1
         row.last_success = now
@@ -39,12 +37,10 @@ def _record_success(session: Session, *, source: str) -> None:
 
 def _record_failure(session: Session, *, source: str, exc: BaseException) -> None:
     today = date.today()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     row = session.get(IngestHealthRow, (source, today))
     if row is None:
-        session.add(
-            IngestHealthRow(source=source, day=today, failure_n=1, last_failure=now)
-        )
+        session.add(IngestHealthRow(source=source, day=today, failure_n=1, last_failure=now))
     else:
         row.failure_n = (row.failure_n or 0) + 1
         row.last_failure = now
@@ -62,7 +58,7 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
     fetcher = get_fetcher(name)
     try:
         events = fetcher.fetch()
-    except Exception as exc:  # noqa: BLE001 - we want to log every fetch failure
+    except Exception as exc:
         with session_scope() as session:
             _record_failure(session, source=name, exc=exc)
         raise

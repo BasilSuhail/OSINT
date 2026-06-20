@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -23,25 +23,26 @@ def _event(
         "country": country,
         "category": category,
         "severity": severity,
-        "occurred_at": occurred_at or datetime(2026, 6, 18, tzinfo=timezone.utc),
+        "occurred_at": occurred_at or datetime(2026, 6, 18, tzinfo=UTC),
     }
 
 
 class TestMonthStartUtc:
     def test_truncates_to_first_of_month(self) -> None:
-        dt = datetime(2026, 6, 18, 14, 30, tzinfo=timezone.utc)
-        assert month_start_utc(dt) == datetime(2026, 6, 1, tzinfo=timezone.utc)
+        dt = datetime(2026, 6, 18, 14, 30, tzinfo=UTC)
+        assert month_start_utc(dt) == datetime(2026, 6, 1, tzinfo=UTC)
 
     def test_naive_treated_as_utc(self) -> None:
         dt = datetime(2026, 6, 18, 14, 30)
-        assert month_start_utc(dt) == datetime(2026, 6, 1, tzinfo=timezone.utc)
+        assert month_start_utc(dt) == datetime(2026, 6, 1, tzinfo=UTC)
 
     def test_other_timezone_converted_to_utc_then_truncated(self) -> None:
-        from datetime import timedelta, timezone as tz
+        from datetime import timedelta
+        from datetime import timezone as tz
 
         ny = tz(timedelta(hours=-4))
         dt = datetime(2026, 7, 1, 1, 0, tzinfo=ny)  # 2026-07-01 05:00 UTC
-        assert month_start_utc(dt) == datetime(2026, 7, 1, tzinfo=timezone.utc)
+        assert month_start_utc(dt) == datetime(2026, 7, 1, tzinfo=UTC)
 
 
 class TestAggregate:
@@ -52,9 +53,7 @@ class TestAggregate:
         result = aggregate_events_to_domain_signals(
             [_event(country="US", category="market", severity=0.4)]
         )
-        assert result == {
-            ("US", datetime(2026, 6, 1, tzinfo=timezone.utc)): {"market": 0.4}
-        }
+        assert result == {("US", datetime(2026, 6, 1, tzinfo=UTC)): {"market": 0.4}}
 
     def test_means_per_country_month_domain(self) -> None:
         result = aggregate_events_to_domain_signals(
@@ -65,23 +64,23 @@ class TestAggregate:
                 _event(country="GB", category="market", severity=0.9),
             ]
         )
-        us = result[("US", datetime(2026, 6, 1, tzinfo=timezone.utc))]
-        gb = result[("GB", datetime(2026, 6, 1, tzinfo=timezone.utc))]
+        us = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
+        gb = result[("GB", datetime(2026, 6, 1, tzinfo=UTC))]
         assert us["market"] == pytest.approx(0.4)
         assert us["geopolitical"] == pytest.approx(0.5)
         assert gb["market"] == pytest.approx(0.9)
 
     def test_splits_by_month(self) -> None:
-        jun = datetime(2026, 6, 15, tzinfo=timezone.utc)
-        jul = datetime(2026, 7, 15, tzinfo=timezone.utc)
+        jun = datetime(2026, 6, 15, tzinfo=UTC)
+        jul = datetime(2026, 7, 15, tzinfo=UTC)
         result = aggregate_events_to_domain_signals(
             [
                 _event(country="US", category="market", severity=0.2, occurred_at=jun),
                 _event(country="US", category="market", severity=0.8, occurred_at=jul),
             ]
         )
-        assert result[("US", datetime(2026, 6, 1, tzinfo=timezone.utc))]["market"] == 0.2
-        assert result[("US", datetime(2026, 7, 1, tzinfo=timezone.utc))]["market"] == 0.8
+        assert result[("US", datetime(2026, 6, 1, tzinfo=UTC))]["market"] == 0.2
+        assert result[("US", datetime(2026, 7, 1, tzinfo=UTC))]["market"] == 0.8
 
     def test_skips_none_fields(self) -> None:
         result = aggregate_events_to_domain_signals(
@@ -104,11 +103,8 @@ class TestAggregate:
                 _event(country="US", category="hazard", severity=0.5),
             ]
         )
-        assert ("US", datetime(2026, 6, 1, tzinfo=timezone.utc)) in result
-        assert all(
-            set(v).issubset({"market", "geopolitical", "hazard"})
-            for v in result.values()
-        )
+        assert ("US", datetime(2026, 6, 1, tzinfo=UTC)) in result
+        assert all(set(v).issubset({"market", "geopolitical", "hazard"}) for v in result.values())
 
     def test_non_numeric_severity_skipped(self) -> None:
         result = aggregate_events_to_domain_signals(
@@ -117,5 +113,5 @@ class TestAggregate:
                 _event(country="US", category="market", severity=0.7),
             ]
         )
-        only_bucket = result[("US", datetime(2026, 6, 1, tzinfo=timezone.utc))]
+        only_bucket = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
         assert only_bucket["market"] == 0.7

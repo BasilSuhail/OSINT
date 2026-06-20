@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -66,7 +66,7 @@ class TestMagnitudeToSeverity:
 class TestFeatureToEvent:
     def test_basic_feature_emits_event(self) -> None:
         feature = _make_feature(magnitude=6.0)
-        event = feature_to_event(feature, fetched_at=datetime.now(timezone.utc))
+        event = feature_to_event(feature, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.source == "usgs-quake"
         assert event.category == Category.HAZARD
@@ -79,52 +79,52 @@ class TestFeatureToEvent:
 
     def test_pager_alert_overrides_magnitude(self) -> None:
         feature = _make_feature(magnitude=4.5, alert="red")
-        event = feature_to_event(feature, fetched_at=datetime.now(timezone.utc))
+        event = feature_to_event(feature, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.severity == 1.0
         assert event.payload["alert"] == "red"
 
     def test_unknown_alert_falls_back_to_magnitude(self) -> None:
         feature = _make_feature(magnitude=7.0, alert="purple")
-        event = feature_to_event(feature, fetched_at=datetime.now(timezone.utc))
+        event = feature_to_event(feature, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.severity == pytest.approx((7.0 - 3.0) / 7.0)
 
     def test_missing_required_field_skipped(self) -> None:
         feature = _make_feature()
         feature["properties"]["mag"] = None
-        assert feature_to_event(feature, fetched_at=datetime.now(timezone.utc)) is None
+        assert feature_to_event(feature, fetched_at=datetime.now(UTC)) is None
 
     def test_missing_event_id_skipped(self) -> None:
         feature = _make_feature()
         feature["id"] = None
-        assert feature_to_event(feature, fetched_at=datetime.now(timezone.utc)) is None
+        assert feature_to_event(feature, fetched_at=datetime.now(UTC)) is None
 
     def test_bad_time_skipped(self) -> None:
         feature = _make_feature()
         feature["properties"]["time"] = "not-a-timestamp"
-        assert feature_to_event(feature, fetched_at=datetime.now(timezone.utc)) is None
+        assert feature_to_event(feature, fetched_at=datetime.now(UTC)) is None
 
     def test_missing_coordinates_keeps_event_with_none_latlon(self) -> None:
         feature = _make_feature()
         feature["geometry"] = {"type": "Point", "coordinates": []}
-        event = feature_to_event(feature, fetched_at=datetime.now(timezone.utc))
+        event = feature_to_event(feature, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.lat is None
         assert event.lon is None
 
     def test_country_is_none_for_now(self) -> None:
-        event = feature_to_event(_make_feature(), fetched_at=datetime.now(timezone.utc))
+        event = feature_to_event(_make_feature(), fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.country is None  # reverse-geocoding is a future PR
 
 
 class TestParseGeojsonBody:
     def test_empty_body_returns_empty(self) -> None:
-        assert parse_geojson_body("", fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_geojson_body("", fetched_at=datetime.now(UTC)) == []
 
     def test_invalid_json_returns_empty(self) -> None:
-        assert parse_geojson_body("not json", fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_geojson_body("not json", fetched_at=datetime.now(UTC)) == []
 
     def test_multiple_features_parsed(self) -> None:
         body = json.dumps(
@@ -137,7 +137,7 @@ class TestParseGeojsonBody:
                 ],
             }
         )
-        events = parse_geojson_body(body, fetched_at=datetime.now(timezone.utc))
+        events = parse_geojson_body(body, fetched_at=datetime.now(UTC))
         ids = [e.source_event_id for e in events]
         assert ids == ["A", "B"]
 
