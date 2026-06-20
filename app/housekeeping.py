@@ -35,9 +35,7 @@ RETENTION_DAYS: dict[str, int | None] = {
 }
 
 
-def _prune_source(
-    session: Session, *, source: str, days: int, now: datetime
-) -> int:
+def _prune_source(session: Session, *, source: str, days: int, now: datetime) -> int:
     """Delete events for ``source`` older than ``days``. Returns rows deleted."""
     cutoff = now - timedelta(days=days)
     result = session.execute(
@@ -63,9 +61,7 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
         if days is None:
             deleted_by_source[source] = 0
             continue
-        deleted_by_source[source] = _prune_source(
-            session, source=source, days=days, now=now
-        )
+        deleted_by_source[source] = _prune_source(session, source=source, days=days, now=now)
 
     total_deleted = sum(deleted_by_source.values())
     duration_ms = int((time.monotonic() - started_at) * 1000)

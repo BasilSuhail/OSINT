@@ -43,7 +43,7 @@ class TestGdeltTimestamps:
         start = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
         end = datetime(2026, 6, 2, 0, 0, tzinfo=UTC)
         stamps = _gdelt_timestamps(start, end)
-        assert len(stamps) == 96  # 24h × 4 slots/h
+        assert len(stamps) == 96  # 24h x 4 slots/h
 
     def test_empty_range(self) -> None:
         ts = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)

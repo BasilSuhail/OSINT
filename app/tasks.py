@@ -23,6 +23,7 @@ from app.db_models import IngestFailureRow, IngestHealthRow
 from app.fetcher_registry import get_fetcher
 from app.housekeeping import prune_events
 from app.persistence import upsert_events
+from app.watchdog import check_sources
 
 
 def _record_success(session: Session, *, source: str) -> None:
@@ -96,6 +97,13 @@ def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
     return _compute_composite_body(method_version=method_version)
 
 
+@app.task(name="app.tasks.ingest_watchdog")
+def ingest_watchdog() -> dict[str, Any]:
+    """Walk ingest_health and flag any source whose last_success has gone stale."""
+    with session_scope() as session:
+        return check_sources(session)
+
+
 @app.task(name="app.tasks.run_housekeeping")
 def run_housekeeping() -> dict[str, int]:
     """Apply per-source retention to the events table.
@@ -149,6 +157,10 @@ app.conf.beat_schedule = {
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),
+    },
+    "ingest-watchdog-15min": {
+        "task": "app.tasks.ingest_watchdog",
+        "schedule": crontab(minute="*/15"),
     },
     "housekeeping-daily-3am-utc": {
         "task": "app.tasks.run_housekeeping",
