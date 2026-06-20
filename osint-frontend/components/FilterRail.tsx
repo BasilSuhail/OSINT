@@ -192,17 +192,12 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
 
   const isLeft = side === "left"
 
-  // Hover open/close: snappy on the way in (60 ms debounce), patient on the
-  // way out (250 ms grace) so the cursor can dip into the panel without it
-  // collapsing if you graze the edge.
-  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Hover open/close: immediate on the way in, patient on the way out (250 ms
+  // grace) so the cursor can dip into the panel without it collapsing if you
+  // graze the edge.
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearTimers = () => {
-    if (openTimerRef.current) {
-      clearTimeout(openTimerRef.current)
-      openTimerRef.current = null
-    }
     if (closeTimerRef.current) {
       clearTimeout(closeTimerRef.current)
       closeTimerRef.current = null
@@ -215,19 +210,37 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
       closeTimerRef.current = null
     }
     if (open) return
-    openTimerRef.current = setTimeout(() => onOpenChange(true), 60)
+    onOpenChange(true)
   }
 
   const requestClose = () => {
-    if (openTimerRef.current) {
-      clearTimeout(openTimerRef.current)
-      openTimerRef.current = null
-    }
     if (!open) return
     closeTimerRef.current = setTimeout(() => onOpenChange(false), 250)
   }
 
   useEffect(() => () => clearTimers(), [])
+
+  // Window-level fallback: when the cursor sails toward the very edge of the
+  // pane (within 18 px) we open the rail immediately. Catches the case where
+  // the user flicks the mouse past the edge faster than the local
+  // mouseenter handler can pick it up — common on trackpads + larger screens.
+  // 16 px is the size of the wider edge zone, plus a 2 px cushion for cursor
+  // hot-spot offset.
+  useEffect(() => {
+    if (open) return
+    const PROXIMITY_PX = 18
+    const handle = (e: MouseEvent) => {
+      if (isLeft) {
+        if (e.clientX <= PROXIMITY_PX) requestOpen()
+      } else {
+        if (window.innerWidth - e.clientX <= PROXIMITY_PX) requestOpen()
+      }
+    }
+    window.addEventListener("mousemove", handle, { passive: true })
+    return () => window.removeEventListener("mousemove", handle)
+    // requestOpen reads `open`, refresh listener when state changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isLeft])
 
   return (
     <div
@@ -243,17 +256,19 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
         }
       }}
     >
-      {/* Edge hover zone: a 6 px transparent column at the pane edge requests
-       *  open on hover. Debounced 60 ms so a fly-by doesn't trigger; close is
-       *  fired by the outer onMouseLeave with a 250 ms grace. */}
+      {/* Edge hover zone: a 16 px transparent column at the pane edge requests
+       *  open the moment the cursor enters. Wider than before (was 6 px) so a
+       *  cursor flicked into the viewport edge still lands on it; mouseenter
+       *  is debounce-free so the open feels instant. */}
       {!open && (
         <div
           aria-hidden
           className={cn(
-            "pointer-events-auto absolute inset-y-0 z-10 w-1.5",
+            "pointer-events-auto absolute inset-y-0 z-10 w-4",
             isLeft ? "left-0" : "right-0",
           )}
           onMouseEnter={requestOpen}
+          onPointerEnter={requestOpen}
         />
       )}
 
