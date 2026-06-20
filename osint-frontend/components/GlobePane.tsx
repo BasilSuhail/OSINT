@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Globe, { type GlobeMethods } from "react-globe.gl"
-import { formatDistanceToNowStrict } from "date-fns"
-import { ExternalLink, Orbit, Satellite as SatelliteIcon, X } from "lucide-react"
+import { Orbit, Satellite as SatelliteIcon, X } from "lucide-react"
 import * as THREE from "three"
 import { useEventsInWindow, type VisibleEvent } from "@/lib/queries"
 import { colorForEvent } from "@/lib/types"
@@ -12,7 +11,9 @@ import { useSatellites, type Satellite } from "@/lib/satellites"
 import { moonPhaseLabel, useEphemeris, type CelestialBody } from "@/lib/ephemeris"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
+import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
+import { SatelliteDetailCard } from "./SatelliteDetailCard"
 import { TimeScrubber } from "./TimeScrubber"
 
 const GLOBE_IMG = "//unpkg.com/three-globe/example/img/earth-night.jpg"
@@ -182,11 +183,6 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
     setSelected(pt as VisibleEvent)
   }, [])
 
-  const selectedUrl = selected
-    ? ((selected.payload as { source_url?: string; link?: string })?.source_url ??
-      (selected.payload as { link?: string })?.link)
-    : undefined
-
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#000010" }}>
       {size.width > 0 && (
@@ -263,63 +259,12 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
 
       {/* Floating event card */}
       {selected && (
-        <div className="absolute left-1/2 top-4 z-40 w-64 -translate-x-1/2 rounded-lg border border-neutral-700 bg-neutral-950/95 p-3 backdrop-blur-md">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: colorForEvent(selected) }}
-              />
-              <span className="font-mono text-xs uppercase tracking-wider text-neutral-200">
-                {selected.source}
-              </span>
-            </div>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={() => setSelected(null)}
-              className="text-neutral-500 hover:text-neutral-200"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
-            <dt className="text-neutral-500">when</dt>
-            <dd className="text-neutral-300">
-              {formatDistanceToNowStrict(new Date(selected.occurred_at), { addSuffix: true })}
-            </dd>
-            <dt className="text-neutral-500">category</dt>
-            <dd className="text-neutral-300">{selected.category}</dd>
-            <dt className="text-neutral-500">severity</dt>
-            <dd className="text-neutral-300">{selected.severity.toFixed(2)}</dd>
-            {selected.country && (
-              <>
-                <dt className="text-neutral-500">country</dt>
-                <dd className="text-neutral-300">{selected.country}</dd>
-              </>
-            )}
-          </dl>
-          <div className="mt-2 flex items-center gap-3">
-            {selected.country && (
-              <button
-                type="button"
-                onClick={() => onSelectCountry(selected.country as string)}
-                className="font-mono text-[10px] uppercase tracking-widest text-emerald-400 hover:text-emerald-300"
-              >
-                Country detail
-              </button>
-            )}
-            {selectedUrl && (
-              <a
-                href={selectedUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:text-neutral-200"
-              >
-                source <ExternalLink className="h-2.5 w-2.5" />
-              </a>
-            )}
-          </div>
+        <div className="absolute left-1/2 top-4 z-40 -translate-x-1/2">
+          <EventDetailCard
+            event={selected}
+            onSelectCountry={onSelectCountry}
+            onClose={() => setSelected(null)}
+          />
         </div>
       )}
 
@@ -377,35 +322,8 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
 
       {/* Satellite floating card */}
       {selectedSat && (
-        <div className="absolute right-1/2 top-4 z-40 w-64 translate-x-1/2 rounded-lg border border-cyan-900 bg-neutral-950/95 p-3 backdrop-blur-md">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <SatelliteIcon className="h-3.5 w-3.5 text-cyan-300" />
-              <span className="font-mono text-xs uppercase tracking-wider text-cyan-100">
-                {selectedSat.name}
-              </span>
-            </div>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={() => setSelectedSat(null)}
-              className="text-neutral-500 hover:text-neutral-200"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
-            <dt className="text-neutral-500">NORAD</dt>
-            <dd className="text-neutral-300">{selectedSat.noradId}</dd>
-            <dt className="text-neutral-500">altitude</dt>
-            <dd className="text-neutral-300">{selectedSat.altKm.toFixed(0)} km</dd>
-            <dt className="text-neutral-500">speed</dt>
-            <dd className="text-neutral-300">{selectedSat.speedKmS.toFixed(2)} km/s</dd>
-            <dt className="text-neutral-500">lat / lon</dt>
-            <dd className="text-neutral-300">
-              {selectedSat.lat.toFixed(2)}, {selectedSat.lon.toFixed(2)}
-            </dd>
-          </dl>
+        <div className="absolute right-1/2 top-4 z-40 translate-x-1/2">
+          <SatelliteDetailCard satellite={selectedSat} onClose={() => setSelectedSat(null)} />
         </div>
       )}
 
