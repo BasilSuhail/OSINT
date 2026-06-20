@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import useSWR from "swr"
-import { EventBuffer, type ConnectionStatus } from "@/lib/realtime"
+import { EventBuffer, type ConnectionDiagnostics, type ConnectionStatus } from "@/lib/realtime"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import type { EventRow } from "@/lib/types"
 
@@ -69,16 +69,28 @@ export function useEvents(): EventRow[] {
 
 /** Subscribe to the realtime connection status. */
 export function useConnectionStatus(): ConnectionStatus {
+  return useConnectionDiagnostics().status
+}
+
+/** Subscribe to the full realtime diagnostics (status + reconnect count + last seen). */
+export function useConnectionDiagnostics(): ConnectionDiagnostics {
   const { buffer, configured } = useRealtime()
-  const [status, setStatus] = useState<ConnectionStatus>(
-    configured ? buffer.getStatus() : "disconnected",
+  const [diag, setDiag] = useState<ConnectionDiagnostics>(
+    configured
+      ? buffer.getDiagnostics()
+      : {
+          status: "disconnected",
+          reconnectAttempts: 0,
+          lastEventAt: null,
+          lastSeenAt: null,
+        },
   )
   useEffect(() => {
     if (!configured) return
-    setStatus(buffer.getStatus())
-    return buffer.subscribeStatus(setStatus)
+    setDiag(buffer.getDiagnostics())
+    return buffer.subscribeStatus(setDiag)
   }, [buffer, configured])
-  return status
+  return diag
 }
 
 export function useConfigured(): boolean {

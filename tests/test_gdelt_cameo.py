@@ -56,4 +56,4 @@ class TestIsConflictEvent:
 
     def test_root_set_covers_escalation_only(self) -> None:
         # Sanity-check the published set: 14..20 only, nothing lower.
-        assert CAMEO_CONFLICT_ROOT_CODES == frozenset({14, 15, 16, 17, 18, 19, 20})
+        assert frozenset({14, 15, 16, 17, 18, 19, 20}) == CAMEO_CONFLICT_ROOT_CODES

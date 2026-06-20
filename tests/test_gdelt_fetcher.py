@@ -33,11 +33,11 @@ def _conflict_row(global_event_id: str = "1000000001") -> str:
     fields = [""] * MIN_FIELD_COUNT
     fields[0] = global_event_id
     fields[1] = "20260618"
-    fields[28] = "18"        # ASSAULT (conflict)
-    fields[30] = "-6.0"      # Goldstein → severity 0.8
+    fields[28] = "18"  # ASSAULT (conflict)
+    fields[30] = "-6.0"  # Goldstein → severity 0.8
     fields[31] = "10"
     fields[34] = "-3.0"
-    fields[52] = "UP"        # FIPS Ukraine
+    fields[52] = "UP"  # FIPS Ukraine
     fields[56] = "50.45"
     fields[57] = "30.52"
     fields[59] = "https://example.com/a"
@@ -63,8 +63,7 @@ class TestParseLastupdate:
 
     def test_no_export_line_returns_none(self) -> None:
         body = (
-            "789012 def456 http://data.gdeltproject.org/gdeltv2/"
-            "20260618224500.mentions.CSV.zip\n"
+            "789012 def456 http://data.gdeltproject.org/gdeltv2/20260618224500.mentions.CSV.zip\n"
         )
         assert parse_lastupdate(body) is None
 
@@ -103,18 +102,12 @@ class TestGdeltFetcherContract:
 class TestGdeltFetcherHttp:
     @respx.mock
     def test_full_fetch_emits_events(self) -> None:
-        export_url = (
-            "http://data.gdeltproject.org/gdeltv2/20260618224500.export.CSV.zip"
-        )
+        export_url = "http://data.gdeltproject.org/gdeltv2/20260618224500.export.CSV.zip"
         lastupdate_body = f"123456 abc {export_url}\n"
         zip_bytes = _build_zip(_conflict_row())
 
-        respx.get(GDELT_LASTUPDATE_URL).mock(
-            return_value=httpx.Response(200, text=lastupdate_body)
-        )
-        respx.get(export_url).mock(
-            return_value=httpx.Response(200, content=zip_bytes)
-        )
+        respx.get(GDELT_LASTUPDATE_URL).mock(return_value=httpx.Response(200, text=lastupdate_body))
+        respx.get(export_url).mock(return_value=httpx.Response(200, content=zip_bytes))
 
         events = GdeltFetcher().fetch()
         assert len(events) == 1
@@ -124,9 +117,7 @@ class TestGdeltFetcherHttp:
 
     @respx.mock
     def test_no_export_in_lastupdate_returns_empty(self) -> None:
-        respx.get(GDELT_LASTUPDATE_URL).mock(
-            return_value=httpx.Response(200, text="")
-        )
+        respx.get(GDELT_LASTUPDATE_URL).mock(return_value=httpx.Response(200, text=""))
         assert GdeltFetcher().fetch() == []
 
     @respx.mock

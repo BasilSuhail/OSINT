@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.db_models import EventRow
 from app.models import Event
 
-#: Rows per upsert statement. 12 cols × 1000 = 12 000 bound params — well under
+#: Rows per upsert statement. 12 cols x 1000 = 12 000 bound params — well under
 #: Postgres' 65 535 cap, generous headroom if columns are added later.
 DEFAULT_BATCH_SIZE = 1000
 
@@ -47,12 +47,16 @@ def _event_to_row(event: Event) -> dict[str, Any]:
 def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) -> int:
     """Run a single batch upsert and return the exact insert count via RETURNING."""
     if dialect == "postgresql":
-        stmt = pg_insert(EventRow).values(rows).on_conflict_do_nothing(
-            index_elements=["source", "source_event_id"]
+        stmt = (
+            pg_insert(EventRow)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=["source", "source_event_id"])
         )
     elif dialect == "sqlite":
-        stmt = sqlite_insert(EventRow).values(rows).on_conflict_do_nothing(
-            index_elements=["source", "source_event_id"]
+        stmt = (
+            sqlite_insert(EventRow)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=["source", "source_event_id"])
         )
     else:
         raise NotImplementedError(

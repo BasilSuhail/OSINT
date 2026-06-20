@@ -98,7 +98,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const { centroids } = useCountriesGeo()
   const configured = useConfigured()
   const allEvents = useEvents()
-  const [mapRef, setMapRef] = useState<MapRef | null>(null)
+  const [, setMapRef] = useState<MapRef | null>(null)
   const [selected, setSelected] = useState<{ ev: VisibleEvent; lat: number; lon: number } | null>(null)
 
   // Report count to the parent status bar.

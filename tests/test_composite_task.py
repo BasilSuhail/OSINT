@@ -7,7 +7,7 @@ run the body, assert that scores land in the scores table.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import Engine, select
@@ -24,8 +24,8 @@ def global_sqlite_db() -> Iterator[Engine]:
     Base.metadata.create_all(engine)
     yield engine
     Base.metadata.drop_all(engine)
-    db._engine = None  # noqa: SLF001
-    db._session_factory = None  # noqa: SLF001
+    db._engine = None
+    db._session_factory = None
 
 
 def _session_for(engine: Engine):
@@ -47,7 +47,7 @@ def _insert_event(
             source=source,
             source_event_id=source_event_id,
             occurred_at=occurred_at,
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
             category=category,
             severity=severity,
             country=country,
@@ -73,7 +73,7 @@ class TestComputeCompositeBody:
                     country="US",
                     category="market",
                     severity=0.4 + i * 0.05,
-                    occurred_at=datetime.now(timezone.utc),
+                    occurred_at=datetime.now(UTC),
                 )
             session.commit()
 
@@ -99,7 +99,7 @@ class TestComputeCompositeBody:
                 country="US",
                 category="tracking",
                 severity=0.9,
-                occurred_at=datetime.now(timezone.utc),
+                occurred_at=datetime.now(UTC),
             )
             session.commit()
 
@@ -116,7 +116,7 @@ class TestComputeCompositeBody:
                 country="US",
                 category="market",
                 severity=0.4,
-                occurred_at=datetime.now(timezone.utc),
+                occurred_at=datetime.now(UTC),
             )
             session.commit()
 

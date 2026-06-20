@@ -10,7 +10,7 @@ going through Celery's broker.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from celery.schedules import crontab
@@ -21,17 +21,17 @@ from app.composite.task import _compute_composite_body
 from app.db import session_scope
 from app.db_models import IngestFailureRow, IngestHealthRow
 from app.fetcher_registry import get_fetcher
+from app.housekeeping import prune_events
 from app.persistence import upsert_events
+from app.watchdog import check_sources
 
 
 def _record_success(session: Session, *, source: str) -> None:
     today = date.today()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     row = session.get(IngestHealthRow, (source, today))
     if row is None:
-        session.add(
-            IngestHealthRow(source=source, day=today, success_n=1, last_success=now)
-        )
+        session.add(IngestHealthRow(source=source, day=today, success_n=1, last_success=now))
     else:
         row.success_n = (row.success_n or 0) + 1
         row.last_success = now
@@ -39,12 +39,10 @@ def _record_success(session: Session, *, source: str) -> None:
 
 def _record_failure(session: Session, *, source: str, exc: BaseException) -> None:
     today = date.today()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     row = session.get(IngestHealthRow, (source, today))
     if row is None:
-        session.add(
-            IngestHealthRow(source=source, day=today, failure_n=1, last_failure=now)
-        )
+        session.add(IngestHealthRow(source=source, day=today, failure_n=1, last_failure=now))
     else:
         row.failure_n = (row.failure_n or 0) + 1
         row.last_failure = now
@@ -62,7 +60,7 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
     fetcher = get_fetcher(name)
     try:
         events = fetcher.fetch()
-    except Exception as exc:  # noqa: BLE001 - we want to log every fetch failure
+    except Exception as exc:
         with session_scope() as session:
             _record_failure(session, source=name, exc=exc)
         raise
@@ -97,6 +95,25 @@ def run_fetcher(name: str) -> dict[str, Any]:
 def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
     """Run the composite worker (read events, aggregate, normalise, score, upsert)."""
     return _compute_composite_body(method_version=method_version)
+
+
+@app.task(name="app.tasks.ingest_watchdog")
+def ingest_watchdog() -> dict[str, Any]:
+    """Walk ingest_health and flag any source whose last_success has gone stale."""
+    with session_scope() as session:
+        return check_sources(session)
+
+
+@app.task(name="app.tasks.run_housekeeping")
+def run_housekeeping() -> dict[str, int]:
+    """Apply per-source retention to the events table.
+
+    NASA FIRMS ingests ~35 k rows/day; without this the table fills the
+    Supabase free tier in roughly two weeks. See ``app.housekeeping`` for the
+    per-source policy.
+    """
+    with session_scope() as session:
+        return prune_events(session)
 
 
 # Beat schedule — declarative cadence per source. Matches the table in
@@ -140,5 +157,13 @@ app.conf.beat_schedule = {
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),
+    },
+    "ingest-watchdog-15min": {
+        "task": "app.tasks.ingest_watchdog",
+        "schedule": crontab(minute="*/15"),
+    },
+    "housekeeping-daily-3am-utc": {
+        "task": "app.tasks.run_housekeeping",
+        "schedule": crontab(hour=3, minute=0),
     },
 }

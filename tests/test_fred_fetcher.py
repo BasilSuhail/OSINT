@@ -8,7 +8,7 @@ included here.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import pytest
@@ -30,7 +30,7 @@ class TestSeriesToEvents:
             series_id="UNRATE",
             country="US",
             units="Percent",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
         )
         assert events == []
 
@@ -41,7 +41,7 @@ class TestSeriesToEvents:
             series_id="UNRATE",
             country="US",
             units="Percent",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
         )
         assert len(events) == 3
         assert all(e.source == "fred" for e in events)
@@ -57,7 +57,7 @@ class TestSeriesToEvents:
             series_id="UNRATE",
             country="US",
             units="Percent",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
         )
         assert len(events) == 2
         assert events[0].payload["value"] == pytest.approx(4.1)
@@ -70,7 +70,7 @@ class TestSeriesToEvents:
             series_id="DGS10",
             country="US",
             units="Percent",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
         )
         assert events[0].source_event_id == "DGS10:2025-01-01"
 
@@ -81,7 +81,7 @@ class TestSeriesToEvents:
             series_id="CPIAUCSL",
             country="US",
             units="Index 1982-1984=100",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
         )
         assert events[0].payload["units"] == "Index 1982-1984=100"
         assert events[0].payload["series_id"] == "CPIAUCSL"

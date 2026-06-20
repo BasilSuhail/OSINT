@@ -6,7 +6,7 @@ covered by integration tests in a separate slow suite.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -66,7 +66,7 @@ class TestGoldsteinToSeverity:
 class TestRowToEvent:
     def test_conflict_row_converts_to_event(self) -> None:
         row = _make_row()
-        event = row_to_event(row, fetched_at=datetime.now(timezone.utc))
+        event = row_to_event(row, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.source == "gdelt"
         assert event.source_event_id == "1000000001"
@@ -79,34 +79,34 @@ class TestRowToEvent:
 
     def test_cooperative_root_code_is_skipped(self) -> None:
         row = _make_row(event_root_code="03")  # EXPRESS INTENT TO COOPERATE
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
     def test_short_row_is_skipped(self) -> None:
         short = ["1"] * 10
-        assert row_to_event(short, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(short, fetched_at=datetime.now(UTC)) is None
 
     def test_unparseable_day_is_skipped(self) -> None:
         row = _make_row(day="not-a-date")
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
     def test_missing_goldstein_is_skipped(self) -> None:
         row = _make_row(goldstein="")
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
     def test_unknown_country_keeps_event_with_country_none(self) -> None:
         row = _make_row(action_country="ZZ")  # not in FIPS table
-        event = row_to_event(row, fetched_at=datetime.now(timezone.utc))
+        event = row_to_event(row, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.country is None
         assert event.payload["country_fips"] == "ZZ"
 
     def test_empty_global_id_is_skipped(self) -> None:
         row = _make_row(global_event_id="")
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
     def test_invalid_lat_lon_becomes_none(self) -> None:
         row = _make_row(action_lat="", action_lon="not-a-number")
-        event = row_to_event(row, fetched_at=datetime.now(timezone.utc))
+        event = row_to_event(row, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.lat is None
         assert event.lon is None
@@ -114,7 +114,7 @@ class TestRowToEvent:
 
 class TestParseCsvBody:
     def test_empty_body_returns_empty_list(self) -> None:
-        assert parse_csv_body("", fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_csv_body("", fetched_at=datetime.now(UTC)) == []
 
     def test_mixed_rows_filtered(self) -> None:
         body = "\n".join(
@@ -126,7 +126,7 @@ class TestParseCsvBody:
                 "malformed-row",
             ]
         )
-        events = parse_csv_body(body, fetched_at=datetime.now(timezone.utc))
+        events = parse_csv_body(body, fetched_at=datetime.now(UTC))
         ids = [e.source_event_id for e in events]
         assert ids == ["A", "C"]
 
@@ -137,6 +137,6 @@ class TestParseCsvBody:
                 "\t".join(_make_row(global_event_id="B", goldstein="5")),
             ]
         )
-        events = parse_csv_body(body, fetched_at=datetime.now(timezone.utc))
+        events = parse_csv_body(body, fetched_at=datetime.now(UTC))
         assert events[0].severity == 1.0  # most escalatory
         assert events[1].severity == pytest.approx(0.25)  # (10-5)/20
