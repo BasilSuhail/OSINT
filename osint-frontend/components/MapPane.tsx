@@ -11,13 +11,11 @@ import Map, {
   type MapRef,
 } from "react-map-gl/maplibre"
 import { AnimatePresence, motion } from "framer-motion"
-import { formatDistanceToNowStrict } from "date-fns"
-import { ExternalLink, X } from "lucide-react"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
-import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
+import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
 import { TimeScrubber } from "./TimeScrubber"
 
@@ -146,10 +144,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     [centroids],
   )
 
-  const selectedUrl = selected
-    ? ((selected.ev.payload as { source_url?: string; link?: string })?.source_url ??
-      (selected.ev.payload as { link?: string })?.link)
-    : undefined
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-neutral-950">
@@ -193,67 +187,15 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             closeOnClick={false}
             onClose={() => setSelected(null)}
             offset={12}
-            maxWidth="280px"
+            maxWidth="360px"
             className="osint-popup"
           >
-            <div className="w-64 rounded-md border border-neutral-700 bg-neutral-950/95 p-3 backdrop-blur-md">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: colorForEvent(selected.ev) }}
-                  />
-                  <span className="font-mono text-xs uppercase tracking-wider text-neutral-200">
-                    {selected.ev.source}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  aria-label="Close"
-                  onClick={() => setSelected(null)}
-                  className="text-neutral-500 hover:text-neutral-200"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
-                <dt className="text-neutral-500">when</dt>
-                <dd className="text-neutral-300">
-                  {formatDistanceToNowStrict(new Date(selected.ev.occurred_at), { addSuffix: true })}
-                </dd>
-                <dt className="text-neutral-500">category</dt>
-                <dd className="text-neutral-300">{selected.ev.category}</dd>
-                <dt className="text-neutral-500">severity</dt>
-                <dd className="text-neutral-300">{selected.ev.severity.toFixed(2)}</dd>
-                {selected.ev.country && (
-                  <>
-                    <dt className="text-neutral-500">country</dt>
-                    <dd className="text-neutral-300">{selected.ev.country}</dd>
-                  </>
-                )}
-              </dl>
-              <div className="mt-2 flex items-center gap-3">
-                {selected.ev.country && (
-                  <button
-                    type="button"
-                    onClick={() => onSelectCountry(selected.ev.country as string)}
-                    className="font-mono text-[10px] uppercase tracking-widest text-emerald-400 hover:text-emerald-300"
-                  >
-                    Country detail
-                  </button>
-                )}
-                {selectedUrl && (
-                  <a
-                    href={selectedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:text-neutral-200"
-                  >
-                    source <ExternalLink className="h-2.5 w-2.5" />
-                  </a>
-                )}
-              </div>
-            </div>
+            <EventDetailCard
+              event={selected.ev}
+              onSelectCountry={onSelectCountry}
+              onClose={() => setSelected(null)}
+              embedded
+            />
           </Popup>
         )}
       </Map>
