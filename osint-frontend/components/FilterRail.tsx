@@ -614,7 +614,61 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
           )}
 
           {tab === "events" && (
-            <div className="-mx-1 flex min-h-0 flex-1 flex-col">
+            <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-2">
+              {/* Compact filter bar: severity range + country chip + keyword.
+               *  Live-narrows the list below as you type / drag. Source toggles
+               *  live in the Filters tab — keeps this strip slim. */}
+              <div className="flex flex-col gap-2 px-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                    Severity
+                  </span>
+                  <span className="font-mono text-[10px] tabular-nums text-neutral-400">
+                    {severity[0].toFixed(2)} – {severity[1].toFixed(2)}
+                  </span>
+                </div>
+                <Slider
+                  value={severity}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  onValueChange={(v) => {
+                    if (Array.isArray(v)) setSeverity([v[0], v[1]])
+                  }}
+                  aria-label="Severity range (events tab)"
+                />
+
+                {countries.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {countries.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => toggleCountry(c)}
+                        className="flex items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-300 hover:bg-neutral-700"
+                      >
+                        {countryFlagEmoji(c)} {c}
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="font-mono text-[10px] text-neutral-600">
+                    Tip: switch to Filters tab to pick countries.
+                  </p>
+                )}
+
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
+                  <Input
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    placeholder="Type to narrow the list…"
+                    className="h-8 border-neutral-700 bg-neutral-900 pl-8 font-mono text-xs text-neutral-200 placeholder:text-neutral-600"
+                  />
+                </div>
+              </div>
+
               <p className="px-1 pb-1.5 font-mono text-[10px] text-neutral-500">
                 Top {Math.min(sortedVisible.length, 300).toLocaleString()} by severity. Same filter set as the {isLeft ? "map" : "globe"}.
               </p>
