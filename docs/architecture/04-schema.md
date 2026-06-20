@@ -223,3 +223,13 @@ The `category` field is constrained to a fixed vocabulary so the dashboard's cat
 Adding a category = PR that updates this list **and** the dashboard's category filter component. The category enum is enforced at the application layer (Pydantic), not in Postgres, so changes do not require a migration.
 
 The composite worker selects only rows where `category IN ('market', 'geopolitical', 'hazard')`. Everything else is dashboard breadth and never enters the composite computation — this is the architectural barrier that keeps the JRC methodology defensible.
+
+### Note on FIRMS routing
+
+NASA FIRMS active-fire detections are routed to **`hazard`**, not `weather`, even though the upstream sensor (VIIRS) is meteorological. This is intentional:
+
+- The OECD / JRC composite-indicator handbook clusters hazards (geophysical + climatological + wildfire) into one domain — splitting them across `weather` and `hazard` would invalidate the three-domain composite definition the thesis uses.
+- A fire detection is a stress event in its own right (loss of life, displacement, economic damage), not a weather forecast.
+- Keeping the three-domain composite stable (market / geopolitical / hazard) means adding a fourth `weather` domain is a methodology change, not a casual schema tweak — to be considered for a v2.0 composite if the thesis benefits from it.
+
+The same rationale applies to NASA EONET wildfires / floods / volcanoes (`hazard`). Storm trajectories and `severeStorms` events are also routed to `hazard` for now; if the eval signal suggests a separate weather domain helps, we revisit.
