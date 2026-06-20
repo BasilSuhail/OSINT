@@ -157,7 +157,13 @@ Operational targets, kept honest:
 
 ---
 
-## 10. What this spec does *not* cover
+## 10. Live data coverage
+
+Snapshot of what is in Supabase right now and what we plan to ingest once
+the Pi storage goes online: **[`docs/data-coverage.md`](data-coverage.md)**.
+That file is updated whenever a new backfill runs.
+
+## 11. What this spec does *not* cover
 
 - Per-source fetcher prose (see `03-ingestion.md` + each `app/sources/*.py` module docstring).
 - The composite scoring maths (`app/composite/*.py` + `06-validation.md`).
