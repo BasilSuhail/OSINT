@@ -59,19 +59,6 @@ function severityBarColor(s: number): string {
   return "#22c55e"
 }
 
-function useClipboard(): (text: string, label?: string) => Promise<void> {
-  const [, setCopied] = useState<string | null>(null)
-  return async (text, label) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(label ?? "copied")
-      window.setTimeout(() => setCopied(null), 1200)
-    } catch {
-      // clipboard unavailable (e.g. http://). Fail silently.
-    }
-  }
-}
-
 function CopyButton({
   text,
   label,
