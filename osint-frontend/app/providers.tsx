@@ -14,19 +14,36 @@ interface RealtimeContextValue {
 const RealtimeContext = createContext<RealtimeContextValue | null>(null)
 
 const WINDOW_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+const PAGE_SIZE = 1000
+const TARGET_ROWS = 5000
 
+/**
+ * Pull the most-recent events into the buffer in 1000-row pages.
+ *
+ * Supabase REST hard-caps `.limit(N)` at 1000 unless you also page via the
+ * Range header. Before this change the buffer only saw whatever fit in the
+ * very first 1000 rows — FIRMS dominated that slice and the map effectively
+ * showed ~50 GDELT events even though the DB had 90k+ in the last 3 days.
+ */
 async function fetchRecentEvents(): Promise<EventRow[]> {
   const supabase = getSupabase()
   if (!supabase) return []
   const since = new Date(Date.now() - WINDOW_MS).toISOString()
-  const { data, error } = await supabase
-    .from("events")
-    .select("*")
-    .gte("occurred_at", since)
-    .order("occurred_at", { ascending: false })
-    .limit(5000)
-  if (error) throw error
-  return (data ?? []) as EventRow[]
+  const out: EventRow[] = []
+  for (let offset = 0; offset < TARGET_ROWS; offset += PAGE_SIZE) {
+    const end = Math.min(offset + PAGE_SIZE - 1, TARGET_ROWS - 1)
+    const { data, error } = await supabase
+      .from("events")
+      .select("*")
+      .gte("occurred_at", since)
+      .order("occurred_at", { ascending: false })
+      .range(offset, end)
+    if (error) throw error
+    const rows = (data ?? []) as EventRow[]
+    out.push(...rows)
+    if (rows.length < PAGE_SIZE) break // last page was short → done
+  }
+  return out
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
