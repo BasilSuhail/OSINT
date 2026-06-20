@@ -9,7 +9,7 @@ export type Category =
   | "cyber"
   | "mesh"
 
-export type SourceKey = "GDELT" | "USGS" | "GDACS" | "FIRMS" | "yfinance"
+export type SourceKey = "GDELT" | "USGS" | "GDACS" | "FIRMS" | "yfinance" | "EONET"
 
 export interface GdeltPayload {
   goldstein?: number
@@ -113,6 +113,7 @@ export const SOURCE_FILTERS: SourceFilterDef[] = [
   { key: "USGS", label: "Earthquakes", category: "hazard", color: "rgb(239,68,68)", hex: "#ef4444", pane: "map" },
   { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316", pane: "map" },
   { key: "FIRMS", label: "Active fires (satellite)", category: "weather", color: "rgb(234,179,8)", hex: "#eab308", pane: "globe" },
+  { key: "EONET", label: "Natural events (NASA)", category: "hazard", color: "rgb(217,70,239)", hex: "#d946ef", pane: "globe" },
 ]
 
 /** Source filters scoped to a single pane. */
@@ -133,7 +134,8 @@ export function colorForEvent(ev: EventRow): string {
   const src = (ev.source || "").toUpperCase()
   if (src.includes("USGS")) return "#ef4444"
   if (src.includes("GDACS")) return "#f97316"
-  if (src.includes("FIRMS") || src.includes("NASA")) return "#eab308"
+  if (src === "EONET" || src.includes("EONET")) return "#d946ef"
+  if (src.includes("FIRMS")) return "#eab308"
   if (src.includes("YF") || src.includes("YFINANCE") || ev.category === "market") return "#22c55e"
   if (src.includes("GDELT") || ev.category === "geopolitical") return "#a3a3a3"
   // category fallback
@@ -154,7 +156,8 @@ export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
   const src = (ev.source || "").toUpperCase()
   if (src.includes("USGS")) return "USGS"
   if (src.includes("GDACS")) return "GDACS"
-  if (src.includes("FIRMS") || src.includes("NASA")) return "FIRMS"
+  if (src === "EONET") return "EONET"
+  if (src.includes("FIRMS")) return "FIRMS"
   if (src.includes("YF") || src.includes("YFINANCE")) return "yfinance"
   if (src.includes("GDELT")) return "GDELT"
   // fall back on category

@@ -140,6 +140,7 @@ def test_beat_schedule_covers_all_thesis_core_fetchers() -> None:
         "usgs-quake",
         "gdacs",
         "nasa-firms",
+        "eonet",
     }
 
 
