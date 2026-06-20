@@ -19,6 +19,7 @@ from typing import Any, Final
 
 import httpx
 
+from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.settings import settings
 from app.sources.base import Fetcher
@@ -105,6 +106,8 @@ def row_to_event(row: dict[str, str], *, fetched_at: datetime) -> Event | None:
         "daynight": row.get("daynight"),
     }
 
+    country = country_for(lat, lon) if lat is not None and lon is not None else None
+
     return Event(
         source="nasa-firms",
         source_event_id=source_event_id,
@@ -114,7 +117,7 @@ def row_to_event(row: dict[str, str], *, fetched_at: datetime) -> Event | None:
         severity=severity,
         confidence=None,
         keywords=["firms", "fire"],
-        country=None,
+        country=country,
         lat=lat,
         lon=lon,
         payload=payload,

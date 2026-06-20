@@ -25,6 +25,7 @@ from typing import Any, Final
 
 import httpx
 
+from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.sources.base import Fetcher
 
@@ -185,6 +186,8 @@ def feature_to_event(event_record: dict[str, Any], *, fetched_at: datetime) -> E
         "link": event_record.get("link"),
     }
 
+    country = country_for(lat, lon) if lat is not None and lon is not None else None
+
     return Event(
         source="eonet",
         source_event_id=str(eonet_id),
@@ -194,7 +197,7 @@ def feature_to_event(event_record: dict[str, Any], *, fetched_at: datetime) -> E
         severity=severity,
         confidence=None,
         keywords=keywords,
-        country=None,
+        country=country,
         lat=lat,
         lon=lon,
         payload=payload,

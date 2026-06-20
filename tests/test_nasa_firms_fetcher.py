@@ -98,7 +98,8 @@ class TestRowToEvent:
         assert event.severity == 0.9  # high
         assert event.lat == pytest.approx(-23.45)
         assert event.lon == pytest.approx(-46.63)
-        assert event.country is None  # reverse-geocode deferred
+        # (-23.45, -46.63) is São Paulo, Brazil — enrichment picks it up.
+        assert event.country == "BR"
         assert event.payload["satellite"] == "N20"
         assert event.payload["confidence_raw"] == "high"
         assert event.source_event_id == hash_event_id(
