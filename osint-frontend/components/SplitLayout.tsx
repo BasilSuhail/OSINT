@@ -6,6 +6,7 @@ import { format } from "date-fns"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { useConfigured, useEvents } from "@/app/providers"
 import { SOURCE_FILTERS } from "@/lib/types"
+import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneStore } from "@/stores/rightPaneStore"
 import type { FilterStore } from "@/stores/createFilterStore"
@@ -42,10 +43,12 @@ function filterSummary(useStore: FilterStore): string {
 export function SplitLayout() {
   const configured = useConfigured()
   const events = useEvents()
+  const isNarrow = useMediaQuery("(max-width: 900px)")
 
   const [leftRailOpen, setLeftRailOpen] = useState(false)
   const [rightRailOpen, setRightRailOpen] = useState(false)
   const [focused, setFocused] = useState<"left" | "right">("left")
+  const [activePane, setActivePane] = useState<"left" | "right">("left")
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null)
   const [leftCount, setLeftCount] = useState(0)
   const [rightCount, setRightCount] = useState(0)
@@ -110,12 +113,34 @@ export function SplitLayout() {
         <ConnectionIndicator />
       </div>
 
-      <PanelGroup orientation="horizontal" className="h-full w-full">
-        <Panel defaultSize={50} minSize={20}>
+      {isNarrow ? (
+        <div className="relative h-full w-full">
+          {/* Top tab swap: single pane on phones / narrow tablets. */}
+          <div className="pointer-events-auto absolute left-1/2 top-12 z-40 -translate-x-1/2 flex gap-1 rounded-full border border-neutral-800 bg-neutral-950/80 p-1 backdrop-blur-sm">
+            {(["left", "right"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => {
+                  setActivePane(p)
+                  setFocused(p)
+                }}
+                className={
+                  "rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors " +
+                  (activePane === p
+                    ? "bg-neutral-800 text-neutral-100"
+                    : "text-neutral-500 hover:text-neutral-300")
+                }
+              >
+                {p === "left" ? "map" : "globe"}
+              </button>
+            ))}
+          </div>
+
           <div
             className="h-full w-full"
+            style={{ display: activePane === "left" ? "block" : "none" }}
             onMouseEnter={() => setFocused("left")}
-            onFocusCapture={() => setFocused("left")}
           >
             <MapPane
               useStore={useLeftPaneStore}
@@ -125,18 +150,10 @@ export function SplitLayout() {
               onCount={setLeftCount}
             />
           </div>
-        </Panel>
-
-        <PanelResizeHandle className="group relative w-px bg-neutral-800 outline-none">
-          <span className="absolute inset-y-0 -left-1 -right-1 z-30 transition-colors group-data-[resize-handle-state=drag]:bg-emerald-500/20 group-data-[resize-handle-state=hover]:bg-emerald-500/10" />
-          <span className="absolute left-1/2 top-1/2 z-30 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-700 transition-colors group-hover:bg-emerald-500" />
-        </PanelResizeHandle>
-
-        <Panel defaultSize={50} minSize={20}>
           <div
             className="relative h-full w-full"
+            style={{ display: activePane === "right" ? "block" : "none" }}
             onMouseEnter={() => setFocused("right")}
-            onFocusCapture={() => setFocused("right")}
           >
             <GlobePane
               useStore={useRightPaneStore}
@@ -145,10 +162,53 @@ export function SplitLayout() {
               onSelectCountry={onSelectCountry}
               onCount={setRightCount}
             />
-            <CountrySidePanel country={selectedCountry} onClose={() => setSelectedCountry(null)} />
           </div>
-        </Panel>
-      </PanelGroup>
+          <CountrySidePanel country={selectedCountry} onClose={() => setSelectedCountry(null)} />
+        </div>
+      ) : (
+        <PanelGroup orientation="horizontal" className="h-full w-full">
+          <Panel defaultSize={50} minSize={20}>
+            <div
+              className="h-full w-full"
+              onMouseEnter={() => setFocused("left")}
+              onFocusCapture={() => setFocused("left")}
+            >
+              <MapPane
+                useStore={useLeftPaneStore}
+                railOpen={leftRailOpen}
+                onRailOpenChange={setLeftRailOpen}
+                onSelectCountry={onSelectCountry}
+                onCount={setLeftCount}
+              />
+            </div>
+          </Panel>
+
+          <PanelResizeHandle className="group relative w-px bg-neutral-800 outline-none">
+            <span className="absolute inset-y-0 -left-1 -right-1 z-30 transition-colors group-data-[resize-handle-state=drag]:bg-emerald-500/20 group-data-[resize-handle-state=hover]:bg-emerald-500/10" />
+            <span className="absolute left-1/2 top-1/2 z-30 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-700 transition-colors group-hover:bg-emerald-500" />
+          </PanelResizeHandle>
+
+          <Panel defaultSize={50} minSize={20}>
+            <div
+              className="relative h-full w-full"
+              onMouseEnter={() => setFocused("right")}
+              onFocusCapture={() => setFocused("right")}
+            >
+              <GlobePane
+                useStore={useRightPaneStore}
+                railOpen={rightRailOpen}
+                onRailOpenChange={setRightRailOpen}
+                onSelectCountry={onSelectCountry}
+                onCount={setRightCount}
+              />
+              <CountrySidePanel
+                country={selectedCountry}
+                onClose={() => setSelectedCountry(null)}
+              />
+            </div>
+          </Panel>
+        </PanelGroup>
+      )}
 
       {/* Bottom-left latest timestamp */}
       <div className="pointer-events-none absolute bottom-[calc(8%+8px)] left-3 z-30 min-h-[16px]">
