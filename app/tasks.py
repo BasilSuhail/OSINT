@@ -22,6 +22,7 @@ from app.db import session_scope
 from app.db_models import IngestFailureRow, IngestHealthRow
 from app.fetcher_registry import get_fetcher
 from app.persistence import upsert_events
+from app.watchdog import check_sources
 
 
 def _record_success(session: Session, *, source: str) -> None:
@@ -99,6 +100,13 @@ def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
     return _compute_composite_body(method_version=method_version)
 
 
+@app.task(name="app.tasks.ingest_watchdog")
+def ingest_watchdog() -> dict[str, Any]:
+    """Walk ingest_health and flag any source whose last_success has gone stale."""
+    with session_scope() as session:
+        return check_sources(session)
+
+
 # Beat schedule — declarative cadence per source. Matches the table in
 # docs/architecture/03-ingestion.md.
 app.conf.beat_schedule = {
@@ -140,5 +148,9 @@ app.conf.beat_schedule = {
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),
+    },
+    "ingest-watchdog-15min": {
+        "task": "app.tasks.ingest_watchdog",
+        "schedule": crontab(minute="*/15"),
     },
 }
