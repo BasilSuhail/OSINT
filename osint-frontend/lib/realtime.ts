@@ -62,6 +62,10 @@ export class EventBuffer {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private stopped = false
+  /** Re-entry guard. `removeChannel` synchronously fires a CLOSED status which
+   *  routes back through the subscribe callback into scheduleReconnect again —
+   *  before this flag, that recursed until the JS stack blew up. */
+  private reconnecting = false
 
   /** Seed/merge a batch of events (e.g. from the initial query or SWR refetch). */
   ingest(rows: EventRow[]): void {
@@ -182,23 +186,39 @@ export class EventBuffer {
 
   private scheduleReconnect(): void {
     if (this.stopped) return
-    this.stopHeartbeat()
-    const supabase = getSupabase()
-    if (supabase && this.channel) {
-      supabase.removeChannel(this.channel)
+    if (this.reconnecting) return
+    this.reconnecting = true
+    try {
+      this.stopHeartbeat()
+      // Null the channel *before* removeChannel: Supabase's removeChannel
+      // synchronously fires a CLOSED status frame which routes back through
+      // .subscribe()'s callback into scheduleReconnect again. Clearing
+      // this.channel first means the second call sees no channel to remove
+      // and the `reconnecting` flag aborts re-entry anyway.
+      const supabase = getSupabase()
+      const ch = this.channel
       this.channel = null
+      if (supabase && ch) {
+        try {
+          supabase.removeChannel(ch)
+        } catch {
+          /* removeChannel can throw on already-closed channels */
+        }
+      }
+      if (this.reconnectAttempts >= MAX_RECONNECT_BEFORE_POLL) {
+        this.setStatus("polling")
+        this.startPolling()
+      } else {
+        this.setStatus("reconnecting")
+      }
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectAttempts += 1
+        this.connect()
+      }, backoffMs(this.reconnectAttempts))
+    } finally {
+      this.reconnecting = false
     }
-    if (this.reconnectAttempts >= MAX_RECONNECT_BEFORE_POLL) {
-      this.setStatus("polling")
-      this.startPolling()
-    } else {
-      this.setStatus("reconnecting")
-    }
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectAttempts += 1
-      this.connect()
-    }, backoffMs(this.reconnectAttempts))
   }
 
   private startPolling(): void {
