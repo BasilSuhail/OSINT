@@ -93,8 +93,18 @@ class TestRowToEvent:
         row = _make_row(goldstein="")
         assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
-    def test_unknown_country_keeps_event_with_country_none(self) -> None:
-        row = _make_row(action_country="ZZ")  # not in FIPS table
+    def test_unknown_country_falls_back_to_polygon_lookup(self) -> None:
+        # FIPS "ZZ" is not in the table, but Kyiv lat/lon resolves to UA
+        # via the polygon fallback.
+        row = _make_row(action_country="ZZ")
+        event = row_to_event(row, fetched_at=datetime.now(UTC))
+        assert event is not None
+        assert event.country == "UA"
+        assert event.payload["country_fips"] == "ZZ"
+
+    def test_unknown_country_with_no_geom_stays_none(self) -> None:
+        # FIPS unknown AND no lat/lon → no fallback possible.
+        row = _make_row(action_country="ZZ", action_lat="", action_lon="")
         event = row_to_event(row, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.country is None
