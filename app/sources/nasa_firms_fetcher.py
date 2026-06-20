@@ -14,7 +14,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 import httpx
@@ -63,7 +63,7 @@ def _parse_acq_time(acq_date: str, acq_time: str) -> datetime | None:
         hour = int(time_str[:2])
         minute = int(time_str[2:])
         date = datetime.strptime(acq_date, "%Y-%m-%d")
-        return date.replace(hour=hour, minute=minute, tzinfo=timezone.utc)
+        return date.replace(hour=hour, minute=minute, tzinfo=UTC)
     except (TypeError, ValueError):
         return None
 
@@ -151,12 +151,12 @@ class NasaFirmsFetcher(Fetcher):
     def _target_date(self) -> str:
         # FIRMS publishes near-real-time data. Use the prior UTC day so the
         # CSV is reliably populated when we poll.
-        return (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+        return (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d")
 
     def fetch(self) -> list[Event]:
         if not settings.firms_map_key:
             return []
-        fetched_at = datetime.now(timezone.utc)
+        fetched_at = datetime.now(UTC)
         url = FIRMS_URL_TEMPLATE.format(map_key=settings.firms_map_key, date=self._target_date())
         with httpx.Client(
             timeout=self.timeout_seconds, headers={"User-Agent": FIRMS_USER_AGENT}
@@ -166,7 +166,7 @@ class NasaFirmsFetcher(Fetcher):
             return parse_csv_body(response.text, fetched_at=fetched_at)
 
     def archive_path(self) -> str:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return (
             f"/mnt/data/parquet/nasa-firms/year={now.year}/month={now.month:02d}/day={now.day:02d}/"
         )

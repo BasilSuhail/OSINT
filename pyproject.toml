@@ -31,7 +31,7 @@ dev = [
     "pytest-asyncio>=0.25",
     "pytest-mock>=3.14",
     "respx>=0.22",
-    "ruff>=0.8",
+    "ruff==0.15.18",
     "mypy>=1.13",
 ]
 
@@ -48,7 +48,14 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "N"]
+# E/F: pycodestyle + pyflakes basics
+# I:   import order
+# B:   bugbear
+# UP:  pyupgrade (datetime.UTC etc.)
+# N:   pep8-naming
+# SIM: simplifications
+# RUF: ruff-specific rules
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

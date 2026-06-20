@@ -7,7 +7,7 @@ applying the migration against the real Postgres in CI.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,7 +18,7 @@ from app.persistence import _event_to_row, upsert_events
 
 
 def _make_event(source_event_id: str, *, severity: float = 0.5) -> Event:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return Event(
         source="yfinance",
         source_event_id=source_event_id,
@@ -62,7 +62,6 @@ class TestUpsertEvents:
         db_session.commit()
 
         assert inserted == 5
-        count = db_session.scalar(select(EventRow.id).limit(1000))
         rows = db_session.execute(select(EventRow)).scalars().all()
         assert len(rows) == 5
 

@@ -7,7 +7,7 @@ deliberately not included here; they belong in a separate slow suite.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import pytest
@@ -33,7 +33,7 @@ class TestComputeEvents:
             empty,
             country="US",
             ticker="SPY",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
             lookback_days=5,
         )
         assert events == []
@@ -41,7 +41,7 @@ class TestComputeEvents:
     def test_steady_prices_produce_zero_severity(self) -> None:
         df = _make_price_history([100.0] * 40)
         events = _compute_events(
-            df, country="US", ticker="SPY", fetched_at=datetime.now(timezone.utc), lookback_days=5
+            df, country="US", ticker="SPY", fetched_at=datetime.now(UTC), lookback_days=5
         )
         assert len(events) == 5
         assert all(e.severity == 0.0 for e in events)
@@ -53,7 +53,7 @@ class TestComputeEvents:
         prices = [100.0] * 40 + [70.0]
         df = _make_price_history(prices)
         events = _compute_events(
-            df, country="US", ticker="SPY", fetched_at=datetime.now(timezone.utc), lookback_days=1
+            df, country="US", ticker="SPY", fetched_at=datetime.now(UTC), lookback_days=1
         )
         assert len(events) == 1
         assert events[0].severity == pytest.approx(1.0, abs=1e-6)
@@ -64,7 +64,7 @@ class TestComputeEvents:
         prices = [100.0] * 40 + [85.0]
         df = _make_price_history(prices)
         events = _compute_events(
-            df, country="US", ticker="SPY", fetched_at=datetime.now(timezone.utc), lookback_days=1
+            df, country="US", ticker="SPY", fetched_at=datetime.now(UTC), lookback_days=1
         )
         assert events[0].severity == pytest.approx(0.5, abs=1e-6)
 
@@ -73,7 +73,7 @@ class TestComputeEvents:
         prices = [100.0] * 40 + [20.0]
         df = _make_price_history(prices)
         events = _compute_events(
-            df, country="US", ticker="SPY", fetched_at=datetime.now(timezone.utc), lookback_days=1
+            df, country="US", ticker="SPY", fetched_at=datetime.now(UTC), lookback_days=1
         )
         assert events[0].severity == 1.0
         assert events[0].payload["drawdown_pct"] > SEVERITY_SATURATION_PCT
@@ -82,7 +82,7 @@ class TestComputeEvents:
         prices = [100.0] * 5
         df = _make_price_history(prices)
         events = _compute_events(
-            df, country="US", ticker="SPY", fetched_at=datetime.now(timezone.utc), lookback_days=2
+            df, country="US", ticker="SPY", fetched_at=datetime.now(UTC), lookback_days=2
         )
         for event in events:
             assert event.source_event_id.startswith("SPY:")
@@ -92,7 +92,7 @@ class TestComputeEvents:
         prices = [100.0 - i for i in range(60)]
         df = _make_price_history(prices)
         events = _compute_events(
-            df, country="GB", ticker="EWU", fetched_at=datetime.now(timezone.utc), lookback_days=10
+            df, country="GB", ticker="EWU", fetched_at=datetime.now(UTC), lookback_days=10
         )
         assert len(events) == 10
 
@@ -102,7 +102,7 @@ class TestComputeEvents:
         prices = [100.0] * 40 + [float("nan")]
         df = _make_price_history(prices)
         events = _compute_events(
-            df, country="US", ticker="SPY", fetched_at=datetime.now(timezone.utc), lookback_days=2
+            df, country="US", ticker="SPY", fetched_at=datetime.now(UTC), lookback_days=2
         )
         # Only the non-NaN row should emit an event.
         assert len(events) == 1

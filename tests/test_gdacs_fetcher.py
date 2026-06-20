@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from xml.etree import ElementTree as ET
 
 import httpx
@@ -90,7 +90,7 @@ class TestItemToEvent:
         root = ET.fromstring(body)
         item = root.find(".//item")
         assert item is not None
-        event = item_to_event(item, fetched_at=datetime.now(timezone.utc))
+        event = item_to_event(item, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.source == "gdacs"
         assert event.category == Category.HAZARD
@@ -110,21 +110,21 @@ class TestItemToEvent:
         root = ET.fromstring(body)
         item = root.find(".//item")
         assert item is not None
-        assert item_to_event(item, fetched_at=datetime.now(timezone.utc)) is None
+        assert item_to_event(item, fetched_at=datetime.now(UTC)) is None
 
     def test_missing_event_id_skips(self) -> None:
         body = _build_rss(event_id="")
         root = ET.fromstring(body)
         item = root.find(".//item")
         assert item is not None
-        assert item_to_event(item, fetched_at=datetime.now(timezone.utc)) is None
+        assert item_to_event(item, fetched_at=datetime.now(UTC)) is None
 
     def test_unmapped_iso3_keeps_event_with_country_none(self) -> None:
         body = _build_rss(iso3="XXX")
         root = ET.fromstring(body)
         item = root.find(".//item")
         assert item is not None
-        event = item_to_event(item, fetched_at=datetime.now(timezone.utc))
+        event = item_to_event(item, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.country is None
         assert event.payload["iso3"] == "XXX"
@@ -134,7 +134,7 @@ class TestItemToEvent:
         root = ET.fromstring(body)
         item = root.find(".//item")
         assert item is not None
-        event = item_to_event(item, fetched_at=datetime.now(timezone.utc))
+        event = item_to_event(item, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.lat is None
         assert event.lon is None
@@ -142,10 +142,10 @@ class TestItemToEvent:
 
 class TestParseRssBody:
     def test_empty_body_returns_empty(self) -> None:
-        assert parse_rss_body("", fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_rss_body("", fetched_at=datetime.now(UTC)) == []
 
     def test_invalid_xml_returns_empty(self) -> None:
-        assert parse_rss_body("not xml", fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_rss_body("not xml", fetched_at=datetime.now(UTC)) == []
 
     def test_multiple_items_parsed(self) -> None:
         body = """<?xml version="1.0" encoding="UTF-8"?>
@@ -168,7 +168,7 @@ class TestParseRssBody:
     </item>
   </channel>
 </rss>"""
-        events = parse_rss_body(body, fetched_at=datetime.now(timezone.utc))
+        events = parse_rss_body(body, fetched_at=datetime.now(UTC))
         assert len(events) == 2
         ids = [e.source_event_id for e in events]
         assert "EQ:1000001" in ids
@@ -194,9 +194,7 @@ class TestFetcherContract:
 class TestFetcherHttp:
     @respx.mock
     def test_fetch_returns_events(self) -> None:
-        respx.get(GDACS_FEED_URL).mock(
-            return_value=httpx.Response(200, text=_build_rss())
-        )
+        respx.get(GDACS_FEED_URL).mock(return_value=httpx.Response(200, text=_build_rss()))
         events = GdacsFetcher().fetch()
         assert len(events) == 1
         assert events[0].source_event_id == "EQ:1000001"

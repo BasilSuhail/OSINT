@@ -30,9 +30,7 @@ _REGISTRY: dict[str, Fetcher] = {
 def get_fetcher(name: str) -> Fetcher:
     """Return the registered fetcher for `name`. Raises KeyError if unknown."""
     if name not in _REGISTRY:
-        raise KeyError(
-            f"unknown fetcher: {name!r}. Registered: {sorted(_REGISTRY)}"
-        )
+        raise KeyError(f"unknown fetcher: {name!r}. Registered: {sorted(_REGISTRY)}")
     return _REGISTRY[name]
 
 

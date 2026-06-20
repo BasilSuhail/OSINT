@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -91,7 +91,7 @@ class TestRowToEvent:
             "confidence": "high",
             "brightness": "320.5",
         }
-        event = row_to_event(row, fetched_at=datetime.now(timezone.utc))
+        event = row_to_event(row, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.source == "nasa-firms"
         assert event.category == Category.HAZARD
@@ -114,7 +114,7 @@ class TestRowToEvent:
             "acq_time": "0314",
             "satellite": "N20",
         }
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
     def test_bad_lat_skipped(self) -> None:
         row = {
@@ -125,7 +125,7 @@ class TestRowToEvent:
             "satellite": "N20",
             "confidence": "high",
         }
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
     def test_bad_acq_time_skipped(self) -> None:
         row = {
@@ -136,19 +136,19 @@ class TestRowToEvent:
             "satellite": "N20",
             "confidence": "high",
         }
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
 
 class TestParseCsvBody:
     def test_empty_body(self) -> None:
-        assert parse_csv_body("", fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_csv_body("", fetched_at=datetime.now(UTC)) == []
 
     def test_header_only_returns_empty(self) -> None:
-        assert parse_csv_body(_csv_header(), fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_csv_body(_csv_header(), fetched_at=datetime.now(UTC)) == []
 
     def test_multi_row_csv(self) -> None:
         body = _csv_header() + _csv_row(latitude="1.0") + _csv_row(latitude="2.0")
-        events = parse_csv_body(body, fetched_at=datetime.now(timezone.utc))
+        events = parse_csv_body(body, fetched_at=datetime.now(UTC))
         assert len(events) == 2
         assert {e.lat for e in events} == {1.0, 2.0}
 

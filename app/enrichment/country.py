@@ -47,7 +47,7 @@ def _load_geometries() -> tuple[STRtree, list[str]]:
             continue
         try:
             geom = shape(geometry)
-        except Exception:  # noqa: BLE001 - bad geometry → skip silently
+        except Exception:  # bad geometry → skip silently
             continue
         if geom.is_empty:
             continue

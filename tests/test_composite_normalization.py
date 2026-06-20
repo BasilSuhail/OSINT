@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -15,7 +15,7 @@ from app.composite.normalization import (
 
 
 def _bucket(year: int, month: int) -> datetime:
-    return datetime(year, month, 1, tzinfo=timezone.utc)
+    return datetime(year, month, 1, tzinfo=UTC)
 
 
 class TestRollingZscore:
