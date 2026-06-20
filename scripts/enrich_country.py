@@ -63,12 +63,20 @@ def run(batch_size: int = 1000, sources: Iterable[str] | None = None) -> dict[st
                 updates.append((row.id, iso))
                 counts[row.source]["tagged"] += 1
             if updates:
-                # Per-id update — the cost here is dominated by the polygon
-                # lookup, not SQL. Bulk CASE-WHEN works too but adds complexity.
+                # Group ids by the iso they're being tagged with → one UPDATE
+                # statement per ISO with a WHERE id IN (…). Per-id UPDATEs hit
+                # Supabase's per-statement timeout once the backlog is large.
+                by_iso: dict[str, list[int]] = defaultdict(list)
                 for event_id, iso in updates:
-                    session.execute(
-                        update(EventRow).where(EventRow.id == event_id).values(country=iso)
-                    )
+                    by_iso[iso].append(event_id)
+                for iso, ids in by_iso.items():
+                    # Chunk to stay well under Postgres' 65 535 bound-param cap.
+                    for start in range(0, len(ids), 5000):
+                        chunk = ids[start : start + 5000]
+                        session.execute(
+                            update(EventRow).where(EventRow.id.in_(chunk)).values(country=iso)
+                        )
+                session.commit()
             total += len(batch)
             print(f"processed {total:>8d} rows...", flush=True)
 
