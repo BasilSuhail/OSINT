@@ -182,6 +182,30 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
     return n
   }, [paneEvents, keyword])
 
+  /** Top 5 keyword-matching events for the live preview under the keyword
+   *  input in the Filters tab. Same haystack the global filter uses. */
+  const keywordPreview = useMemo<EventRow[]>(() => {
+    const kw = keyword.trim().toLowerCase()
+    if (!kw) return []
+    const hits: EventRow[] = []
+    for (const ev of paneEvents) {
+      const hay = [
+        ev.source,
+        ev.category,
+        ev.country,
+        (ev.keywords ?? []).join(" "),
+        JSON.stringify(ev.payload ?? {}),
+      ]
+        .join(" ")
+        .toLowerCase()
+      if (hay.includes(kw)) hits.push(ev)
+      if (hits.length >= 60) break
+    }
+    return hits
+      .sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0))
+      .slice(0, 5)
+  }, [paneEvents, keyword])
+
   const activeCount =
     paneFilters.filter((f) => !sources[f.key]).length +
     (severity[0] > 0 || severity[1] < 1 ? 1 : 0) +
@@ -615,6 +639,58 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             <p className="font-mono text-[10px] leading-snug text-neutral-500">
               Searches event source, category, country, keywords + payload values.
             </p>
+
+            {/* Live preview: top matches against the current keyword. Sits
+             *  under the helper text in the Filters tab so the user can see
+             *  the dataset shaping in real time without flipping to Events. */}
+            {keyword.trim() && keywordPreview.length > 0 && (
+              <div className="mt-1 flex flex-col gap-0.5 rounded-md border border-neutral-800 bg-neutral-900/50 p-1">
+                <div className="flex items-center justify-between px-1 pb-0.5">
+                  <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500">
+                    Top matches
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTab("events")}
+                    className="font-mono text-[9px] uppercase tracking-widest text-emerald-400 hover:text-emerald-300"
+                  >
+                    See all →
+                  </button>
+                </div>
+                {keywordPreview.map((ev) => {
+                  const sev = typeof ev.severity === "number" ? ev.severity : 0
+                  const when = formatDistanceToNowStrict(new Date(ev.occurred_at), {
+                    addSuffix: false,
+                  })
+                  return (
+                    <div
+                      key={ev.id}
+                      className="flex items-center gap-2 rounded px-1.5 py-1 text-[11px] hover:bg-neutral-800"
+                      title={`${ev.source} · sev ${sev.toFixed(2)} · ${when} ago`}
+                    >
+                      <span
+                        className="inline-block h-3 w-1 shrink-0 rounded-sm"
+                        style={{ backgroundColor: severityBarColor(sev) }}
+                      />
+                      <span className="w-7 shrink-0 text-center" aria-label={ev.country ?? ""}>
+                        {ev.country ? countryFlagEmoji(ev.country) : "—"}
+                      </span>
+                      <span className="flex-1 truncate text-neutral-200">
+                        {eventListTitle(ev)}
+                      </span>
+                      <span className="shrink-0 font-mono text-[9px] tabular-nums text-neutral-500">
+                        {when}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {keyword.trim() && keywordPreview.length === 0 && (
+              <p className="rounded-md border border-neutral-800 bg-neutral-900/50 p-2 text-center font-mono text-[10px] text-neutral-600">
+                No events match this keyword in the current pane window.
+              </p>
+            )}
           </div>
 
           <Button
