@@ -21,6 +21,7 @@ from typing import Any, Final
 
 import httpx
 
+from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.sources.base import Fetcher
 
@@ -94,6 +95,8 @@ def feature_to_event(feature: dict[str, Any], *, fetched_at: datetime) -> Event 
         "alert": alert,
     }
 
+    country = country_for(lat, lon) if lat is not None and lon is not None else None
+
     return Event(
         source="usgs-quake",
         source_event_id=str(event_id),
@@ -103,7 +106,7 @@ def feature_to_event(feature: dict[str, Any], *, fetched_at: datetime) -> Event 
         severity=severity,
         confidence=None,
         keywords=["usgs", "earthquake", f"m{int(magnitude_f)}"],
-        country=None,
+        country=country,
         lat=lat,
         lon=lon,
         payload=payload,
@@ -155,6 +158,5 @@ class UsgsQuakeFetcher(Fetcher):
     def archive_path(self) -> str:
         now = datetime.now(timezone.utc)
         return (
-            f"/mnt/data/parquet/usgs-quake/year={now.year}"
-            f"/month={now.month:02d}/day={now.day:02d}/"
+            f"/mnt/data/parquet/usgs-quake/year={now.year}/month={now.month:02d}/day={now.day:02d}/"
         )

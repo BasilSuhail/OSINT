@@ -19,13 +19,13 @@ from typing import Any, Final
 
 import httpx
 
+from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.settings import settings
 from app.sources.base import Fetcher
 
 FIRMS_URL_TEMPLATE: Final[str] = (
-    "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{map_key}/"
-    "VIIRS_SNPP_NRT/world/1/{date}"
+    "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{map_key}/VIIRS_SNPP_NRT/world/1/{date}"
 )
 FIRMS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
 
@@ -51,9 +51,7 @@ def _confidence_to_severity(raw: str | None) -> float | None:
     return max(0.0, min(value / 100.0, 1.0))
 
 
-def hash_event_id(
-    lat: str, lon: str, acq_date: str, acq_time: str, satellite: str
-) -> str:
+def hash_event_id(lat: str, lon: str, acq_date: str, acq_time: str, satellite: str) -> str:
     payload = f"{lat}|{lon}|{acq_date}|{acq_time}|{satellite}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -108,6 +106,8 @@ def row_to_event(row: dict[str, str], *, fetched_at: datetime) -> Event | None:
         "daynight": row.get("daynight"),
     }
 
+    country = country_for(lat, lon) if lat is not None and lon is not None else None
+
     return Event(
         source="nasa-firms",
         source_event_id=source_event_id,
@@ -117,7 +117,7 @@ def row_to_event(row: dict[str, str], *, fetched_at: datetime) -> Event | None:
         severity=severity,
         confidence=None,
         keywords=["firms", "fire"],
-        country=None,
+        country=country,
         lat=lat,
         lon=lon,
         payload=payload,
@@ -157,9 +157,7 @@ class NasaFirmsFetcher(Fetcher):
         if not settings.firms_map_key:
             return []
         fetched_at = datetime.now(timezone.utc)
-        url = FIRMS_URL_TEMPLATE.format(
-            map_key=settings.firms_map_key, date=self._target_date()
-        )
+        url = FIRMS_URL_TEMPLATE.format(map_key=settings.firms_map_key, date=self._target_date())
         with httpx.Client(
             timeout=self.timeout_seconds, headers={"User-Agent": FIRMS_USER_AGENT}
         ) as client:
@@ -170,6 +168,5 @@ class NasaFirmsFetcher(Fetcher):
     def archive_path(self) -> str:
         now = datetime.now(timezone.utc)
         return (
-            f"/mnt/data/parquet/nasa-firms/year={now.year}"
-            f"/month={now.month:02d}/day={now.day:02d}/"
+            f"/mnt/data/parquet/nasa-firms/year={now.year}/month={now.month:02d}/day={now.day:02d}/"
         )
