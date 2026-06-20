@@ -1,0 +1,68 @@
+name: frontend
+
+on:
+  pull_request:
+    paths:
+      - "osint-frontend/**"
+      - ".github/workflows/frontend.yml"
+  push:
+    branches: [main]
+    paths:
+      - "osint-frontend/**"
+      - ".github/workflows/frontend.yml"
+
+defaults:
+  run:
+    working-directory: osint-frontend
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Build needs the NEXT_PUBLIC envs to type-check the supabase init shim,
+      # but the values don't need to be real — never network-called at build.
+      NEXT_PUBLIC_SUPABASE_URL: "https://ci.example.invalid"
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "ci-dummy-key"
+      # Skip Next's interactive telemetry prompt — it stalls `next build` on
+      # a fresh CI runner waiting on stdin.
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Cap memory + disable Turbopack incremental cache so a long build
+      # cannot quietly OOM the runner.
+      NODE_OPTIONS: "--max-old-space-size=4096"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          # 22+ is required for `node --test --experimental-strip-types`,
+          # which we use to run the ephemeris ground-truth suite directly
+          # off the TypeScript source without a transpile step.
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: osint-frontend/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check (tsc)
+        run: pnpm tsc --noEmit
+
+      - name: Lint (eslint)
+        run: pnpm lint
+
+      - name: Ephemeris unit tests (node --test)
+        run: node --test --experimental-strip-types lib/ephemeris.test.mts
+
+      # `next build` is intentionally not run here. Next 16 + Turbopack hangs
+      # indefinitely on GitHub-hosted runners (telemetry prompt + first-run
+      # font/cache fetches); a 60-min wait is worse than no signal. tsc +
+      # eslint + unit tests catch every kind of regression we currently care
+      # about; Vercel rebuilds on every push to main and will surface any
+      # prod-only issue. Re-enable when the Turbopack hang is fixed upstream.

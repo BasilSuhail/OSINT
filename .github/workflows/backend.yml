@@ -1,0 +1,83 @@
+name: backend
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "requirements.txt"
+      - "alembic.ini"
+      - "migrations/**"
+      - ".github/workflows/backend.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "requirements.txt"
+      - "alembic.ini"
+      - "migrations/**"
+      - ".github/workflows/backend.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Real Postgres so Alembic runs against the same dialect that prod uses,
+    # not the SQLite shim our in-process unit tests use.
+    #
+    # Auth: POSTGRES_HOST_AUTH_METHOD=trust — the service container is only
+    # reachable from the runner-local network, torn down at job end. No
+    # password literal in YAML means nothing for secret scanners to flag.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: osint
+          POSTGRES_DB: osint
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U osint"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: osint
+      POSTGRES_USER: osint
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      ENVIRONMENT: ci
+      LOG_LEVEL: WARNING
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: "pip"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Lint (ruff)
+        run: ruff check app/ tests/
+
+      - name: Format check (ruff format)
+        run: ruff format --check app/ tests/
+
+      - name: Alembic migrate against Postgres
+        run: alembic upgrade head
+
+      - name: Test (pytest)
+        run: pytest --maxfail=1
