@@ -1,4 +1,3 @@
-import { Analytics } from "@vercel/analytics/next"
 import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
@@ -14,7 +13,6 @@ export const metadata: Metadata = {
   title: "OSINT World Monitor · LIVE",
   description:
     "Real-time open-source intelligence dashboard. Flat world map and 3D globe, independently filterable and scrubbable through time.",
-  generator: "v0.app",
 }
 
 export const viewport: Viewport = {
@@ -38,7 +36,6 @@ export default function RootLayout({
     >
       <body className="bg-neutral-950 font-sans text-neutral-100 antialiased">
         <RealtimeProvider>{children}</RealtimeProvider>
-        {process.env.NODE_ENV === "production" && <Analytics />}
       </body>
     </html>
   )

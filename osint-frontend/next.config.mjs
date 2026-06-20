@@ -14,6 +14,8 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Hide the floating "N" Next dev indicator badge in the bottom corner.
+  devIndicators: false,
 }
 
 export default nextConfig
