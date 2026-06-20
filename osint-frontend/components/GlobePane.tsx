@@ -11,6 +11,7 @@ import { useSatellites, type Satellite } from "@/lib/satellites"
 import { moonPhaseLabel, useEphemeris, type CelestialBody } from "@/lib/ephemeris"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
+import { EphemerisChip } from "./EphemerisChip"
 import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
 import { SatelliteDetailCard } from "./SatelliteDetailCard"
@@ -97,7 +98,7 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
   const satelliteGroup = useStore((s) => s.satelliteGroup)
   const showCelestial = useStore((s) => s.showCelestial)
   const sats = useSatellites(showSatellites, satelliteGroup, 3000)
-  const eph = useEphemeris(showCelestial, 30_000)
+  const eph = useEphemeris(showCelestial, 5_000)
   const globeRef = useRef<GlobeMethods | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -326,6 +327,8 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
           <SatelliteDetailCard satellite={selectedSat} onClose={() => setSelectedSat(null)} />
         </div>
       )}
+
+      {showCelestial && <EphemerisChip eph={eph} />}
 
       <FilterRail pane="globe" side="right" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />

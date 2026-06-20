@@ -64,10 +64,12 @@ export function computeEphemeris(when: Date = new Date()): Ephemeris {
 }
 
 /**
- * Sub-solar + sub-lunar points repropagated on a tick. 30 s default — the
- * sub-points drift ~0.125° per 30 s, smooth enough visually without busy work.
+ * Sub-solar + sub-lunar points repropagated on a tick. Default 5 s — the
+ * sub-solar point drifts at ~0.25 mrad/sec (≈ 15°/hour); a 5 s tick keeps
+ * the dot visibly creeping without burning frames. astronomy-engine is
+ * sub-millisecond per call so this is cheap.
  */
-export function useEphemeris(enabled: boolean, tickMs: number = 30_000): Ephemeris | null {
+export function useEphemeris(enabled: boolean, tickMs: number = 5_000): Ephemeris | null {
   const [eph, setEph] = useState<Ephemeris | null>(() => (enabled ? computeEphemeris() : null))
 
   useEffect(() => {
