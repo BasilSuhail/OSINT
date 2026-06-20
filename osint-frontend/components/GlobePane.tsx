@@ -152,6 +152,22 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
     globe.pointOfView({ altitude: 3.0 }, 0)
   }, [autoRotate, size.width])
 
+  // Stop auto-rotation the moment the user grabs / pinches / scrolls the globe
+  // — without this, satellites and event dots are constantly drifting away
+  // from the cursor. Resumes only via the explicit Orbit button.
+  useEffect(() => {
+    if (size.width === 0) return
+    const globe = globeRef.current
+    if (!globe) return
+    const controls = globe.controls() as unknown as {
+      addEventListener: (type: string, fn: () => void) => void
+      removeEventListener: (type: string, fn: () => void) => void
+    }
+    const handleStart = () => setAutoRotate(false)
+    controls.addEventListener("start", handleStart)
+    return () => controls.removeEventListener("start", handleStart)
+  }, [size.width])
+
   const points = useMemo(() => {
     const out: VisibleEvent[] = []
     for (const ev of events) {
