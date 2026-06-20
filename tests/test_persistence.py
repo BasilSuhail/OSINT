@@ -106,3 +106,22 @@ class TestUpsertEvents:
         rows = db_session.execute(select(EventRow)).scalars().all()
         assert len(rows) == 2
         assert {r.source for r in rows} == {"yfinance", "fred"}
+
+    def test_large_payload_batches_under_param_cap(self, db_session: Session) -> None:
+        # Postgres caps a single statement at 65 535 bound parameters; with 12
+        # columns per Event a non-batched upsert would blow the cap somewhere
+        # above 5 461 rows. Verify a 50 000-row payload still upserts cleanly
+        # (here against SQLite, but the same batching keeps Postgres safe).
+        events = [_make_event(f"BULK:{i}") for i in range(50_000)]
+        inserted = upsert_events(events, db_session, batch_size=1000)
+        db_session.commit()
+
+        assert inserted == 50_000
+        rows = db_session.execute(select(EventRow)).scalars().all()
+        assert len(rows) == 50_000
+
+    def test_batch_size_must_be_positive(self, db_session: Session) -> None:
+        import pytest
+
+        with pytest.raises(ValueError):
+            upsert_events([_make_event("X")], db_session, batch_size=0)
