@@ -7,7 +7,7 @@ the body directly so the suite stays hermetic.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import Engine, select
@@ -37,7 +37,7 @@ class _StubFetcher(Fetcher):
 
 
 def _event(source_event_id: str) -> Event:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return Event(
         source="stub",
         source_event_id=source_event_id,
@@ -58,8 +58,8 @@ def global_sqlite_db() -> Iterator[Engine]:
     Base.metadata.create_all(engine)
     yield engine
     Base.metadata.drop_all(engine)
-    db._engine = None  # noqa: SLF001 — reset so next test starts clean
-    db._session_factory = None  # noqa: SLF001
+    db._engine = None
+    db._session_factory = None
 
 
 def _session_for(engine: Engine):
@@ -129,9 +129,7 @@ def test_unknown_fetcher_raises_key_error(global_sqlite_db: Engine) -> None:
 def test_beat_schedule_covers_all_thesis_core_fetchers() -> None:
     schedule = tasks.app.conf.beat_schedule
     fetcher_names = {
-        entry["args"][0]
-        for entry in schedule.values()
-        if entry["task"] == "app.tasks.run_fetcher"
+        entry["args"][0] for entry in schedule.values() if entry["task"] == "app.tasks.run_fetcher"
     }
     assert fetcher_names == {
         "yfinance",

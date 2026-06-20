@@ -7,7 +7,7 @@ keep all task registrations in one place.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -36,7 +36,7 @@ def _compute_composite_body(
     weights: WeightingConfig | None = None,
 ) -> dict[str, Any]:
     """Pure orchestrator — read events, aggregate, normalize, score, upsert."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30 * lookback_months)
+    cutoff = datetime.now(UTC) - timedelta(days=30 * lookback_months)
 
     with session_scope() as session:
         rows = session.execute(

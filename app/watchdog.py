@@ -1,7 +1,7 @@
 """Ingest watchdog.
 
 Walks ``ingest_health`` once per beat fire and flags sources whose last
-successful fetch is older than ``cadence × STALE_MULTIPLIER`` minutes. A
+successful fetch is older than ``cadence x STALE_MULTIPLIER`` minutes. A
 flagged source produces:
 
 1. A row in ``notifications`` (so the frontend ConnectionIndicator can show it)
@@ -86,7 +86,7 @@ def _pushover_send(message: str) -> None:
                     "message": message,
                 },
             )
-    except httpx.HTTPError as exc:  # noqa: BLE001 - we never want a Pushover blip to crash beat
+    except httpx.HTTPError as exc:
         logger.warning("watchdog: pushover send failed: %s", exc)
 
 
@@ -121,9 +121,7 @@ def _persist_notification(session: Session, *, source: str, message: str, today:
     return result.first() is not None
 
 
-def check_sources(
-    session: Session, *, now: datetime | None = None
-) -> dict[str, dict[str, object]]:
+def check_sources(session: Session, *, now: datetime | None = None) -> dict[str, dict[str, object]]:
     """Run one watchdog sweep over every source. Return per-source state."""
     now = now or datetime.now(UTC)
     today = now.date()
@@ -149,7 +147,7 @@ def check_sources(
             age_min = int((now - last_success).total_seconds() / 60)
             message = (
                 f"{source}: last_success {age_min} min ago "
-                f"(cadence {cadence_min} min × {STALE_MULTIPLIER} = stale)"
+                f"(cadence {cadence_min} min x {STALE_MULTIPLIER} = stale)"
             )
 
         logger.warning("watchdog: %s", message)

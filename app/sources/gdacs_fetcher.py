@@ -12,7 +12,7 @@ debugged from the database alone.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Final
 from xml.etree import ElementTree as ET
 
@@ -182,9 +182,7 @@ def item_to_event(item: ET.Element, *, fetched_at: datetime) -> Event | None:
         for fmt in ("%a, %d %b %Y %H:%M:%S %Z", "%a, %d %b %Y %H:%M:%S %z"):
             try:
                 parsed = datetime.strptime(pub_date_raw, fmt)
-                occurred_at = (
-                    parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-                )
+                occurred_at = parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
                 break
             except ValueError:
                 continue
@@ -250,7 +248,7 @@ class GdacsFetcher(Fetcher):
         self.timeout_seconds = timeout_seconds
 
     def fetch(self) -> list[Event]:
-        fetched_at = datetime.now(timezone.utc)
+        fetched_at = datetime.now(UTC)
         with httpx.Client(
             timeout=self.timeout_seconds, headers={"User-Agent": GDACS_USER_AGENT}
         ) as client:
@@ -259,8 +257,5 @@ class GdacsFetcher(Fetcher):
             return parse_rss_body(response.text, fetched_at=fetched_at)
 
     def archive_path(self) -> str:
-        now = datetime.now(timezone.utc)
-        return (
-            f"/mnt/data/parquet/gdacs/year={now.year}"
-            f"/month={now.month:02d}/day={now.day:02d}/"
-        )
+        now = datetime.now(UTC)
+        return f"/mnt/data/parquet/gdacs/year={now.year}/month={now.month:02d}/day={now.day:02d}/"

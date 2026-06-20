@@ -41,6 +41,9 @@ coverage.xml
 # Data / archives (never commit)
 data/
 /mnt/data/
+# Whitelist the bundled Natural Earth polygons used for country enrichment.
+!app/enrichment/data/
+!app/enrichment/data/**
 *.parquet
 *.csv
 *.zip

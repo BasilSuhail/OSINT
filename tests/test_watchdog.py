@@ -17,9 +17,7 @@ from app.watchdog import (
 )
 
 
-def _seed_health(
-    session: Session, *, source: str, last_success: datetime | None
-) -> None:
+def _seed_health(session: Session, *, source: str, last_success: datetime | None) -> None:
     today = last_success.date() if last_success else date.today()
     session.add(
         IngestHealthRow(
@@ -38,9 +36,7 @@ class TestCheckSources:
     def test_fresh_source_not_flagged(self, db_session: Session) -> None:
         now = datetime.now(UTC)
         for source in SOURCE_CADENCE_MIN:
-            _seed_health(
-                db_session, source=source, last_success=now - timedelta(minutes=2)
-            )
+            _seed_health(db_session, source=source, last_success=now - timedelta(minutes=2))
         report = check_sources(db_session, now=now)
         for source in SOURCE_CADENCE_MIN:
             assert report[source]["is_stale"] is False, source
@@ -65,9 +61,7 @@ class TestCheckSources:
         for source in SOURCE_CADENCE_MIN:
             if source == "gdelt":
                 continue
-            _seed_health(
-                db_session, source=source, last_success=now - timedelta(minutes=1)
-            )
+            _seed_health(db_session, source=source, last_success=now - timedelta(minutes=1))
 
         report = check_sources(db_session, now=now)
         db_session.commit()
@@ -83,16 +77,12 @@ class TestCheckSources:
 
     def test_dedup_blocks_second_alert_same_day(self, db_session: Session) -> None:
         now = datetime.now(UTC)
-        _seed_health(
-            db_session, source="gdelt", last_success=now - timedelta(minutes=120)
-        )
+        _seed_health(db_session, source="gdelt", last_success=now - timedelta(minutes=120))
         # Seed every other source as fresh so only gdelt trips the alarm.
         for source in SOURCE_CADENCE_MIN:
             if source == "gdelt":
                 continue
-            _seed_health(
-                db_session, source=source, last_success=now - timedelta(minutes=1)
-            )
+            _seed_health(db_session, source=source, last_success=now - timedelta(minutes=1))
 
         first = check_sources(db_session, now=now)
         db_session.commit()
@@ -104,23 +94,17 @@ class TestCheckSources:
         rows = db_session.execute(select(NotificationRow)).scalars().all()
         assert len(rows) == 1
 
-    def test_stale_threshold_uses_cadence_times_multiplier(
-        self, db_session: Session
-    ) -> None:
+    def test_stale_threshold_uses_cadence_times_multiplier(self, db_session: Session) -> None:
         now = datetime.now(UTC)
-        # yfinance cadence = 5; 5 × 6 = 30 → 25 min ago should be fresh, 35 stale.
-        _seed_health(
-            db_session, source="yfinance", last_success=now - timedelta(minutes=25)
-        )
+        # yfinance cadence = 5; 5 x 6 = 30 → 25 min ago should be fresh, 35 stale.
+        _seed_health(db_session, source="yfinance", last_success=now - timedelta(minutes=25))
         report_a = check_sources(db_session, now=now)
         assert report_a["yfinance"]["is_stale"] is False
 
         # Reset DB, try 35 min.
         db_session.query(NotificationRow).delete()
         db_session.query(IngestHealthRow).delete()
-        _seed_health(
-            db_session, source="yfinance", last_success=now - timedelta(minutes=35)
-        )
+        _seed_health(db_session, source="yfinance", last_success=now - timedelta(minutes=35))
         report_b = check_sources(db_session, now=now + timedelta(days=1))
         assert report_b["yfinance"]["is_stale"] is True
 
@@ -134,9 +118,7 @@ class TestPersistNotification:
         assert ok is True
 
     def test_duplicate_insert_returns_false(self, db_session: Session) -> None:
-        _persist_notification(
-            db_session, source="gdelt", message="test", today=date(2026, 6, 20)
-        )
+        _persist_notification(db_session, source="gdelt", message="test", today=date(2026, 6, 20))
         db_session.commit()
         ok = _persist_notification(
             db_session, source="gdelt", message="test", today=date(2026, 6, 20)

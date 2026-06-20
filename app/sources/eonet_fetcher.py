@@ -20,11 +20,12 @@ position and stash the full trajectory in `payload.geometry` for replay.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Final
 
 import httpx
 
+from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.sources.base import Fetcher
 
@@ -83,7 +84,7 @@ def _parse_iso_z(value: Any) -> datetime | None:
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -185,6 +186,8 @@ def feature_to_event(event_record: dict[str, Any], *, fetched_at: datetime) -> E
         "link": event_record.get("link"),
     }
 
+    country = country_for(lat, lon) if lat is not None and lon is not None else None
+
     return Event(
         source="eonet",
         source_event_id=str(eonet_id),
@@ -194,7 +197,7 @@ def feature_to_event(event_record: dict[str, Any], *, fetched_at: datetime) -> E
         severity=severity,
         confidence=None,
         keywords=keywords,
-        country=None,
+        country=country,
         lat=lat,
         lon=lon,
         payload=payload,
@@ -238,7 +241,7 @@ class EonetFetcher(Fetcher):
         self.days = days
 
     def fetch(self) -> list[Event]:
-        fetched_at = datetime.now(timezone.utc)
+        fetched_at = datetime.now(UTC)
         with httpx.Client(
             timeout=self.timeout_seconds,
             headers={"User-Agent": EONET_USER_AGENT},
@@ -251,8 +254,5 @@ class EonetFetcher(Fetcher):
             return parse_eonet_body(response.text, fetched_at=fetched_at)
 
     def archive_path(self) -> str:
-        now = datetime.now(timezone.utc)
-        return (
-            f"/mnt/data/parquet/eonet/year={now.year}"
-            f"/month={now.month:02d}/day={now.day:02d}/"
-        )
+        now = datetime.now(UTC)
+        return f"/mnt/data/parquet/eonet/year={now.year}/month={now.month:02d}/day={now.day:02d}/"

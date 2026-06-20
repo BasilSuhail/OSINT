@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -91,14 +91,15 @@ class TestRowToEvent:
             "confidence": "high",
             "brightness": "320.5",
         }
-        event = row_to_event(row, fetched_at=datetime.now(timezone.utc))
+        event = row_to_event(row, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.source == "nasa-firms"
         assert event.category == Category.HAZARD
         assert event.severity == 0.9  # high
         assert event.lat == pytest.approx(-23.45)
         assert event.lon == pytest.approx(-46.63)
-        assert event.country is None  # reverse-geocode deferred
+        # (-23.45, -46.63) is São Paulo, Brazil — enrichment picks it up.
+        assert event.country == "BR"
         assert event.payload["satellite"] == "N20"
         assert event.payload["confidence_raw"] == "high"
         assert event.source_event_id == hash_event_id(
@@ -113,7 +114,7 @@ class TestRowToEvent:
             "acq_time": "0314",
             "satellite": "N20",
         }
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
     def test_bad_lat_skipped(self) -> None:
         row = {
@@ -124,7 +125,7 @@ class TestRowToEvent:
             "satellite": "N20",
             "confidence": "high",
         }
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
     def test_bad_acq_time_skipped(self) -> None:
         row = {
@@ -135,19 +136,19 @@ class TestRowToEvent:
             "satellite": "N20",
             "confidence": "high",
         }
-        assert row_to_event(row, fetched_at=datetime.now(timezone.utc)) is None
+        assert row_to_event(row, fetched_at=datetime.now(UTC)) is None
 
 
 class TestParseCsvBody:
     def test_empty_body(self) -> None:
-        assert parse_csv_body("", fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_csv_body("", fetched_at=datetime.now(UTC)) == []
 
     def test_header_only_returns_empty(self) -> None:
-        assert parse_csv_body(_csv_header(), fetched_at=datetime.now(timezone.utc)) == []
+        assert parse_csv_body(_csv_header(), fetched_at=datetime.now(UTC)) == []
 
     def test_multi_row_csv(self) -> None:
         body = _csv_header() + _csv_row(latitude="1.0") + _csv_row(latitude="2.0")
-        events = parse_csv_body(body, fetched_at=datetime.now(timezone.utc))
+        events = parse_csv_body(body, fetched_at=datetime.now(UTC))
         assert len(events) == 2
         assert {e.lat for e in events} == {1.0, 2.0}
 
@@ -173,9 +174,7 @@ class TestFetcherContract:
 
 class TestFetcherHttp:
     @respx.mock
-    def test_fetch_pulls_csv_when_key_set(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fetch_pulls_csv_when_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings_module.settings, "firms_map_key", "FAKEKEY")
         body = _csv_header() + _csv_row()
         respx.get(url__regex=r"https://firms\.modaps\.eosdis\.nasa\.gov/.*").mock(
