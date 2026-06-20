@@ -35,12 +35,14 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
   const keyword = useStore((s) => s.keyword)
   const showSatellites = useStore((s) => s.showSatellites)
   const satelliteGroup = useStore((s) => s.satelliteGroup)
+  const showCelestial = useStore((s) => s.showCelestial)
   const toggleSource = useStore((s) => s.toggleSource)
   const setSeverity = useStore((s) => s.setSeverity)
   const toggleCountry = useStore((s) => s.toggleCountry)
   const setKeyword = useStore((s) => s.setKeyword)
   const toggleSatellites = useStore((s) => s.toggleSatellites)
   const setSatelliteGroup = useStore((s) => s.setSatelliteGroup)
+  const toggleCelestial = useStore((s) => s.toggleCelestial)
   const reset = useStore((s) => s.reset)
 
   const isGlobe = pane === "globe"
@@ -61,7 +63,8 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
     (severity[0] > 0 || severity[1] < 1 ? 1 : 0) +
     (countries.length > 0 ? 1 : 0) +
     (keyword.trim() ? 1 : 0) +
-    (isGlobe && !showSatellites ? 1 : 0)
+    (isGlobe && !showSatellites ? 1 : 0) +
+    (isGlobe && !showCelestial ? 1 : 0)
 
   const isLeft = side === "left"
 
@@ -123,6 +126,19 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             <span
               className="h-2.5 w-2.5 rounded-full transition-opacity"
               style={{ backgroundColor: "#22d3ee", opacity: showSatellites ? 1 : 0.25 }}
+            />
+          </button>
+        )}
+        {isGlobe && (
+          <button
+            type="button"
+            aria-label={`Sun & Moon ${showCelestial ? "on" : "off"}`}
+            onClick={toggleCelestial}
+            className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-full transition-opacity"
+              style={{ backgroundColor: "#fde68a", opacity: showCelestial ? 1 : 0.25 }}
             />
           </button>
         )}
@@ -210,6 +226,23 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
                     ))}
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={toggleCelestial}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
+                    showCelestial
+                      ? "border-amber-800 bg-amber-950/20 text-amber-100"
+                      : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
+                  )}
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: "#fde68a", opacity: showCelestial ? 1 : 0.3 }}
+                  />
+                  <span className="flex-1">Sun &amp; Moon</span>
+                  <span className="font-mono text-[10px] uppercase text-neutral-500">EPH</span>
+                </button>
               </>
             )}
           </div>

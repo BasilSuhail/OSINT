@@ -9,6 +9,7 @@ import { useEventsInWindow, type VisibleEvent } from "@/lib/queries"
 import { colorForEvent } from "@/lib/types"
 import { pointAltitude } from "@/lib/markers"
 import { useSatellites, type Satellite } from "@/lib/satellites"
+import { moonPhaseLabel, useEphemeris, type CelestialBody } from "@/lib/ephemeris"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { FilterRail } from "./FilterRail"
@@ -27,10 +28,50 @@ const SAT_MATERIAL = new THREE.MeshBasicMaterial({
 })
 function makeSatMesh(): THREE.Object3D {
   const mesh = new THREE.Mesh(SAT_GEOMETRY, SAT_MATERIAL)
-  // Pin a clone of the material so individual mesh tint can drift in future
-  // without affecting the shared one.
   mesh.material = SAT_MATERIAL
   return mesh
+}
+
+const SUN_GEOMETRY = new THREE.SphereGeometry(8, 24, 24)
+const SUN_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0xfde68a,
+  transparent: true,
+  opacity: 0.95,
+})
+const SUN_HALO_GEOMETRY = new THREE.SphereGeometry(14, 24, 24)
+const SUN_HALO_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0xfacc15,
+  transparent: true,
+  opacity: 0.18,
+})
+const MOON_GEOMETRY = new THREE.SphereGeometry(3, 18, 18)
+const MOON_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0xe5e7eb,
+  transparent: true,
+  opacity: 0.9,
+})
+const MOON_HALO_GEOMETRY = new THREE.SphereGeometry(5, 18, 18)
+const MOON_HALO_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0xa3a3a3,
+  transparent: true,
+  opacity: 0.15,
+})
+
+function makeCelestialObject(body: CelestialBody): THREE.Object3D {
+  const group = new THREE.Group()
+  if (body.name === "Sun") {
+    group.add(new THREE.Mesh(SUN_HALO_GEOMETRY, SUN_HALO_MATERIAL))
+    group.add(new THREE.Mesh(SUN_GEOMETRY, SUN_MATERIAL))
+  } else {
+    group.add(new THREE.Mesh(MOON_HALO_GEOMETRY, MOON_HALO_MATERIAL))
+    const mesh = new THREE.Mesh(MOON_GEOMETRY, MOON_MATERIAL)
+    // Dim the moon disc by current illuminated fraction so phase reads visually.
+    const matClone = MOON_MATERIAL.clone()
+    matClone.opacity = 0.4 + body.illumination * 0.55
+    mesh.material = matClone
+    group.add(mesh)
+  }
+  return group
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -53,15 +94,33 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
   const { events, windowEnd, total } = useEventsInWindow(useStore, "globe")
   const showSatellites = useStore((s) => s.showSatellites)
   const satelliteGroup = useStore((s) => s.satelliteGroup)
+  const showCelestial = useStore((s) => s.showCelestial)
   const sats = useSatellites(showSatellites, satelliteGroup, 3000)
+  const eph = useEphemeris(showCelestial, 30_000)
   const globeRef = useRef<GlobeMethods | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [autoRotate, setAutoRotate] = useState(true)
   const [selected, setSelected] = useState<VisibleEvent | null>(null)
   const [selectedSat, setSelectedSat] = useState<Satellite | null>(null)
+  const [selectedCelestial, setSelectedCelestial] = useState<CelestialBody | null>(null)
 
   const satsCapped = useMemo(() => (sats.length > MAX_SATS ? sats.slice(0, MAX_SATS) : sats), [sats])
+
+  /** Sun + Moon as objectsData entries, type-tagged so the lat/lng/alt/object
+   *  accessors can dispatch alongside satellites. */
+  type GlobeObject =
+    | { kind: "sat"; data: Satellite }
+    | { kind: "celestial"; data: CelestialBody }
+
+  const globeObjects = useMemo<GlobeObject[]>(() => {
+    const out: GlobeObject[] = satsCapped.map((s) => ({ kind: "sat", data: s }))
+    if (eph) {
+      out.push({ kind: "celestial", data: eph.sun })
+      out.push({ kind: "celestial", data: eph.moon })
+    }
+    return out
+  }, [satsCapped, eph])
 
   useEffect(() => onCount(total), [total, onCount])
 
@@ -138,12 +197,19 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
           pointsMerge={false}
           onPointClick={handlePointClick}
           arcsData={[]}
-          objectsData={satsCapped}
-          objectLat={(d) => (d as Satellite).lat}
-          objectLng={(d) => (d as Satellite).lon}
-          objectAltitude={(d) => (d as Satellite).alt}
-          objectThreeObject={makeSatMesh}
-          onObjectClick={(o) => setSelectedSat(o as Satellite)}
+          objectsData={globeObjects}
+          objectLat={(d) => (d as GlobeObject).data.lat}
+          objectLng={(d) => (d as GlobeObject).data.lon}
+          objectAltitude={(d) => (d as GlobeObject).data.alt}
+          objectThreeObject={(d) => {
+            const o = d as GlobeObject
+            return o.kind === "sat" ? makeSatMesh() : makeCelestialObject(o.data)
+          }}
+          onObjectClick={(o) => {
+            const obj = o as GlobeObject
+            if (obj.kind === "sat") setSelectedSat(obj.data)
+            else setSelectedCelestial(obj.data)
+          }}
           enablePointerInteraction
         />
       )}
@@ -238,6 +304,58 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Celestial floating card */}
+      {selectedCelestial && (
+        <div
+          className={cn(
+            "absolute left-1/2 top-4 z-40 w-64 -translate-x-1/2 rounded-lg border bg-neutral-950/95 p-3 backdrop-blur-md",
+            selectedCelestial.name === "Sun" ? "border-amber-700" : "border-neutral-600",
+          )}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: selectedCelestial.name === "Sun" ? "#fde68a" : "#e5e7eb" }}
+              />
+              <span className="font-mono text-xs uppercase tracking-wider text-neutral-100">
+                {selectedCelestial.name}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setSelectedCelestial(null)}
+              className="text-neutral-500 hover:text-neutral-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
+            <dt className="text-neutral-500">sub-point</dt>
+            <dd className="text-neutral-300">
+              {selectedCelestial.lat.toFixed(2)}, {selectedCelestial.lon.toFixed(2)}
+            </dd>
+            {selectedCelestial.name === "Moon" && (
+              <>
+                <dt className="text-neutral-500">phase</dt>
+                <dd className="text-neutral-300">
+                  {moonPhaseLabel(selectedCelestial.phaseAngle)} ({selectedCelestial.phaseAngle.toFixed(0)}°)
+                </dd>
+                <dt className="text-neutral-500">illuminated</dt>
+                <dd className="text-neutral-300">{(selectedCelestial.illumination * 100).toFixed(0)}%</dd>
+              </>
+            )}
+            {selectedCelestial.name === "Sun" && (
+              <>
+                <dt className="text-neutral-500">overhead</dt>
+                <dd className="text-neutral-300">noon at lon {selectedCelestial.lon.toFixed(1)}</dd>
+              </>
+            )}
+          </dl>
         </div>
       )}
 

@@ -18,6 +18,8 @@ export interface FilterState {
   showSatellites: boolean
   /** Which CelesTrak group to load: "stations" (~20), "visual" (~250), "active" (~10k), etc. */
   satelliteGroup: string
+  /** Render Sun + Moon (sub-stellar points) on the globe pane. Ignored on the map pane. */
+  showCelestial: boolean
 
   toggleSource: (key: SourceKey) => void
   setSeverity: (range: [number, number]) => void
@@ -30,6 +32,7 @@ export interface FilterState {
   setSpeed: (speed: number) => void
   toggleSatellites: () => void
   setSatelliteGroup: (group: string) => void
+  toggleCelestial: () => void
   reset: () => void
 }
 
@@ -58,6 +61,7 @@ export function createFilterStore(): FilterStore {
     speed: 1,
     showSatellites: true,
     satelliteGroup: "visual",
+    showCelestial: true,
 
     toggleSource: (key) =>
       set((s) => ({ sources: { ...s.sources, [key]: !s.sources[key] } })),
@@ -77,6 +81,7 @@ export function createFilterStore(): FilterStore {
     setSpeed: (speed) => set({ speed }),
     toggleSatellites: () => set((s) => ({ showSatellites: !s.showSatellites })),
     setSatelliteGroup: (satelliteGroup) => set({ satelliteGroup }),
+    toggleCelestial: () => set((s) => ({ showCelestial: !s.showCelestial })),
     reset: () =>
       set({
         sources: { ...defaultSources },
@@ -88,6 +93,7 @@ export function createFilterStore(): FilterStore {
         speed: 1,
         showSatellites: true,
         satelliteGroup: "visual",
+        showCelestial: true,
       }),
   }))
 }
