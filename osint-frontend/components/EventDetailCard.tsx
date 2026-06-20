@@ -6,6 +6,7 @@ import { ChevronDown, Copy, ExternalLink, X } from "lucide-react"
 import { cameoLabel } from "@/lib/cameo"
 import { colorForEvent, type EventRow } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { SourceSignals } from "./SourceSignals"
 
 interface EventDetailCardProps {
   event: EventRow
@@ -244,6 +245,9 @@ export function EventDetailCard({
           {event.source_event_id && <CopyButton text={event.source_event_id} label="id" />}
         </dd>
       </dl>
+
+      {/* Per-source signals */}
+      <SourceSignals ev={event} />
 
       {/* Keywords */}
       {event.keywords && event.keywords.length > 0 && (
