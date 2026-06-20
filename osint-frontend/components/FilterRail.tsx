@@ -33,11 +33,17 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
   const severity = useStore((s) => s.severity)
   const countries = useStore((s) => s.countries)
   const keyword = useStore((s) => s.keyword)
+  const showSatellites = useStore((s) => s.showSatellites)
+  const satelliteGroup = useStore((s) => s.satelliteGroup)
   const toggleSource = useStore((s) => s.toggleSource)
   const setSeverity = useStore((s) => s.setSeverity)
   const toggleCountry = useStore((s) => s.toggleCountry)
   const setKeyword = useStore((s) => s.setKeyword)
+  const toggleSatellites = useStore((s) => s.toggleSatellites)
+  const setSatelliteGroup = useStore((s) => s.setSatelliteGroup)
   const reset = useStore((s) => s.reset)
+
+  const isGlobe = pane === "globe"
 
   const [countryOpen, setCountryOpen] = useState(false)
 
@@ -54,7 +60,8 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
     paneFilters.filter((f) => !sources[f.key]).length +
     (severity[0] > 0 || severity[1] < 1 ? 1 : 0) +
     (countries.length > 0 ? 1 : 0) +
-    (keyword.trim() ? 1 : 0)
+    (keyword.trim() ? 1 : 0) +
+    (isGlobe && !showSatellites ? 1 : 0)
 
   const isLeft = side === "left"
 
@@ -106,6 +113,19 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             />
           </button>
         ))}
+        {isGlobe && (
+          <button
+            type="button"
+            aria-label={`Satellites ${showSatellites ? "on" : "off"}`}
+            onClick={toggleSatellites}
+            className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-full transition-opacity"
+              style={{ backgroundColor: "#22d3ee", opacity: showSatellites ? 1 : 0.25 }}
+            />
+          </button>
+        )}
       </div>
 
       {/* Expanded panel */}
@@ -152,6 +172,46 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
                 <span className="font-mono text-[10px] uppercase text-neutral-500">{f.key}</span>
               </button>
             ))}
+            {isGlobe && (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleSatellites}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
+                    showSatellites
+                      ? "border-cyan-800 bg-cyan-950/30 text-cyan-100"
+                      : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
+                  )}
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: "#22d3ee", opacity: showSatellites ? 1 : 0.3 }}
+                  />
+                  <span className="flex-1">Live satellites</span>
+                  <span className="font-mono text-[10px] uppercase text-neutral-500">TLE</span>
+                </button>
+                {showSatellites && (
+                  <div className="flex flex-wrap gap-1 pl-1">
+                    {(["stations", "visual", "active"] as const).map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setSatelliteGroup(g)}
+                        className={cn(
+                          "rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors",
+                          satelliteGroup === g
+                            ? "border-cyan-600 bg-cyan-950/40 text-cyan-200"
+                            : "border-neutral-800 text-neutral-500 hover:border-neutral-700 hover:text-neutral-300",
+                        )}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* Severity */}
