@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { ChevronDown, Copy, ExternalLink, X } from "lucide-react"
+import { cameoLabel } from "@/lib/cameo"
 import { colorForEvent, type EventRow } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -20,13 +21,51 @@ const HARD_LIMIT_PAYLOAD_KB = 32
 
 function bestTitle(ev: EventRow): string {
   const p = ev.payload as Record<string, unknown>
-  const candidates = [p?.title, p?.place, p?.country_name, p?.event_root_code, p?.headline]
+  const source = (ev.source || "").toLowerCase()
+
+  // GDELT: payload.event_root_code is the CAMEO root (e.g. "14"). Translate to
+  // a human label and tack on the country_fips location free-text if present.
+  if (source === "gdelt") {
+    const cameo = cameoLabel(p?.event_root_code as string | number | undefined)
+    const place = typeof p?.country_fips === "string" ? p.country_fips : null
+    if (cameo && place) return `${cameo} · ${place}`
+    if (cameo) return `${cameo} event`
+  }
+
+  // USGS: payload.place already reads "Off the east coast of Honshu, Japan".
+  // Prefix the magnitude so the title is informative at a glance.
+  if (source === "usgs-quake") {
+    const mag = typeof p?.magnitude === "number" ? p.magnitude : null
+    const place = typeof p?.place === "string" ? p.place : null
+    if (mag && place) return `M${mag.toFixed(1)} · ${place}`
+    if (place) return place
+  }
+
+  // GDACS already ships a payload.title / event_type + country_name.
+  if (source === "gdacs") {
+    const type = typeof p?.event_type === "string" ? p.event_type.toUpperCase() : null
+    const place = typeof p?.country_name === "string" ? p.country_name : null
+    if (type && place) return `${type} · ${place}`
+  }
+
+  // yfinance: ticker + drawdown gives an at-a-glance reading.
+  if (source === "yfinance" || source === "yf") {
+    const tkr = typeof p?.ticker === "string" ? p.ticker : null
+    const dd = typeof p?.drawdown_pct === "number" ? p.drawdown_pct : null
+    if (tkr && dd != null) return `${tkr} drawdown ${dd.toFixed(1)}%`
+    if (tkr) return tkr
+  }
+
+  // Generic fallback: try the usual title/headline/place fields.
+  const candidates = [p?.title, p?.headline, p?.place, p?.country_name]
   for (const c of candidates) if (typeof c === "string" && c.trim()) return c
   return `${ev.source} event`
 }
 
 function bestSourceUrl(ev: EventRow): string | null {
   const p = ev.payload as Record<string, unknown>
+  // GDELT's `source_url` field is the 15-min export file id (e.g.
+  // "20260620064500"), not a real URL. Skip when it doesn't start with http.
   const direct = (p?.source_url ?? p?.link ?? p?.url) as string | undefined
   if (typeof direct === "string" && direct.startsWith("http")) return direct
   const sources = p?.sources as Array<Record<string, unknown>> | undefined
