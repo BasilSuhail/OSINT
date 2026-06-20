@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Final
 
+from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.sources.gdelt_cameo import fips_to_iso, is_conflict_event
 
@@ -86,6 +87,13 @@ def row_to_event(fields: list[str], *, fetched_at: datetime) -> Event | None:
 
     lat = _parse_optional_float(fields[COL_ACTION_LAT])
     lon = _parse_optional_float(fields[COL_ACTION_LON])
+
+    # GDELT's action-country column is a free-text "city, region, country"
+    # string when the event is geocoded to a city — `fips_to_iso` returns None
+    # in that common case. Fall back to a polygon lookup on the action lat/lon
+    # so events still get tagged with a country (and reach the composite).
+    if country is None and lat is not None and lon is not None:
+        country = country_for(lat, lon)
     num_mentions = _parse_optional_float(fields[COL_NUM_MENTIONS])
     avg_tone = _parse_optional_float(fields[COL_AVG_TONE])
     source_url = fields[COL_SOURCE_URL].strip() or None
