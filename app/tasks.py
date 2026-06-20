@@ -21,6 +21,7 @@ from app.composite.task import _compute_composite_body
 from app.db import session_scope
 from app.db_models import IngestFailureRow, IngestHealthRow
 from app.fetcher_registry import get_fetcher
+from app.housekeeping import prune_events
 from app.persistence import upsert_events
 
 
@@ -95,6 +96,18 @@ def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
     return _compute_composite_body(method_version=method_version)
 
 
+@app.task(name="app.tasks.run_housekeeping")
+def run_housekeeping() -> dict[str, int]:
+    """Apply per-source retention to the events table.
+
+    NASA FIRMS ingests ~35 k rows/day; without this the table fills the
+    Supabase free tier in roughly two weeks. See ``app.housekeeping`` for the
+    per-source policy.
+    """
+    with session_scope() as session:
+        return prune_events(session)
+
+
 # Beat schedule — declarative cadence per source. Matches the table in
 # docs/architecture/03-ingestion.md.
 app.conf.beat_schedule = {
@@ -136,5 +149,9 @@ app.conf.beat_schedule = {
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),
+    },
+    "housekeeping-daily-3am-utc": {
+        "task": "app.tasks.run_housekeeping",
+        "schedule": crontab(hour=3, minute=0),
     },
 }
