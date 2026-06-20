@@ -75,7 +75,9 @@ function EventRowItem({ ev }: { ev: EventRow }) {
         {formatDistanceToNowStrict(new Date(ev.occurred_at), { addSuffix: false })}
       </span>
       <span className="flex-1 truncate text-neutral-300">{ev.source}</span>
-      <span className="font-mono text-[10px] text-neutral-500">{ev.severity.toFixed(2)}</span>
+      <span className="font-mono text-[10px] text-neutral-500">
+        {typeof ev.severity === "number" ? ev.severity.toFixed(2) : "—"}
+      </span>
       {url && <ExternalLink className="h-3 w-3 shrink-0 text-neutral-600" />}
     </Wrapper>
   )
