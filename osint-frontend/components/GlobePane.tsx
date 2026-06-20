@@ -237,7 +237,7 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
         onClick={() => setAutoRotate((r) => !r)}
         aria-label={autoRotate ? "Pause rotation" : "Resume rotation"}
         className={cn(
-          "absolute right-14 top-3 z-30 grid h-8 w-8 place-items-center rounded-md border backdrop-blur-sm transition-colors",
+          "absolute right-14 top-14 z-30 grid h-8 w-8 place-items-center rounded-md border backdrop-blur-sm transition-colors",
           autoRotate
             ? "border-neutral-700 bg-neutral-900/70 text-neutral-300 hover:text-neutral-100"
             : "border-emerald-700 bg-emerald-950/40 text-emerald-300",
