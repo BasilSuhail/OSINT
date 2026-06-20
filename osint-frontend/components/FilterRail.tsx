@@ -2,14 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, ChevronsUpDown, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react"
+import { formatDistanceToNowStrict } from "date-fns"
 import { useEvents } from "@/app/providers"
+import { useEventsInWindow } from "@/lib/queries"
 import {
+  colorForEvent,
   paneForEvent,
   sourceFiltersForPane,
   sourceKeyForEvent,
+  type EventRow,
   type Pane,
   type SourceKey,
 } from "@/lib/types"
+import { cameoLabel } from "@/lib/cameo"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -36,6 +41,41 @@ function countryDisplayName(iso: string): string {
   } catch {
     return iso
   }
+}
+
+function severityBarColor(s: number): string {
+  if (s >= 0.8) return "#ef4444"
+  if (s >= 0.6) return "#f97316"
+  if (s >= 0.4) return "#eab308"
+  return "#22c55e"
+}
+
+function eventListTitle(ev: EventRow): string {
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  const src = (ev.source || "").toLowerCase()
+  if (src === "gdelt") {
+    const cameo = cameoLabel(p?.event_root_code as string | number | undefined)
+    if (cameo) return cameo
+  }
+  if (src === "usgs-quake") {
+    const mag = typeof p?.magnitude === "number" ? p.magnitude : null
+    if (mag !== null) return `M${mag.toFixed(1)} quake`
+  }
+  if (src === "gdacs") {
+    const t = typeof p?.event_type === "string" ? p.event_type : null
+    if (t) return t.toUpperCase()
+  }
+  if (src === "nasa-firms") return "Active fire"
+  if (src === "eonet") {
+    const cats = Array.isArray(p?.categories) ? (p.categories as string[]) : null
+    if (cats && cats[0]) return cats[0]
+  }
+  if (src === "yfinance" || src === "yf") {
+    const tkr = typeof p?.ticker === "string" ? p.ticker : null
+    if (tkr) return `${tkr} drawdown`
+  }
+  const title = typeof p?.title === "string" ? p.title : null
+  return title ?? ev.source
 }
 
 function countryFlagEmoji(iso: string): string {
@@ -76,6 +116,19 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
   const isGlobe = pane === "globe"
 
   const [countryOpen, setCountryOpen] = useState(false)
+  const [tab, setTab] = useState<"filters" | "events">("filters")
+
+  /** Filtered + windowed events that would actually appear on this pane —
+   *  same pipeline the map/globe markers use, so the list and the dots
+   *  always agree. Sorted by severity desc by default. */
+  const { events: visibleEvents, total: visibleTotal } = useEventsInWindow(useStore, pane)
+  const sortedVisible = useMemo(
+    () =>
+      [...visibleEvents]
+        .sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0))
+        .slice(0, 300),
+    [visibleEvents],
+  )
 
   /** Only show source toggles that render on this pane. */
   const paneFilters = useMemo(() => sourceFiltersForPane(pane), [pane])
@@ -285,10 +338,7 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
               <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                {isLeft ? "Map filters" : "Globe filters"}
-              </span>
-              <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-                {paneTotal.toLocaleString()} events on pane
+                {isLeft ? "Map" : "Globe"} · {paneTotal.toLocaleString()} pane / {visibleTotal.toLocaleString()} in window
               </span>
             </div>
             <button
@@ -301,6 +351,27 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             </button>
           </div>
 
+          {/* Tabs */}
+          <div className="flex rounded-md border border-neutral-800 bg-neutral-900 p-0.5">
+            {(["filters", "events"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={cn(
+                  "flex-1 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors",
+                  tab === t
+                    ? "bg-neutral-800 text-neutral-100"
+                    : "text-neutral-500 hover:text-neutral-300",
+                )}
+              >
+                {t === "filters" ? "Filters" : `Events (${visibleTotal.toLocaleString()})`}
+              </button>
+            ))}
+          </div>
+
+          {tab === "filters" && (
+          <>
           {/* Source toggles */}
           <div className="flex flex-col gap-1.5">
             {paneFilters.map((f) => {
@@ -540,6 +611,58 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             <RotateCcw className="h-3.5 w-3.5" />
             Reset filters
           </Button>
+          </>
+          )}
+
+          {tab === "events" && (
+            <div className="-mx-1 flex min-h-0 flex-1 flex-col">
+              <p className="px-1 pb-1.5 font-mono text-[10px] text-neutral-500">
+                Top {Math.min(sortedVisible.length, 300).toLocaleString()} by severity. Same filter set as the {isLeft ? "map" : "globe"}.
+              </p>
+              <div className="flex-1 overflow-y-auto">
+                {sortedVisible.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-xs text-neutral-600">
+                    No events match the current filters.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-0.5">
+                    {sortedVisible.map((ev) => {
+                      const sev = typeof ev.severity === "number" ? ev.severity : 0
+                      const flag = ev.country ? countryFlagEmoji(ev.country) : ""
+                      const when = formatDistanceToNowStrict(new Date(ev.occurred_at), {
+                        addSuffix: false,
+                      })
+                      return (
+                        <li key={ev.id}>
+                          <div
+                            className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-[11px] hover:bg-neutral-900"
+                            title={`${ev.source} · ${when} ago · sev ${sev.toFixed(2)}`}
+                          >
+                            <span
+                              className="inline-block h-3 w-1 shrink-0 rounded-sm"
+                              style={{ backgroundColor: severityBarColor(sev) }}
+                            />
+                            <span className="w-7 shrink-0 font-mono text-[10px] uppercase text-neutral-400">
+                              {ev.source.split("-")[0].slice(0, 5)}
+                            </span>
+                            <span className="w-7 shrink-0 text-center" aria-label={ev.country ?? ""}>
+                              {flag || "—"}
+                            </span>
+                            <span className="flex-1 truncate text-neutral-200">
+                              {eventListTitle(ev)}
+                            </span>
+                            <span className="w-10 shrink-0 text-right font-mono text-[10px] tabular-nums text-neutral-500">
+                              {when}
+                            </span>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
