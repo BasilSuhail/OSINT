@@ -5,13 +5,13 @@ lists of `Event`; the ingest task is the only place that touches the database.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class Category(str, Enum):
+class Category(StrEnum):
     """Cross-source category vocabulary.
 
     Composite worker only consumes events where category is one of

@@ -16,7 +16,7 @@ event so the composite worker can spatially join later.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Final
 
 import httpx
@@ -65,7 +65,7 @@ def feature_to_event(feature: dict[str, Any], *, fetched_at: datetime) -> Event 
         return None
 
     try:
-        occurred_at = datetime.fromtimestamp(int(time_ms) / 1000.0, tz=timezone.utc)
+        occurred_at = datetime.fromtimestamp(int(time_ms) / 1000.0, tz=UTC)
     except (TypeError, ValueError, OSError):
         return None
 
@@ -144,7 +144,7 @@ class UsgsQuakeFetcher(Fetcher):
         self.timeout_seconds = timeout_seconds
 
     def fetch(self) -> list[Event]:
-        fetched_at = datetime.now(timezone.utc)
+        fetched_at = datetime.now(UTC)
         with httpx.Client(
             timeout=self.timeout_seconds, headers={"User-Agent": USGS_USER_AGENT}
         ) as client:
@@ -153,8 +153,7 @@ class UsgsQuakeFetcher(Fetcher):
             return parse_geojson_body(response.text, fetched_at=fetched_at)
 
     def archive_path(self) -> str:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return (
-            f"/mnt/data/parquet/usgs-quake/year={now.year}"
-            f"/month={now.month:02d}/day={now.day:02d}/"
+            f"/mnt/data/parquet/usgs-quake/year={now.year}/month={now.month:02d}/day={now.day:02d}/"
         )

@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from app.composite.config import DEFAULT_METHOD_VERSION, WeightingConfig
 from app.composite.scoring import (
     MONTH_BUCKET,
-    ComposedScore,
     _sigmoid,
     compute_scores,
 )
 
 
 def _bucket(year: int, month: int) -> datetime:
-    return datetime(year, month, 1, tzinfo=timezone.utc)
+    return datetime(year, month, 1, tzinfo=UTC)
 
 
 class TestWeightingConfig:
@@ -67,17 +66,13 @@ class TestComputeScores:
         assert compute_scores({}) == []
 
     def test_zero_z_yields_half(self) -> None:
-        signals = {
-            ("US", _bucket(2026, 6)): {"market": 0.0, "geopolitical": 0.0, "hazard": 0.0}
-        }
+        signals = {("US", _bucket(2026, 6)): {"market": 0.0, "geopolitical": 0.0, "hazard": 0.0}}
         scores = compute_scores(signals)
         assert len(scores) == 1
         assert scores[0].score_value == pytest.approx(0.5)
 
     def test_positive_z_pushes_above_half(self) -> None:
-        signals = {
-            ("US", _bucket(2026, 6)): {"market": 3.0, "geopolitical": 2.0, "hazard": 1.0}
-        }
+        signals = {("US", _bucket(2026, 6)): {"market": 3.0, "geopolitical": 2.0, "hazard": 1.0}}
         scores = compute_scores(signals)
         assert scores[0].score_value > 0.8
 
@@ -90,9 +85,7 @@ class TestComputeScores:
         assert scores[0].components["z"]["hazard"] == 0.0
 
     def test_components_breakdown(self) -> None:
-        signals = {
-            ("US", _bucket(2026, 6)): {"market": 3.0, "geopolitical": 0.0, "hazard": 0.0}
-        }
+        signals = {("US", _bucket(2026, 6)): {"market": 3.0, "geopolitical": 0.0, "hazard": 0.0}}
         scores = compute_scores(signals)
         comp = scores[0].components
         assert comp["z"]["market"] == 3.0

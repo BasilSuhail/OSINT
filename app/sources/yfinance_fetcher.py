@@ -12,7 +12,7 @@ FX series live in `fred_fetcher.py`.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -24,16 +24,16 @@ from app.sources.base import Fetcher
 #: Country ISO 3166-1 alpha-2 → ETF ticker. ETFs picked because they trade on
 #: US exchanges so the data is always available without local-exchange quirks.
 COUNTRY_ETFS: dict[str, str] = {
-    "US": "SPY",   # SPDR S&P 500
-    "GB": "EWU",   # iShares UK
-    "DE": "EWG",   # iShares Germany
-    "JP": "EWJ",   # iShares Japan
-    "BR": "EWZ",   # iShares Brazil
+    "US": "SPY",  # SPDR S&P 500
+    "GB": "EWU",  # iShares UK
+    "DE": "EWG",  # iShares Germany
+    "JP": "EWJ",  # iShares Japan
+    "BR": "EWZ",  # iShares Brazil
     "IN": "INDA",  # iShares India
-    "CN": "FXI",   # iShares China Large-Cap
-    "TR": "TUR",   # iShares Turkey
-    "MX": "EWW",   # iShares Mexico
-    "ZA": "EZA",   # iShares South Africa
+    "CN": "FXI",  # iShares China Large-Cap
+    "TR": "TUR",  # iShares Turkey
+    "MX": "EWW",  # iShares Mexico
+    "ZA": "EZA",  # iShares South Africa
 }
 
 #: Drawdown (percent) at which severity saturates at 1.0. A 30% drawdown is
@@ -80,7 +80,7 @@ def _compute_events(
 
         occurred_at = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
         if occurred_at.tzinfo is None:
-            occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+            occurred_at = occurred_at.replace(tzinfo=UTC)
 
         payload: dict[str, Any] = {
             "ticker": ticker,
@@ -119,7 +119,7 @@ class YFinanceFetcher(Fetcher):
         self.lookback_days = lookback_days
 
     def fetch(self) -> list[Event]:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Pull extra history so the rolling-max window is warm.
         start = now - timedelta(days=self.lookback_days + ROLLING_WINDOW_DAYS * 2)
 
@@ -138,5 +138,7 @@ class YFinanceFetcher(Fetcher):
         return all_events
 
     def archive_path(self) -> str:
-        now = datetime.now(timezone.utc)
-        return f"/mnt/data/parquet/yfinance/year={now.year}/month={now.month:02d}/day={now.day:02d}/"
+        now = datetime.now(UTC)
+        return (
+            f"/mnt/data/parquet/yfinance/year={now.year}/month={now.month:02d}/day={now.day:02d}/"
+        )

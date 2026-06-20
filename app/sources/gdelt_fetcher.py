@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import io
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Final
 
 import httpx
@@ -62,7 +62,7 @@ class GdeltFetcher(Fetcher):
         self.timeout_seconds = timeout_seconds
 
     def fetch(self) -> list[Event]:
-        fetched_at = datetime.now(timezone.utc)
+        fetched_at = datetime.now(UTC)
         export_url = self._latest_export_url()
         if export_url is None:
             return []
@@ -70,11 +70,8 @@ class GdeltFetcher(Fetcher):
         return parse_csv_body(csv_body, fetched_at=fetched_at)
 
     def archive_path(self) -> str:
-        now = datetime.now(timezone.utc)
-        return (
-            f"/mnt/data/parquet/gdelt/year={now.year}"
-            f"/month={now.month:02d}/day={now.day:02d}/"
-        )
+        now = datetime.now(UTC)
+        return f"/mnt/data/parquet/gdelt/year={now.year}/month={now.month:02d}/day={now.day:02d}/"
 
     def _latest_export_url(self) -> str | None:
         with httpx.Client(

@@ -9,7 +9,7 @@ https://www.gdeltproject.org/data.html#documentation
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Final
 
 from app.models import Category, Event
@@ -73,7 +73,7 @@ def row_to_event(fields: list[str], *, fetched_at: datetime) -> Event | None:
 
     day_str = fields[COL_DAY].strip()
     try:
-        occurred_at = datetime.strptime(day_str, "%Y%m%d").replace(tzinfo=timezone.utc)
+        occurred_at = datetime.strptime(day_str, "%Y%m%d").replace(tzinfo=UTC)
     except ValueError:
         return None
 

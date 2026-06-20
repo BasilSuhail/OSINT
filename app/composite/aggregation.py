@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 #: The three composite domains. Events with other categories are ignored.
@@ -17,11 +17,8 @@ COMPOSITE_CATEGORIES: frozenset[str] = frozenset({"market", "geopolitical", "haz
 
 def month_start_utc(dt: datetime) -> datetime:
     """Truncate a datetime to the first day of its month in UTC."""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
-    return datetime(dt.year, dt.month, 1, tzinfo=timezone.utc)
+    dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
+    return datetime(dt.year, dt.month, 1, tzinfo=UTC)
 
 
 def aggregate_events_to_domain_signals(
@@ -45,12 +42,7 @@ def aggregate_events_to_domain_signals(
         category = event.get("category")
         severity = event.get("severity")
         occurred_at = event.get("occurred_at")
-        if (
-            country is None
-            or category is None
-            or severity is None
-            or occurred_at is None
-        ):
+        if country is None or category is None or severity is None or occurred_at is None:
             continue
         if category not in COMPOSITE_CATEGORIES:
             continue
