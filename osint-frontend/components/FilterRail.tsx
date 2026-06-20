@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, ChevronsUpDown, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react"
 import { useEvents } from "@/app/providers"
 import {
@@ -140,16 +140,60 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
 
   const isLeft = side === "left"
 
+  // Hover open/close: snappy on the way in (60 ms debounce), patient on the
+  // way out (250 ms grace) so the cursor can dip into the panel without it
+  // collapsing if you graze the edge.
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearTimers = () => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current)
+      openTimerRef.current = null
+    }
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
+
+  const requestOpen = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+    if (open) return
+    openTimerRef.current = setTimeout(() => onOpenChange(true), 60)
+  }
+
+  const requestClose = () => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current)
+      openTimerRef.current = null
+    }
+    if (!open) return
+    closeTimerRef.current = setTimeout(() => onOpenChange(false), 250)
+  }
+
+  useEffect(() => () => clearTimers(), [])
+
   return (
     <div
       className={cn(
         "pointer-events-none absolute inset-y-0 z-20 flex items-stretch",
         isLeft ? "left-0" : "right-0",
       )}
+      onMouseLeave={requestClose}
+      onMouseEnter={() => {
+        if (closeTimerRef.current) {
+          clearTimeout(closeTimerRef.current)
+          closeTimerRef.current = null
+        }
+      }}
     >
-      {/* Edge hover zone: a 6 px transparent column at the very edge of the pane
-       *  opens the rail when the cursor enters. Only active when the rail is
-       *  closed so it doesn't fight with the close button. */}
+      {/* Edge hover zone: a 6 px transparent column at the pane edge requests
+       *  open on hover. Debounced 60 ms so a fly-by doesn't trigger; close is
+       *  fired by the outer onMouseLeave with a 250 ms grace. */}
       {!open && (
         <div
           aria-hidden
@@ -157,7 +201,7 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             "pointer-events-auto absolute inset-y-0 z-10 w-1.5",
             isLeft ? "left-0" : "right-0",
           )}
-          onMouseEnter={() => onOpenChange(true)}
+          onMouseEnter={requestOpen}
         />
       )}
 
