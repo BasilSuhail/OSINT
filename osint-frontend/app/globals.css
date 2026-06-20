@@ -167,3 +167,14 @@
     @apply font-sans;
   }
 }
+
+/* Map marker popup: strip maplibre's default white chrome so our card shows through. */
+.osint-popup .maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+.osint-popup .maplibregl-popup-tip {
+  display: none !important;
+}
