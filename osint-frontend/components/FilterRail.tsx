@@ -147,6 +147,20 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
         isLeft ? "left-0" : "right-0",
       )}
     >
+      {/* Edge hover zone: a 6 px transparent column at the very edge of the pane
+       *  opens the rail when the cursor enters. Only active when the rail is
+       *  closed so it doesn't fight with the close button. */}
+      {!open && (
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-auto absolute inset-y-0 z-10 w-1.5",
+            isLeft ? "left-0" : "right-0",
+          )}
+          onMouseEnter={() => onOpenChange(true)}
+        />
+      )}
+
       {/* Collapsed icon strip */}
       <div
         className={cn(
@@ -220,7 +234,7 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
       {open && (
         <div
           className={cn(
-            "pointer-events-auto flex w-[280px] flex-col gap-4 overflow-y-auto bg-neutral-950/85 p-4 backdrop-blur-md",
+            "pointer-events-auto flex w-[280px] flex-col gap-4 overflow-y-auto bg-neutral-950 p-4",
             isLeft ? "border-r border-neutral-800" : "border-l border-neutral-800",
           )}
         >

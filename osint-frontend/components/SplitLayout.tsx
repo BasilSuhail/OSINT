@@ -99,7 +99,7 @@ export function SplitLayout() {
       )}
 
       {/* Top-left logo */}
-      <div className="pointer-events-none absolute left-14 top-3 z-30">
+      <div className={`pointer-events-none absolute left-14 top-3 z-30 transition-opacity ${leftRailOpen ? "opacity-0" : "opacity-100"}`}>
         <span className="font-mono text-[11px] font-medium uppercase tracking-[0.25em] text-neutral-100/80">
           OSINT World Monitor
         </span>
@@ -109,7 +109,7 @@ export function SplitLayout() {
       </div>
 
       {/* Top-right connection */}
-      <div className="absolute right-14 top-3 z-30">
+      <div className={`absolute right-14 top-3 z-30 transition-opacity ${rightRailOpen ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
         <ConnectionIndicator />
       </div>
 
