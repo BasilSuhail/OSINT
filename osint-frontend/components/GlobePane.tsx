@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Globe, { type GlobeMethods } from "react-globe.gl"
 import { Orbit, Satellite as SatelliteIcon, X } from "lucide-react"
 import * as THREE from "three"
+import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, type VisibleEvent } from "@/lib/queries"
 import { colorForEvent } from "@/lib/types"
 import { pointAltitude } from "@/lib/markers"
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils"
 import { EphemerisChip } from "./EphemerisChip"
 import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
+import { PaneStatus } from "./PaneStatus"
 import { SatelliteDetailCard } from "./SatelliteDetailCard"
 import { TimeScrubber } from "./TimeScrubber"
 
@@ -94,6 +96,8 @@ interface GlobePaneProps {
 
 export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount }: GlobePaneProps) {
   const { events, windowEnd, total } = useEventsInWindow(useStore, "globe")
+  const configured = useConfigured()
+  const allEvents = useEvents()
   const showSatellites = useStore((s) => s.showSatellites)
   const satelliteGroup = useStore((s) => s.satelliteGroup)
   const showCelestial = useStore((s) => s.showCelestial)
@@ -250,12 +254,15 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
         </div>
       )}
 
-      {points.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <p className="font-mono text-xs uppercase tracking-widest text-neutral-600">
-            No events match the current filters
-          </p>
-        </div>
+      {!configured && (
+        <PaneStatus
+          mode="error"
+          message="Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
+        />
+      )}
+      {configured && allEvents.length === 0 && <PaneStatus mode="loading" />}
+      {configured && allEvents.length > 0 && points.length === 0 && (
+        <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
       {/* Floating event card */}

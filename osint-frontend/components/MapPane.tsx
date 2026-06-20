@@ -11,12 +11,14 @@ import Map, {
   type MapRef,
 } from "react-map-gl/maplibre"
 import { AnimatePresence, motion } from "framer-motion"
+import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
+import { PaneStatus } from "./PaneStatus"
 import { TimeScrubber } from "./TimeScrubber"
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
@@ -94,6 +96,8 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const { byCountry } = useLatestScores()
   const scoredGeo = useScoredGeo(byCountry)
   const { centroids } = useCountriesGeo()
+  const configured = useConfigured()
+  const allEvents = useEvents()
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
   const [selected, setSelected] = useState<{ ev: VisibleEvent; lat: number; lon: number } | null>(null)
 
@@ -200,12 +204,15 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         )}
       </Map>
 
-      {positioned.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <p className="font-mono text-xs uppercase tracking-widest text-neutral-600">
-            No events match the current filters
-          </p>
-        </div>
+      {!configured && (
+        <PaneStatus
+          mode="error"
+          message="Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
+        />
+      )}
+      {configured && allEvents.length === 0 && <PaneStatus mode="loading" />}
+      {configured && allEvents.length > 0 && positioned.length === 0 && (
+        <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
       <FilterRail pane="map" side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
