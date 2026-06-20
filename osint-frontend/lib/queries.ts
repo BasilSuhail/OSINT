@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { useEvents } from "@/app/providers"
 import { getSupabase } from "./supabase"
-import { sourceKeyForEvent, type EventRow, type ScoreRow } from "./types"
+import { paneForEvent, sourceKeyForEvent, type EventRow, type Pane, type ScoreRow } from "./types"
 import type { FilterStore } from "@/stores/createFilterStore"
 
 export interface VisibleEvent extends EventRow {
@@ -25,8 +25,12 @@ export interface WindowState {
  * Computes the set of events visible in a pane's time window, honouring all
  * filters in the supplied store. Owns the scrubber clock: when `playing`, the
  * window end advances toward real-time at `speed`x.
+ *
+ * When `pane` is supplied, events whose source does not belong to that pane
+ * are dropped (e.g. satellite/NASA-derived events live on the globe; the rest
+ * on the flat map). This keeps the two panes from rendering duplicate markers.
  */
-export function useEventsInWindow(useStore: FilterStore): WindowState {
+export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowState {
   const allEvents = useEvents()
 
   const sources = useStore((s) => s.sources)
@@ -70,6 +74,7 @@ export function useEventsInWindow(useStore: FilterStore): WindowState {
     for (const ev of allEvents) {
       const sk = sourceKeyForEvent(ev)
       if (!sk || !sources[sk]) continue
+      if (pane && paneForEvent(ev) !== pane) continue
       if (ev.severity < severity[0] || ev.severity > severity[1]) continue
       if (countrySet.size > 0 && (!ev.country || !countrySet.has(ev.country))) continue
       if (kw) {
@@ -89,7 +94,7 @@ export function useEventsInWindow(useStore: FilterStore): WindowState {
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allEvents, sources, severity, countries, keyword, windowLengthMs, windowEndOffsetMs])
+  }, [allEvents, sources, severity, countries, keyword, windowLengthMs, windowEndOffsetMs, pane])
 }
 
 async function fetchScores(): Promise<ScoreRow[]> {

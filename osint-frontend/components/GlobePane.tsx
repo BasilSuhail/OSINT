@@ -33,7 +33,7 @@ interface GlobePaneProps {
 }
 
 export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount }: GlobePaneProps) {
-  const { events, windowEnd, total } = useEventsInWindow(useStore)
+  const { events, windowEnd, total } = useEventsInWindow(useStore, "globe")
   const globeRef = useRef<GlobeMethods | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -65,7 +65,9 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
     }
     controls.autoRotate = autoRotate
     controls.autoRotateSpeed = 0.5
-    globe.pointOfView({ altitude: 2.4 }, 0)
+    // Pull the camera back a touch so the future satellite/moon/sun layer has
+    // room to breathe, while keeping LEO altitudes visible above the surface.
+    globe.pointOfView({ altitude: 3.0 }, 0)
   }, [autoRotate, size.width])
 
   const points = useMemo(() => {
@@ -202,7 +204,7 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
         </div>
       )}
 
-      <FilterRail side="right" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
+      <FilterRail pane="globe" side="right" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
     </div>
   )
