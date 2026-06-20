@@ -30,6 +30,8 @@ export function markerStyle(ev: EventRow): MarkerStyle {
     }
     case "FIRMS":
       return { shape: "dot", size: 5, color }
+    case "EONET":
+      return { shape: "diamond", size: 9, color }
     case "GDELT": {
       const mentions = Number(payload.num_mentions ?? 0)
       return { shape: "circle", size: clamp(mentions / 50, 3, 10), color }

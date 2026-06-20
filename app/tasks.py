@@ -132,6 +132,11 @@ app.conf.beat_schedule = {
         "args": ["nasa-firms"],
         "schedule": crontab(hour="*/1", minute=6),
     },
+    "eonet-30min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["eonet"],
+        "schedule": crontab(minute="8,38"),
+    },
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),

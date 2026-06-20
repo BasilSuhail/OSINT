@@ -8,6 +8,7 @@ shipping fetchers.
 from __future__ import annotations
 
 from app.sources.base import Fetcher
+from app.sources.eonet_fetcher import EonetFetcher
 from app.sources.fred_fetcher import FredFetcher
 from app.sources.gdacs_fetcher import GdacsFetcher
 from app.sources.gdelt_fetcher import GdeltFetcher
@@ -22,6 +23,7 @@ _REGISTRY: dict[str, Fetcher] = {
     "usgs-quake": UsgsQuakeFetcher(),
     "gdacs": GdacsFetcher(),
     "nasa-firms": NasaFirmsFetcher(),
+    "eonet": EonetFetcher(),
 }
 
 
