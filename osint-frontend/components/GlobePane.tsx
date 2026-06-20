@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Globe, { type GlobeMethods } from "react-globe.gl"
 import { formatDistanceToNowStrict } from "date-fns"
-import { ExternalLink, Orbit, X } from "lucide-react"
+import { ExternalLink, Orbit, Satellite as SatelliteIcon, X } from "lucide-react"
+import * as THREE from "three"
 import { useEventsInWindow, type VisibleEvent } from "@/lib/queries"
 import { colorForEvent } from "@/lib/types"
 import { pointAltitude } from "@/lib/markers"
+import { useSatellites, type Satellite } from "@/lib/satellites"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { FilterRail } from "./FilterRail"
@@ -15,6 +17,21 @@ import { TimeScrubber } from "./TimeScrubber"
 const GLOBE_IMG = "//unpkg.com/three-globe/example/img/earth-night.jpg"
 const BUMP_IMG = "//unpkg.com/three-globe/example/img/earth-topology.png"
 const MAX_POINTS = 1500
+const MAX_SATS = 2500
+
+const SAT_GEOMETRY = new THREE.SphereGeometry(0.6, 6, 6)
+const SAT_MATERIAL = new THREE.MeshBasicMaterial({
+  color: 0x22d3ee,
+  transparent: true,
+  opacity: 0.85,
+})
+function makeSatMesh(): THREE.Object3D {
+  const mesh = new THREE.Mesh(SAT_GEOMETRY, SAT_MATERIAL)
+  // Pin a clone of the material so individual mesh tint can drift in future
+  // without affecting the shared one.
+  mesh.material = SAT_MATERIAL
+  return mesh
+}
 
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace("#", "")
@@ -34,11 +51,17 @@ interface GlobePaneProps {
 
 export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount }: GlobePaneProps) {
   const { events, windowEnd, total } = useEventsInWindow(useStore, "globe")
+  const showSatellites = useStore((s) => s.showSatellites)
+  const satelliteGroup = useStore((s) => s.satelliteGroup)
+  const sats = useSatellites(showSatellites, satelliteGroup, 3000)
   const globeRef = useRef<GlobeMethods | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [autoRotate, setAutoRotate] = useState(true)
   const [selected, setSelected] = useState<VisibleEvent | null>(null)
+  const [selectedSat, setSelectedSat] = useState<Satellite | null>(null)
+
+  const satsCapped = useMemo(() => (sats.length > MAX_SATS ? sats.slice(0, MAX_SATS) : sats), [sats])
 
   useEffect(() => onCount(total), [total, onCount])
 
@@ -115,6 +138,12 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
           pointsMerge={false}
           onPointClick={handlePointClick}
           arcsData={[]}
+          objectsData={satsCapped}
+          objectLat={(d) => (d as Satellite).lat}
+          objectLng={(d) => (d as Satellite).lon}
+          objectAltitude={(d) => (d as Satellite).alt}
+          objectThreeObject={makeSatMesh}
+          onObjectClick={(o) => setSelectedSat(o as Satellite)}
           enablePointerInteraction
         />
       )}
@@ -133,6 +162,14 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
       >
         <Orbit className="h-4 w-4" />
       </button>
+
+      {/* Live satellite count chip */}
+      {showSatellites && satsCapped.length > 0 && (
+        <div className="absolute left-3 top-3 z-30 flex items-center gap-1.5 rounded-md border border-cyan-900/70 bg-cyan-950/30 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-cyan-200 backdrop-blur-sm">
+          <SatelliteIcon className="h-3 w-3" />
+          {satsCapped.length} live · {satelliteGroup}
+        </div>
+      )}
 
       {points.length === 0 && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -201,6 +238,40 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Satellite floating card */}
+      {selectedSat && (
+        <div className="absolute right-1/2 top-4 z-40 w-64 translate-x-1/2 rounded-lg border border-cyan-900 bg-neutral-950/95 p-3 backdrop-blur-md">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <SatelliteIcon className="h-3.5 w-3.5 text-cyan-300" />
+              <span className="font-mono text-xs uppercase tracking-wider text-cyan-100">
+                {selectedSat.name}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setSelectedSat(null)}
+              className="text-neutral-500 hover:text-neutral-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
+            <dt className="text-neutral-500">NORAD</dt>
+            <dd className="text-neutral-300">{selectedSat.noradId}</dd>
+            <dt className="text-neutral-500">altitude</dt>
+            <dd className="text-neutral-300">{selectedSat.altKm.toFixed(0)} km</dd>
+            <dt className="text-neutral-500">speed</dt>
+            <dd className="text-neutral-300">{selectedSat.speedKmS.toFixed(2)} km/s</dd>
+            <dt className="text-neutral-500">lat / lon</dt>
+            <dd className="text-neutral-300">
+              {selectedSat.lat.toFixed(2)}, {selectedSat.lon.toFixed(2)}
+            </dd>
+          </dl>
         </div>
       )}
 

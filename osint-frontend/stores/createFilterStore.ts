@@ -14,6 +14,10 @@ export interface FilterState {
   windowLengthMs: number
   playing: boolean
   speed: number
+  /** Render live satellite orbits on the globe pane. Ignored on the map pane. */
+  showSatellites: boolean
+  /** Which CelesTrak group to load: "stations" (~20), "visual" (~250), "active" (~10k), etc. */
+  satelliteGroup: string
 
   toggleSource: (key: SourceKey) => void
   setSeverity: (range: [number, number]) => void
@@ -24,6 +28,8 @@ export interface FilterState {
   setPlaying: (playing: boolean) => void
   togglePlaying: () => void
   setSpeed: (speed: number) => void
+  toggleSatellites: () => void
+  setSatelliteGroup: (group: string) => void
   reset: () => void
 }
 
@@ -50,6 +56,8 @@ export function createFilterStore(): FilterStore {
     windowLengthMs: DEFAULT_WINDOW,
     playing: false,
     speed: 1,
+    showSatellites: true,
+    satelliteGroup: "visual",
 
     toggleSource: (key) =>
       set((s) => ({ sources: { ...s.sources, [key]: !s.sources[key] } })),
@@ -67,6 +75,8 @@ export function createFilterStore(): FilterStore {
     setPlaying: (playing) => set({ playing }),
     togglePlaying: () => set((s) => ({ playing: !s.playing })),
     setSpeed: (speed) => set({ speed }),
+    toggleSatellites: () => set((s) => ({ showSatellites: !s.showSatellites })),
+    setSatelliteGroup: (satelliteGroup) => set({ satelliteGroup }),
     reset: () =>
       set({
         sources: { ...defaultSources },
@@ -76,6 +86,8 @@ export function createFilterStore(): FilterStore {
         windowEndOffsetMs: 0,
         playing: false,
         speed: 1,
+        showSatellites: true,
+        satelliteGroup: "visual",
       }),
   }))
 }

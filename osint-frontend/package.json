@@ -25,6 +25,7 @@
     "react-globe.gl": "^2.38.0",
     "react-map-gl": "^8.1.1",
     "react-resizable-panels": "^4.11.2",
+    "satellite.js": "^7.0.1",
     "shadcn": "^4.8.0",
     "swr": "^2.4.1",
     "tailwind-merge": "^3.3.1",
@@ -37,6 +38,7 @@
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.184.1",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "typescript": "5.7.3"
