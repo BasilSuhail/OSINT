@@ -37,7 +37,7 @@ export function EphemerisChip({ eph }: EphemerisChipProps) {
   if (!eph) return null
 
   return (
-    <div className="pointer-events-none absolute bottom-[calc(8%+12px)] left-3 z-30 rounded-md border border-neutral-800 bg-neutral-950/80 px-2.5 py-1.5 font-mono text-[10px] leading-tight text-neutral-300 backdrop-blur-sm">
+    <div className="pointer-events-none absolute bottom-[calc(8%+24px)] left-3 z-30 rounded-md border border-neutral-800 bg-neutral-950/80 px-2.5 py-1.5 font-mono text-[10px] leading-tight text-neutral-300 backdrop-blur-sm">
       <div className="flex items-baseline gap-2">
         <span className="text-neutral-500">UTC</span>
         <span className="tabular-nums text-neutral-100">{fmtUtc(now)}</span>
