@@ -6,7 +6,6 @@ import { formatDistanceToNowStrict } from "date-fns"
 import { useEvents } from "@/app/providers"
 import { useEventsInWindow } from "@/lib/queries"
 import {
-  colorForEvent,
   paneForEvent,
   sourceFiltersForPane,
   sourceKeyForEvent,
