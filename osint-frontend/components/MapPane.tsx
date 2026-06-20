@@ -45,6 +45,10 @@ function EventMarker({
 }) {
   const style = markerStyle(ev)
   const isNew = ev.age < 0.05
+  // The colored dot stays small for visual density; the surrounding
+  // transparent square is the click target. 28 px ≈ the WCAG 2.5.5
+  // "minimum interactive size" guideline and fits modern phone fingers.
+  const HIT_SIZE = 28
 
   return (
     <Marker
@@ -61,7 +65,7 @@ function EventMarker({
         animate={{ scale: 1, opacity: ev.opacity }}
         exit={{ scale: 0, opacity: 0 }}
         transition={{ duration: 0.2 }}
-        style={{ width: style.size, height: style.size, cursor: "pointer" }}
+        style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer" }}
         className="relative grid place-items-center"
       >
         {isNew && (
