@@ -70,7 +70,7 @@ function EventMarker({ ev, lat, lon }: { ev: VisibleEvent; lat: number; lon: num
 }
 
 export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount }: MapPaneProps) {
-  const { events, windowEnd, total } = useEventsInWindow(useStore)
+  const { events, windowEnd, total } = useEventsInWindow(useStore, "map")
   const { byCountry } = useLatestScores()
   const scoredGeo = useScoredGeo(byCountry)
   const { centroids } = useCountriesGeo()
@@ -149,7 +149,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         </div>
       )}
 
-      <FilterRail side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
+      <FilterRail pane="map" side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
     </div>
   )

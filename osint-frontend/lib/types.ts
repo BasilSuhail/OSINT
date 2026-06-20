@@ -89,7 +89,12 @@ export interface ScoreRow {
   method_version: string | null
 }
 
-/** The five toggleable source filters, mapped to a category + colour. */
+/** Which pane a source renders on. NASA / satellite-derived feeds belong on
+ *  the globe; everything else (geopolitical, markets, ground-sensor hazards,
+ *  news) belongs on the flat map. Keeps the two panes from duplicating. */
+export type Pane = "map" | "globe"
+
+/** The five toggleable source filters, mapped to a category + colour + pane. */
 export interface SourceFilterDef {
   key: SourceKey
   label: string
@@ -98,15 +103,30 @@ export interface SourceFilterDef {
   color: string
   /** maplibre-friendly hex */
   hex: string
+  /** which pane this source renders on */
+  pane: Pane
 }
 
 export const SOURCE_FILTERS: SourceFilterDef[] = [
-  { key: "GDELT", label: "Geopolitical events", category: "geopolitical", color: "rgb(163,163,163)", hex: "#a3a3a3" },
-  { key: "yfinance", label: "Markets", category: "market", color: "rgb(34,197,94)", hex: "#22c55e" },
-  { key: "USGS", label: "Earthquakes", category: "hazard", color: "rgb(239,68,68)", hex: "#ef4444" },
-  { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316" },
-  { key: "FIRMS", label: "Active fires", category: "weather", color: "rgb(234,179,8)", hex: "#eab308" },
+  { key: "GDELT", label: "Geopolitical events", category: "geopolitical", color: "rgb(163,163,163)", hex: "#a3a3a3", pane: "map" },
+  { key: "yfinance", label: "Markets", category: "market", color: "rgb(34,197,94)", hex: "#22c55e", pane: "map" },
+  { key: "USGS", label: "Earthquakes", category: "hazard", color: "rgb(239,68,68)", hex: "#ef4444", pane: "map" },
+  { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316", pane: "map" },
+  { key: "FIRMS", label: "Active fires (satellite)", category: "weather", color: "rgb(234,179,8)", hex: "#eab308", pane: "globe" },
 ]
+
+/** Source filters scoped to a single pane. */
+export function sourceFiltersForPane(pane: Pane): SourceFilterDef[] {
+  return SOURCE_FILTERS.filter((f) => f.pane === pane)
+}
+
+/** Which pane should render this event. Returns null if the source is unknown. */
+export function paneForEvent(ev: EventRow): Pane | null {
+  const sk = sourceKeyForEvent(ev)
+  if (!sk) return null
+  const def = SOURCE_FILTERS.find((f) => f.key === sk)
+  return def?.pane ?? null
+}
 
 /** Resolve a marker colour from an event's source / category. */
 export function colorForEvent(ev: EventRow): string {

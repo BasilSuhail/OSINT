@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { Check, ChevronsUpDown, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react"
 import { useEvents } from "@/app/providers"
-import { SOURCE_FILTERS } from "@/lib/types"
+import { sourceFiltersForPane, type Pane } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -20,13 +20,14 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface FilterRailProps {
+  pane: Pane
   side: "left" | "right"
   useStore: FilterStore
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailProps) {
+export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterRailProps) {
   const allEvents = useEvents()
   const sources = useStore((s) => s.sources)
   const severity = useStore((s) => s.severity)
@@ -40,6 +41,9 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
 
   const [countryOpen, setCountryOpen] = useState(false)
 
+  /** Only show source toggles that render on this pane. */
+  const paneFilters = useMemo(() => sourceFiltersForPane(pane), [pane])
+
   const distinctCountries = useMemo(() => {
     const set = new Set<string>()
     for (const ev of allEvents) if (ev.country) set.add(ev.country)
@@ -47,7 +51,7 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
   }, [allEvents])
 
   const activeCount =
-    SOURCE_FILTERS.filter((f) => !sources[f.key]).length +
+    paneFilters.filter((f) => !sources[f.key]).length +
     (severity[0] > 0 || severity[1] < 1 ? 1 : 0) +
     (countries.length > 0 ? 1 : 0) +
     (keyword.trim() ? 1 : 0)
@@ -88,7 +92,7 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
           )}
         </button>
         {/* Source dots as quick toggles */}
-        {SOURCE_FILTERS.map((f) => (
+        {paneFilters.map((f) => (
           <button
             key={f.key}
             type="button"
@@ -128,7 +132,7 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
 
           {/* Source toggles */}
           <div className="flex flex-col gap-1.5">
-            {SOURCE_FILTERS.map((f) => (
+            {paneFilters.map((f) => (
               <button
                 key={f.key}
                 type="button"
