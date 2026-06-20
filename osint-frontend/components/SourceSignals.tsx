@@ -44,7 +44,7 @@ export function SourceSignals({ ev }: { ev: EventRow }) {
   const p = (ev.payload ?? {}) as Record<string, unknown>
   const source = (ev.source || "").toLowerCase()
 
-  let rows: { label: string; value: string | number | null | undefined; hint?: string }[] = []
+  let rows: { label: string; value: string | number | null | undefined; hint?: string }[]
 
   if (source === "gdelt") {
     const tone = asNumber(p.avg_tone)
