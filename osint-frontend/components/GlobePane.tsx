@@ -168,10 +168,19 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
     return out
   }, [satsCapped, eph, neos])
 
-  /** Day/night terminator: the great-circle perpendicular to the sub-solar
-   *  vector. Sampled at 72 points so the polyline is smooth at any zoom.
-   *  Returns null when ephemeris hasn't loaded yet or the user toggled it off. */
-  const terminatorPath = useMemo<[number, number][] | null>(() => {
+  type DayCapGeometry = { type: "Polygon"; coordinates: number[][][] }
+
+  /** Day-side cap polygon: a spherical disk of half-angle ~89° around the
+   *  sub-solar point, rendered as a translucent yellow polygon over the
+   *  globe so the day hemisphere reads as visibly sunlit. Returns null
+   *  when ephemeris hasn't loaded yet or the user toggled it off.
+   *
+   *  Why a cap polygon and not a great-circle line: the polyline only ever
+   *  drew the terminator, which read as "weird yellow line on the globe"
+   *  (see #134). Filling the day side via polygonsData lets the user see
+   *  at a glance which longitudes are currently sunlit. The night side
+   *  keeps the existing earth-night texture. */
+  const dayCapPolygon = useMemo<{ geometry: DayCapGeometry } | null>(() => {
     if (!showTerminator || !eph) return null
     const lat = (eph.sun.lat * Math.PI) / 180
     const lon = (eph.sun.lon * Math.PI) / 180
@@ -187,7 +196,6 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
       ax = 1
       az = 0
     }
-    // U = normalize(cross(S, A))
     let ux = sy * az - sz * ay
     let uy = sz * ax - sx * az
     let uz = sx * ay - sy * ax
@@ -195,22 +203,40 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
     ux /= un
     uy /= un
     uz /= un
-    // V = cross(S, U)
     const vx = sy * uz - sz * uy
     const vy = sz * ux - sx * uz
     const vz = sx * uy - sy * ux
-    const path: [number, number][] = []
+
+    // Half-angle of the cap. 89° leaves a sliver of unlit ground right at
+    // the terminator so the day-tint never quite touches the night-side
+    // textures — that sliver reads as a soft penumbra rather than a
+    // hard edge.
+    const ALPHA = (89 * Math.PI) / 180
+    const cosA = Math.cos(ALPHA)
+    const sinA = Math.sin(ALPHA)
+
     const N = 72
+    const ring: [number, number][] = []
     for (let i = 0; i <= N; i++) {
-      const θ = (2 * Math.PI * i) / N
-      const px = Math.cos(θ) * ux + Math.sin(θ) * vx
-      const py = Math.cos(θ) * uy + Math.sin(θ) * vy
-      const pz = Math.cos(θ) * uz + Math.sin(θ) * vz
-      const pLat = (Math.asin(pz) * 180) / Math.PI
+      // Walk theta in reverse so the ring is CCW around the sub-solar
+      // point from above the globe. globe.gl fills the interior of CCW
+      // rings — which is exactly the day cap.
+      const θ = (-2 * Math.PI * i) / N
+      const cosT = Math.cos(θ)
+      const sinT = Math.sin(θ)
+      const px = cosA * sx + sinA * (cosT * ux + sinT * vx)
+      const py = cosA * sy + sinA * (cosT * uy + sinT * vy)
+      const pz = cosA * sz + sinA * (cosT * uz + sinT * vz)
+      const pLat = (Math.asin(Math.max(-1, Math.min(1, pz))) * 180) / Math.PI
       const pLon = (Math.atan2(py, px) * 180) / Math.PI
-      path.push([pLat, pLon])
+      ring.push([pLon, pLat])
     }
-    return path
+    return {
+      geometry: {
+        type: "Polygon",
+        coordinates: [ring],
+      },
+    }
   }, [showTerminator, eph])
 
   /** Build a one-off starfield scene object the first time the user turns it
@@ -369,19 +395,27 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
             else if (obj.kind === "asteroid") setSelectedNeo(obj.data)
             else setSelectedCelestial(obj.data)
           }}
-          // Day/night terminator: one closed great-circle polyline. Lifted
-          // 0.015 globe radii so the camera sees the full visible-hemisphere
-          // arc, not just a sliver clipped by the surface. Solid stroke —
-          // the dashed march in #117 made it read as a floating yellow stub
-          // (issue raised after #117 deployed). See issue #122.
-          pathsData={terminatorPath ? [terminatorPath] : []}
-          pathPoints={(d) => d as [number, number][]}
-          pathPointLat={(p) => (p as [number, number])[0]}
-          pathPointLng={(p) => (p as [number, number])[1]}
-          pathPointAlt={() => 0.015}
-          pathColor={() => ["rgba(253,224,71,0.95)", "rgba(253,224,71,0.95)"]}
-          pathStroke={2.5}
-          pathTransitionDuration={0}
+          // Day-tint polygon: a spherical cap centred on the sub-solar
+          // point fills the day hemisphere with a translucent amber so
+          // the user sees at a glance which longitudes are sunlit (see
+          // #134). The night side keeps the existing earth-night
+          // texture. Replaces the great-circle terminator line that
+          // earlier issues #117 / #122 tried to make readable.
+          polygonsData={dayCapPolygon ? [dayCapPolygon] : []}
+          // react-globe.gl's GeoJsonGeometry type is too narrow (declares
+          // `coordinates: number[]` instead of the GeoJSON spec). At
+          // runtime it accepts a standard GeoJSON Polygon, so we widen
+          // through unknown to keep tsc happy.
+          polygonGeoJsonGeometry={
+            ((d: object) =>
+              (d as { geometry: DayCapGeometry })
+                .geometry as unknown as { type: string; coordinates: number[] })
+          }
+          polygonAltitude={() => 0.005}
+          polygonCapColor={() => "rgba(253,224,71,0.16)"}
+          polygonSideColor={() => "rgba(253,224,71,0.04)"}
+          polygonStrokeColor={() => "rgba(253,224,71,0.55)"}
+          polygonsTransitionDuration={0}
           enablePointerInteraction
         />
       )}
