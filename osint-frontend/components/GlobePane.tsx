@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Globe, { type GlobeMethods } from "react-globe.gl"
-import { Orbit, Satellite as SatelliteIcon, X } from "lucide-react"
+import { Orbit, Satellite as SatelliteIcon, Stars, Sunset, Target, X } from "lucide-react"
 import * as THREE from "three"
 import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, type VisibleEvent } from "@/lib/queries"
@@ -110,6 +110,9 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
   const [selected, setSelected] = useState<VisibleEvent | null>(null)
   const [selectedSat, setSelectedSat] = useState<Satellite | null>(null)
   const [selectedCelestial, setSelectedCelestial] = useState<CelestialBody | null>(null)
+  const [showTerminator, setShowTerminator] = useState(true)
+  const [showStarfield, setShowStarfield] = useState(true)
+  const [followIss, setFollowIss] = useState(false)
 
   const satsCapped = useMemo(() => (sats.length > MAX_SATS ? sats.slice(0, MAX_SATS) : sats), [sats])
 
@@ -127,6 +130,105 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
     }
     return out
   }, [satsCapped, eph])
+
+  /** Day/night terminator: the great-circle perpendicular to the sub-solar
+   *  vector. Sampled at 72 points so the polyline is smooth at any zoom.
+   *  Returns null when ephemeris hasn't loaded yet or the user toggled it off. */
+  const terminatorPath = useMemo<[number, number][] | null>(() => {
+    if (!showTerminator || !eph) return null
+    const lat = (eph.sun.lat * Math.PI) / 180
+    const lon = (eph.sun.lon * Math.PI) / 180
+    // Sub-solar unit vector S.
+    const sx = Math.cos(lat) * Math.cos(lon)
+    const sy = Math.cos(lat) * Math.sin(lon)
+    const sz = Math.sin(lat)
+    // Pick a vector not parallel to S, then orthonormalise to get U, V.
+    let ax = 0
+    const ay = 0
+    let az = 1
+    if (Math.abs(sz) > 0.99) {
+      ax = 1
+      az = 0
+    }
+    // U = normalize(cross(S, A))
+    let ux = sy * az - sz * ay
+    let uy = sz * ax - sx * az
+    let uz = sx * ay - sy * ax
+    const un = Math.hypot(ux, uy, uz)
+    ux /= un
+    uy /= un
+    uz /= un
+    // V = cross(S, U)
+    const vx = sy * uz - sz * uy
+    const vy = sz * ux - sx * uz
+    const vz = sx * uy - sy * ux
+    const path: [number, number][] = []
+    const N = 72
+    for (let i = 0; i <= N; i++) {
+      const θ = (2 * Math.PI * i) / N
+      const px = Math.cos(θ) * ux + Math.sin(θ) * vx
+      const py = Math.cos(θ) * uy + Math.sin(θ) * vy
+      const pz = Math.cos(θ) * uz + Math.sin(θ) * vz
+      const pLat = (Math.asin(pz) * 180) / Math.PI
+      const pLon = (Math.atan2(py, px) * 180) / Math.PI
+      path.push([pLat, pLon])
+    }
+    return path
+  }, [showTerminator, eph])
+
+  /** Build a one-off starfield scene object the first time the user turns it
+   *  on. Three.js Points of ~1500 random unit vectors at distance 6 globe
+   *  radii. Static; we don't rotate it because Earth rotation under it gives
+   *  the parallax for free. */
+  useEffect(() => {
+    if (size.width === 0) return
+    const globe = globeRef.current
+    if (!globe) return
+    const scene = globe.scene() as unknown as THREE.Scene
+    // Lazily build + cache.
+    let starfield = scene.getObjectByName("osint-starfield") as THREE.Points | null
+    if (!starfield) {
+      const STAR_COUNT = 1500
+      const positions = new Float32Array(STAR_COUNT * 3)
+      const R = 600
+      for (let i = 0; i < STAR_COUNT; i++) {
+        // Uniform on the sphere via the standard arccos / 2π trick.
+        const u = Math.random()
+        const v = Math.random()
+        const theta = 2 * Math.PI * u
+        const phi = Math.acos(2 * v - 1)
+        positions[3 * i + 0] = R * Math.sin(phi) * Math.cos(theta)
+        positions[3 * i + 1] = R * Math.sin(phi) * Math.sin(theta)
+        positions[3 * i + 2] = R * Math.cos(phi)
+      }
+      const geom = new THREE.BufferGeometry()
+      geom.setAttribute("position", new THREE.BufferAttribute(positions, 3))
+      const mat = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 1.2,
+        sizeAttenuation: false,
+        transparent: true,
+        opacity: 0.85,
+      })
+      starfield = new THREE.Points(geom, mat)
+      starfield.name = "osint-starfield"
+      scene.add(starfield)
+    }
+    starfield.visible = showStarfield
+  }, [showStarfield, size.width])
+
+  /** Follow ISS: every sat tick, smoothly move the camera onto the ISS sub-
+   *  point. Cancelled when the user toggles off; the user can still drag to
+   *  reposition mid-follow (the next tick will re-centre, that's the point). */
+  useEffect(() => {
+    if (!followIss) return
+    if (!satsCapped.length) return
+    const globe = globeRef.current
+    if (!globe) return
+    const iss = satsCapped.find((s) => s.noradId === "25544") ?? null
+    if (!iss) return
+    globe.pointOfView({ lat: iss.lat, lng: iss.lon, altitude: 1.6 }, 800)
+  }, [followIss, satsCapped])
 
   useEffect(() => onCount(total), [total, onCount])
 
@@ -227,6 +329,13 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
             if (obj.kind === "sat") setSelectedSat(obj.data)
             else setSelectedCelestial(obj.data)
           }}
+          // Day/night terminator: one closed polyline at the surface.
+          pathsData={terminatorPath ? [terminatorPath] : []}
+          pathPoints={(d) => d as [number, number][]}
+          pathPointLat={(p) => (p as [number, number])[0]}
+          pathPointLng={(p) => (p as [number, number])[1]}
+          pathColor={() => ["rgba(251,191,36,0.55)", "rgba(251,191,36,0.55)"]}
+          pathStroke={1.2}
           enablePointerInteraction
         />
       )}
@@ -244,6 +353,54 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
         )}
       >
         <Orbit className="h-4 w-4" />
+      </button>
+
+      {/* Terminator toggle */}
+      <button
+        type="button"
+        onClick={() => setShowTerminator((s) => !s)}
+        aria-label={showTerminator ? "Hide day/night line" : "Show day/night line"}
+        title="Day / night terminator"
+        className={cn(
+          "absolute right-14 top-24 z-30 grid h-8 w-8 place-items-center rounded-md border backdrop-blur-sm transition-colors",
+          showTerminator
+            ? "border-amber-700 bg-amber-950/40 text-amber-300"
+            : "border-neutral-700 bg-neutral-900/70 text-neutral-300 hover:text-neutral-100",
+        )}
+      >
+        <Sunset className="h-4 w-4" />
+      </button>
+
+      {/* Starfield toggle */}
+      <button
+        type="button"
+        onClick={() => setShowStarfield((s) => !s)}
+        aria-label={showStarfield ? "Hide starfield" : "Show starfield"}
+        title="Starfield background"
+        className={cn(
+          "absolute right-14 top-[136px] z-30 grid h-8 w-8 place-items-center rounded-md border backdrop-blur-sm transition-colors",
+          showStarfield
+            ? "border-indigo-700 bg-indigo-950/40 text-indigo-200"
+            : "border-neutral-700 bg-neutral-900/70 text-neutral-300 hover:text-neutral-100",
+        )}
+      >
+        <Stars className="h-4 w-4" />
+      </button>
+
+      {/* Follow ISS toggle */}
+      <button
+        type="button"
+        onClick={() => setFollowIss((f) => !f)}
+        aria-label={followIss ? "Stop following ISS" : "Follow ISS"}
+        title="Follow the ISS"
+        className={cn(
+          "absolute right-14 top-[168px] z-30 grid h-8 w-8 place-items-center rounded-md border backdrop-blur-sm transition-colors",
+          followIss
+            ? "border-cyan-700 bg-cyan-950/40 text-cyan-200"
+            : "border-neutral-700 bg-neutral-900/70 text-neutral-300 hover:text-neutral-100",
+        )}
+      >
+        <Target className="h-4 w-4" />
       </button>
 
       {/* Live satellite count chip */}
