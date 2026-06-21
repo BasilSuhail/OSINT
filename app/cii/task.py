@@ -136,9 +136,7 @@ def _compute_cii_body(
 
     with session_scope() as session:
         stmt = (
-            select(EventRow)
-            .where(EventRow.occurred_at >= start)
-            .where(EventRow.occurred_at < end)
+            select(EventRow).where(EventRow.occurred_at >= start).where(EventRow.occurred_at < end)
         )
         events = list(session.execute(stmt).scalars())
 
