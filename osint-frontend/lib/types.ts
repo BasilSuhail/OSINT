@@ -9,7 +9,7 @@ export type Category =
   | "cyber"
   | "mesh"
 
-export type SourceKey = "GDELT" | "USGS" | "GDACS" | "FIRMS" | "yfinance" | "EONET"
+export type SourceKey = "GDELT" | "USGS" | "GDACS" | "FIRMS" | "yfinance" | "EONET" | "NEWS"
 
 export interface GdeltPayload {
   goldstein?: number
@@ -114,6 +114,7 @@ export const SOURCE_FILTERS: SourceFilterDef[] = [
   { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316", pane: "map" },
   { key: "FIRMS", label: "Active fires (satellite)", category: "weather", color: "rgb(234,179,8)", hex: "#eab308", pane: "globe" },
   { key: "EONET", label: "Natural events (NASA)", category: "hazard", color: "rgb(217,70,239)", hex: "#d946ef", pane: "globe" },
+  { key: "NEWS", label: "News (RSS)", category: "news", color: "rgb(56,189,248)", hex: "#38bdf8", pane: "map" },
 ]
 
 /** Source filters scoped to a single pane. */
@@ -132,6 +133,7 @@ export function paneForEvent(ev: EventRow): Pane | null {
 /** Resolve a marker colour from an event's source / category. */
 export function colorForEvent(ev: EventRow): string {
   const src = (ev.source || "").toUpperCase()
+  if (src.startsWith("RSS-") || ev.category === "news") return "#38bdf8"
   if (src.includes("USGS")) return "#ef4444"
   if (src.includes("GDACS")) return "#f97316"
   if (src === "EONET" || src.includes("EONET")) return "#d946ef"
@@ -154,6 +156,7 @@ export function colorForEvent(ev: EventRow): string {
 /** Which SourceKey does an event belong to (for toggle filtering). */
 export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
   const src = (ev.source || "").toUpperCase()
+  if (src.startsWith("RSS-")) return "NEWS"
   if (src.includes("USGS")) return "USGS"
   if (src.includes("GDACS")) return "GDACS"
   if (src === "EONET") return "EONET"
@@ -162,6 +165,8 @@ export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
   if (src.includes("GDELT")) return "GDELT"
   // fall back on category
   switch (ev.category) {
+    case "news":
+      return "NEWS"
     case "market":
       return "yfinance"
     case "geopolitical":
