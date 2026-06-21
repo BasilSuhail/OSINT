@@ -40,6 +40,7 @@ from typing import Any, Final
 import feedparser
 import httpx
 
+from app.enrichment.city import city_for
 from app.models import Category, Event
 from app.sources.base import Fetcher
 
@@ -132,6 +133,16 @@ def entry_to_event(
     source_event_id = guid or _hash_event_id(config.source, link or "", title)
 
     severity = _severity_for(title, summary)
+
+    # Offline city pinpoint: scan title + summary for any of ~1.2 k known
+    # populated places. When the feed declares a default country, prefer
+    # cities in that country on name collisions (Cambridge UK > Cambridge MA
+    # on a BBC UK feed). See app/enrichment/city.py + issue #112.
+    city = city_for(f"{title} {summary}", country_hint=config.default_country)
+    lat = city.lat if city else None
+    lon = city.lon if city else None
+    country = (city.iso if city else None) or config.default_country
+
     payload: dict[str, Any] = {
         "title": title,
         "source_url": link,
@@ -139,6 +150,7 @@ def entry_to_event(
         "feed_name": config.pretty_name,
         "published_at": occurred_at.isoformat(),
         "guid": guid or None,
+        "city": city.name if city else None,
     }
 
     return Event(
@@ -150,9 +162,9 @@ def entry_to_event(
         severity=severity,
         confidence=None,
         keywords=["news", config.source, config.pretty_name.lower()],
-        country=config.default_country,
-        lat=None,
-        lon=None,
+        country=country,
+        lat=lat,
+        lon=lon,
         payload=payload,
     )
 
