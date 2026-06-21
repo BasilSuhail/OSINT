@@ -173,6 +173,24 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
 
   useEffect(() => onCount(total), [total, onCount])
 
+  // Listen for the cross-section "fly to map cell" event the dashboard
+  // dispatches when the user clicks a convergence alert (#145). Cheap
+  // pub/sub pattern via CustomEvent — no shared store needed.
+  useEffect(() => {
+    if (!mapRef) return
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as
+        | { lat?: number; lon?: number; zoom?: number }
+        | undefined
+      if (!detail || typeof detail.lat !== "number" || typeof detail.lon !== "number") return
+      const map = mapRef.getMap()
+      const target = typeof detail.zoom === "number" ? detail.zoom : 5
+      map.flyTo({ center: [detail.lon, detail.lat], zoom: target, duration: 800 })
+    }
+    window.addEventListener("osint:flyto", handler)
+    return () => window.removeEventListener("osint:flyto", handler)
+  }, [mapRef])
+
   const positioned = useMemo<Positioned[]>(() => {
     const out: Positioned[] = []
     for (const ev of events) {
