@@ -12,6 +12,7 @@ import { useRightPaneStore } from "@/stores/rightPaneStore"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { ConnectionIndicator } from "./ConnectionIndicator"
 import { CountrySidePanel } from "./CountrySidePanel"
+import { DashboardSection } from "./DashboardSection"
 
 const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
   ssr: false,
@@ -91,7 +92,8 @@ export function SplitLayout() {
   const globeSummary = filterSummary(useRightPaneStore)
 
   return (
-    <main className="relative h-dvh w-screen overflow-hidden bg-neutral-950 text-neutral-100">
+    <main className="relative min-h-dvh w-screen bg-neutral-950 text-neutral-100">
+      <div className="relative h-dvh w-full overflow-hidden">
       {!configured && (
         <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
           Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -236,6 +238,10 @@ export function SplitLayout() {
           [ ] rails · space play/pause
         </span>
       </div>
+      </div>
+
+      {/* Scroll-down dashboard section */}
+      <DashboardSection configured={configured} />
     </main>
   )
 }
