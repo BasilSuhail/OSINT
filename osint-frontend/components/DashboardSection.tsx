@@ -16,7 +16,7 @@ import {
 } from "recharts"
 import { useEvents } from "@/app/providers"
 import { getSupabase } from "@/lib/supabase"
-import { colorForEvent, type EventRow, type ScoreRow } from "@/lib/types"
+import type { EventRow, ScoreRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
 
@@ -195,6 +195,125 @@ function useScoreSeries(scoreName: string): { day: string; score: number; n: num
   }, [data])
 }
 
+/** Expected cadence per source slug, in minutes. Lifted from the beat
+ *  schedule in app/tasks.py — sources beyond this are flagged amber /
+ *  red on the source latency panel (#144). */
+const SOURCE_CADENCE_MIN: Record<string, number> = {
+  yfinance: 5,
+  fred: 24 * 60,
+  gdelt: 15,
+  "usgs-quake": 15,
+  usgs: 15,
+  gdacs: 15,
+  "nasa-firms": 60,
+  eonet: 30,
+  "rss-bbc-world": 60,
+  "rss-bbc-uk": 60,
+  "rss-reuters-world": 60,
+  "rss-dawn": 60,
+  "rss-guardian-world": 60,
+  "rss-geo-english": 60,
+  "uk-police": 24 * 60,
+}
+
+interface IngestHealthRow {
+  source: string
+  day: string
+  success_n: number | null
+  failure_n: number | null
+  last_success: string | null
+  last_failure: string | null
+}
+
+interface SourceLatencyRow {
+  source: string
+  lastSuccess: string | null
+  ageMin: number | null
+  cadenceMin: number | null
+  band: "ok" | "warn" | "stale"
+  failure24h: number
+}
+
+function useSourceLatency(): SourceLatencyRow[] {
+  const [rows, setRows] = useState<IngestHealthRow[]>([])
+  useEffect(() => {
+    const supabase = getSupabase()
+    if (!supabase) return
+    const since = subDays(new Date(), 7).toISOString().slice(0, 10)
+    supabase
+      .from("ingest_health")
+      .select("*")
+      .gte("day", since)
+      .order("day", { ascending: false })
+      .limit(2000)
+      .then(({ data, error }) => {
+        if (!error && data) setRows(data as IngestHealthRow[])
+      })
+  }, [])
+
+  return useMemo(() => {
+    const latest = new Map<string, IngestHealthRow>()
+    for (const r of rows) {
+      const existing = latest.get(r.source)
+      if (!existing) {
+        latest.set(r.source, r)
+        continue
+      }
+      // pick the row with the most recent last_success
+      const a = new Date(r.last_success ?? r.day).getTime()
+      const b = new Date(existing.last_success ?? existing.day).getTime()
+      if (a > b) latest.set(r.source, r)
+    }
+
+    const failure24hBySource = new Map<string, number>()
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000
+    for (const r of rows) {
+      const t = new Date(r.day).getTime()
+      if (!Number.isFinite(t) || t < cutoff) continue
+      failure24hBySource.set(
+        r.source,
+        (failure24hBySource.get(r.source) ?? 0) + (r.failure_n ?? 0),
+      )
+    }
+
+    const out: SourceLatencyRow[] = []
+    for (const [source, h] of latest) {
+      const cadence = SOURCE_CADENCE_MIN[source] ?? null
+      const lastSuccess = h.last_success
+      const ageMin = lastSuccess
+        ? (Date.now() - new Date(lastSuccess).getTime()) / 60_000
+        : null
+      let band: SourceLatencyRow["band"] = "ok"
+      if (ageMin != null && cadence != null) {
+        if (ageMin > cadence * 3) band = "stale"
+        else if (ageMin > cadence * 1.5) band = "warn"
+      }
+      out.push({
+        source,
+        lastSuccess,
+        ageMin,
+        cadenceMin: cadence,
+        band,
+        failure24h: failure24hBySource.get(source) ?? 0,
+      })
+    }
+    return out.sort((a, b) => {
+      const bandRank = { stale: 0, warn: 1, ok: 2 }
+      if (a.band !== b.band) return bandRank[a.band] - bandRank[b.band]
+      return (b.ageMin ?? 0) - (a.ageMin ?? 0)
+    })
+  }, [rows])
+}
+
+function ageLabel(min: number | null): string {
+  if (min == null) return "—"
+  if (min < 1) return "<1 m"
+  if (min < 60) return `${Math.round(min)} m`
+  const h = min / 60
+  if (h < 24) return `${h.toFixed(1)} h`
+  return `${(h / 24).toFixed(1)} d`
+}
+
 /** Last 30 d composite-score time series, averaged across all countries. */
 function useCompositeSeries() {
   return useScoreSeries("composite")
@@ -215,6 +334,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const events = useEvents()
   const series = useCompositeSeries()
   const ciiSeries = useCiiSeries()
+  const sourceLatency = useSourceLatency()
 
   /** Top 12 countries by event count in the current buffer. */
   const topCountries = useMemo(() => {
@@ -343,17 +463,6 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     return out.sort((a, b) => b.score - a.score).slice(0, 12)
   }, [events])
 
-  /** Source health: row count per source in current buffer. Drives the bars. */
-  const sourceCounts = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const ev of events) {
-      map.set(ev.source, (map.get(ev.source) ?? 0) + 1)
-    }
-    return Array.from(map.entries())
-      .map(([source, n]) => ({ source, n }))
-      .sort((a, b) => b.n - a.n)
-      .slice(0, 12)
-  }, [events])
 
   if (!configured) return null
 
@@ -788,54 +897,64 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
           </p>
         </div>
 
-        {/* Source health */}
+        {/* Source latency (#144). Replaces the old buffer-bar source-health
+         *  panel with a real read against the ingest_health table. Each
+         *  row shows last_success age vs the source's expected cadence
+         *  from the beat schedule. Green / amber / red bands match the
+         *  watchdog thresholds (1.5x = warn, 3x = stale). */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-5">
           <h3 className="mb-2 font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-            Source health · events in buffer
+            Source latency · last_success vs cadence
           </h3>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={sourceCounts}
-                layout="vertical"
-                margin={{ top: 4, right: 16, left: 50, bottom: 0 }}
-              >
-                <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
-                <XAxis
-                  type="number"
-                  stroke="rgba(115,115,115,0.6)"
-                  fontSize={10}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="source"
-                  stroke="rgba(115,115,115,0.6)"
-                  fontSize={10}
-                  width={90}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "rgba(10,10,10,0.92)",
-                    border: "1px solid rgba(82,82,82,0.6)",
-                    fontFamily: "monospace",
-                    fontSize: 11,
-                  }}
-                  formatter={(v) => (typeof v === "number" ? v.toLocaleString() : String(v))}
-                />
-                <Bar dataKey="n" radius={[2, 2, 2, 2]}>
-                  {sourceCounts.map((s) => (
-                    <Cell
-                      key={s.source}
-                      fill={colorForEvent({
-                        source: s.source,
-                        category: "",
-                      } as unknown as EventRow)}
+          {sourceLatency.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No ingest_health rows yet. Workers populate the table on every
+              fetcher tick.
+            </p>
+          ) : (
+            <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
+              {sourceLatency.map((r) => {
+                const dotColor =
+                  r.band === "stale"
+                    ? "#ef4444"
+                    : r.band === "warn"
+                      ? "#f59e0b"
+                      : "#22c55e"
+                return (
+                  <li
+                    key={r.source}
+                    className="flex items-center gap-2 rounded px-2 py-1.5 text-[11px] hover:bg-neutral-900"
+                    title={`cadence ${r.cadenceMin ?? "?"} min · failures 24h: ${r.failure24h}`}
+                  >
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: dotColor }}
+                      aria-hidden="true"
                     />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+                    <span className="w-32 truncate font-mono text-neutral-300">{r.source}</span>
+                    <span className="flex-1 font-mono text-[10px] text-neutral-500">
+                      cadence {r.cadenceMin == null ? "?" : `${r.cadenceMin} m`}
+                    </span>
+                    <span
+                      className="w-16 text-right font-mono text-[10px] tabular-nums"
+                      style={{ color: dotColor }}
+                    >
+                      {ageLabel(r.ageMin)}
+                    </span>
+                    {r.failure24h > 0 && (
+                      <span className="ml-1 rounded border border-rose-900 bg-rose-950/40 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-rose-300">
+                        {r.failure24h} fail
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          <p className="mt-2 font-mono text-[10px] text-neutral-600">
+            Green = within cadence. Amber = 1.5x cadence overdue. Red = 3x
+            overdue. Cadences match the beat schedule in app/tasks.py.
+          </p>
         </div>
       </div>
 
