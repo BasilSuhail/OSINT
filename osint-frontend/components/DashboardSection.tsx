@@ -49,6 +49,19 @@ function severityBarColor(s: number): string {
   return "#22c55e"
 }
 
+/** VADER compound ∈ [-1, 1] → bar colour. Negative = rose, positive =
+ *  emerald, neutral = neutral. Mirrors the chip-colour cut-offs used by
+ *  NIP's GPR gauge so a Bloomberg-terminal-style red/green reading lands.
+ *  Returns null when payload.sentiment is missing (pre-enrichment rows)
+ *  so the renderer can fall back to severity. */
+function sentimentBarColor(compound: number): string {
+  if (compound <= -0.5) return "#e11d48"
+  if (compound <= -0.05) return "#f43f5e"
+  if (compound >= 0.5) return "#10b981"
+  if (compound >= 0.05) return "#34d399"
+  return "#737373"
+}
+
 function bestTitle(ev: EventRow): string {
   const p = (ev.payload ?? {}) as Record<string, unknown>
   const candidates = [p?.title, p?.headline, p?.place, p?.country_name]
@@ -421,6 +434,12 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                 const sourceLabel = newsSourceLabel(ev)
                 const city = typeof p?.city === "string" ? (p.city as string) : null
                 const sev = typeof ev.severity === "number" ? ev.severity : 0
+                const sentiment =
+                  typeof p?.sentiment === "number" ? (p.sentiment as number) : null
+                const sentimentLabel =
+                  typeof p?.sentiment_label === "string" ? (p.sentiment_label as string) : null
+                const edgeColor =
+                  sentiment !== null ? sentimentBarColor(sentiment) : severityBarColor(sev)
                 return (
                   <li key={ev.id}>
                     <a
@@ -432,8 +451,13 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                     >
                       <span
                         className="mt-1 inline-block h-10 w-1 shrink-0 rounded-sm"
-                        style={{ backgroundColor: severityBarColor(sev) }}
+                        style={{ backgroundColor: edgeColor }}
                         aria-hidden="true"
+                        title={
+                          sentiment !== null
+                            ? `sentiment ${sentiment.toFixed(2)} (${sentimentLabel ?? ""})`
+                            : `severity ${sev.toFixed(2)}`
+                        }
                       />
                       <div className="min-w-0 flex-1">
                         <h4 className="text-[12.5px] font-medium leading-snug text-neutral-100 group-hover:text-white line-clamp-2">
@@ -455,6 +479,18 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                             </span>
                           )}
                           {city && <span className="normal-case text-neutral-500">· {city}</span>}
+                          {sentiment !== null && sentimentLabel && (
+                            <span
+                              className="rounded border px-1.5 py-0.5 tabular-nums"
+                              style={{
+                                color: sentimentBarColor(sentiment),
+                                borderColor: `${sentimentBarColor(sentiment)}55`,
+                                backgroundColor: `${sentimentBarColor(sentiment)}11`,
+                              }}
+                            >
+                              {sentimentLabel} {sentiment.toFixed(2)}
+                            </span>
+                          )}
                           <span className="ml-auto tabular-nums text-neutral-600">
                             {relativeTime(ev.occurred_at)} · {format(new Date(ev.occurred_at), "HH:mm")}
                           </span>

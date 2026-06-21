@@ -41,6 +41,7 @@ import feedparser
 import httpx
 
 from app.enrichment.city import city_for
+from app.enrichment.sentiment import SENTIMENT_METHOD_VERSION, score_text
 from app.models import Category, Event
 from app.sources.base import Fetcher
 
@@ -143,6 +144,11 @@ def entry_to_event(
     lon = city.lon if city else None
     country = (city.iso if city else None) or config.default_country
 
+    # VADER sentiment over title + summary. ``compound`` ∈ [-1, 1].
+    # See app/enrichment/sentiment.py + issue #126. Label is a UI
+    # convenience derived via VADER's published cut-offs.
+    sentiment = score_text(f"{title}. {summary}".strip())
+
     payload: dict[str, Any] = {
         "title": title,
         "source_url": link,
@@ -151,6 +157,9 @@ def entry_to_event(
         "published_at": occurred_at.isoformat(),
         "guid": guid or None,
         "city": city.name if city else None,
+        "sentiment": sentiment.compound if sentiment else None,
+        "sentiment_label": sentiment.label if sentiment else None,
+        "enrichment_meta": {"sentiment_model": SENTIMENT_METHOD_VERSION},
     }
 
     return Event(
