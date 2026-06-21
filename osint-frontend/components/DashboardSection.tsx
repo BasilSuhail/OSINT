@@ -86,6 +86,46 @@ function relativeTime(iso: string): string {
   return `${d}d`
 }
 
+/** Editorial source weights for the impact ranking. Mirrors the NIP
+ *  formula (BasilSuhail/news-intelligence-platform / 03-IMPACT-SCORE-ALGORITHM).
+ *  Higher = more credibility / global reach. Out-of-table sources get 0.5. */
+const NEWS_SOURCE_WEIGHTS: Record<string, number> = {
+  "rss-bbc-world": 1.0,
+  "rss-reuters-world": 1.0,
+  "rss-bbc-uk": 0.95,
+  "rss-guardian-world": 0.9,
+  "rss-dawn": 0.85,
+  "rss-geo-english": 0.7,
+  "uk-police": 0.6,
+}
+
+function sourceWeightFor(ev: EventRow): number {
+  return NEWS_SOURCE_WEIGHTS[ev.source] ?? 0.5
+}
+
+/** 24 h linear-decay recency in [0, 1]. Cut to 0 once a row is more than
+ *  a day old — the news feed is meant to be fresh. */
+function recencyFor(ev: EventRow): number {
+  const t = new Date(ev.occurred_at).getTime()
+  if (!Number.isFinite(t)) return 0
+  const ageH = Math.max(0, (Date.now() - t) / 3_600_000)
+  return Math.max(0, 1 - ageH / 24)
+}
+
+/** Impact score per NIP, minus cluster size (own follow-up issue).
+ *  Falls back to the keyword-boosted severity when sentiment is missing
+ *  so pre-#131 rows still rank meaningfully. */
+function impactScoreFor(ev: EventRow): number {
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  const rawSentiment =
+    typeof p?.sentiment === "number"
+      ? Math.abs(p.sentiment as number)
+      : typeof ev.severity === "number"
+        ? Math.abs(ev.severity - 0.35) * 2 // map 0.35→0, 0.85→1
+        : 0
+  return 0.45 * rawSentiment + 0.30 * recencyFor(ev) + 0.25 * sourceWeightFor(ev)
+}
+
 const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boolean }[] = [
   { key: "all", label: "All", match: () => true },
   { key: "uk", label: "UK", match: (ev) => ev.source === "rss-bbc-uk" || ev.country === "GB" },
@@ -187,11 +227,20 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   }, [events])
 
   const [newsFilter, setNewsFilter] = useState<string>("all")
+  const [newsSort, setNewsSort] = useState<"impact" | "time">("impact")
 
   const filteredNews = useMemo(() => {
     const f = NEWS_FILTERS.find((x) => x.key === newsFilter) ?? NEWS_FILTERS[0]
-    return allNews.filter(f.match).slice(0, 30)
-  }, [allNews, newsFilter])
+    const matched = allNews.filter(f.match)
+    if (newsSort === "impact") {
+      return matched
+        .map((ev) => ({ ev, score: impactScoreFor(ev) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 30)
+        .map((x) => x.ev)
+    }
+    return matched.slice(0, 30)
+  }, [allNews, newsFilter, newsSort])
 
   /** Severity histogram: events in last 24 h binned by severity into 10
    *  fixed-width buckets [0, 0.1) … [0.9, 1.0]. Drives the bar chart.
@@ -444,14 +493,34 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
           </ul>
         </div>
 
-        {/* News feed — card layout with headline + summary + source link.
-         *  Pattern mirrors the news cards in BasilSuhail/Portfolio-Design
-         *  (NewsSection.tsx). See issue #115. */}
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-7">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-              News feed
-            </h3>
+        {/* News feed — card layout with thumbnail + impact ranking.
+         *  Pattern mirrors NIP (BasilSuhail/news-intelligence-platform)
+         *  and the Portfolio-Design NewsSection.tsx. See issues #115 +
+         *  #132. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+                News feed
+              </h3>
+              <div className="inline-flex overflow-hidden rounded-md border border-neutral-800 font-mono text-[10px] uppercase tracking-wider">
+                {(["impact", "time"] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setNewsSort(opt)}
+                    className={
+                      "px-2 py-0.5 transition-colors " +
+                      (newsSort === opt
+                        ? "bg-amber-950/40 text-amber-200"
+                        : "bg-neutral-900/50 text-neutral-500 hover:text-neutral-300")
+                    }
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex flex-wrap items-center gap-1">
               {NEWS_FILTERS.map((f) => {
                 const active = f.key === newsFilter
@@ -480,7 +549,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
               No news in this bucket yet. RSS feeds populate hourly.
             </p>
           ) : (
-            <ul className="flex max-h-[26rem] flex-col gap-2 overflow-y-auto pr-1">
+            <ul className="grid max-h-[34rem] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
               {filteredNews.map((ev) => {
                 const p = (ev.payload ?? {}) as Record<string, unknown>
                 const url = typeof p?.source_url === "string" ? (p.source_url as string) : null
@@ -489,6 +558,10 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                 const sourceLabel = newsSourceLabel(ev)
                 const city = typeof p?.city === "string" ? (p.city as string) : null
                 const sev = typeof ev.severity === "number" ? ev.severity : 0
+                const imageUrl =
+                  typeof p?.image_url === "string" ? (p.image_url as string) : null
+                const impact = impactScoreFor(ev)
+                const firstLetter = title.charAt(0).toUpperCase() || "N"
                 return (
                   <li key={ev.id}>
                     <a
@@ -496,23 +569,42 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                       {...(url
                         ? { target: "_blank", rel: "noreferrer" }
                         : { onClick: (e) => e.preventDefault(), tabIndex: -1, "aria-disabled": true })}
-                      className="group flex gap-3 rounded-md border border-neutral-800 bg-neutral-900/40 p-3 transition-colors hover:border-neutral-700 hover:bg-neutral-900/80"
+                      className="group flex h-full gap-3 rounded-md border border-neutral-800 bg-neutral-900/40 p-3 transition-colors hover:border-neutral-700 hover:bg-neutral-900/80"
                     >
-                      <span
-                        className="mt-1 inline-block h-10 w-1 shrink-0 rounded-sm"
-                        style={{ backgroundColor: severityBarColor(sev) }}
-                        aria-hidden="true"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-[12.5px] font-medium leading-snug text-neutral-100 group-hover:text-white line-clamp-2">
+                      {imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={imageUrl}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="h-20 w-20 shrink-0 rounded object-cover ring-1 ring-neutral-800"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none"
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="grid h-20 w-20 shrink-0 place-items-center rounded text-2xl font-semibold ring-1 ring-neutral-800"
+                          style={{
+                            backgroundColor: `${severityBarColor(sev)}22`,
+                            color: severityBarColor(sev),
+                          }}
+                          aria-hidden="true"
+                        >
+                          {firstLetter}
+                        </div>
+                      )}
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <h4 className="text-[13px] font-medium leading-snug text-neutral-100 group-hover:text-white line-clamp-2">
                           {title}
                         </h4>
                         {summary && (
-                          <p className="mt-1 text-[11px] leading-snug text-neutral-400 line-clamp-2">
+                          <p className="mt-1 text-[11.5px] leading-snug text-neutral-400 line-clamp-3">
                             {summary}
                           </p>
                         )}
-                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                        <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
                           <span className="rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-neutral-400">
                             {sourceLabel}
                           </span>
@@ -522,7 +614,15 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                               <span>{ev.country}</span>
                             </span>
                           )}
-                          {city && <span className="normal-case text-neutral-500">· {city}</span>}
+                          {city && (
+                            <span className="normal-case text-neutral-500">· {city}</span>
+                          )}
+                          <span
+                            className="rounded border border-amber-900/60 bg-amber-950/30 px-1.5 py-0.5 tabular-nums text-amber-300"
+                            title="impact = 0.45 |sentiment| + 0.30 recency + 0.25 source weight"
+                          >
+                            impact {impact.toFixed(2)}
+                          </span>
                           <span className="ml-auto tabular-nums text-neutral-600">
                             {relativeTime(ev.occurred_at)} · {format(new Date(ev.occurred_at), "HH:mm")}
                           </span>
