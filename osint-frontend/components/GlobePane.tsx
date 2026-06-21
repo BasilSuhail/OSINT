@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Globe, { type GlobeMethods } from "react-globe.gl"
-import { Orbit, Satellite as SatelliteIcon, Stars, Sunset, Target, X } from "lucide-react"
+import {
+  Globe2,
+  Orbit,
+  Satellite as SatelliteIcon,
+  Sparkles,
+  Stars,
+  Sunset,
+  Target,
+  X,
+} from "lucide-react"
 import * as THREE from "three"
 import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, type VisibleEvent } from "@/lib/queries"
@@ -10,6 +19,8 @@ import { colorForEvent } from "@/lib/types"
 import { pointAltitude } from "@/lib/markers"
 import { useSatellites, type Satellite } from "@/lib/satellites"
 import { moonPhaseLabel, useEphemeris, type CelestialBody } from "@/lib/ephemeris"
+import { useDriftedNeos, useNeos, type NeoAsteroid } from "@/lib/neos"
+import { usePlanets, type PlanetMarker } from "@/lib/planets"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { EphemerisChip } from "./EphemerisChip"
@@ -61,6 +72,48 @@ const MOON_HALO_MATERIAL = new THREE.MeshBasicMaterial({
   opacity: 0.15,
 })
 
+const ASTEROID_GEOM = new THREE.SphereGeometry(0.5, 6, 6)
+const ASTEROID_MAT_SAFE = new THREE.MeshBasicMaterial({
+  color: 0xa3a3a3,
+  transparent: true,
+  opacity: 0.95,
+})
+const ASTEROID_MAT_HAZARD = new THREE.MeshBasicMaterial({
+  color: 0xef4444,
+  transparent: true,
+  opacity: 0.95,
+})
+
+function makeAsteroidMesh(n: NeoAsteroid): THREE.Object3D {
+  const mat = n.hazardous ? ASTEROID_MAT_HAZARD : ASTEROID_MAT_SAFE
+  const mesh = new THREE.Mesh(ASTEROID_GEOM, mat)
+  // Scale by diameter — clamp so very small or very large NEOs still read.
+  const s = Math.max(0.6, Math.min(2.4, n.diameterKm * 4))
+  mesh.scale.set(s, s, s)
+  return mesh
+}
+
+const PLANET_GEOM = new THREE.SphereGeometry(2, 16, 16)
+
+function makePlanetMesh(p: PlanetMarker): THREE.Object3D {
+  const group = new THREE.Group()
+  const mesh = new THREE.Mesh(
+    PLANET_GEOM,
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(p.color), transparent: true, opacity: 0.9 }),
+  )
+  const halo = new THREE.Mesh(
+    new THREE.SphereGeometry(3, 16, 16),
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color(p.color),
+      transparent: true,
+      opacity: 0.18,
+    }),
+  )
+  group.add(halo)
+  group.add(mesh)
+  return group
+}
+
 function makeCelestialObject(body: CelestialBody): THREE.Object3D {
   const group = new THREE.Group()
   if (body.name === "Sun") {
@@ -110,17 +163,27 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
   const [selected, setSelected] = useState<VisibleEvent | null>(null)
   const [selectedSat, setSelectedSat] = useState<Satellite | null>(null)
   const [selectedCelestial, setSelectedCelestial] = useState<CelestialBody | null>(null)
+  const [showAsteroids, setShowAsteroids] = useState(true)
+  const [showPlanets, setShowPlanets] = useState(true)
+  const [selectedNeo, setSelectedNeo] = useState<NeoAsteroid | null>(null)
+  const [selectedPlanet, setSelectedPlanet] = useState<PlanetMarker | null>(null)
   const [showTerminator, setShowTerminator] = useState(true)
   const [showStarfield, setShowStarfield] = useState(true)
   const [followIss, setFollowIss] = useState(false)
 
+  const neosRaw = useNeos(showAsteroids)
+  const neos = useDriftedNeos(neosRaw, 1000)
+  const planets = usePlanets(showPlanets, 60_000)
+
   const satsCapped = useMemo(() => (sats.length > MAX_SATS ? sats.slice(0, MAX_SATS) : sats), [sats])
 
-  /** Sun + Moon as objectsData entries, type-tagged so the lat/lng/alt/object
-   *  accessors can dispatch alongside satellites. */
+  /** Sun + Moon + Asteroids + Planets as objectsData entries, type-tagged so
+   *  the lat/lng/alt/object accessors can dispatch alongside satellites. */
   type GlobeObject =
     | { kind: "sat"; data: Satellite }
     | { kind: "celestial"; data: CelestialBody }
+    | { kind: "asteroid"; data: NeoAsteroid }
+    | { kind: "planet"; data: PlanetMarker }
 
   const globeObjects = useMemo<GlobeObject[]>(() => {
     const out: GlobeObject[] = satsCapped.map((s) => ({ kind: "sat", data: s }))
@@ -128,8 +191,10 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
       out.push({ kind: "celestial", data: eph.sun })
       out.push({ kind: "celestial", data: eph.moon })
     }
+    for (const n of neos) out.push({ kind: "asteroid", data: n })
+    for (const p of planets) out.push({ kind: "planet", data: p })
     return out
-  }, [satsCapped, eph])
+  }, [satsCapped, eph, neos, planets])
 
   /** Day/night terminator: the great-circle perpendicular to the sub-solar
    *  vector. Sampled at 72 points so the polyline is smooth at any zoom.
@@ -322,11 +387,16 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
           objectAltitude={(d) => (d as GlobeObject).data.alt}
           objectThreeObject={(d) => {
             const o = d as GlobeObject
-            return o.kind === "sat" ? makeSatMesh() : makeCelestialObject(o.data)
+            if (o.kind === "sat") return makeSatMesh()
+            if (o.kind === "asteroid") return makeAsteroidMesh(o.data)
+            if (o.kind === "planet") return makePlanetMesh(o.data)
+            return makeCelestialObject(o.data)
           }}
           onObjectClick={(o) => {
             const obj = o as GlobeObject
             if (obj.kind === "sat") setSelectedSat(obj.data)
+            else if (obj.kind === "asteroid") setSelectedNeo(obj.data)
+            else if (obj.kind === "planet") setSelectedPlanet(obj.data)
             else setSelectedCelestial(obj.data)
           }}
           // Day/night terminator: one closed polyline at the surface.
@@ -401,6 +471,38 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
         )}
       >
         <Target className="h-4 w-4" />
+      </button>
+
+      {/* Asteroid toggle */}
+      <button
+        type="button"
+        onClick={() => setShowAsteroids((s) => !s)}
+        aria-label={showAsteroids ? "Hide NEOs" : "Show NEOs"}
+        title="Near-Earth asteroids (NASA NeoWS)"
+        className={cn(
+          "absolute right-14 top-[200px] z-30 grid h-8 w-8 place-items-center rounded-md border backdrop-blur-sm transition-colors",
+          showAsteroids
+            ? "border-rose-700 bg-rose-950/40 text-rose-300"
+            : "border-neutral-700 bg-neutral-900/70 text-neutral-300 hover:text-neutral-100",
+        )}
+      >
+        <Sparkles className="h-4 w-4" />
+      </button>
+
+      {/* Planet toggle */}
+      <button
+        type="button"
+        onClick={() => setShowPlanets((s) => !s)}
+        aria-label={showPlanets ? "Hide planets" : "Show planets"}
+        title="Inner planets · sub-points"
+        className={cn(
+          "absolute right-14 top-[232px] z-30 grid h-8 w-8 place-items-center rounded-md border backdrop-blur-sm transition-colors",
+          showPlanets
+            ? "border-orange-700 bg-orange-950/40 text-orange-300"
+            : "border-neutral-700 bg-neutral-900/70 text-neutral-300 hover:text-neutral-100",
+        )}
+      >
+        <Globe2 className="h-4 w-4" />
       </button>
 
       {/* Live satellite count chip */}
@@ -489,6 +591,72 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
       {selectedSat && (
         <div className="absolute right-1/2 top-4 z-40 translate-x-1/2">
           <SatelliteDetailCard satellite={selectedSat} onClose={() => setSelectedSat(null)} />
+        </div>
+      )}
+
+      {/* Asteroid floating card */}
+      {selectedNeo && (
+        <div className="absolute left-1/2 top-4 z-40 w-72 -translate-x-1/2 rounded-lg border border-rose-900 bg-neutral-950/95 p-3 backdrop-blur-md">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-rose-300" />
+              <span className="font-mono text-xs uppercase tracking-wider text-rose-100">
+                {selectedNeo.name}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setSelectedNeo(null)}
+              className="text-neutral-500 hover:text-neutral-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
+            <dt className="text-neutral-500">approach</dt>
+            <dd className="text-neutral-300">{selectedNeo.date.toUTCString().slice(0, 22)} UTC</dd>
+            <dt className="text-neutral-500">miss</dt>
+            <dd className="text-neutral-300">
+              {selectedNeo.missKm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km
+            </dd>
+            <dt className="text-neutral-500">diameter</dt>
+            <dd className="text-neutral-300">~{selectedNeo.diameterKm.toFixed(2)} km</dd>
+            <dt className="text-neutral-500">hazardous</dt>
+            <dd className={cn("text-neutral-300", selectedNeo.hazardous ? "text-rose-300" : "")}>
+              {selectedNeo.hazardous ? "yes (PHA)" : "no"}
+            </dd>
+          </dl>
+        </div>
+      )}
+
+      {/* Planet floating card */}
+      {selectedPlanet && (
+        <div className="absolute left-1/2 top-4 z-40 w-64 -translate-x-1/2 rounded-lg border border-orange-700 bg-neutral-950/95 p-3 backdrop-blur-md">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Globe2 className="h-3.5 w-3.5" style={{ color: selectedPlanet.color }} />
+              <span className="font-mono text-xs uppercase tracking-wider text-orange-100">
+                {selectedPlanet.name}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setSelectedPlanet(null)}
+              className="text-neutral-500 hover:text-neutral-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
+            <dt className="text-neutral-500">sub-point</dt>
+            <dd className="text-neutral-300">
+              {selectedPlanet.lat.toFixed(2)}, {selectedPlanet.lon.toFixed(2)}
+            </dd>
+            <dt className="text-neutral-500">overhead</dt>
+            <dd className="text-neutral-300">noon at lon {selectedPlanet.lon.toFixed(1)}</dd>
+          </dl>
         </div>
       )}
 
