@@ -369,20 +369,19 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
             else if (obj.kind === "asteroid") setSelectedNeo(obj.data)
             else setSelectedCelestial(obj.data)
           }}
-          // Day/night terminator: one closed polyline lifted slightly off the
-          // surface so it isn't z-fought by the globe texture, with a fully
-          // opaque amber stroke + thicker line so it actually reads at any
-          // zoom (see issue #116).
+          // Day/night terminator: one closed great-circle polyline. Lifted
+          // 0.015 globe radii so the camera sees the full visible-hemisphere
+          // arc, not just a sliver clipped by the surface. Solid stroke —
+          // the dashed march in #117 made it read as a floating yellow stub
+          // (issue raised after #117 deployed). See issue #122.
           pathsData={terminatorPath ? [terminatorPath] : []}
           pathPoints={(d) => d as [number, number][]}
           pathPointLat={(p) => (p as [number, number])[0]}
           pathPointLng={(p) => (p as [number, number])[1]}
-          pathPointAlt={() => 0.005}
-          pathColor={() => ["rgba(253,224,71,1)", "rgba(253,224,71,1)"]}
-          pathStroke={3.5}
-          pathDashLength={0.04}
-          pathDashGap={0.02}
-          pathDashAnimateTime={6000}
+          pathPointAlt={() => 0.015}
+          pathColor={() => ["rgba(253,224,71,0.95)", "rgba(253,224,71,0.95)"]}
+          pathStroke={2.5}
+          pathTransitionDuration={0}
           enablePointerInteraction
         />
       )}
