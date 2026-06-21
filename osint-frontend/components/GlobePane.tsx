@@ -28,10 +28,49 @@ import { PaneStatus } from "./PaneStatus"
 import { SatelliteDetailCard } from "./SatelliteDetailCard"
 import { TimeScrubber } from "./TimeScrubber"
 
-const GLOBE_IMG = "//unpkg.com/three-globe/example/img/earth-night.jpg"
+// NASA Blue Marble (day) + Black Marble (city lights, night). Both bundled
+// in three-globe's example/img directory. Public-domain NASA Visible Earth.
+const DAY_IMG = "//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+const NIGHT_IMG = "//unpkg.com/three-globe/example/img/earth-night.jpg"
 const BUMP_IMG = "//unpkg.com/three-globe/example/img/earth-topology.png"
 const MAX_POINTS = 1500
 const MAX_SATS = 2500
+
+// Vertex shader passes UV and the world-space normal so the fragment can
+// dot it with the sun direction (also in world space). The globe mesh is
+// at world origin and unrotated, so model-space matches world-space here.
+const EARTH_VERTEX_SHADER = `
+  varying vec2 vUv;
+  varying vec3 vWorldNormal;
+  void main() {
+    vUv = uv;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+
+// Fragment shader: blend the day texture (Blue Marble) and night texture
+// (Black Marble — city lights) by smoothstep of the cosine angle between
+// the surface normal and the sun direction. The 0.18 band on either side
+// of the terminator (~10°) reads as a soft penumbra so the day / night
+// edge is not a hard line. dayMixStrength is a 0..1 toggle the user
+// flips via the Sunset button — 0 collapses to night texture everywhere.
+const EARTH_FRAGMENT_SHADER = `
+  uniform sampler2D dayTexture;
+  uniform sampler2D nightTexture;
+  uniform vec3 sunDirection;
+  uniform float dayMixStrength;
+  varying vec2 vUv;
+  varying vec3 vWorldNormal;
+  void main() {
+    vec3 day = texture2D(dayTexture, vUv).rgb;
+    vec3 night = texture2D(nightTexture, vUv).rgb;
+    float cosA = dot(normalize(vWorldNormal), normalize(sunDirection));
+    float t = smoothstep(-0.18, 0.18, cosA) * dayMixStrength;
+    vec3 color = mix(night, day, t);
+    gl_FragColor = vec4(color, 1.0);
+  }
+`
 
 const SAT_GEOMETRY = new THREE.SphereGeometry(0.6, 6, 6)
 const SAT_MATERIAL = new THREE.MeshBasicMaterial({
@@ -149,6 +188,48 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
   const neosRaw = useNeos(showAsteroids)
   const neos = useDriftedNeos(neosRaw, 1000)
 
+  /** Custom ShaderMaterial that samples day + night textures and blends
+   *  them by the cosine between surface normal and sun direction. See
+   *  EARTH_FRAGMENT_SHADER. Memoised so the textures + uniforms are
+   *  created exactly once for the lifetime of the component. */
+  const earthMaterial = useMemo(() => {
+    const loader = new THREE.TextureLoader()
+    loader.setCrossOrigin("anonymous")
+    const dayTex = loader.load(DAY_IMG)
+    const nightTex = loader.load(NIGHT_IMG)
+    dayTex.colorSpace = THREE.SRGBColorSpace
+    nightTex.colorSpace = THREE.SRGBColorSpace
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        dayTexture: { value: dayTex },
+        nightTexture: { value: nightTex },
+        // Initial sun direction = equator at 0° lon. Real value flows in
+        // from the ephemeris useEffect below.
+        sunDirection: { value: new THREE.Vector3(1, 0, 0) },
+        dayMixStrength: { value: 1 },
+      },
+      vertexShader: EARTH_VERTEX_SHADER,
+      fragmentShader: EARTH_FRAGMENT_SHADER,
+    })
+  }, [])
+
+  // Update sun-direction uniform whenever ephemeris ticks (default 5 s).
+  // globe.getCoords(lat, lon, alt) returns world-space coords; normalise
+  // the resulting vector for the dot product in the shader.
+  useEffect(() => {
+    const globe = globeRef.current
+    if (!globe || !eph) return
+    const { x, y, z } = globe.getCoords(eph.sun.lat, eph.sun.lon, 1)
+    earthMaterial.uniforms.sunDirection.value.set(x, y, z).normalize()
+  }, [eph, earthMaterial])
+
+  // The existing Sunset toggle now controls whether the day-side blend
+  // happens at all. Off = day texture is invisible; globe falls back to
+  // the night-only look from before the shader landed.
+  useEffect(() => {
+    earthMaterial.uniforms.dayMixStrength.value = showTerminator ? 1 : 0
+  }, [showTerminator, earthMaterial])
+
   const satsCapped = useMemo(() => (sats.length > MAX_SATS ? sats.slice(0, MAX_SATS) : sats), [sats])
 
   /** Sun + Moon + Asteroids as objectsData entries, type-tagged so the
@@ -167,51 +248,6 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
     for (const n of neos) out.push({ kind: "asteroid", data: n })
     return out
   }, [satsCapped, eph, neos])
-
-  /** Day/night terminator: the great-circle perpendicular to the sub-solar
-   *  vector. Sampled at 72 points so the polyline is smooth at any zoom.
-   *  Returns null when ephemeris hasn't loaded yet or the user toggled it off. */
-  const terminatorPath = useMemo<[number, number][] | null>(() => {
-    if (!showTerminator || !eph) return null
-    const lat = (eph.sun.lat * Math.PI) / 180
-    const lon = (eph.sun.lon * Math.PI) / 180
-    // Sub-solar unit vector S.
-    const sx = Math.cos(lat) * Math.cos(lon)
-    const sy = Math.cos(lat) * Math.sin(lon)
-    const sz = Math.sin(lat)
-    // Pick a vector not parallel to S, then orthonormalise to get U, V.
-    let ax = 0
-    const ay = 0
-    let az = 1
-    if (Math.abs(sz) > 0.99) {
-      ax = 1
-      az = 0
-    }
-    // U = normalize(cross(S, A))
-    let ux = sy * az - sz * ay
-    let uy = sz * ax - sx * az
-    let uz = sx * ay - sy * ax
-    const un = Math.hypot(ux, uy, uz)
-    ux /= un
-    uy /= un
-    uz /= un
-    // V = cross(S, U)
-    const vx = sy * uz - sz * uy
-    const vy = sz * ux - sx * uz
-    const vz = sx * uy - sy * ux
-    const path: [number, number][] = []
-    const N = 72
-    for (let i = 0; i <= N; i++) {
-      const θ = (2 * Math.PI * i) / N
-      const px = Math.cos(θ) * ux + Math.sin(θ) * vx
-      const py = Math.cos(θ) * uy + Math.sin(θ) * vy
-      const pz = Math.cos(θ) * uz + Math.sin(θ) * vz
-      const pLat = (Math.asin(pz) * 180) / Math.PI
-      const pLon = (Math.atan2(py, px) * 180) / Math.PI
-      path.push([pLat, pLon])
-    }
-    return path
-  }, [showTerminator, eph])
 
   /** Build a one-off starfield scene object the first time the user turns it
    *  on. Three.js Points of ~1500 random unit vectors at distance 6 globe
@@ -335,7 +371,7 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
           width={size.width}
           height={size.height}
           backgroundColor="#000010"
-          globeImageUrl={GLOBE_IMG}
+          globeMaterial={earthMaterial}
           bumpImageUrl={BUMP_IMG}
           showAtmosphere
           atmosphereColor="#3a86ff"
@@ -369,19 +405,9 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
             else if (obj.kind === "asteroid") setSelectedNeo(obj.data)
             else setSelectedCelestial(obj.data)
           }}
-          // Day/night terminator: one closed great-circle polyline. Lifted
-          // 0.015 globe radii so the camera sees the full visible-hemisphere
-          // arc, not just a sliver clipped by the surface. Solid stroke —
-          // the dashed march in #117 made it read as a floating yellow stub
-          // (issue raised after #117 deployed). See issue #122.
-          pathsData={terminatorPath ? [terminatorPath] : []}
-          pathPoints={(d) => d as [number, number][]}
-          pathPointLat={(p) => (p as [number, number])[0]}
-          pathPointLng={(p) => (p as [number, number])[1]}
-          pathPointAlt={() => 0.015}
-          pathColor={() => ["rgba(253,224,71,0.95)", "rgba(253,224,71,0.95)"]}
-          pathStroke={2.5}
-          pathTransitionDuration={0}
+          // Day/night is rendered by the custom earth shader on the globe
+          // material (see EARTH_FRAGMENT_SHADER + earthMaterial above) —
+          // no overlay polyline needed.
           enablePointerInteraction
         />
       )}
