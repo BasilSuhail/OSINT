@@ -49,6 +49,19 @@ function severityBarColor(s: number): string {
   return "#22c55e"
 }
 
+/** VADER compound ∈ [-1, 1] → bar colour. Negative = rose, positive =
+ *  emerald, neutral = neutral. Mirrors the chip-colour cut-offs used by
+ *  NIP's GPR gauge so a Bloomberg-terminal-style red/green reading lands.
+ *  Returns null when payload.sentiment is missing (pre-enrichment rows)
+ *  so the renderer can fall back to severity. */
+function sentimentBarColor(compound: number): string {
+  if (compound <= -0.5) return "#e11d48"
+  if (compound <= -0.05) return "#f43f5e"
+  if (compound >= 0.5) return "#10b981"
+  if (compound >= 0.05) return "#34d399"
+  return "#737373"
+}
+
 function bestTitle(ev: EventRow): string {
   const p = (ev.payload ?? {}) as Record<string, unknown>
   const candidates = [p?.title, p?.headline, p?.place, p?.country_name]
@@ -562,6 +575,12 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                   typeof p?.image_url === "string" ? (p.image_url as string) : null
                 const impact = impactScoreFor(ev)
                 const firstLetter = title.charAt(0).toUpperCase() || "N"
+                const sentiment =
+                  typeof p?.sentiment === "number" ? (p.sentiment as number) : null
+                const sentimentLabel =
+                  typeof p?.sentiment_label === "string" ? (p.sentiment_label as string) : null
+                const tileColor =
+                  sentiment !== null ? sentimentBarColor(sentiment) : severityBarColor(sev)
                 return (
                   <li key={ev.id}>
                     <a
@@ -587,10 +606,15 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                         <div
                           className="grid h-20 w-20 shrink-0 place-items-center rounded text-2xl font-semibold ring-1 ring-neutral-800"
                           style={{
-                            backgroundColor: `${severityBarColor(sev)}22`,
-                            color: severityBarColor(sev),
+                            backgroundColor: `${tileColor}22`,
+                            color: tileColor,
                           }}
                           aria-hidden="true"
+                          title={
+                            sentiment !== null
+                              ? `sentiment ${sentiment.toFixed(2)} (${sentimentLabel ?? ""})`
+                              : `severity ${sev.toFixed(2)}`
+                          }
                         >
                           {firstLetter}
                         </div>
@@ -616,6 +640,18 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                           )}
                           {city && (
                             <span className="normal-case text-neutral-500">· {city}</span>
+                          )}
+                          {sentiment !== null && sentimentLabel && (
+                            <span
+                              className="rounded border px-1.5 py-0.5 tabular-nums"
+                              style={{
+                                color: sentimentBarColor(sentiment),
+                                borderColor: `${sentimentBarColor(sentiment)}55`,
+                                backgroundColor: `${sentimentBarColor(sentiment)}11`,
+                              }}
+                            >
+                              {sentimentLabel} {sentiment.toFixed(2)}
+                            </span>
                           )}
                           <span
                             className="rounded border border-amber-900/60 bg-amber-950/30 px-1.5 py-0.5 tabular-nums text-amber-300"
