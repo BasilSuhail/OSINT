@@ -44,7 +44,6 @@ function EventMarker({
   onSelect: (ev: VisibleEvent) => void
 }) {
   const style = markerStyle(ev)
-  const isNew = ev.age < 0.05
   // The colored dot stays small for visual density; the surrounding
   // transparent square is the click target. 28 px ≈ the WCAG 2.5.5
   // "minimum interactive size" guideline and fits modern phone fingers.
@@ -61,24 +60,13 @@ function EventMarker({
       }}
     >
       <motion.div
-        initial={{ scale: 0, opacity: 0 }}
+        initial={{ scale: 0.6, opacity: 0 }}
         animate={{ scale: 1, opacity: ev.opacity }}
-        exit={{ scale: 0, opacity: 0 }}
-        transition={{ duration: 0.2 }}
+        exit={{ scale: 0.6, opacity: 0 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
         style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer" }}
         className="relative grid place-items-center"
       >
-        {isNew && (
-          <span
-            className="absolute inset-0 animate-ping rounded-full"
-            style={{
-              backgroundColor: style.color,
-              opacity: 0.5,
-              borderRadius: style.shape === "diamond" ? 0 : "9999px",
-              transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
-            }}
-          />
-        )}
         <span
           className="block"
           style={{
@@ -87,7 +75,7 @@ function EventMarker({
             backgroundColor: style.color,
             borderRadius: style.shape === "diamond" ? 2 : "9999px",
             transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
-            boxShadow: isNew ? `0 0 8px 2px ${style.color}` : `0 0 3px ${style.color}`,
+            boxShadow: `0 0 3px ${style.color}`,
           }}
         />
       </motion.div>
