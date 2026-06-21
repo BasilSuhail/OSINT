@@ -21,6 +21,7 @@ from app.sources.rss_news_fetcher import (
     GuardianWorldNewsFetcher,
     ReutersWorldNewsFetcher,
 )
+from app.sources.uk_police_fetcher import UKPoliceFetcher
 from app.sources.usgs_quake_fetcher import UsgsQuakeFetcher
 from app.sources.yfinance_fetcher import YFinanceFetcher
 
@@ -38,6 +39,7 @@ _REGISTRY: dict[str, Fetcher] = {
     "rss-dawn": DawnNewsFetcher(),
     "rss-guardian-world": GuardianWorldNewsFetcher(),
     "rss-geo-english": GeoEnglishNewsFetcher(),
+    "uk-police": UKPoliceFetcher(),
 }
 
 

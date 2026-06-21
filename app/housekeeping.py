@@ -40,6 +40,10 @@ RETENTION_DAYS: dict[str, int | None] = {
     "rss-dawn": 14,
     "rss-guardian-world": 14,
     "rss-geo-english": 14,
+    # UK Police data is monthly snapshots from data.police.uk. 90 d keeps
+    # ~3 most-recent months on hand — enough for quarter-over-quarter
+    # context without ballooning storage.
+    "uk-police": 90,
 }
 
 

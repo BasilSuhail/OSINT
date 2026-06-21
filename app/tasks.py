@@ -186,6 +186,14 @@ app.conf.beat_schedule = {
         "args": ["rss-geo-english"],
         "schedule": crontab(hour="*/1", minute=21),
     },
+    # UK Police publishes one month of crime data at a time; a daily 6 AM
+    # poll is plenty. Cheap fetcher in absolute terms (6 cities x ~4 k rows
+    # /month). Avoids hammering the public API.
+    "uk-police-daily-6am-utc": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["uk-police"],
+        "schedule": crontab(hour=6, minute=0),
+    },
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),

@@ -46,6 +46,7 @@ SOURCE_CADENCE_MIN: dict[str, int] = {
     "rss-dawn": 60,
     "rss-guardian-world": 60,
     "rss-geo-english": 60,
+    "uk-police": 1440,
 }
 
 #: A source is "stale" once last_success is older than this many cadence

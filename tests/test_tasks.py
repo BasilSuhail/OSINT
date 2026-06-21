@@ -151,8 +151,8 @@ def test_beat_schedule_covers_all_thesis_core_fetchers() -> None:
     fetcher_names = {
         entry["args"][0] for entry in schedule.values() if entry["task"] == "app.tasks.run_fetcher"
     }
-    # Thesis-core sources must all be scheduled. Layer-3 sources (RSS) can
-    # come and go without breaking this assertion.
+    # Thesis-core sources must all be scheduled. Layer-3 sources (RSS,
+    # uk-police) can come and go without breaking this assertion.
     assert _THESIS_CORE_FETCHERS.issubset(fetcher_names)
 
 
@@ -162,6 +162,14 @@ def test_beat_schedule_covers_all_layer3_news_fetchers() -> None:
         entry["args"][0] for entry in schedule.values() if entry["task"] == "app.tasks.run_fetcher"
     }
     assert _LAYER3_NEWS_FETCHERS.issubset(fetcher_names)
+
+
+def test_beat_schedule_includes_uk_police_layer3() -> None:
+    schedule = tasks.app.conf.beat_schedule
+    fetcher_names = {
+        entry["args"][0] for entry in schedule.values() if entry["task"] == "app.tasks.run_fetcher"
+    }
+    assert "uk-police" in fetcher_names
 
 
 def test_beat_schedule_includes_composite_worker() -> None:
