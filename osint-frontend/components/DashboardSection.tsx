@@ -207,6 +207,67 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     })
   }, [events])
 
+  /** Geographic convergence detector — mirrors the WM algorithm cited in
+   *  issue #128. For every event in the last 24 h, bucket lat/lon into a
+   *  1°×1° cell. A cell where 3+ distinct event categories co-occur is an
+   *  alert.
+   *
+   *  Score = 25 × categoryCount + min(25, eventCount × 2), capped at 100.
+   *  Priority = "critical" when ≥ 4 categories OR score ≥ 90, else "high".
+   *
+   *  Pure reduce over the in-memory buffer — no new fetcher, no schema. */
+  const convergenceAlerts = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000
+    type Cell = {
+      key: string
+      lat: number
+      lon: number
+      categories: Set<string>
+      events: typeof events
+    }
+    const cells = new Map<string, Cell>()
+    for (const ev of events) {
+      const t = new Date(ev.occurred_at).getTime()
+      if (!Number.isFinite(t) || t < cutoff) continue
+      if (ev.lat == null || ev.lon == null) continue
+      const cellLat = Math.round(ev.lat)
+      const cellLon = Math.round(ev.lon)
+      const key = `${cellLat}_${cellLon}`
+      let cell = cells.get(key)
+      if (!cell) {
+        cell = { key, lat: cellLat, lon: cellLon, categories: new Set(), events: [] }
+        cells.set(key, cell)
+      }
+      cell.categories.add((ev.category ?? "unknown").toLowerCase())
+      cell.events.push(ev)
+    }
+    const out: {
+      key: string
+      lat: number
+      lon: number
+      categories: string[]
+      eventCount: number
+      score: number
+      priority: "critical" | "high"
+    }[] = []
+    for (const c of cells.values()) {
+      if (c.categories.size < 3) continue
+      const score = Math.min(100, 25 * c.categories.size + Math.min(25, c.events.length * 2))
+      const priority: "critical" | "high" =
+        c.categories.size >= 4 || score >= 90 ? "critical" : "high"
+      out.push({
+        key: c.key,
+        lat: c.lat,
+        lon: c.lon,
+        categories: Array.from(c.categories).sort(),
+        eventCount: c.events.length,
+        score,
+        priority,
+      })
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, 12)
+  }, [events])
+
   /** Source health: row count per source in current buffer. Drives the bars. */
   const sourceCounts = useMemo(() => {
     const map = new Map<string, number>()
@@ -405,6 +466,69 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
               })}
             </ul>
           )}
+        </div>
+
+        {/* Geographic convergence alerts — 1°×1° × 24 h × 3+ categories.
+         *  Mirrors the WM convergence algorithm cited in issue #128. Pure
+         *  reduce over the in-memory event buffer, no new fetcher. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Convergence alerts · last 24 h
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              {convergenceAlerts.length} cells
+            </span>
+          </div>
+          {convergenceAlerts.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No 1°×1° cell currently has 3+ distinct categories firing in the last 24 h.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {convergenceAlerts.map((a) => (
+                <li
+                  key={a.key}
+                  className="flex flex-wrap items-center gap-2 rounded border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-[11px]"
+                >
+                  <span
+                    className={
+                      "rounded-md border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider " +
+                      (a.priority === "critical"
+                        ? "border-rose-700 bg-rose-950/40 text-rose-200"
+                        : "border-amber-700 bg-amber-950/40 text-amber-200")
+                    }
+                  >
+                    {a.priority}
+                  </span>
+                  <span className="font-mono tabular-nums text-neutral-400">
+                    {a.lat >= 0 ? `${a.lat}°N` : `${-a.lat}°S`} ·{" "}
+                    {a.lon >= 0 ? `${a.lon}°E` : `${-a.lon}°W`}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-1">
+                    {a.categories.map((c) => (
+                      <span
+                        key={c}
+                        className="rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-300"
+                      >
+                        {c}
+                      </span>
+                    ))}
+                  </span>
+                  <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tabular-nums text-neutral-500">
+                    <span>{a.eventCount} events</span>
+                    <span className="text-neutral-300">score {a.score}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-3 font-mono text-[10px] text-neutral-600">
+            Cell = 1° lat × 1° lon. Alert when 3+ distinct event categories
+            co-occur in the same cell within the last 24 h. Score = 25 ×
+            categories + min(25, events × 2). Critical = 4+ categories or
+            score ≥ 90.
+          </p>
         </div>
 
         {/* Severity histogram — last 24 h */}
