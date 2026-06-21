@@ -296,12 +296,17 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
         />
       )}
 
-      {/* Collapsed icon strip */}
+      {/* Collapsed icon strip — hovering anywhere on it (the 44 px wide column
+       *  with the slider button + colored source dots) opens the rail too,
+       *  not just the bare edge cushion. Lets the user mouse over the dots
+       *  and have the panel slide out without precision-aiming the edge. */}
       <div
         className={cn(
           "pointer-events-auto flex w-11 flex-col items-center gap-2 bg-neutral-950/70 py-3 backdrop-blur-sm",
           isLeft ? "order-first border-r border-neutral-800" : "order-last border-l border-neutral-800",
         )}
+        onMouseEnter={requestOpen}
+        onPointerEnter={requestOpen}
       >
         <button
           type="button"
