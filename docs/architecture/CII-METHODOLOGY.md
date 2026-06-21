@@ -13,9 +13,11 @@ fit-for-OSINT scope that runs on the events Basil's pipeline already
 ingests.
 
 The score is published alongside the existing `composite` rows in the
-`scores` table, under `score_name = "cii_v1"`. Both methodologies coexist
-so we can compare them in ablations before retiring the older flat
-composite.
+`scores` table, under `score_name = "cii_v1"`. As of #140 the composite
+chart is hidden from the dashboard UI; CII v1 is the primary trend
+signal. Composite rows continue to be written so the two methodologies
+remain comparable in ablation analysis — they are simply no longer
+rendered side-by-side.
 
 ## Formula
 
