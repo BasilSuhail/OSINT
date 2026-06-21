@@ -56,6 +56,55 @@ function bestTitle(ev: EventRow): string {
   return `${ev.source} event`
 }
 
+function bestSummary(ev: EventRow): string | null {
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  const candidates = [p?.summary, p?.description]
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) return c
+  }
+  return null
+}
+
+function newsSourceLabel(ev: EventRow): string {
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  const feed = typeof p?.feed_name === "string" ? p.feed_name : null
+  if (feed) return feed
+  // Strip the rss- prefix on the source slug for a tidy chip.
+  return ev.source.replace(/^rss-/, "").replace(/-/g, " ")
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (!Number.isFinite(then)) return ""
+  const diffSec = Math.max(0, Math.round((Date.now() - then) / 1000))
+  if (diffSec < 60) return `${diffSec}s`
+  const m = Math.round(diffSec / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h`
+  const d = Math.round(h / 24)
+  return `${d}d`
+}
+
+const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boolean }[] = [
+  { key: "all", label: "All", match: () => true },
+  { key: "uk", label: "UK", match: (ev) => ev.source === "rss-bbc-uk" || ev.country === "GB" },
+  {
+    key: "world",
+    label: "World",
+    match: (ev) =>
+      ev.source === "rss-bbc-world" ||
+      ev.source === "rss-reuters-world" ||
+      ev.source === "rss-guardian-world",
+  },
+  {
+    key: "pakistan",
+    label: "Pakistan",
+    match: (ev) => ev.source === "rss-dawn" || ev.source === "rss-geo-english" || ev.country === "PK",
+  },
+  { key: "crime", label: "Crime", match: (ev) => ev.source === "uk-police" },
+]
+
 /** Last 30 d composite-score time series, averaged across all countries. */
 function useCompositeSeries(): { day: string; score: number; n: number }[] {
   const [data, setData] = useState<ScoreRow[]>([])
@@ -114,17 +163,22 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
       .slice(0, 12)
   }, [events])
 
-  /** News feed: latest 40 RSS / police news rows. Map-side category=news.
+  /** News feed: latest RSS / police news rows. Map-side category=news.
    *  Also matches any source slug that starts with rss- or equals uk-police so
-   *  we don't depend on the SourceKey enum (still landing in #107). */
-  const newsFeed = useMemo(() => {
-    return events
-      .filter((ev) => {
-        const s = (ev.source ?? "").toLowerCase()
-        return ev.category === "news" || s.startsWith("rss-") || s === "uk-police"
-      })
-      .slice(0, 40)
+   *  we don't depend on the SourceKey enum. */
+  const allNews = useMemo(() => {
+    return events.filter((ev) => {
+      const s = (ev.source ?? "").toLowerCase()
+      return ev.category === "news" || s.startsWith("rss-") || s === "uk-police"
+    })
   }, [events])
+
+  const [newsFilter, setNewsFilter] = useState<string>("all")
+
+  const filteredNews = useMemo(() => {
+    const f = NEWS_FILTERS.find((x) => x.key === newsFilter) ?? NEWS_FILTERS[0]
+    return allNews.filter(f.match).slice(0, 30)
+  }, [allNews, newsFilter])
 
   /** Source health: row count per source in current buffer. Drives the bars. */
   const sourceCounts = useMemo(() => {
@@ -234,58 +288,96 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
           </ul>
         </div>
 
-        {/* News feed */}
+        {/* News feed — card layout with headline + summary + source link.
+         *  Pattern mirrors the news cards in BasilSuhail/Portfolio-Design
+         *  (NewsSection.tsx). See issue #115. */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-7">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
               News feed
             </h3>
-            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-              {newsFeed.length}
-            </span>
+            <div className="flex flex-wrap items-center gap-1">
+              {NEWS_FILTERS.map((f) => {
+                const active = f.key === newsFilter
+                const count = f.key === "all" ? allNews.length : allNews.filter(f.match).length
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setNewsFilter(f.key)}
+                    className={
+                      "rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider transition-colors " +
+                      (active
+                        ? "border-cyan-700 bg-cyan-950/40 text-cyan-200"
+                        : "border-neutral-800 bg-neutral-900/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200")
+                    }
+                  >
+                    {f.label}
+                    <span className="ml-1 tabular-nums text-neutral-500">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-          <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
-            {newsFeed.length === 0 ? (
-              <li className="px-2 py-1 font-mono text-[10px] text-neutral-600">
-                No news yet. RSS feeds populate hourly.
-              </li>
-            ) : (
-              newsFeed.map((ev) => {
+          {filteredNews.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No news in this bucket yet. RSS feeds populate hourly.
+            </p>
+          ) : (
+            <ul className="flex max-h-[26rem] flex-col gap-2 overflow-y-auto pr-1">
+              {filteredNews.map((ev) => {
                 const p = (ev.payload ?? {}) as Record<string, unknown>
-                const url =
-                  typeof p?.source_url === "string" ? (p.source_url as string) : null
-                const Wrapper = url ? "a" : "div"
+                const url = typeof p?.source_url === "string" ? (p.source_url as string) : null
+                const title = bestTitle(ev)
+                const summary = bestSummary(ev)
+                const sourceLabel = newsSourceLabel(ev)
+                const city = typeof p?.city === "string" ? (p.city as string) : null
+                const sev = typeof ev.severity === "number" ? ev.severity : 0
                 return (
                   <li key={ev.id}>
-                    <Wrapper
+                    <a
+                      href={url ?? "#"}
                       {...(url
-                        ? { href: url, target: "_blank", rel: "noreferrer" }
-                        : {})}
-                      className="flex items-center gap-2 rounded px-2 py-1.5 text-[11px] hover:bg-neutral-900"
+                        ? { target: "_blank", rel: "noreferrer" }
+                        : { onClick: (e) => e.preventDefault(), tabIndex: -1, "aria-disabled": true })}
+                      className="group flex gap-3 rounded-md border border-neutral-800 bg-neutral-900/40 p-3 transition-colors hover:border-neutral-700 hover:bg-neutral-900/80"
                     >
                       <span
-                        className="inline-block h-3 w-1 shrink-0 rounded-sm"
-                        style={{
-                          backgroundColor: severityBarColor(
-                            typeof ev.severity === "number" ? ev.severity : 0,
-                          ),
-                        }}
+                        className="mt-1 inline-block h-10 w-1 shrink-0 rounded-sm"
+                        style={{ backgroundColor: severityBarColor(sev) }}
+                        aria-hidden="true"
                       />
-                      <span className="w-6 text-center">
-                        {ev.country ? countryFlagEmoji(ev.country) : ""}
-                      </span>
-                      <span className="flex-1 truncate text-neutral-200">
-                        {bestTitle(ev)}
-                      </span>
-                      <span className="shrink-0 font-mono text-[10px] tabular-nums text-neutral-500">
-                        {format(new Date(ev.occurred_at), "HH:mm")}
-                      </span>
-                    </Wrapper>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-[12.5px] font-medium leading-snug text-neutral-100 group-hover:text-white line-clamp-2">
+                          {title}
+                        </h4>
+                        {summary && (
+                          <p className="mt-1 text-[11px] leading-snug text-neutral-400 line-clamp-2">
+                            {summary}
+                          </p>
+                        )}
+                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                          <span className="rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-neutral-400">
+                            {sourceLabel}
+                          </span>
+                          {ev.country && (
+                            <span className="flex items-center gap-1">
+                              <span>{countryFlagEmoji(ev.country)}</span>
+                              <span>{ev.country}</span>
+                            </span>
+                          )}
+                          {city && <span className="normal-case text-neutral-500">· {city}</span>}
+                          <span className="ml-auto tabular-nums text-neutral-600">
+                            {relativeTime(ev.occurred_at)} · {format(new Date(ev.occurred_at), "HH:mm")}
+                          </span>
+                        </div>
+                      </div>
+                    </a>
                   </li>
                 )
-              })
-            )}
-          </ul>
+              })}
+            </ul>
+          )}
         </div>
 
         {/* Source health */}
