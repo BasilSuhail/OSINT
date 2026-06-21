@@ -62,9 +62,14 @@ function isClusterable(ev: VisibleEvent): boolean {
 
 /** Zoom → quantisation precision in degrees. Bigger cells when zoomed out,
  *  finer cells when zoomed in. At zoom ~7 the cell is small enough that
- *  city-level pins start to separate again. */
+ *  city-level pins start to separate again.
+ *
+ *  Below zoom 3 we floor to 4° so neighbouring 1° cells don't fight for
+ *  pixels on the world view (Spain + Italy chips were overlapping at the
+ *  default 1.4 zoom — see issue #135). */
 function cellPrecision(zoom: number): number {
-  return Math.max(0.04, 4 / Math.pow(2, Math.max(1, zoom)))
+  if (zoom < 3) return 4
+  return Math.max(0.04, 4 / Math.pow(2, zoom))
 }
 
 function EventMarker({
@@ -127,9 +132,12 @@ function ClusterChip({
   onClick: (c: ClusterMarker) => void
 }) {
   const n = cluster.events.length
-  // log10 scaling — 2 events → ~16 px, 10 → 20 px, 100 → 24 px. 100-event
-  // city no longer eats the whole continent.
-  const size = Math.min(28, 12 + Math.log10(n) * 6)
+  // log10 scaling — 2 events → ~18 px, 10 → 22 px, 100 → 28 px. Min 18
+  // so a 2-digit value never gets clipped. See #135.
+  const size = Math.min(30, 18 + Math.log10(Math.max(2, n)) * 5)
+  // Font sized off the chip size so the digit is always optically
+  // centred. Cap at 12 px so 3-digit "99+" still fits.
+  const fontSize = Math.min(12, Math.max(9, size * 0.45))
   return (
     <Marker longitude={cluster.lon} latitude={cluster.lat} anchor="center">
       <motion.button
@@ -142,7 +150,7 @@ function ClusterChip({
           e.stopPropagation()
           onClick(cluster)
         }}
-        className="grid place-items-center rounded-full font-mono text-[10px] font-semibold tabular-nums text-neutral-950"
+        className="rounded-full font-mono font-semibold tabular-nums text-neutral-950"
         style={{
           width: size,
           height: size,
@@ -150,6 +158,14 @@ function ClusterChip({
           boxShadow: `0 0 6px ${cluster.color}`,
           border: "1px solid rgba(255,255,255,0.4)",
           cursor: "pointer",
+          // Explicit flex centre + line-height 1 so the digit is dead-centre
+          // regardless of font-rendering quirks across browsers.
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          lineHeight: 1,
+          padding: 0,
+          fontSize: `${fontSize}px`,
         }}
         aria-label={`${n} events clustered`}
       >
