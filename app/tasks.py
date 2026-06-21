@@ -17,6 +17,8 @@ from celery.schedules import crontab
 from sqlalchemy.orm import Session
 
 from app.celery_app import app
+from app.cii.scoring import CII_METHOD_VERSION
+from app.cii.task import _compute_cii_body
 from app.composite.task import _compute_composite_body
 from app.db import session_scope
 from app.db_models import IngestFailureRow, IngestHealthRow
@@ -95,6 +97,24 @@ def run_fetcher(name: str) -> dict[str, Any]:
 def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
     """Run the composite worker (read events, aggregate, normalise, score, upsert)."""
     return _compute_composite_body(method_version=method_version)
+
+
+@app.task(
+    name="app.tasks.compute_cii",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def compute_cii(method_version: str = CII_METHOD_VERSION) -> dict[str, Any]:
+    """Run the CII worker (read 24 h of events, score per country, upsert).
+
+    Methodology: docs/architecture/CII-METHODOLOGY.md. Always runs alongside
+    the composite worker; the two coexist on the ``scores`` table via the
+    ``score_name`` discriminator.
+    """
+    return _compute_cii_body(method_version=method_version)
 
 
 @app.task(name="app.tasks.ingest_watchdog")
@@ -197,6 +217,10 @@ app.conf.beat_schedule = {
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),
+    },
+    "cii-hourly": {
+        "task": "app.tasks.compute_cii",
+        "schedule": crontab(hour="*/1", minute=25),
     },
     "ingest-watchdog-15min": {
         "task": "app.tasks.ingest_watchdog",
