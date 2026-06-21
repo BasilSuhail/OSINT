@@ -40,6 +40,12 @@ SOURCE_CADENCE_MIN: dict[str, int] = {
     "gdacs": 15,
     "nasa-firms": 60,
     "eonet": 30,
+    "rss-bbc-world": 60,
+    "rss-bbc-uk": 60,
+    "rss-reuters-world": 60,
+    "rss-dawn": 60,
+    "rss-guardian-world": 60,
+    "rss-geo-english": 60,
     "uk-police": 1440,
 }
 

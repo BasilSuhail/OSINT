@@ -13,6 +13,14 @@ from app.sources.fred_fetcher import FredFetcher
 from app.sources.gdacs_fetcher import GdacsFetcher
 from app.sources.gdelt_fetcher import GdeltFetcher
 from app.sources.nasa_firms_fetcher import NasaFirmsFetcher
+from app.sources.rss_news_fetcher import (
+    BBCUKNewsFetcher,
+    BBCWorldNewsFetcher,
+    DawnNewsFetcher,
+    GeoEnglishNewsFetcher,
+    GuardianWorldNewsFetcher,
+    ReutersWorldNewsFetcher,
+)
 from app.sources.uk_police_fetcher import UKPoliceFetcher
 from app.sources.usgs_quake_fetcher import UsgsQuakeFetcher
 from app.sources.yfinance_fetcher import YFinanceFetcher
@@ -25,6 +33,12 @@ _REGISTRY: dict[str, Fetcher] = {
     "gdacs": GdacsFetcher(),
     "nasa-firms": NasaFirmsFetcher(),
     "eonet": EonetFetcher(),
+    "rss-bbc-world": BBCWorldNewsFetcher(),
+    "rss-bbc-uk": BBCUKNewsFetcher(),
+    "rss-reuters-world": ReutersWorldNewsFetcher(),
+    "rss-dawn": DawnNewsFetcher(),
+    "rss-guardian-world": GuardianWorldNewsFetcher(),
+    "rss-geo-english": GeoEnglishNewsFetcher(),
     "uk-police": UKPoliceFetcher(),
 }
 
