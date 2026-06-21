@@ -13,6 +13,7 @@ from app.sources.fred_fetcher import FredFetcher
 from app.sources.gdacs_fetcher import GdacsFetcher
 from app.sources.gdelt_fetcher import GdeltFetcher
 from app.sources.nasa_firms_fetcher import NasaFirmsFetcher
+from app.sources.uk_police_fetcher import UKPoliceFetcher
 from app.sources.usgs_quake_fetcher import UsgsQuakeFetcher
 from app.sources.yfinance_fetcher import YFinanceFetcher
 
@@ -24,6 +25,7 @@ _REGISTRY: dict[str, Fetcher] = {
     "gdacs": GdacsFetcher(),
     "nasa-firms": NasaFirmsFetcher(),
     "eonet": EonetFetcher(),
+    "uk-police": UKPoliceFetcher(),
 }
 
 

@@ -126,20 +126,33 @@ def test_unknown_fetcher_raises_key_error(global_sqlite_db: Engine) -> None:
         tasks._run_fetcher_body("does-not-exist")
 
 
+_THESIS_CORE_FETCHERS = {
+    "yfinance",
+    "fred",
+    "gdelt",
+    "usgs-quake",
+    "gdacs",
+    "nasa-firms",
+    "eonet",
+}
+
+
 def test_beat_schedule_covers_all_thesis_core_fetchers() -> None:
     schedule = tasks.app.conf.beat_schedule
     fetcher_names = {
         entry["args"][0] for entry in schedule.values() if entry["task"] == "app.tasks.run_fetcher"
     }
-    assert fetcher_names == {
-        "yfinance",
-        "fred",
-        "gdelt",
-        "usgs-quake",
-        "gdacs",
-        "nasa-firms",
-        "eonet",
+    # Thesis-core sources must all be scheduled. Layer-3 sources (uk-police,
+    # rss-* in their own PR) can come and go without breaking this assertion.
+    assert _THESIS_CORE_FETCHERS.issubset(fetcher_names)
+
+
+def test_beat_schedule_includes_uk_police_layer3() -> None:
+    schedule = tasks.app.conf.beat_schedule
+    fetcher_names = {
+        entry["args"][0] for entry in schedule.values() if entry["task"] == "app.tasks.run_fetcher"
     }
+    assert "uk-police" in fetcher_names
 
 
 def test_beat_schedule_includes_composite_worker() -> None:

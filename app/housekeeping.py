@@ -32,6 +32,10 @@ RETENTION_DAYS: dict[str, int | None] = {
     "usgs-quake": 365,
     "gdacs": 180,
     "eonet": 365,
+    # UK Police data is monthly snapshots from data.police.uk. 90 d keeps
+    # ~3 most-recent months on hand — enough for quarter-over-quarter
+    # context without ballooning storage.
+    "uk-police": 90,
 }
 
 
