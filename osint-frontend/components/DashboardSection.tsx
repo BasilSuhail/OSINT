@@ -180,6 +180,33 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     return allNews.filter(f.match).slice(0, 30)
   }, [allNews, newsFilter])
 
+  /** Severity histogram: events in last 24 h binned by severity into 10
+   *  fixed-width buckets [0, 0.1) … [0.9, 1.0]. Drives the bar chart.
+   *  Helps spot a hot tail (high-severity cluster) without scanning the
+   *  whole map. Severity is the JRC-normalised stress score per event. */
+  const severityBuckets = useMemo(() => {
+    const BUCKETS = 10
+    const counts = new Array<number>(BUCKETS).fill(0)
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000
+    for (const ev of events) {
+      const t = new Date(ev.occurred_at).getTime()
+      if (!Number.isFinite(t) || t < cutoff) continue
+      const s = typeof ev.severity === "number" ? ev.severity : 0
+      const idx = Math.min(BUCKETS - 1, Math.max(0, Math.floor(s * BUCKETS)))
+      counts[idx] += 1
+    }
+    return counts.map((n, i) => {
+      const lo = i / BUCKETS
+      const hi = (i + 1) / BUCKETS
+      return {
+        bucket: `${lo.toFixed(1)}`,
+        range: `${lo.toFixed(1)}–${hi.toFixed(1)}`,
+        n,
+        fill: severityBarColor((lo + hi) / 2),
+      }
+    })
+  }, [events])
+
   /** Source health: row count per source in current buffer. Drives the bars. */
   const sourceCounts = useMemo(() => {
     const map = new Map<string, number>()
@@ -378,6 +405,59 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
               })}
             </ul>
           )}
+        </div>
+
+        {/* Severity histogram — last 24 h */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Severity histogram · last 24 h
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              {severityBuckets.reduce((a, b) => a + b.n, 0).toLocaleString()} events
+            </span>
+          </div>
+          <div className="h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={severityBuckets} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
+                <XAxis
+                  dataKey="bucket"
+                  stroke="rgba(115,115,115,0.6)"
+                  fontSize={10}
+                  tickFormatter={(v) => v}
+                />
+                <YAxis
+                  stroke="rgba(115,115,115,0.6)"
+                  fontSize={10}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "rgba(10,10,10,0.92)",
+                    border: "1px solid rgba(82,82,82,0.6)",
+                    fontFamily: "monospace",
+                    fontSize: 11,
+                  }}
+                  formatter={(v) => (typeof v === "number" ? v.toLocaleString() : String(v))}
+                  labelFormatter={(_, payload) => {
+                    const p = payload?.[0]?.payload as { range?: string } | undefined
+                    return p?.range ? `severity ${p.range}` : "severity"
+                  }}
+                />
+                <Bar dataKey="n" radius={[2, 2, 0, 0]}>
+                  {severityBuckets.map((s) => (
+                    <Cell key={s.bucket} fill={s.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="mt-2 font-mono text-[10px] text-neutral-600">
+            Distribution of event severities for rows whose occurred_at is in
+            the last 24 h. A long right tail (orange / red bars) flags a
+            high-severity cluster worth zooming the map in on.
+          </p>
         </div>
 
         {/* Source health */}
