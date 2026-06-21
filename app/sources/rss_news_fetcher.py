@@ -71,6 +71,37 @@ _HIGH_SEVERITY_KEYWORDS: Final[tuple[str, ...]] = (
 )
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_IMG_SRC_RE = re.compile(r"""<img[^>]+src=["']([^"']+)["']""", re.IGNORECASE)
+
+
+def _extract_image_url(entry: dict[str, Any], summary_html: str) -> str | None:
+    """Best-effort image URL from one RSS entry.
+
+    Order: media:thumbnail (BBC) → media:content (Reuters / Guardian) →
+    enclosure links (Dawn / Geo) → first <img> in the summary HTML.
+    Returns None when nothing matches — the renderer falls back to a
+    coloured letter tile.
+    """
+    for thumb in entry.get("media_thumbnail") or []:
+        if isinstance(thumb, dict) and thumb.get("url"):
+            return str(thumb["url"])
+    for media in entry.get("media_content") or []:
+        if isinstance(media, dict) and media.get("url"):
+            url = str(media["url"])
+            mtype = str(media.get("type") or "").lower()
+            if not mtype or mtype.startswith("image/"):
+                return url
+    for link in entry.get("links") or []:
+        if isinstance(link, dict) and link.get("rel") == "enclosure":
+            href = link.get("href")
+            mtype = str(link.get("type") or "").lower()
+            if href and (not mtype or mtype.startswith("image/")):
+                return str(href)
+    if summary_html:
+        match = _HTML_IMG_SRC_RE.search(summary_html)
+        if match:
+            return match.group(1)
+    return None
 
 
 @dataclass(frozen=True)
@@ -128,6 +159,7 @@ def entry_to_event(
     link = (entry.get("link") or "").strip() or None
     raw_summary = entry.get("summary") or entry.get("description") or ""
     summary = _strip_html(raw_summary) if raw_summary else ""
+    image_url = _extract_image_url(entry, raw_summary)
 
     occurred_at = _parse_published(entry) or fetched_at
     guid = (entry.get("id") or entry.get("guid") or "").strip()
@@ -157,6 +189,7 @@ def entry_to_event(
         "published_at": occurred_at.isoformat(),
         "guid": guid or None,
         "city": city.name if city else None,
+        "image_url": image_url,
         "sentiment": sentiment.compound if sentiment else None,
         "sentiment_label": sentiment.label if sentiment else None,
         "enrichment_meta": {"sentiment_model": SENTIMENT_METHOD_VERSION},
