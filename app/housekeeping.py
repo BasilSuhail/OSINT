@@ -32,6 +32,18 @@ RETENTION_DAYS: dict[str, int | None] = {
     "usgs-quake": 365,
     "gdacs": 180,
     "eonet": 365,
+    # RSS news = Layer-3 breadth. 14 d retention keeps Supabase headroom
+    # while still giving the dashboard a fortnight of context.
+    "rss-bbc-world": 14,
+    "rss-bbc-uk": 14,
+    "rss-reuters-world": 14,
+    "rss-dawn": 14,
+    "rss-guardian-world": 14,
+    "rss-geo-english": 14,
+    # UK Police data is monthly snapshots from data.police.uk. 90 d keeps
+    # ~3 most-recent months on hand — enough for quarter-over-quarter
+    # context without ballooning storage.
+    "uk-police": 90,
 }
 
 

@@ -154,6 +154,46 @@ app.conf.beat_schedule = {
         "args": ["eonet"],
         "schedule": crontab(minute="8,38"),
     },
+    # RSS news feeds: hourly, staggered by 2 minutes so all six aren't
+    # hitting their upstream at the same instant.
+    "rss-bbc-world-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["rss-bbc-world"],
+        "schedule": crontab(hour="*/1", minute=11),
+    },
+    "rss-bbc-uk-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["rss-bbc-uk"],
+        "schedule": crontab(hour="*/1", minute=13),
+    },
+    "rss-reuters-world-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["rss-reuters-world"],
+        "schedule": crontab(hour="*/1", minute=15),
+    },
+    "rss-dawn-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["rss-dawn"],
+        "schedule": crontab(hour="*/1", minute=17),
+    },
+    "rss-guardian-world-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["rss-guardian-world"],
+        "schedule": crontab(hour="*/1", minute=19),
+    },
+    "rss-geo-english-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["rss-geo-english"],
+        "schedule": crontab(hour="*/1", minute=21),
+    },
+    # UK Police publishes one month of crime data at a time; a daily 6 AM
+    # poll is plenty. Cheap fetcher in absolute terms (6 cities x ~4 k rows
+    # /month). Avoids hammering the public API.
+    "uk-police-daily-6am-utc": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["uk-police"],
+        "schedule": crontab(hour=6, minute=0),
+    },
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),

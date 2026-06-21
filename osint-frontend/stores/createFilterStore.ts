@@ -46,6 +46,7 @@ const defaultSources: Record<SourceKey, boolean> = {
   GDACS: true,
   FIRMS: true,
   EONET: true,
+  NEWS: true,
 }
 
 export type FilterStore = UseBoundStore<StoreApi<FilterState>>
