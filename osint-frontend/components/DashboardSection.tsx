@@ -20,6 +20,16 @@ import { colorForEvent, type EventRow, type ScoreRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
 
+/** Global time-range picker options. The dashboard reads its panels off
+ *  the chosen window so every chart / list scopes to the same period. */
+const WINDOW_OPTIONS = [
+  { key: "24h", label: "24 h", ms: 24 * 60 * 60 * 1000, days: 1 },
+  { key: "7d", label: "7 d", ms: 7 * 24 * 60 * 60 * 1000, days: 7 },
+  { key: "30d", label: "30 d", ms: 30 * 24 * 60 * 60 * 1000, days: 30 },
+] as const
+type WindowKey = (typeof WINDOW_OPTIONS)[number]["key"]
+
+
 const regionNames =
   typeof Intl !== "undefined" && "DisplayNames" in Intl
     ? new Intl.DisplayNames(["en"], { type: "region" })
@@ -158,12 +168,12 @@ const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boole
   { key: "crime", label: "Crime", match: (ev) => ev.source === "uk-police" },
 ]
 
-function useScoreSeries(scoreName: string): { day: string; score: number; n: number }[] {
+function useScoreSeries(scoreName: string, days: number = COMPOSITE_BUCKETS): { day: string; score: number; n: number }[] {
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
     const supabase = getSupabase()
     if (!supabase) return
-    const since = subDays(new Date(), COMPOSITE_BUCKETS).toISOString()
+    const since = subDays(new Date(), days).toISOString()
     supabase
       .from("scores")
       .select("*")
@@ -174,7 +184,7 @@ function useScoreSeries(scoreName: string): { day: string; score: number; n: num
       .then(({ data: rows, error }) => {
         if (!error && rows) setData(rows as ScoreRow[])
       })
-  }, [scoreName])
+  }, [scoreName, days])
 
   return useMemo(() => {
     const byDay = new Map<string, { sum: number; n: number }>()
@@ -195,9 +205,37 @@ function useScoreSeries(scoreName: string): { day: string; score: number; n: num
   }, [data])
 }
 
-/** Last 30 d composite-score time series, averaged across all countries. */
-function useCompositeSeries() {
-  return useScoreSeries("composite")
+/** Latest CII row per country for the hero leaderboard tile (#139).
+ *  Reads the most-recent ``score_name = cii_v1`` row per ISO directly
+ *  from Supabase. Pure read; no aggregation here. */
+function useLatestCiiByCountry(): Map<string, { iso: string; score: number }> {
+  const [data, setData] = useState<ScoreRow[]>([])
+  useEffect(() => {
+    const supabase = getSupabase()
+    if (!supabase) return
+    const since = subDays(new Date(), 2).toISOString()
+    supabase
+      .from("scores")
+      .select("*")
+      .eq("score_name", "cii_v1")
+      .gte("bucket_start", since)
+      .order("bucket_start", { ascending: false })
+      .limit(2000)
+      .then(({ data: rows, error }) => {
+        if (!error && rows) setData(rows as ScoreRow[])
+      })
+  }, [])
+
+  return useMemo(() => {
+    const latest = new Map<string, { iso: string; score: number }>()
+    for (const r of data) {
+      const iso = r.country
+      if (!iso) continue
+      if (latest.has(iso)) continue // rows are sorted desc, first wins
+      latest.set(iso, { iso, score: r.score_value ?? 0 })
+    }
+    return latest
+  }, [data])
 }
 
 interface CiiCountryRow {
@@ -304,11 +342,42 @@ function ciiBandColor(score: number): string {
   return "#22c55e"
 }
 
-/** Last 30 d CII series (mean across Tier-1 countries). See
- *  docs/architecture/CII-METHODOLOGY.md. Coexists with the composite
- *  via the score_name discriminator. */
-function useCiiSeries() {
-  return useScoreSeries("cii_v1")
+/** Last N d CII series (mean across Tier-1 countries). N comes from the
+ *  global window picker (#141). See docs/architecture/CII-METHODOLOGY.md. */
+function useCiiSeries(days: number) {
+  return useScoreSeries("cii_v1", days)
+}
+
+const KPI_ACCENT: Record<string, string> = {
+  cyan: "border-l-cyan-700",
+  rose: "border-l-rose-700",
+  amber: "border-l-amber-700",
+  emerald: "border-l-emerald-700",
+}
+
+function KpiTile({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string
+  value: string
+  sub: string
+  accent: keyof typeof KPI_ACCENT
+}) {
+  return (
+    <div
+      className={
+        "rounded-md border border-neutral-800 bg-neutral-950 p-3 border-l-2 " +
+        (KPI_ACCENT[accent] ?? "")
+      }
+    >
+      <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">{label}</p>
+      <p className="mt-1 truncate text-xl font-semibold tabular-nums text-neutral-100">{value}</p>
+      <p className="mt-1 truncate font-mono text-[10px] text-neutral-500">{sub}</p>
+    </div>
+  )
 }
 
 interface DashboardSectionProps {
@@ -317,9 +386,74 @@ interface DashboardSectionProps {
 
 export function DashboardSection({ configured }: DashboardSectionProps) {
   const events = useEvents()
-  const series = useCompositeSeries()
-  const ciiSeries = useCiiSeries()
+  const [windowKey, setWindowKey] = useState<WindowKey>("24h")
+  const windowOpt = useMemo(
+    () => WINDOW_OPTIONS.find((w) => w.key === windowKey) ?? WINDOW_OPTIONS[0],
+    [windowKey],
+  )
+  const windowMs = windowOpt.ms
+  const windowDays = windowOpt.days
+  const windowLabel = windowOpt.label
+  const ciiSeries = useCiiSeries(windowDays)
+  const ciiByCountry = useLatestCiiByCountry()
   const ciiCountries = useCiiByCountry()
+
+  /** Hero KPIs — pure reduces over the in-memory buffer + latest scores
+   *  read. See #139 for the spec. */
+  const heroKpis = useMemo(() => {
+    const dayMs = 24 * 60 * 60 * 1000
+    const now = Date.now()
+    const cutoff = now - dayMs
+
+    let events24h = 0
+    const cellMap = new Map<string, Set<string>>()
+    const sourcesSeen = new Set<string>()
+    for (const ev of events) {
+      const t = new Date(ev.occurred_at).getTime()
+      if (!Number.isFinite(t)) continue
+      if (t < cutoff) continue
+      events24h += 1
+      sourcesSeen.add(ev.source)
+      if (ev.lat != null && ev.lon != null) {
+        const key = `${Math.round(ev.lat)}_${Math.round(ev.lon)}`
+        let set = cellMap.get(key)
+        if (!set) {
+          set = new Set()
+          cellMap.set(key, set)
+        }
+        set.add((ev.category ?? "unknown").toLowerCase())
+      }
+    }
+    let convergence24h = 0
+    for (const cats of cellMap.values()) {
+      if (cats.size >= 3) convergence24h += 1
+    }
+
+    let topIso: string | null = null
+    let topScore = 0
+    for (const c of ciiByCountry.values()) {
+      if (c.score > topScore) {
+        topScore = c.score
+        topIso = c.iso
+      }
+    }
+
+    // Sources expected = the union of every source slug ever seen in the
+    // buffer (we only count what's been ingested historically). Healthy =
+    // a source that has fired in the last 24 h. This is a buffer-based
+    // approximation; the proper ingest_health read lives in #144.
+    const sourcesEver = new Set<string>(events.map((e) => e.source))
+    const sourcesTotal = sourcesEver.size
+    const sourcesHealthy = sourcesSeen.size
+
+    return {
+      events24h,
+      convergence24h,
+      topCii: topIso ? { iso: topIso, score: topScore } : null,
+      sourcesHealthy,
+      sourcesTotal,
+    }
+  }, [events, ciiByCountry])
 
   /** News feed: latest RSS / police news rows. Map-side category=news.
    *  Also matches any source slug that starts with rss- or equals uk-police so
@@ -354,7 +488,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const severityBuckets = useMemo(() => {
     const BUCKETS = 10
     const counts = new Array<number>(BUCKETS).fill(0)
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000
+    const cutoff = Date.now() - windowMs
     for (const ev of events) {
       const t = new Date(ev.occurred_at).getTime()
       if (!Number.isFinite(t) || t < cutoff) continue
@@ -372,7 +506,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
         fill: severityBarColor((lo + hi) / 2),
       }
     })
-  }, [events])
+  }, [events, windowMs])
 
   /** Geographic convergence detector — mirrors the WM algorithm cited in
    *  issue #128. For every event in the last 24 h, bucket lat/lon into a
@@ -384,7 +518,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
    *
    *  Pure reduce over the in-memory buffer — no new fetcher, no schema. */
   const convergenceAlerts = useMemo(() => {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000
+    const cutoff = Date.now() - windowMs
     type Cell = {
       key: string
       lat: number
@@ -433,7 +567,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
       })
     }
     return out.sort((a, b) => b.score - a.score).slice(0, 12)
-  }, [events])
+  }, [events, windowMs])
 
   /** Source health: row count per source in current buffer. Drives the bars. */
   const sourceCounts = useMemo(() => {
@@ -454,13 +588,77 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
       aria-label="Dashboard charts"
       className="relative w-full bg-neutral-950 px-4 py-8 text-neutral-100 sm:px-6 lg:px-10"
     >
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-          Dashboard
-        </h2>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+            Dashboard
+          </h2>
+          {/* Global time-range picker (#141). Every panel below scopes
+           *  its memo to the chosen window so the page reads consistently. */}
+          <div
+            role="group"
+            aria-label="Time range"
+            className="inline-flex overflow-hidden rounded-md border border-neutral-800 font-mono text-[10px] uppercase tracking-wider"
+          >
+            {WINDOW_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setWindowKey(opt.key)}
+                aria-pressed={windowKey === opt.key}
+                className={
+                  "px-2 py-0.5 transition-colors " +
+                  (windowKey === opt.key
+                    ? "bg-cyan-950/40 text-cyan-200"
+                    : "bg-neutral-900/50 text-neutral-500 hover:text-neutral-300")
+                }
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">
-          {events.length.toLocaleString()} events in buffer
+          {events.length.toLocaleString()} events in buffer · window {windowLabel}
         </span>
+      </div>
+
+      {/* Hero KPI row (#139). 4 stat tiles at the top of the dashboard
+       *  so the user sees the system state before scrolling into the
+       *  charts. Numbers come from in-memory buffer + latest CII rows. */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile
+          label="Events · 24 h"
+          value={heroKpis.events24h.toLocaleString()}
+          sub={`${events.length.toLocaleString()} in buffer`}
+          accent="cyan"
+        />
+        <KpiTile
+          label="Top CII country"
+          value={
+            heroKpis.topCii
+              ? `${countryFlagEmoji(heroKpis.topCii.iso)} ${heroKpis.topCii.iso}`
+              : "—"
+          }
+          sub={
+            heroKpis.topCii
+              ? `score ${heroKpis.topCii.score.toFixed(3)} · ${countryName(heroKpis.topCii.iso)}`
+              : "no CII rows yet"
+          }
+          accent="rose"
+        />
+        <KpiTile
+          label="Convergence · 24 h"
+          value={heroKpis.convergence24h.toString()}
+          sub="cells with 3+ categories"
+          accent="amber"
+        />
+        <KpiTile
+          label="Source health"
+          value={`${heroKpis.sourcesHealthy} / ${heroKpis.sourcesTotal}`}
+          sub="active in last 24 h"
+          accent="emerald"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12">
@@ -469,7 +667,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-              CII v1 · mean across Tier-1, last {COMPOSITE_BUCKETS} d
+              CII v1 · mean across Tier-1, last {windowLabel}
             </h3>
             <span className="font-mono text-[10px] tabular-nums text-neutral-500">
               {ciiSeries.length} days
@@ -519,58 +717,9 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
           </p>
         </div>
 
-        {/* Composite time series */}
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-7">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-              Composite score (mean, last {COMPOSITE_BUCKETS} d)
-            </h3>
-            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-              {series.length} days
-            </span>
-          </div>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={series} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
-                <XAxis
-                  dataKey="day"
-                  stroke="rgba(115,115,115,0.6)"
-                  fontSize={10}
-                  tickFormatter={(d) => format(new Date(d), "MMM d")}
-                />
-                <YAxis
-                  stroke="rgba(115,115,115,0.6)"
-                  fontSize={10}
-                  domain={[0, 1]}
-                  tickFormatter={(v) => v.toFixed(1)}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "rgba(10,10,10,0.92)",
-                    border: "1px solid rgba(82,82,82,0.6)",
-                    fontFamily: "monospace",
-                    fontSize: 11,
-                  }}
-                  formatter={(v) => (typeof v === "number" ? v.toFixed(3) : String(v))}
-                  labelFormatter={(d) => format(new Date(d as string), "yyyy-MM-dd")}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="score"
-                  stroke="#22d3ee"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="mt-2 font-mono text-[10px] text-neutral-600">
-            Composite is the average JRC-normalised stress per day across every
-            country with a score. Flat 0.5 means the rolling-z window has no
-            spread yet; widens as historical depth grows.
-          </p>
-        </div>
+        {/* Composite chart removed in #140 — CII v1 is the primary trend
+         *  signal. Composite rows still land in the scores table for the
+         *  ablation evidence the methodology doc promises. */}
 
         {/* CII per-country leaderboard (#142). Replaces the old "top 12
          *  by event count" panel — counting rows favoured high-volume
@@ -802,7 +951,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-              Convergence alerts · last 24 h
+              Convergence alerts · last {windowLabel}
             </h3>
             <span className="font-mono text-[10px] tabular-nums text-neutral-500">
               {convergenceAlerts.length} cells
@@ -863,7 +1012,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-              Severity histogram · last 24 h
+              Severity histogram · last {windowLabel}
             </h3>
             <span className="font-mono text-[10px] tabular-nums text-neutral-500">
               {severityBuckets.reduce((a, b) => a + b.n, 0).toLocaleString()} events
