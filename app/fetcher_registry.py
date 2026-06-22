@@ -15,6 +15,7 @@ from app.sources.gdacs_fetcher import GdacsFetcher
 from app.sources.gdelt_fetcher import GdeltFetcher
 from app.sources.nasa_firms_fetcher import NasaFirmsFetcher
 from app.sources.opensky_fetcher import OpenSkyFetcher
+from app.sources.polymarket_fetcher import PolymarketFetcher
 from app.sources.rss_registry import build_rss_fetchers
 from app.sources.uk_police_fetcher import UKPoliceFetcher
 from app.sources.usgs_quake_fetcher import UsgsQuakeFetcher
@@ -32,6 +33,7 @@ _REGISTRY: dict[str, Fetcher] = {
     "opensky-adsb": OpenSkyFetcher(),
     "abuse-ch-urlhaus": UrlhausFetcher(),
     "abuse-ch-feodo": FeodoFetcher(),
+    "polymarket": PolymarketFetcher(),
     # 25+ RSS feeds loaded from app/sources/rss_feeds.json. Each becomes
     # a dynamically named RssNewsFetcher subclass with the slug as its
     # name. See app/sources/rss_registry.py + issue #158.

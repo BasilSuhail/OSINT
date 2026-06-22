@@ -53,6 +53,9 @@ RETENTION_DAYS: dict[str, int | None] = {
     # rotate fast. 2 d window aligns with hazard layer retention.
     "abuse-ch-urlhaus": 2,
     "abuse-ch-feodo": 2,
+    # Polymarket = only "live" market state matters; price 2 d ago is
+    # irrelevant for stress reading.
+    "polymarket": 2,
     # UK Police = monthly batch ingest, low row volume.
     "uk-police": 7,
     # Market / macro = low volume + trend context matters.
