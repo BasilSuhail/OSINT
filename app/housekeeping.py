@@ -24,26 +24,37 @@ from app.db_models import EventRow, HousekeepingRunRow
 
 #: Per-source retention windows in days. ``None`` means "never delete" (keep
 #: forever — used for low-volume series whose history is irreplaceable).
+# Storage budget while we're on Supabase free tier (#106 + #156): prune
+# every high-volume source to 3 d so we have room to add the
+# source-expansion batch without breaking the free-tier ceiling. When the
+# project moves off Supabase to local HDDs the policy flips back to
+# keep-everything — but until then, only macro / market series with
+# irreplaceable history are exempt.
 RETENTION_DAYS: dict[str, int | None] = {
-    "nasa-firms": 30,
-    "gdelt": 90,
-    "yfinance": 730,
-    "fred": None,  # macro indicators — keep forever
-    "usgs-quake": 365,
-    "gdacs": 180,
-    "eonet": 365,
-    # RSS news = Layer-3 breadth. 14 d retention keeps Supabase headroom
-    # while still giving the dashboard a fortnight of context.
-    "rss-bbc-world": 14,
-    "rss-bbc-uk": 14,
-    "rss-reuters-world": 14,
-    "rss-dawn": 14,
-    "rss-guardian-world": 14,
-    "rss-geo-english": 14,
-    # UK Police data is monthly snapshots from data.police.uk. 90 d keeps
-    # ~3 most-recent months on hand — enough for quarter-over-quarter
-    # context without ballooning storage.
-    "uk-police": 90,
+    # News = nobody wants yesterday's headlines. 1 d window matches
+    # what you'd actually read on the dashboard.
+    "rss-bbc-world": 1,
+    "rss-bbc-uk": 1,
+    "rss-reuters-world": 1,
+    "rss-dawn": 1,
+    "rss-guardian-world": 1,
+    "rss-geo-english": 1,
+    # Hazard + geopolitical = only "live" matters analytically. 2 d
+    # gives the convergence detector enough overlap to see today's
+    # rising cluster.
+    "nasa-firms": 2,
+    "usgs-quake": 2,
+    "gdacs": 2,
+    "eonet": 2,
+    "gdelt": 2,
+    # UK Police = monthly batch ingest, low row volume. 7 d keeps the
+    # latest monthly drop in the buffer even on the slowest tick.
+    "uk-police": 7,
+    # Market / macro = low volume + trend context matters. yfinance
+    # daily prices for 30 d enables a clean weekly chart; FRED keeps
+    # forever because the macro series are irreplaceable.
+    "yfinance": 30,
+    "fred": None,
 }
 
 
