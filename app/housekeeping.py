@@ -48,9 +48,11 @@ RETENTION_DAYS: dict[str, int | None] = {
     "eonet": 2,
     "gdelt": 2,
     # ADS-B = only live matters. 2 d window matches the hazard layer.
-    # ~6 k rows/min x 60 x 24 x 2 = ~17 M rows raw, but de-dupe on
-    # (icao24, time_position) collapses most of that.
     "opensky-adsb": 2,
+    # Cyber-threat = live only matters; old C2 IPs / malware URLs
+    # rotate fast. 2 d window aligns with hazard layer retention.
+    "abuse-ch-urlhaus": 2,
+    "abuse-ch-feodo": 2,
     # UK Police = monthly batch ingest, low row volume.
     "uk-police": 7,
     # Market / macro = low volume + trend context matters.

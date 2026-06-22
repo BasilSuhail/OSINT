@@ -7,6 +7,7 @@ shipping fetchers.
 
 from __future__ import annotations
 
+from app.sources.abuse_ch_fetchers import FeodoFetcher, UrlhausFetcher
 from app.sources.base import Fetcher
 from app.sources.eonet_fetcher import EonetFetcher
 from app.sources.fred_fetcher import FredFetcher
@@ -29,6 +30,8 @@ _REGISTRY: dict[str, Fetcher] = {
     "eonet": EonetFetcher(),
     "uk-police": UKPoliceFetcher(),
     "opensky-adsb": OpenSkyFetcher(),
+    "abuse-ch-urlhaus": UrlhausFetcher(),
+    "abuse-ch-feodo": FeodoFetcher(),
     # 25+ RSS feeds loaded from app/sources/rss_feeds.json. Each becomes
     # a dynamically named RssNewsFetcher subclass with the slug as its
     # name. See app/sources/rss_registry.py + issue #158.
