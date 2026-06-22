@@ -14,14 +14,7 @@ from app.sources.gdacs_fetcher import GdacsFetcher
 from app.sources.gdelt_fetcher import GdeltFetcher
 from app.sources.nasa_firms_fetcher import NasaFirmsFetcher
 from app.sources.opensky_fetcher import OpenSkyFetcher
-from app.sources.rss_news_fetcher import (
-    BBCUKNewsFetcher,
-    BBCWorldNewsFetcher,
-    DawnNewsFetcher,
-    GeoEnglishNewsFetcher,
-    GuardianWorldNewsFetcher,
-    ReutersWorldNewsFetcher,
-)
+from app.sources.rss_registry import build_rss_fetchers
 from app.sources.uk_police_fetcher import UKPoliceFetcher
 from app.sources.usgs_quake_fetcher import UsgsQuakeFetcher
 from app.sources.yfinance_fetcher import YFinanceFetcher
@@ -34,14 +27,12 @@ _REGISTRY: dict[str, Fetcher] = {
     "gdacs": GdacsFetcher(),
     "nasa-firms": NasaFirmsFetcher(),
     "eonet": EonetFetcher(),
-    "rss-bbc-world": BBCWorldNewsFetcher(),
-    "rss-bbc-uk": BBCUKNewsFetcher(),
-    "rss-reuters-world": ReutersWorldNewsFetcher(),
-    "rss-dawn": DawnNewsFetcher(),
-    "rss-guardian-world": GuardianWorldNewsFetcher(),
-    "rss-geo-english": GeoEnglishNewsFetcher(),
     "uk-police": UKPoliceFetcher(),
     "opensky-adsb": OpenSkyFetcher(),
+    # 25+ RSS feeds loaded from app/sources/rss_feeds.json. Each becomes
+    # a dynamically named RssNewsFetcher subclass with the slug as its
+    # name. See app/sources/rss_registry.py + issue #158.
+    **build_rss_fetchers(),
 }
 
 

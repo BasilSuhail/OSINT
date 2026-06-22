@@ -17,37 +17,45 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db_models import EventRow, HousekeepingRunRow
 
 #: Per-source retention windows in days. ``None`` means "never delete" (keep
 #: forever — used for low-volume series whose history is irreplaceable).
+# Storage budget while we're on Supabase free tier (#106 + #156): prune
+# every high-volume source to 3 d so we have room to add the
+# source-expansion batch without breaking the free-tier ceiling. When the
+# project moves off Supabase to local HDDs the policy flips back to
+# keep-everything — but until then, only macro / market series with
+# irreplaceable history are exempt.
 RETENTION_DAYS: dict[str, int | None] = {
-    "nasa-firms": 30,
-    "gdelt": 90,
-    "yfinance": 730,
-    "fred": None,  # macro indicators — keep forever
-    "usgs-quake": 365,
-    "gdacs": 180,
-    "eonet": 365,
-    # RSS news = Layer-3 breadth. 14 d retention keeps Supabase headroom
-    # while still giving the dashboard a fortnight of context.
-    "rss-bbc-world": 14,
-    "rss-bbc-uk": 14,
-    "rss-reuters-world": 14,
-    "rss-dawn": 14,
-    "rss-guardian-world": 14,
-    "rss-geo-english": 14,
-    # UK Police data is monthly snapshots from data.police.uk. 90 d keeps
-    # ~3 most-recent months on hand — enough for quarter-over-quarter
-    # context without ballooning storage.
-    "uk-police": 90,
-    # ADS-B = only live matters. 2 d window matches the dashboard
-    # convergence detector. ~6 k rows/min x 60 x 24 x 2 = ~17 M rows,
-    # but de-dupe on (icao24, time_position) collapses most of that.
+    # News = nobody wants yesterday's headlines. 1 d window matches
+    # what you'd actually read on the dashboard.
+    "rss-bbc-world": 1,
+    "rss-bbc-uk": 1,
+    "rss-reuters-world": 1,
+    "rss-dawn": 1,
+    "rss-guardian-world": 1,
+    "rss-geo-english": 1,
+    # Hazard + geopolitical = only "live" matters analytically. 2 d
+    # gives the convergence detector enough overlap to see today's
+    # rising cluster.
+    "nasa-firms": 2,
+    "usgs-quake": 2,
+    "gdacs": 2,
+    "eonet": 2,
+    "gdelt": 2,
+    # ADS-B = only live matters. 2 d window matches the hazard layer.
+    # ~6 k rows/min x 60 x 24 x 2 = ~17 M rows raw, but de-dupe on
+    # (icao24, time_position) collapses most of that.
     "opensky-adsb": 2,
+    # UK Police = monthly batch ingest, low row volume.
+    "uk-police": 7,
+    # Market / macro = low volume + trend context matters.
+    "yfinance": 30,
+    "fred": None,
 }
 
 
@@ -78,6 +86,18 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
             deleted_by_source[source] = 0
             continue
         deleted_by_source[source] = _prune_source(session, source=source, days=days, now=now)
+
+    # Generic RSS prefix rule: any rss-* source not explicitly listed in
+    # RETENTION_DAYS gets the 1-day news window. Keeps the registry-driven
+    # feeds from #158 pruned without re-listing every slug here.
+    explicit = set(RETENTION_DAYS)
+    seen_rss = session.execute(
+        select(EventRow.source).where(EventRow.source.like("rss-%")).distinct()
+    )
+    for (src,) in seen_rss:
+        if src in explicit:
+            continue
+        deleted_by_source[src] = _prune_source(session, source=src, days=1, now=now)
 
     total_deleted = sum(deleted_by_source.values())
     duration_ms = int((time.monotonic() - started_at) * 1000)

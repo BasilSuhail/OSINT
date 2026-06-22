@@ -1,0 +1,177 @@
+[
+  {
+    "source": "rss-bbc-world",
+    "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "default_country": null,
+    "pretty_name": "BBC World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-bbc-uk",
+    "url": "https://feeds.bbci.co.uk/news/uk/rss.xml",
+    "default_country": "GB",
+    "pretty_name": "BBC UK",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-reuters-world",
+    "url": "https://news.yahoo.com/rss/world",
+    "default_country": null,
+    "pretty_name": "Reuters / Yahoo World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-dawn",
+    "url": "https://www.dawn.com/feed",
+    "default_country": "PK",
+    "pretty_name": "Dawn",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-guardian-world",
+    "url": "https://www.theguardian.com/world/rss",
+    "default_country": null,
+    "pretty_name": "Guardian World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-geo-english",
+    "url": "https://www.geo.tv/rss/1/0",
+    "default_country": "PK",
+    "pretty_name": "Geo English",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-aljazeera",
+    "url": "https://www.aljazeera.com/xml/rss/all.xml",
+    "default_country": "QA",
+    "pretty_name": "Al Jazeera English",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-cnn-world",
+    "url": "http://rss.cnn.com/rss/edition_world.rss",
+    "default_country": "US",
+    "pretty_name": "CNN World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-nyt-world",
+    "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+    "default_country": "US",
+    "pretty_name": "NYT World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-france24-en",
+    "url": "https://www.france24.com/en/rss",
+    "default_country": "FR",
+    "pretty_name": "France 24 English",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-dw-world",
+    "url": "https://rss.dw.com/rdf/rss-en-world",
+    "default_country": "DE",
+    "pretty_name": "DW World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-nhk-world",
+    "url": "https://www3.nhk.or.jp/nhkworld/en/news/feeds/",
+    "default_country": "JP",
+    "pretty_name": "NHK World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-rt-news",
+    "url": "https://www.rt.com/rss/news/",
+    "default_country": "RU",
+    "pretty_name": "RT News",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-tass-en",
+    "url": "https://tass.com/rss/v2.xml",
+    "default_country": "RU",
+    "pretty_name": "TASS English",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-times-of-india",
+    "url": "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+    "default_country": "IN",
+    "pretty_name": "Times of India",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-the-hindu",
+    "url": "https://www.thehindu.com/news/feeder/default.rss",
+    "default_country": "IN",
+    "pretty_name": "The Hindu",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-tribune-pk",
+    "url": "https://tribune.com.pk/feed",
+    "default_country": "PK",
+    "pretty_name": "Express Tribune",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-cbc-world",
+    "url": "https://www.cbc.ca/cmlink/rss-world",
+    "default_country": "CA",
+    "pretty_name": "CBC World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-abc-au-world",
+    "url": "https://www.abc.net.au/news/feed/2942460/rss.xml",
+    "default_country": "AU",
+    "pretty_name": "ABC Australia World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-rnz-world",
+    "url": "https://www.rnz.co.nz/rss/world.xml",
+    "default_country": "NZ",
+    "pretty_name": "RNZ World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-straits-times-world",
+    "url": "https://www.straitstimes.com/news/world/rss.xml",
+    "default_country": "SG",
+    "pretty_name": "Straits Times World",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-jpost-world",
+    "url": "https://www.jpost.com/rss/rssfeedsfrontpage.aspx",
+    "default_country": "IL",
+    "pretty_name": "Jerusalem Post",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-haaretz-en",
+    "url": "https://www.haaretz.com/cmlink/1.628752",
+    "default_country": "IL",
+    "pretty_name": "Haaretz English",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-arab-news",
+    "url": "https://www.arabnews.com/rss.xml",
+    "default_country": "SA",
+    "pretty_name": "Arab News",
+    "cadence_min": 60
+  },
+  {
+    "source": "rss-kyiv-independent",
+    "url": "https://kyivindependent.com/feed/",
+    "default_country": "UA",
+    "pretty_name": "Kyiv Independent",
+    "cadence_min": 60
+  }
+]
