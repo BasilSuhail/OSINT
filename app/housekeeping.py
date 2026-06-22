@@ -17,7 +17,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db_models import EventRow, HousekeepingRunRow
@@ -85,6 +85,18 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
             deleted_by_source[source] = 0
             continue
         deleted_by_source[source] = _prune_source(session, source=source, days=days, now=now)
+
+    # Generic RSS prefix rule: any rss-* source not explicitly listed in
+    # RETENTION_DAYS gets the 1-day news window. Keeps the registry-driven
+    # feeds from #158 pruned without re-listing every slug here.
+    explicit = set(RETENTION_DAYS)
+    seen_rss = session.execute(
+        select(EventRow.source).where(EventRow.source.like("rss-%")).distinct()
+    )
+    for (src,) in seen_rss:
+        if src in explicit:
+            continue
+        deleted_by_source[src] = _prune_source(session, source=src, days=1, now=now)
 
     total_deleted = sum(deleted_by_source.values())
     duration_ms = int((time.monotonic() - started_at) * 1000)
