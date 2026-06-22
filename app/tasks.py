@@ -25,6 +25,7 @@ from app.db_models import IngestFailureRow, IngestHealthRow
 from app.fetcher_registry import get_fetcher
 from app.housekeeping import prune_events
 from app.persistence import upsert_events
+from app.sources.rss_registry import feed_cadence_map
 from app.watchdog import check_sources
 
 
@@ -174,37 +175,16 @@ app.conf.beat_schedule = {
         "args": ["eonet"],
         "schedule": crontab(minute="8,38"),
     },
-    # RSS news feeds: hourly, staggered by 2 minutes so all six aren't
-    # hitting their upstream at the same instant.
-    "rss-bbc-world-hourly": {
-        "task": "app.tasks.run_fetcher",
-        "args": ["rss-bbc-world"],
-        "schedule": crontab(hour="*/1", minute=11),
-    },
-    "rss-bbc-uk-hourly": {
-        "task": "app.tasks.run_fetcher",
-        "args": ["rss-bbc-uk"],
-        "schedule": crontab(hour="*/1", minute=13),
-    },
-    "rss-reuters-world-hourly": {
-        "task": "app.tasks.run_fetcher",
-        "args": ["rss-reuters-world"],
-        "schedule": crontab(hour="*/1", minute=15),
-    },
-    "rss-dawn-hourly": {
-        "task": "app.tasks.run_fetcher",
-        "args": ["rss-dawn"],
-        "schedule": crontab(hour="*/1", minute=17),
-    },
-    "rss-guardian-world-hourly": {
-        "task": "app.tasks.run_fetcher",
-        "args": ["rss-guardian-world"],
-        "schedule": crontab(hour="*/1", minute=19),
-    },
-    "rss-geo-english-hourly": {
-        "task": "app.tasks.run_fetcher",
-        "args": ["rss-geo-english"],
-        "schedule": crontab(hour="*/1", minute=21),
+    # RSS news feeds — generated from app/sources/rss_feeds.json. Each
+    # entry is hourly by default, staggered by the feed's index so they
+    # never all hit upstream at the same instant. See issue #158.
+    **{
+        f"{slug}-hourly": {
+            "task": "app.tasks.run_fetcher",
+            "args": [slug],
+            "schedule": crontab(hour="*/1", minute=(10 + idx * 2) % 60),
+        }
+        for idx, slug in enumerate(feed_cadence_map().keys())
     },
     # UK Police publishes one month of crime data at a time; a daily 6 AM
     # poll is plenty. Cheap fetcher in absolute terms (6 cities x ~4 k rows
@@ -213,6 +193,26 @@ app.conf.beat_schedule = {
         "task": "app.tasks.run_fetcher",
         "args": ["uk-police"],
         "schedule": crontab(hour=6, minute=0),
+    },
+    # OpenSky public ADS-B is rate-limited per anonymous IP at 10 s; we
+    # poll every 2 min to stay polite and not blow Supabase write quota.
+    "opensky-adsb-2min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["opensky-adsb"],
+        "schedule": crontab(minute="*/2"),
+    },
+    # abuse.ch cyber-threat feeds. Refresh upstream every ~5 min; we
+    # poll every 15 min to be polite. Two slots offset by 3 min so
+    # they don't fire simultaneously.
+    "abuse-ch-urlhaus-15min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["abuse-ch-urlhaus"],
+        "schedule": crontab(minute="3,18,33,48"),
+    },
+    "abuse-ch-feodo-15min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["abuse-ch-feodo"],
+        "schedule": crontab(minute="6,21,36,51"),
     },
     # Polymarket public Gamma API — prediction markets refresh every
     # few seconds. 30 min cadence keeps the dashboard fresh without
