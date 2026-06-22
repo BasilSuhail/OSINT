@@ -205,11 +205,6 @@ function useScoreSeries(scoreName: string, days: number = COMPOSITE_BUCKETS): { 
   }, [data])
 }
 
-/** Last 30 d composite-score time series, averaged across all countries. */
-function useCompositeSeries() {
-  return useScoreSeries("composite")
-}
-
 /** Last N d CII series (mean across Tier-1 countries). N comes from the
  *  global window picker (#141). See docs/architecture/CII-METHODOLOGY.md. */
 function useCiiSeries(days: number) {
@@ -222,7 +217,6 @@ interface DashboardSectionProps {
 
 export function DashboardSection({ configured }: DashboardSectionProps) {
   const events = useEvents()
-  const series = useCompositeSeries()
   const [windowKey, setWindowKey] = useState<WindowKey>("24h")
   const windowOpt = useMemo(
     () => WINDOW_OPTIONS.find((w) => w.key === windowKey) ?? WINDOW_OPTIONS[0],
