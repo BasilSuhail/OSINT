@@ -44,6 +44,10 @@ RETENTION_DAYS: dict[str, int | None] = {
     # ~3 most-recent months on hand — enough for quarter-over-quarter
     # context without ballooning storage.
     "uk-police": 90,
+    # Cyber-threat = live only matters; old C2 IPs / malware URLs
+    # rotate fast. 2 d window aligns with hazard layer retention.
+    "abuse-ch-urlhaus": 2,
+    "abuse-ch-feodo": 2,
 }
 
 

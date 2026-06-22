@@ -7,6 +7,7 @@ shipping fetchers.
 
 from __future__ import annotations
 
+from app.sources.abuse_ch_fetchers import FeodoFetcher, UrlhausFetcher
 from app.sources.base import Fetcher
 from app.sources.eonet_fetcher import EonetFetcher
 from app.sources.fred_fetcher import FredFetcher
@@ -40,6 +41,8 @@ _REGISTRY: dict[str, Fetcher] = {
     "rss-guardian-world": GuardianWorldNewsFetcher(),
     "rss-geo-english": GeoEnglishNewsFetcher(),
     "uk-police": UKPoliceFetcher(),
+    "abuse-ch-urlhaus": UrlhausFetcher(),
+    "abuse-ch-feodo": FeodoFetcher(),
 }
 
 

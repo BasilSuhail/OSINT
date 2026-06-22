@@ -214,6 +214,19 @@ app.conf.beat_schedule = {
         "args": ["uk-police"],
         "schedule": crontab(hour=6, minute=0),
     },
+    # abuse.ch cyber-threat feeds. Refresh upstream every ~5 min;
+    # we poll every 15 min to be polite. Two slots offset by 3 min
+    # so they don't fire simultaneously.
+    "abuse-ch-urlhaus-15min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["abuse-ch-urlhaus"],
+        "schedule": crontab(minute="3,18,33,48"),
+    },
+    "abuse-ch-feodo-15min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["abuse-ch-feodo"],
+        "schedule": crontab(minute="6,21,36,51"),
+    },
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),
