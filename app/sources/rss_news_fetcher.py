@@ -176,6 +176,24 @@ def entry_to_event(
     lon = city.lon if city else None
     country = (city.iso if city else None) or config.default_country
 
+    # News scope classifier (#166): a Pakistani-paper headline mentioning
+    # a US politician is "world", not "local". Drives the map render —
+    # local stories pin at their city, world stories never fall back to
+    # the feed-country centroid (which created the 92-row blob over PK).
+    #
+    # - city in the feed's default_country → local
+    # - city in a different country → world
+    # - no city match but feed has a default_country → unknown
+    #   (treated like world on the map; surfaced on the country aggregate)
+    # - feed has no default_country (BBC World, Reuters World) → city
+    #   match counts as local to that city; otherwise unknown
+    if city is None:
+        news_scope = "unknown"
+    elif config.default_country is None or city.iso == config.default_country:
+        news_scope = "local"
+    else:
+        news_scope = "world"
+
     # VADER sentiment over title + summary. ``compound`` ∈ [-1, 1].
     # See app/enrichment/sentiment.py + issue #126. Label is a UI
     # convenience derived via VADER's published cut-offs.
@@ -192,6 +210,7 @@ def entry_to_event(
         "image_url": image_url,
         "sentiment": sentiment.compound if sentiment else None,
         "sentiment_label": sentiment.label if sentiment else None,
+        "news_scope": news_scope,
         "enrichment_meta": {"sentiment_model": SENTIMENT_METHOD_VERSION},
     }
 

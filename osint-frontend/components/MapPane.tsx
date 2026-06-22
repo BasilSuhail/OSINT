@@ -212,11 +212,24 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     for (const ev of events) {
       let lat = ev.lat
       let lon = ev.lon
-      if ((lat == null || lon == null) && ev.country) {
-        const c = centroids.get(ev.country)
-        if (c) {
-          lon = c[0]
-          lat = c[1]
+      if (lat == null || lon == null) {
+        // Skip the country-centroid fallback for clusterable rows whose
+        // payload.news_scope is "world" or "unknown" (#166). Dawn / Geo
+        // republish world news; stacking those at the PK centroid
+        // produced the 92-row blob screenshotted on the issue. Local-only
+        // news + non-news rows still get the centroid fallback so quakes /
+        // fires / hazards stay visible.
+        const p = (ev.payload ?? {}) as Record<string, unknown>
+        const scope = typeof p?.news_scope === "string" ? (p.news_scope as string) : null
+        const isWorldOrUnknownNews =
+          isClusterable(ev) && scope !== "local" && (ev.source ?? "").startsWith("rss-")
+        if (isWorldOrUnknownNews) continue
+        if (ev.country) {
+          const c = centroids.get(ev.country)
+          if (c) {
+            lon = c[0]
+            lat = c[1]
+          }
         }
       }
       if (lat == null || lon == null) continue
