@@ -1074,7 +1074,18 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
               {convergenceAlerts.map((a) => (
                 <li
                   key={a.key}
-                  className="flex flex-wrap items-center gap-2 rounded border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-[11px]"
+                  onClick={() => {
+                    // Click → scroll the top viewport into view and dispatch
+                    // a custom event the map pane listens for. See #145.
+                    window.scrollTo({ top: 0, behavior: "smooth" })
+                    window.dispatchEvent(
+                      new CustomEvent("osint:flyto", {
+                        detail: { lat: a.lat, lon: a.lon, zoom: 5 },
+                      }),
+                    )
+                  }}
+                  className="flex cursor-pointer flex-wrap items-center gap-2 rounded border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-[11px] transition-colors hover:border-cyan-700 hover:bg-cyan-950/20"
+                  title="Click to fly the map to this cell"
                 >
                   <span
                     className={
