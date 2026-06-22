@@ -44,6 +44,10 @@ RETENTION_DAYS: dict[str, int | None] = {
     # ~3 most-recent months on hand — enough for quarter-over-quarter
     # context without ballooning storage.
     "uk-police": 90,
+    # ADS-B = only live matters. 2 d window matches the dashboard
+    # convergence detector. ~6 k rows/min x 60 x 24 x 2 = ~17 M rows,
+    # but de-dupe on (icao24, time_position) collapses most of that.
+    "opensky-adsb": 2,
 }
 
 

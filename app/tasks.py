@@ -214,6 +214,13 @@ app.conf.beat_schedule = {
         "args": ["uk-police"],
         "schedule": crontab(hour=6, minute=0),
     },
+    # OpenSky public ADS-B is rate-limited per anonymous IP at 10 s; we
+    # poll every 2 min to stay polite and not blow Supabase write quota.
+    "opensky-adsb-2min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["opensky-adsb"],
+        "schedule": crontab(minute="*/2"),
+    },
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),
