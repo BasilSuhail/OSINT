@@ -470,58 +470,9 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
           </p>
         </div>
 
-        {/* Composite time series */}
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-7">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-              Composite score (mean, last {COMPOSITE_BUCKETS} d)
-            </h3>
-            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-              {series.length} days
-            </span>
-          </div>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={series} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
-                <XAxis
-                  dataKey="day"
-                  stroke="rgba(115,115,115,0.6)"
-                  fontSize={10}
-                  tickFormatter={(d) => format(new Date(d), "MMM d")}
-                />
-                <YAxis
-                  stroke="rgba(115,115,115,0.6)"
-                  fontSize={10}
-                  domain={[0, 1]}
-                  tickFormatter={(v) => v.toFixed(1)}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "rgba(10,10,10,0.92)",
-                    border: "1px solid rgba(82,82,82,0.6)",
-                    fontFamily: "monospace",
-                    fontSize: 11,
-                  }}
-                  formatter={(v) => (typeof v === "number" ? v.toFixed(3) : String(v))}
-                  labelFormatter={(d) => format(new Date(d as string), "yyyy-MM-dd")}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="score"
-                  stroke="#22d3ee"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="mt-2 font-mono text-[10px] text-neutral-600">
-            Composite is the average JRC-normalised stress per day across every
-            country with a score. Flat 0.5 means the rolling-z window has no
-            spread yet; widens as historical depth grows.
-          </p>
-        </div>
+        {/* Composite chart removed in #140 — CII v1 is the primary trend
+         *  signal. Composite rows still land in the scores table for the
+         *  ablation evidence the methodology doc promises. */}
 
         {/* Top countries */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-5">
