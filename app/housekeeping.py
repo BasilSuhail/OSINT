@@ -44,6 +44,9 @@ RETENTION_DAYS: dict[str, int | None] = {
     # ~3 most-recent months on hand — enough for quarter-over-quarter
     # context without ballooning storage.
     "uk-police": 90,
+    # Polymarket = only "live" market state matters; price 2 d ago is
+    # irrelevant for stress reading.
+    "polymarket": 2,
 }
 
 

@@ -13,6 +13,7 @@ from app.sources.fred_fetcher import FredFetcher
 from app.sources.gdacs_fetcher import GdacsFetcher
 from app.sources.gdelt_fetcher import GdeltFetcher
 from app.sources.nasa_firms_fetcher import NasaFirmsFetcher
+from app.sources.polymarket_fetcher import PolymarketFetcher
 from app.sources.rss_news_fetcher import (
     BBCUKNewsFetcher,
     BBCWorldNewsFetcher,
@@ -40,6 +41,7 @@ _REGISTRY: dict[str, Fetcher] = {
     "rss-guardian-world": GuardianWorldNewsFetcher(),
     "rss-geo-english": GeoEnglishNewsFetcher(),
     "uk-police": UKPoliceFetcher(),
+    "polymarket": PolymarketFetcher(),
 }
 
 

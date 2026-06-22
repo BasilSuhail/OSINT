@@ -214,6 +214,14 @@ app.conf.beat_schedule = {
         "args": ["uk-police"],
         "schedule": crontab(hour=6, minute=0),
     },
+    # Polymarket public Gamma API — prediction markets refresh every
+    # few seconds. 30 min cadence keeps the dashboard fresh without
+    # blowing the write quota or hammering the public endpoint.
+    "polymarket-30min": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["polymarket"],
+        "schedule": crontab(minute="9,39"),
+    },
     "composite-hourly": {
         "task": "app.tasks.compute_composite",
         "schedule": crontab(hour="*/1", minute=10),
