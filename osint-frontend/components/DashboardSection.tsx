@@ -205,10 +205,75 @@ function useScoreSeries(scoreName: string, days: number = COMPOSITE_BUCKETS): { 
   }, [data])
 }
 
+/** Latest CII row per country for the hero leaderboard tile (#139).
+ *  Reads the most-recent ``score_name = cii_v1`` row per ISO directly
+ *  from Supabase. Pure read; no aggregation here. */
+function useLatestCiiByCountry(): Map<string, { iso: string; score: number }> {
+  const [data, setData] = useState<ScoreRow[]>([])
+  useEffect(() => {
+    const supabase = getSupabase()
+    if (!supabase) return
+    const since = subDays(new Date(), 2).toISOString()
+    supabase
+      .from("scores")
+      .select("*")
+      .eq("score_name", "cii_v1")
+      .gte("bucket_start", since)
+      .order("bucket_start", { ascending: false })
+      .limit(2000)
+      .then(({ data: rows, error }) => {
+        if (!error && rows) setData(rows as ScoreRow[])
+      })
+  }, [])
+
+  return useMemo(() => {
+    const latest = new Map<string, { iso: string; score: number }>()
+    for (const r of data) {
+      const iso = r.country
+      if (!iso) continue
+      if (latest.has(iso)) continue // rows are sorted desc, first wins
+      latest.set(iso, { iso, score: r.score_value ?? 0 })
+    }
+    return latest
+  }, [data])
+}
+
 /** Last N d CII series (mean across Tier-1 countries). N comes from the
  *  global window picker (#141). See docs/architecture/CII-METHODOLOGY.md. */
 function useCiiSeries(days: number) {
   return useScoreSeries("cii_v1", days)
+}
+
+const KPI_ACCENT: Record<string, string> = {
+  cyan: "border-l-cyan-700",
+  rose: "border-l-rose-700",
+  amber: "border-l-amber-700",
+  emerald: "border-l-emerald-700",
+}
+
+function KpiTile({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string
+  value: string
+  sub: string
+  accent: keyof typeof KPI_ACCENT
+}) {
+  return (
+    <div
+      className={
+        "rounded-md border border-neutral-800 bg-neutral-950 p-3 border-l-2 " +
+        (KPI_ACCENT[accent] ?? "")
+      }
+    >
+      <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">{label}</p>
+      <p className="mt-1 truncate text-xl font-semibold tabular-nums text-neutral-100">{value}</p>
+      <p className="mt-1 truncate font-mono text-[10px] text-neutral-500">{sub}</p>
+    </div>
+  )
 }
 
 interface DashboardSectionProps {
@@ -226,6 +291,64 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const windowDays = windowOpt.days
   const windowLabel = windowOpt.label
   const ciiSeries = useCiiSeries(windowDays)
+  const ciiByCountry = useLatestCiiByCountry()
+
+  /** Hero KPIs — pure reduces over the in-memory buffer + latest scores
+   *  read. See #139 for the spec. */
+  const heroKpis = useMemo(() => {
+    const dayMs = 24 * 60 * 60 * 1000
+    const now = Date.now()
+    const cutoff = now - dayMs
+
+    let events24h = 0
+    const cellMap = new Map<string, Set<string>>()
+    const sourcesSeen = new Set<string>()
+    for (const ev of events) {
+      const t = new Date(ev.occurred_at).getTime()
+      if (!Number.isFinite(t)) continue
+      if (t < cutoff) continue
+      events24h += 1
+      sourcesSeen.add(ev.source)
+      if (ev.lat != null && ev.lon != null) {
+        const key = `${Math.round(ev.lat)}_${Math.round(ev.lon)}`
+        let set = cellMap.get(key)
+        if (!set) {
+          set = new Set()
+          cellMap.set(key, set)
+        }
+        set.add((ev.category ?? "unknown").toLowerCase())
+      }
+    }
+    let convergence24h = 0
+    for (const cats of cellMap.values()) {
+      if (cats.size >= 3) convergence24h += 1
+    }
+
+    let topIso: string | null = null
+    let topScore = 0
+    for (const c of ciiByCountry.values()) {
+      if (c.score > topScore) {
+        topScore = c.score
+        topIso = c.iso
+      }
+    }
+
+    // Sources expected = the union of every source slug ever seen in the
+    // buffer (we only count what's been ingested historically). Healthy =
+    // a source that has fired in the last 24 h. This is a buffer-based
+    // approximation; the proper ingest_health read lives in #144.
+    const sourcesEver = new Set<string>(events.map((e) => e.source))
+    const sourcesTotal = sourcesEver.size
+    const sourcesHealthy = sourcesSeen.size
+
+    return {
+      events24h,
+      convergence24h,
+      topCii: topIso ? { iso: topIso, score: topScore } : null,
+      sourcesHealthy,
+      sourcesTotal,
+    }
+  }, [events, ciiByCountry])
 
   /** Top 12 countries by event count in the current buffer. */
   const topCountries = useMemo(() => {
@@ -406,6 +529,44 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
         <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">
           {events.length.toLocaleString()} events in buffer · window {windowLabel}
         </span>
+      </div>
+
+      {/* Hero KPI row (#139). 4 stat tiles at the top of the dashboard
+       *  so the user sees the system state before scrolling into the
+       *  charts. Numbers come from in-memory buffer + latest CII rows. */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile
+          label="Events · 24 h"
+          value={heroKpis.events24h.toLocaleString()}
+          sub={`${events.length.toLocaleString()} in buffer`}
+          accent="cyan"
+        />
+        <KpiTile
+          label="Top CII country"
+          value={
+            heroKpis.topCii
+              ? `${countryFlagEmoji(heroKpis.topCii.iso)} ${heroKpis.topCii.iso}`
+              : "—"
+          }
+          sub={
+            heroKpis.topCii
+              ? `score ${heroKpis.topCii.score.toFixed(3)} · ${countryName(heroKpis.topCii.iso)}`
+              : "no CII rows yet"
+          }
+          accent="rose"
+        />
+        <KpiTile
+          label="Convergence · 24 h"
+          value={heroKpis.convergence24h.toString()}
+          sub="cells with 3+ categories"
+          accent="amber"
+        />
+        <KpiTile
+          label="Source health"
+          value={`${heroKpis.sourcesHealthy} / ${heroKpis.sourcesTotal}`}
+          sub="active in last 24 h"
+          accent="emerald"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12">
