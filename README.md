@@ -316,14 +316,29 @@ Concrete next moves (this week):
 
 Sits on the dashboard for situational awareness, **not** in the composite, **not** in the evaluation, **not** in the thesis Methods or Results chapters. Single Discussion paragraph + appendix table in the thesis. Grows freely after 28 August.
 
-- Aviation tracking (OpenSky + adsb.lol) — movement signal
-- Maritime tracking (AISStream) — supply-chain disruption
-- Satellite tracking (CelesTrak TLE + NASA NEO + JPL SBDB)
-- Space weather (NOAA SWPC)
-- News RSS bundle (Reuters / AP / BBC / ISW / Bellingcat)
-- Off-grid mesh (Meshtastic / APRS / KiwiSDR)
+Live as of the latest source-expansion batch — **43 active fetchers**:
+
+- **News (RSS, 25 feeds)** — BBC World, BBC UK, Reuters/Yahoo, Dawn, Guardian, Geo English, Al Jazeera, CNN, NYT, France 24, DW, NHK, RT, TASS, Times of India, The Hindu, Tribune PK, CBC, ABC AU, RNZ, Straits Times, Jerusalem Post, Haaretz, Arab News, Kyiv Independent. JSON-registry driven (#158).
+- **Aviation** — OpenSky public ADS-B (#161). 2 min cadence, every aircraft broadcasting ADS-B in the last 10 s.
+- **Cyber-threat** — abuse.ch URLhaus malware URLs + Feodo Tracker botnet C2 IPs (#163). 15 min cadence each.
+- **Prediction markets** — Polymarket public Gamma API (#165). 30 min cadence. Severity reads as "tail-event awareness" (peaks at p = 0.5).
+- **Crime** — UK Police data.police.uk monthly snapshots.
+- **Hazard / geo / market (Layer 1+2)** — yfinance, FRED, GDELT, USGS, GDACS, FIRMS, EONET.
 
 **Hard rule** ([`docs/architecture/07-risks.md`](docs/architecture/07-risks.md#schedule-risks)): no Layer 3 worker is merged after end of Week 7. Layer 3 PRs that arrive after that are closed without merge. This rule is load-bearing for the thesis grade — every Layer 3 hour after Week 7 is an hour stolen from writing or viva prep.
+
+## Enrichment + analytics on the rows
+
+Every news row gets the following stamped on `payload` at fetch time. See [`docs/architecture/ENRICHMENT-METHODOLOGY.md`](docs/architecture/ENRICHMENT-METHODOLOGY.md):
+
+- VADER sentiment v1.0 (`compound ∈ [-1, 1]` + label).
+- spaCy NER v1.0 (optional dep) — `entities = [{text, label}, …]`.
+- News-scope classifier (`local | world | unknown`) — distinguishes a Dawn-published US story from a Karachi street-level event.
+- Offline city pinpoint (Natural Earth 50m, ~1.2 k cities) — drives map lat/lon.
+- Image URL (media:thumbnail / media:content / enclosure / first `<img>` fallback).
+- News-scope-aware impact ranking (NIP §3 formula) — `0.30 |sentiment| + 0.25 cluster + 0.25 sourceWeight + 0.20 recency`.
+
+CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries. Methodology in [`docs/architecture/CII-METHODOLOGY.md`](docs/architecture/CII-METHODOLOGY.md).
 
 ---
 
@@ -335,6 +350,8 @@ Sits on the dashboard for situational awareness, **not** in the composite, **not
   - Part B — literature baseline (citations, reading priority, BibTeX snippets)
 - **[`docs/architecture/`](docs/architecture/)** — seven-section build spec, all sections drafted:
   - [01 overview](docs/architecture/01-overview.md) · [02 storage](docs/architecture/02-storage.md) · [03 ingestion](docs/architecture/03-ingestion.md) · [04 schema](docs/architecture/04-schema.md) · [05 originality](docs/architecture/05-originality.md) · [06 validation](docs/architecture/06-validation.md) · [07 risks](docs/architecture/07-risks.md)
+  - [CII methodology](docs/architecture/CII-METHODOLOGY.md) — per-country baseline + 4-component event blend (cii.v1.1, 31 Tier-1 countries)
+  - [Enrichment methodology](docs/architecture/ENRICHMENT-METHODOLOGY.md) — VADER sentiment + spaCy NER + city + news-scope classifier + impact formula
 
 ---
 
