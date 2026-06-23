@@ -1596,6 +1596,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
         </div>
 
 
+
         {/* Cyber-threat rollup (#177). Surfaces abuse.ch URLhaus + Feodo
          *  rows shipped via #163. */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-6">
@@ -1708,6 +1709,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             Severity = 1 − |p − 0.5| × 2 — peaks at maximum uncertainty.
           </p>
         </div>
+
         <SectionHeader label="Health & Validation" color="emerald" />
 
         {/* Source latency (#144). Replaces the old buffer-bar source-health
