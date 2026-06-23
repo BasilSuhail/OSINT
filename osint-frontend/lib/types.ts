@@ -140,6 +140,11 @@ export function colorForEvent(ev: EventRow): string {
   if (src.includes("FIRMS")) return "#eab308"
   if (src.includes("YF") || src.includes("YFINANCE") || ev.category === "market") return "#22c55e"
   if (src.includes("GDELT") || ev.category === "geopolitical") return "#a3a3a3"
+  if (src.includes("OPENSKY") || src.includes("ADSB") || ev.category === "tracking") {
+    return "#06b6d4" // cyan-500 — distinct from news (#38bdf8 sky-400)
+  }
+  if (src.includes("ABUSE") || ev.category === "cyber") return "#a855f7" // violet-500
+  if (src === "POLYMARKET") return "#10b981" // emerald-500
   // category fallback
   switch (ev.category) {
     case "hazard":
@@ -148,6 +153,10 @@ export function colorForEvent(ev: EventRow): string {
       return "#eab308"
     case "market":
       return "#22c55e"
+    case "tracking":
+      return "#06b6d4"
+    case "cyber":
+      return "#a855f7"
     default:
       return "#a3a3a3"
   }
