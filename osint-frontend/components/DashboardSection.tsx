@@ -10,9 +10,12 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts"
 import { useEvents } from "@/app/providers"
 import { getSupabase } from "@/lib/supabase"
@@ -111,14 +114,47 @@ function relativeTime(iso: string): string {
 
 /** Editorial source weights for the impact ranking. Mirrors the NIP
  *  formula (BasilSuhail/news-intelligence-platform / 03-IMPACT-SCORE-ALGORITHM).
- *  Higher = more credibility / global reach. Out-of-table sources get 0.5. */
+ *  Higher = more credibility / global reach. Out-of-table sources get 0.5.
+ *
+ *  Updated for the 25 RSS feeds shipped via #158 + the regional papers
+ *  added later. Tiers:
+ *  - 1.00 — wire-service grade global desk
+ *  - 0.90–0.95 — top-tier national broadsheet w/ international desk
+ *  - 0.80–0.85 — strong regional broadsheet
+ *  - 0.65–0.75 — niche / opinion-heavy / partial-translation outlet
+ *  - 0.55–0.60 — state mouthpiece (signal exists, bias caveat)
+ */
 const NEWS_SOURCE_WEIGHTS: Record<string, number> = {
+  // Wire-service / top global
   "rss-bbc-world": 1.0,
   "rss-reuters-world": 1.0,
+  "rss-nyt-world": 0.95,
   "rss-bbc-uk": 0.95,
   "rss-guardian-world": 0.9,
+  "rss-aljazeera": 0.9,
+  // National broadsheet, international desk
+  "rss-france24-en": 0.85,
+  "rss-dw-world": 0.85,
+  "rss-nhk-world": 0.85,
+  "rss-cbc-world": 0.85,
+  "rss-abc-au-world": 0.85,
+  "rss-cnn-world": 0.8,
+  // Regional / national
   "rss-dawn": 0.85,
+  "rss-tribune-pk": 0.75,
+  "rss-times-of-india": 0.8,
+  "rss-the-hindu": 0.8,
+  "rss-straits-times-world": 0.8,
+  "rss-rnz-world": 0.8,
+  "rss-arab-news": 0.7,
+  "rss-jpost-world": 0.75,
+  "rss-haaretz-en": 0.8,
+  "rss-kyiv-independent": 0.8,
   "rss-geo-english": 0.7,
+  // State-mouthpiece tier (signal still useful w/ bias caveat)
+  "rss-rt-news": 0.55,
+  "rss-tass-en": 0.55,
+  // Crime data is its own thing — low impact weight, surfaces via category
   "uk-police": 0.6,
 }
 
@@ -135,10 +171,33 @@ function recencyFor(ev: EventRow): number {
   return Math.max(0, 1 - ageH / 24)
 }
 
-/** Impact score per NIP, minus cluster size (own follow-up issue).
+/** Lowercase character-bigram set of a title — used for Jaccard similarity
+ *  in the article-clustering memo (#172). Strips non-word chars then walks
+ *  word boundaries so "Trump" / "TRUMP" / "trump." all map to the same set. */
+function titleBigrams(title: string): Set<string> {
+  const cleaned = title.toLowerCase().replace(/[^a-z0-9\s]/g, " ")
+  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 2)
+  const out = new Set<string>()
+  for (let i = 0; i < tokens.length - 1; i++) {
+    out.add(`${tokens[i]}_${tokens[i + 1]}`)
+  }
+  // Single tokens too, so very short titles still group.
+  for (const t of tokens) out.add(t)
+  return out
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
+  let inter = 0
+  for (const x of a) if (b.has(x)) inter += 1
+  const uni = a.size + b.size - inter
+  return uni === 0 ? 0 : inter / uni
+}
+
+/** Impact score per NIP including the cluster size term (#172).
  *  Falls back to the keyword-boosted severity when sentiment is missing
  *  so pre-#131 rows still rank meaningfully. */
-function impactScoreFor(ev: EventRow): number {
+function impactScoreFor(ev: EventRow, clusterSize: number = 1): number {
   const p = (ev.payload ?? {}) as Record<string, unknown>
   const rawSentiment =
     typeof p?.sentiment === "number"
@@ -146,24 +205,79 @@ function impactScoreFor(ev: EventRow): number {
       : typeof ev.severity === "number"
         ? Math.abs(ev.severity - 0.35) * 2 // map 0.35→0, 0.85→1
         : 0
-  return 0.45 * rawSentiment + 0.30 * recencyFor(ev) + 0.25 * sourceWeightFor(ev)
+  const clusterTerm = Math.min(clusterSize / 10, 1)
+  return (
+    0.3 * rawSentiment +
+    0.25 * clusterTerm +
+    0.25 * sourceWeightFor(ev) +
+    0.2 * recencyFor(ev)
+  )
 }
 
 const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boolean }[] = [
   { key: "all", label: "All", match: () => true },
-  { key: "uk", label: "UK", match: (ev) => ev.source === "rss-bbc-uk" || ev.country === "GB" },
   {
     key: "world",
     label: "World",
     match: (ev) =>
       ev.source === "rss-bbc-world" ||
       ev.source === "rss-reuters-world" ||
-      ev.source === "rss-guardian-world",
+      ev.source === "rss-guardian-world" ||
+      ev.source === "rss-aljazeera" ||
+      ev.source === "rss-cnn-world" ||
+      ev.source === "rss-nyt-world" ||
+      ev.source === "rss-france24-en" ||
+      ev.source === "rss-dw-world" ||
+      ev.source === "rss-nhk-world",
   },
+  { key: "uk", label: "UK", match: (ev) => ev.source === "rss-bbc-uk" || ev.country === "GB" },
   {
     key: "pakistan",
     label: "Pakistan",
-    match: (ev) => ev.source === "rss-dawn" || ev.source === "rss-geo-english" || ev.country === "PK",
+    match: (ev) =>
+      ev.source === "rss-dawn" ||
+      ev.source === "rss-geo-english" ||
+      ev.source === "rss-tribune-pk" ||
+      ev.country === "PK",
+  },
+  {
+    key: "india",
+    label: "India",
+    match: (ev) =>
+      ev.source === "rss-times-of-india" ||
+      ev.source === "rss-the-hindu" ||
+      ev.country === "IN",
+  },
+  {
+    key: "middle-east",
+    label: "ME",
+    match: (ev) =>
+      ev.source === "rss-jpost-world" ||
+      ev.source === "rss-haaretz-en" ||
+      ev.source === "rss-arab-news" ||
+      ["IL", "SA", "IR", "AE", "QA", "TR", "EG", "JO", "LB", "SY", "IQ", "YE"].includes(
+        ev.country ?? "",
+      ),
+  },
+  {
+    key: "russia-ukraine",
+    label: "RU/UA",
+    match: (ev) =>
+      ev.source === "rss-rt-news" ||
+      ev.source === "rss-tass-en" ||
+      ev.source === "rss-kyiv-independent" ||
+      ev.country === "RU" ||
+      ev.country === "UA",
+  },
+  {
+    key: "asia-pacific",
+    label: "Asia-Pac",
+    match: (ev) =>
+      ev.source === "rss-nhk-world" ||
+      ev.source === "rss-abc-au-world" ||
+      ev.source === "rss-rnz-world" ||
+      ev.source === "rss-straits-times-world" ||
+      ["JP", "AU", "NZ", "SG", "KR", "PH", "ID", "TH", "VN", "MY"].includes(ev.country ?? ""),
   },
   { key: "crime", label: "Crime", match: (ev) => ev.source === "uk-police" },
 ]
@@ -217,13 +331,38 @@ const SOURCE_CADENCE_MIN: Record<string, number> = {
   gdacs: 15,
   "nasa-firms": 60,
   eonet: 30,
+  // All 25 RSS feeds run hourly per the registry in app/sources/rss_feeds.json.
   "rss-bbc-world": 60,
   "rss-bbc-uk": 60,
   "rss-reuters-world": 60,
   "rss-dawn": 60,
   "rss-guardian-world": 60,
   "rss-geo-english": 60,
+  "rss-aljazeera": 60,
+  "rss-cnn-world": 60,
+  "rss-nyt-world": 60,
+  "rss-france24-en": 60,
+  "rss-dw-world": 60,
+  "rss-nhk-world": 60,
+  "rss-rt-news": 60,
+  "rss-tass-en": 60,
+  "rss-times-of-india": 60,
+  "rss-the-hindu": 60,
+  "rss-tribune-pk": 60,
+  "rss-cbc-world": 60,
+  "rss-abc-au-world": 60,
+  "rss-rnz-world": 60,
+  "rss-straits-times-world": 60,
+  "rss-jpost-world": 60,
+  "rss-haaretz-en": 60,
+  "rss-arab-news": 60,
+  "rss-kyiv-independent": 60,
   "uk-police": 24 * 60,
+  // Source-expansion batch.
+  "opensky-adsb": 2,
+  "abuse-ch-urlhaus": 15,
+  "abuse-ch-feodo": 15,
+  polymarket: 30,
 }
 
 interface IngestHealthRow {
@@ -367,6 +506,109 @@ interface CiiCountryRow {
   information: number
 }
 
+interface HindsightSpike {
+  iso: string
+  date: string
+  delta: number
+  forwardQuakes: number
+}
+
+interface HindsightStats {
+  spikes: HindsightSpike[]
+  meanForward: number
+  spikesAbove1Quake: number
+  windowDays: number
+}
+
+/** Hindsight Validator (#143).
+ *
+ *  For every Tier-1 country, look back 90 d of cii_v1 scores. Detect
+ *  "CII spike" events where the 7-day delta is ≥ +0.10. For each spike
+ *  at (country C, day T), count how many M4+ USGS quakes hit country C
+ *  in the next 7 d window (T, T + 7 d].
+ *
+ *  Output drives a scatter plot (spike size vs forward-quake count)
+ *  + a tiny stat card (n spikes, mean forward quakes, % spikes with
+ *  ≥ 1 quake follow-up). USGS + FRED only — ACLED + AUROC stay
+ *  gated by #65 Module E.
+ *
+ *  Note: events buffer is constrained by retention (2 d for USGS), so
+ *  the panel is effectively waiting on the historical data pile. Reads
+ *  USGS rows directly from Supabase so even if the buffer is short,
+ *  the panel still pulls the last 90 d of quakes that exist.
+ */
+function useHindsightCorrelation(): HindsightStats {
+  const [ciiRows, setCiiRows] = useState<ScoreRow[]>([])
+  const [quakeRows, setQuakeRows] = useState<EventRow[]>([])
+  useEffect(() => {
+    const supabase = getSupabase()
+    if (!supabase) return
+    const since = subDays(new Date(), 90).toISOString()
+    void supabase
+      .from("scores")
+      .select("*")
+      .eq("score_name", "cii_v1")
+      .gte("bucket_start", since)
+      .order("bucket_start", { ascending: true })
+      .limit(20000)
+      .then(({ data, error }) => {
+        if (!error && data) setCiiRows(data as ScoreRow[])
+      })
+    void supabase
+      .from("events")
+      .select("*")
+      .eq("source", "usgs-quake")
+      .gte("occurred_at", since)
+      .limit(20000)
+      .then(({ data, error }) => {
+        if (!error && data) setQuakeRows(data as EventRow[])
+      })
+  }, [])
+
+  return useMemo(() => {
+    const SPIKE_THRESHOLD = 0.1
+    const FORWARD_MS = 7 * 24 * 60 * 60 * 1000
+    const byCountry = new Map<string, ScoreRow[]>()
+    for (const r of ciiRows) {
+      if (!r.country) continue
+      const arr = byCountry.get(r.country) ?? []
+      arr.push(r)
+      byCountry.set(r.country, arr)
+    }
+    const spikes: HindsightSpike[] = []
+    for (const [iso, arr] of byCountry) {
+      arr.sort((a, b) => ((a.bucket_start ?? "") < (b.bucket_start ?? "") ? -1 : 1))
+      for (let i = 7; i < arr.length; i++) {
+        const cur = arr[i].score_value ?? 0
+        const prior = arr[i - 7].score_value ?? 0
+        const delta = cur - prior
+        if (delta < SPIKE_THRESHOLD) continue
+        const t = new Date(arr[i].bucket_start ?? "").getTime()
+        if (!Number.isFinite(t)) continue
+        const t7 = t + FORWARD_MS
+        let n = 0
+        for (const q of quakeRows) {
+          if (q.country !== iso) continue
+          const qt = new Date(q.occurred_at).getTime()
+          if (qt < t || qt > t7) continue
+          const mag = (q.payload as Record<string, unknown>)?.magnitude
+          if (typeof mag === "number" && mag >= 4) n += 1
+        }
+        spikes.push({
+          iso,
+          date: (arr[i].bucket_start ?? "").slice(0, 10),
+          delta,
+          forwardQuakes: n,
+        })
+      }
+    }
+    const total = spikes.length
+    const meanForward = total > 0 ? spikes.reduce((s, x) => s + x.forwardQuakes, 0) / total : 0
+    const spikesAbove1Quake = spikes.filter((s) => s.forwardQuakes >= 1).length
+    return { spikes, meanForward, spikesAbove1Quake, windowDays: 90 }
+  }, [ciiRows, quakeRows])
+}
+
 /** Per-country CII rows for the last 30 d, grouped + sorted by current
  *  score desc. Used by the leaderboard panel (#142). Reads cii_v1 rows
  *  directly from Supabase + breaks them out by ISO. */
@@ -466,11 +708,27 @@ function useCiiSeries(days: number) {
   return useScoreSeries("cii_v1", days)
 }
 
-const KPI_ACCENT: Record<string, string> = {
-  cyan: "border-l-cyan-700",
-  rose: "border-l-rose-700",
-  amber: "border-l-amber-700",
-  emerald: "border-l-emerald-700",
+const KPI_ACCENT: Record<string, { border: string; bg: string; text: string }> = {
+  cyan: {
+    border: "border-l-cyan-700",
+    bg: "bg-gradient-to-br from-cyan-950/30 via-neutral-950 to-neutral-950",
+    text: "text-cyan-300",
+  },
+  rose: {
+    border: "border-l-rose-700",
+    bg: "bg-gradient-to-br from-rose-950/30 via-neutral-950 to-neutral-950",
+    text: "text-rose-300",
+  },
+  amber: {
+    border: "border-l-amber-700",
+    bg: "bg-gradient-to-br from-amber-950/30 via-neutral-950 to-neutral-950",
+    text: "text-amber-300",
+  },
+  emerald: {
+    border: "border-l-emerald-700",
+    bg: "bg-gradient-to-br from-emerald-950/30 via-neutral-950 to-neutral-950",
+    text: "text-emerald-300",
+  },
 }
 
 function KpiTile({
@@ -484,16 +742,41 @@ function KpiTile({
   sub: string
   accent: keyof typeof KPI_ACCENT
 }) {
+  const a = KPI_ACCENT[accent] ?? KPI_ACCENT.cyan
   return (
     <div
       className={
-        "rounded-md border border-neutral-800 bg-neutral-950 p-3 border-l-2 " +
-        (KPI_ACCENT[accent] ?? "")
+        "rounded-md border border-neutral-800 p-4 border-l-4 transition-colors hover:border-neutral-700 " +
+        `${a.border} ${a.bg}`
       }
     >
-      <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">{label}</p>
-      <p className="mt-1 truncate text-xl font-semibold tabular-nums text-neutral-100">{value}</p>
-      <p className="mt-1 truncate font-mono text-[10px] text-neutral-500">{sub}</p>
+      <p className={`font-mono text-[10px] uppercase tracking-widest ${a.text}`}>{label}</p>
+      <p className="mt-2 truncate text-2xl font-bold tabular-nums text-neutral-100">{value}</p>
+      <p className="mt-1 truncate font-mono text-[10px] text-neutral-400">{sub}</p>
+    </div>
+  )
+}
+
+function SectionHeader({
+  label,
+  color,
+}: {
+  label: string
+  color: "cyan" | "amber" | "rose" | "emerald"
+}) {
+  const map = {
+    cyan: "border-cyan-700 text-cyan-300",
+    amber: "border-amber-700 text-amber-300",
+    rose: "border-rose-700 text-rose-300",
+    emerald: "border-emerald-700 text-emerald-300",
+  }
+  return (
+    <div
+      className={`col-span-full mt-2 flex items-center gap-2 border-l-4 pl-2 ${map[color]}`}
+      aria-label={label}
+    >
+      <span className="font-mono text-[10px] uppercase tracking-[0.2em]">{label}</span>
+      <span className="h-px flex-1 bg-neutral-800" />
     </div>
   )
 }
@@ -516,6 +799,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const ciiByCountry = useLatestCiiByCountry()
   const ciiCountries = useCiiByCountry()
   const sourceLatency = useSourceLatency()
+  const hindsight = useHindsightCorrelation()
 
   /** Hero KPIs — pure reduces over the in-memory buffer + latest scores
    *  read. See #139 for the spec. */
@@ -587,18 +871,62 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const [newsFilter, setNewsFilter] = useState<string>("all")
   const [newsSort, setNewsSort] = useState<"impact" | "time">("impact")
 
+  /** Article-clustering (#172): bigram-Jaccard single-link cluster over
+   *  the news rows in the current window. Threshold 0.4 catches stories
+   *  shared across BBC + Reuters + Al Jazeera etc without over-merging
+   *  unrelated headlines. */
+  const newsClusters = useMemo(() => {
+    const ids = allNews.map((ev) => ev.id)
+    const bigrams = allNews.map((ev) => titleBigrams(bestTitle(ev)))
+    const parent = ids.map((_, i) => i)
+    const find = (i: number): number => {
+      while (parent[i] !== i) {
+        parent[i] = parent[parent[i]]
+        i = parent[i]
+      }
+      return i
+    }
+    const union = (a: number, b: number): void => {
+      const ra = find(a)
+      const rb = find(b)
+      if (ra !== rb) parent[ra] = rb
+    }
+    const THRESHOLD = 0.4
+    // O(n^2) — fine while filteredNews shows top 30 from the buffer.
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        if (jaccard(bigrams[i], bigrams[j]) >= THRESHOLD) union(i, j)
+      }
+    }
+    const sizeByRoot = new Map<number, number>()
+    for (let i = 0; i < ids.length; i++) {
+      const r = find(i)
+      sizeByRoot.set(r, (sizeByRoot.get(r) ?? 0) + 1)
+    }
+    const out = new Map<string | number, { clusterId: number; clusterSize: number }>()
+    for (let i = 0; i < ids.length; i++) {
+      const r = find(i)
+      out.set(ids[i], { clusterId: r, clusterSize: sizeByRoot.get(r) ?? 1 })
+    }
+    return out
+  }, [allNews])
+
+  const clusterSizeFor = (ev: EventRow): number => newsClusters.get(ev.id)?.clusterSize ?? 1
+
   const filteredNews = useMemo(() => {
     const f = NEWS_FILTERS.find((x) => x.key === newsFilter) ?? NEWS_FILTERS[0]
     const matched = allNews.filter(f.match)
     if (newsSort === "impact") {
       return matched
-        .map((ev) => ({ ev, score: impactScoreFor(ev) }))
+        .map((ev) => ({ ev, score: impactScoreFor(ev, clusterSizeFor(ev)) }))
         .sort((a, b) => b.score - a.score)
         .slice(0, 30)
         .map((x) => x.ev)
     }
     return matched.slice(0, 30)
-  }, [allNews, newsFilter, newsSort])
+    // clusterSizeFor closes over newsClusters; reads in render below stay live.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allNews, newsFilter, newsSort, newsClusters])
 
   /** Severity histogram: events in last 24 h binned by severity into 10
    *  fixed-width buckets [0, 0.1) … [0.9, 1.0]. Drives the bar chart.
@@ -688,6 +1016,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     return out.sort((a, b) => b.score - a.score).slice(0, 12)
   }, [events, windowMs])
 
+
   /** Hourly arrival rate (#180). Bins events/hour for the last 48 h
    *  by category. Surfaces pipeline cadence + spike detection at a
    *  glance — a category that suddenly arrives 10x its baseline is
@@ -729,6 +1058,62 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   }, [events])
 
 
+  /** Cyber-threat rollup (#177). Aggregates abuse.ch URLhaus + Feodo
+   *  rows from the in-memory buffer over the chosen window. Surfaces
+   *  the data shipped by #163 — counts per malware tag + a top-20
+   *  list with status / severity. */
+  const cyberThreats = useMemo(() => {
+    const cutoff = Date.now() - windowMs
+    const tagCounts = new Map<string, number>()
+    const rows: { ev: EventRow; primary: string; status: string | null; severity: number }[] = []
+    for (const ev of events) {
+      if (ev.source !== "abuse-ch-urlhaus" && ev.source !== "abuse-ch-feodo") continue
+      const t = new Date(ev.occurred_at).getTime()
+      if (!Number.isFinite(t) || t < cutoff) continue
+      const p = (ev.payload ?? {}) as Record<string, unknown>
+      let primary: string
+      let status: string | null
+      if (ev.source === "abuse-ch-urlhaus") {
+        const tags = Array.isArray(p.tags) ? (p.tags as string[]) : []
+        primary = (tags[0] ?? (p.threat as string | null) ?? "url").toString()
+        for (const t of tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)
+        status = (p.status as string | null) ?? null
+      } else {
+        primary = (p.malware as string | null) ?? "botnet"
+        tagCounts.set(primary, (tagCounts.get(primary) ?? 0) + 1)
+        status = (p.c2_status as string | null) ?? null
+      }
+      const sev = typeof ev.severity === "number" ? ev.severity : 0
+      rows.push({ ev, primary, status, severity: sev })
+    }
+    const topTags = Array.from(tagCounts.entries())
+      .map(([tag, n]) => ({ tag, n }))
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 6)
+    rows.sort((a, b) => {
+      if (b.severity !== a.severity) return b.severity - a.severity
+      return new Date(b.ev.occurred_at).getTime() - new Date(a.ev.occurred_at).getTime()
+    })
+    return { rows: rows.slice(0, 20), tagBreakdown: topTags, total: rows.length }
+  }, [events, windowMs])
+
+  /** Polymarket top-stress markets (#177 companion). Sorted by severity
+   *  which is the "tail-event awareness" reading from #164. Surfaces
+   *  the data so the market layer is visible. */
+  const polyTopStress = useMemo(() => {
+    const out: { ev: EventRow; price: number | null; question: string }[] = []
+    for (const ev of events) {
+      if (ev.source !== "polymarket") continue
+      const p = (ev.payload ?? {}) as Record<string, unknown>
+      const price = typeof p.yes_price === "number" ? (p.yes_price as number) : null
+      const question = (p.question as string | null) ?? "—"
+      out.push({ ev, price, question })
+    }
+    out.sort((a, b) => (b.ev.severity ?? 0) - (a.ev.severity ?? 0))
+    return out.slice(0, 12)
+  }, [events])
+
+
   if (!configured) return null
 
   return (
@@ -738,8 +1123,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     >
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-            Dashboard
+          <h2 className="font-mono text-sm uppercase tracking-[0.25em] text-neutral-200">
+            OSINT Dashboard
           </h2>
           {/* Global time-range picker (#141). Every panel below scopes
            *  its memo to the chosen window so the page reads consistently. */}
@@ -810,6 +1195,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12">
+        <SectionHeader label="Risk" color="rose" />
+
         {/* CII v1 time series — mean across Tier-1 countries. See
          *  docs/architecture/CII-METHODOLOGY.md. */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
@@ -927,6 +1314,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
           </p>
         </div>
 
+        <SectionHeader label="Events" color="cyan" />
+
         {/* News feed — card layout with thumbnail + impact ranking.
          *  Pattern mirrors NIP (BasilSuhail/news-intelligence-platform)
          *  and the Portfolio-Design NewsSection.tsx. See issues #115 +
@@ -994,7 +1383,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                 const sev = typeof ev.severity === "number" ? ev.severity : 0
                 const imageUrl =
                   typeof p?.image_url === "string" ? (p.image_url as string) : null
-                const impact = impactScoreFor(ev)
+                const clusterSize = clusterSizeFor(ev)
+                const impact = impactScoreFor(ev, clusterSize)
                 const firstLetter = title.charAt(0).toUpperCase() || "N"
                 const sentiment =
                   typeof p?.sentiment === "number" ? (p.sentiment as number) : null
@@ -1002,6 +1392,17 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                   typeof p?.sentiment_label === "string" ? (p.sentiment_label as string) : null
                 const tileColor =
                   sentiment !== null ? sentimentBarColor(sentiment) : severityBarColor(sev)
+                const entitiesRaw = Array.isArray(p?.entities) ? (p.entities as unknown[]) : []
+                const topEntities = entitiesRaw
+                  .filter(
+                    (e): e is { text: string; label: string } =>
+                      typeof e === "object" &&
+                      e !== null &&
+                      "text" in e &&
+                      "label" in e &&
+                      typeof (e as { text: unknown }).text === "string",
+                  )
+                  .slice(0, 3)
                 return (
                   <li key={ev.id}>
                     <a
@@ -1076,10 +1477,27 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                           )}
                           <span
                             className="rounded border border-amber-900/60 bg-amber-950/30 px-1.5 py-0.5 tabular-nums text-amber-300"
-                            title="impact = 0.45 |sentiment| + 0.30 recency + 0.25 source weight"
+                            title="impact = 0.30 |sentiment| + 0.25 cluster + 0.25 source + 0.20 recency"
                           >
                             impact {impact.toFixed(2)}
                           </span>
+                          {clusterSize > 1 && (
+                            <span
+                              className="rounded border border-violet-900/60 bg-violet-950/30 px-1.5 py-0.5 tabular-nums text-violet-300"
+                              title={`Story carried by ${clusterSize} sources in window`}
+                            >
+                              +{clusterSize - 1} sources
+                            </span>
+                          )}
+                          {topEntities.map((e) => (
+                            <span
+                              key={`${e.text}-${e.label}`}
+                              className="rounded border border-indigo-900/60 bg-indigo-950/30 px-1.5 py-0.5 text-indigo-300"
+                              title={`${e.label} entity (spaCy NER)`}
+                            >
+                              {e.text}
+                            </span>
+                          ))}
                           <span className="ml-auto tabular-nums text-neutral-600">
                             {relativeTime(ev.occurred_at)} · {format(new Date(ev.occurred_at), "HH:mm")}
                           </span>
@@ -1270,6 +1688,123 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
           </p>
         </div>
 
+
+
+        {/* Cyber-threat rollup (#177). Surfaces abuse.ch URLhaus + Feodo
+         *  rows shipped via #163. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Cyber threats · last {windowLabel}
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              {cyberThreats.total} indicators
+            </span>
+          </div>
+          {cyberThreats.tagBreakdown.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {cyberThreats.tagBreakdown.map((t) => (
+                <span
+                  key={t.tag}
+                  className="rounded border border-rose-900/60 bg-rose-950/30 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-rose-300"
+                >
+                  {t.tag} · {t.n}
+                </span>
+              ))}
+            </div>
+          )}
+          {cyberThreats.rows.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No abuse.ch rows in this window yet.
+            </p>
+          ) : (
+            <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
+              {cyberThreats.rows.map(({ ev, primary, status, severity }) => {
+                const p = (ev.payload ?? {}) as Record<string, unknown>
+                const target = (p.url as string | null) ?? (p.dst_ip as string | null) ?? "—"
+                return (
+                  <li
+                    key={ev.id}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-[11px] hover:bg-neutral-900"
+                  >
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: severityBarColor(severity) }}
+                      aria-hidden="true"
+                    />
+                    <span className="w-12 font-mono text-[10px] uppercase text-neutral-500">
+                      {ev.source === "abuse-ch-feodo" ? "feodo" : "urlhaus"}
+                    </span>
+                    <span className="rounded border border-neutral-800 bg-neutral-900 px-1 font-mono text-[10px] uppercase tracking-wider text-neutral-300">
+                      {primary}
+                    </span>
+                    {status && (
+                      <span className="font-mono text-[10px] uppercase text-neutral-500">
+                        {status}
+                      </span>
+                    )}
+                    <span className="flex-1 truncate font-mono text-[10px] text-neutral-400">
+                      {target}
+                    </span>
+                    <span className="font-mono text-[10px] tabular-nums text-neutral-600">
+                      {relativeTime(ev.occurred_at)}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Polymarket top-stress markets (#177 companion). */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Polymarket · top stress markets
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              {polyTopStress.length} of {events.filter((e) => e.source === "polymarket").length}
+            </span>
+          </div>
+          {polyTopStress.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No Polymarket rows yet. 30 min cadence.
+            </p>
+          ) : (
+            <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
+              {polyTopStress.map(({ ev, price, question }) => (
+                <li
+                  key={ev.id}
+                  className="flex items-center gap-2 rounded px-2 py-1 text-[11px] hover:bg-neutral-900"
+                >
+                  <span
+                    className="inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: severityBarColor(ev.severity ?? 0),
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span className="flex-1 truncate text-neutral-300">{question}</span>
+                  <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+                    p = {price !== null ? price.toFixed(2) : "?"}
+                  </span>
+                  <span
+                    className="font-mono text-[10px] tabular-nums"
+                    style={{ color: severityBarColor(ev.severity ?? 0) }}
+                  >
+                    s {ev.severity?.toFixed(2)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 font-mono text-[10px] text-neutral-600">
+            Severity = 1 − |p − 0.5| × 2 — peaks at maximum uncertainty.
+          </p>
+        </div>
+
+        <SectionHeader label="Health & Validation" color="emerald" />
+
         {/* Source latency (#144). Replaces the old buffer-bar source-health
          *  panel with a real read against the ingest_health table. Each
          *  row shows last_success age vs the source's expected cadence
@@ -1328,6 +1863,134 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             Green = within cadence. Amber = 1.5x cadence overdue. Red = 3x
             overdue. Cadences match the beat schedule in app/tasks.py.
           </p>
+        </div>
+
+        {/* Hindsight Validator (#143). Look back 90 d for CII spikes
+         *  (delta-7 >= +0.10) per country. For each spike, count M4+
+         *  USGS quakes in the next 7 d in that country. Scatter plot
+         *  spike size vs forward-quake count. Module E (#65) still
+         *  gates ACLED + AUROC, so this is the descriptive precursor. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Hindsight · CII spikes vs forward M4+ quakes · last {hindsight.windowDays} d
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              n = {hindsight.spikes.length} spikes
+            </span>
+          </div>
+          {hindsight.spikes.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No CII spikes (Δ-7 ≥ +0.10) detected yet — historical data still
+              accruing. Module E gate (#65) keeps ACLED + AUROC out for now;
+              this panel is the descriptive precursor.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3 pb-3 font-mono text-[10px] uppercase tracking-wider">
+                <div className="rounded border border-neutral-800 bg-neutral-900/40 p-2">
+                  <div className="text-neutral-500">spikes detected</div>
+                  <div className="mt-1 text-lg tabular-nums text-neutral-100">
+                    {hindsight.spikes.length}
+                  </div>
+                </div>
+                <div className="rounded border border-neutral-800 bg-neutral-900/40 p-2">
+                  <div className="text-neutral-500">mean forward quakes</div>
+                  <div className="mt-1 text-lg tabular-nums text-neutral-100">
+                    {hindsight.meanForward.toFixed(2)}
+                  </div>
+                </div>
+                <div className="rounded border border-neutral-800 bg-neutral-900/40 p-2">
+                  <div className="text-neutral-500">% with ≥ 1 quake</div>
+                  <div className="mt-1 text-lg tabular-nums text-neutral-100">
+                    {(
+                      (hindsight.spikesAbove1Quake / Math.max(1, hindsight.spikes.length)) *
+                      100
+                    ).toFixed(0)}
+                    %
+                  </div>
+                </div>
+              </div>
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
+                    <XAxis
+                      type="number"
+                      dataKey="delta"
+                      stroke="rgba(115,115,115,0.6)"
+                      fontSize={10}
+                      domain={[0.08, "auto"]}
+                      tickFormatter={(v) => (typeof v === "number" ? v.toFixed(2) : String(v))}
+                      label={{
+                        value: "Δ-7 CII",
+                        position: "insideBottom",
+                        offset: -2,
+                        fill: "rgba(115,115,115,0.7)",
+                        fontSize: 10,
+                      }}
+                    />
+                    <YAxis
+                      type="number"
+                      dataKey="forwardQuakes"
+                      stroke="rgba(115,115,115,0.6)"
+                      fontSize={10}
+                      allowDecimals={false}
+                      label={{
+                        value: "M4+ quakes (7 d forward)",
+                        angle: -90,
+                        position: "insideLeft",
+                        fill: "rgba(115,115,115,0.7)",
+                        fontSize: 10,
+                      }}
+                    />
+                    <ZAxis range={[60, 60]} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "rgba(10,10,10,0.92)",
+                        border: "1px solid rgba(82,82,82,0.6)",
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                      }}
+                      formatter={(v, name) => {
+                        if (name === "delta") return [(v as number).toFixed(2), "Δ-7 CII"]
+                        if (name === "forwardQuakes") return [v, "fwd M4+"]
+                        return [String(v), name as string]
+                      }}
+                      labelFormatter={() => ""}
+                      cursor={{ stroke: "#a3a3a3", strokeDasharray: "3 3" }}
+                      content={(props) => {
+                        const p = props.payload?.[0]?.payload as HindsightSpike | undefined
+                        if (!p) return null
+                        return (
+                          <div
+                            style={{
+                              background: "rgba(10,10,10,0.92)",
+                              border: "1px solid rgba(82,82,82,0.6)",
+                              padding: "6px 8px",
+                              fontFamily: "monospace",
+                              fontSize: 11,
+                            }}
+                          >
+                            <div>{`${countryFlagEmoji(p.iso)} ${p.iso} · ${p.date}`}</div>
+                            <div>Δ-7 CII: {p.delta.toFixed(3)}</div>
+                            <div>fwd M4+ quakes: {p.forwardQuakes}</div>
+                          </div>
+                        )
+                      }}
+                    />
+                    <Scatter data={hindsight.spikes} fill="#22d3ee" />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-2 font-mono text-[10px] text-neutral-600">
+                Each dot = one CII spike (Δ over 7 d ≥ +0.10) for a Tier-1
+                country. Y-axis = M4+ USGS quakes in the 7 d after the spike,
+                same country. Module E (#65) still gates ACLED + AUROC; this
+                is the descriptive baseline.
+              </p>
+            </>
+          )}
         </div>
       </div>
 
