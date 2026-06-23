@@ -73,6 +73,15 @@ def _is_orange_red_hazard(ev: EventRow) -> bool:
     return level in {"orange", "red"}
 
 
+def _is_eonet_active(ev: EventRow) -> bool:
+    if (ev.source or "").lower() != "eonet":
+        return False
+    payload = ev.payload or {}
+    status = str(payload.get("status") or "").lower()
+    # Closed events shouldn't add to live stress; "open" or unset = active.
+    return status != "closed"
+
+
 def _aggregate(events: list[EventRow]) -> dict[str, CiiInputs]:
     """Bucket events into per-country aggregates within the 24 h window."""
     out: dict[str, dict[str, int]] = defaultdict(
@@ -82,6 +91,7 @@ def _aggregate(events: list[EventRow]) -> dict[str, CiiInputs]:
             "conflict_events": 0,
             "quake_m5_plus": 0,
             "hazard_orange_red": 0,
+            "eonet_events": 0,
             "news_volume": 0,
         }
     )
@@ -104,6 +114,8 @@ def _aggregate(events: list[EventRow]) -> dict[str, CiiInputs]:
             bucket["quake_m5_plus"] += 1
         if _is_orange_red_hazard(ev):
             bucket["hazard_orange_red"] += 1
+        if _is_eonet_active(ev):
+            bucket["eonet_events"] += 1
 
     return {iso: CiiInputs(**counts) for iso, counts in out.items()}
 
