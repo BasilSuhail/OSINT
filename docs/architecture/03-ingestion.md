@@ -155,29 +155,31 @@ This means transient outages (API down for 2 hours) recover automatically. A per
 
 ## Schedule (Celery Beat)
 
-Beat is declarative. All schedules live in one file so they are auditable:
+Beat is declarative. All schedules live in `app/tasks.py` so they are auditable. Active sources as of the source-expansion batch (#157 / #159 / #161 / #163 / #165):
 
-```python
-# app/celery_beat.py
-beat_schedule = {
-    "yfinance":      crontab(minute="*/5"),
-    "fred":          crontab(hour=7, minute=0),
-    "finbert-rss":   crontab(minute="*/30"),
-    "gdelt-events":  crontab(minute="0,15,30,45"),
-    "gdelt-gkg":     crontab(minute="0,15,30,45"),
-    "acled":         crontab(hour=4, minute=0),
-    "composite":     crontab(minute="*/60"),
-    "housekeeping":  crontab(hour=3, minute=0),
-    # Layer 3
-    "opensky":       crontab(minute="*"),
-    "ais":           "websocket",          # not Beat — long-running consumer task
-    "usgs-quake":    crontab(minute="*"),
-    "nasa-firms":    crontab(minute="*/2"),
-    "celestrak-tle": crontab(hour="*/6", minute=0),
-}
-```
+| Source slug | Cadence | Queue | Category |
+|---|---|---|---|
+| `yfinance` | every 5 min | `fast` | market |
+| `fred` | daily 07:00 UTC | `slow` | market |
+| `gdelt` | every 15 min | `slow` | geopolitical |
+| `usgs-quake` | every 15 min, offset +2 m | `fast` | hazard |
+| `gdacs` | every 15 min, offset +4 m | `fast` | hazard |
+| `nasa-firms` | hourly | `slow` | hazard |
+| `eonet` | every 30 min | `slow` | hazard |
+| `rss-*` × 25 | hourly, staggered by feed index | `slow` | news |
+| `uk-police` | daily 06:00 UTC | `slow` | news/crime |
+| `opensky-adsb` | every 2 min | `fast` | tracking |
+| `abuse-ch-urlhaus` | every 15 min | `slow` | cyber |
+| `abuse-ch-feodo` | every 15 min, offset +3 m | `slow` | cyber |
+| `polymarket` | every 30 min | `slow` | market |
+| `compute_composite` | hourly @ minute 10 | — | scoring |
+| `compute_cii` | hourly @ minute 25 | — | scoring |
+| `ingest_watchdog` | every 15 min | — | observability |
+| `run_housekeeping` | daily 03:00 UTC | — | retention |
 
-WebSocket consumers (AISStream) are not Beat-driven; they run as their own systemd-managed worker with auto-reconnect.
+The 25 RSS feeds are not enumerated individually — they're generated from `app/sources/rss_feeds.json` via `feed_cadence_map()` (issue #158). Adding a new feed = one JSON entry.
+
+WebSocket consumers (none active yet — AIS deferred to a follow-up issue) would run as their own systemd-managed worker with auto-reconnect rather than via Beat.
 
 ---
 

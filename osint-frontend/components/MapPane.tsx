@@ -453,10 +453,76 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           message="Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
         />
       )}
+      {/* Live source-count chips (top-left). Mirror the satellite chip
+       *  on the globe pane so the new source-expansion batch is visible
+       *  on the map too. */}
+      <div className="absolute left-3 top-3 z-30 flex flex-col gap-1">
+        {(() => {
+          const adsb = events.filter((e) => e.source === "opensky-adsb").length
+          const cyber = events.filter((e) => e.source?.startsWith("abuse-ch-")).length
+          const poly = events.filter((e) => e.source === "polymarket").length
+          const chips: { label: string; n: number; color: string }[] = []
+          if (adsb > 0) chips.push({ label: "ADS-B", n: adsb, color: "#06b6d4" })
+          if (cyber > 0) chips.push({ label: "cyber", n: cyber, color: "#a855f7" })
+          if (poly > 0) chips.push({ label: "markets", n: poly, color: "#10b981" })
+          return chips.map((c) => (
+            <div
+              key={c.label}
+              className="flex items-center gap-1.5 rounded-md border bg-neutral-950/80 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest backdrop-blur-sm"
+              style={{ borderColor: `${c.color}55`, color: c.color }}
+            >
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: c.color }}
+                aria-hidden="true"
+              />
+              {c.n.toLocaleString()} {c.label}
+            </div>
+          ))
+        })()}
+      </div>
+
       {configured && allEvents.length === 0 && <PaneStatus mode="loading" />}
       {configured && allEvents.length > 0 && positioned.length === 0 && (
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
+
+      {/* Marker colour legend — bottom-right, fades on hover so it
+       *  doesn't fight the time scrubber. */}
+      <div className="pointer-events-none absolute bottom-16 right-3 z-20 hidden flex-col gap-1 rounded-md border border-neutral-800 bg-neutral-950/85 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400 backdrop-blur sm:flex">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#38bdf8" }} aria-hidden="true" />
+          news
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#a3a3a3" }} aria-hidden="true" />
+          geopolitical
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#ef4444" }} aria-hidden="true" />
+          hazard / quake
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#f97316" }} aria-hidden="true" />
+          GDACS alert
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#eab308" }} aria-hidden="true" />
+          fire
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#22c55e" }} aria-hidden="true" />
+          market
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#06b6d4" }} aria-hidden="true" />
+          ADS-B
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#a855f7" }} aria-hidden="true" />
+          cyber
+        </div>
+      </div>
 
       <FilterRail pane="map" side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
