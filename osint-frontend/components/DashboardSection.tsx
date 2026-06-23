@@ -10,9 +10,12 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts"
 import { useEvents } from "@/app/providers"
 import { getSupabase } from "@/lib/supabase"
@@ -367,6 +370,109 @@ interface CiiCountryRow {
   information: number
 }
 
+interface HindsightSpike {
+  iso: string
+  date: string
+  delta: number
+  forwardQuakes: number
+}
+
+interface HindsightStats {
+  spikes: HindsightSpike[]
+  meanForward: number
+  spikesAbove1Quake: number
+  windowDays: number
+}
+
+/** Hindsight Validator (#143).
+ *
+ *  For every Tier-1 country, look back 90 d of cii_v1 scores. Detect
+ *  "CII spike" events where the 7-day delta is ≥ +0.10. For each spike
+ *  at (country C, day T), count how many M4+ USGS quakes hit country C
+ *  in the next 7 d window (T, T + 7 d].
+ *
+ *  Output drives a scatter plot (spike size vs forward-quake count)
+ *  + a tiny stat card (n spikes, mean forward quakes, % spikes with
+ *  ≥ 1 quake follow-up). USGS + FRED only — ACLED + AUROC stay
+ *  gated by #65 Module E.
+ *
+ *  Note: events buffer is constrained by retention (2 d for USGS), so
+ *  the panel is effectively waiting on the historical data pile. Reads
+ *  USGS rows directly from Supabase so even if the buffer is short,
+ *  the panel still pulls the last 90 d of quakes that exist.
+ */
+function useHindsightCorrelation(): HindsightStats {
+  const [ciiRows, setCiiRows] = useState<ScoreRow[]>([])
+  const [quakeRows, setQuakeRows] = useState<EventRow[]>([])
+  useEffect(() => {
+    const supabase = getSupabase()
+    if (!supabase) return
+    const since = subDays(new Date(), 90).toISOString()
+    void supabase
+      .from("scores")
+      .select("*")
+      .eq("score_name", "cii_v1")
+      .gte("bucket_start", since)
+      .order("bucket_start", { ascending: true })
+      .limit(20000)
+      .then(({ data, error }) => {
+        if (!error && data) setCiiRows(data as ScoreRow[])
+      })
+    void supabase
+      .from("events")
+      .select("*")
+      .eq("source", "usgs-quake")
+      .gte("occurred_at", since)
+      .limit(20000)
+      .then(({ data, error }) => {
+        if (!error && data) setQuakeRows(data as EventRow[])
+      })
+  }, [])
+
+  return useMemo(() => {
+    const SPIKE_THRESHOLD = 0.1
+    const FORWARD_MS = 7 * 24 * 60 * 60 * 1000
+    const byCountry = new Map<string, ScoreRow[]>()
+    for (const r of ciiRows) {
+      if (!r.country) continue
+      const arr = byCountry.get(r.country) ?? []
+      arr.push(r)
+      byCountry.set(r.country, arr)
+    }
+    const spikes: HindsightSpike[] = []
+    for (const [iso, arr] of byCountry) {
+      arr.sort((a, b) => ((a.bucket_start ?? "") < (b.bucket_start ?? "") ? -1 : 1))
+      for (let i = 7; i < arr.length; i++) {
+        const cur = arr[i].score_value ?? 0
+        const prior = arr[i - 7].score_value ?? 0
+        const delta = cur - prior
+        if (delta < SPIKE_THRESHOLD) continue
+        const t = new Date(arr[i].bucket_start ?? "").getTime()
+        if (!Number.isFinite(t)) continue
+        const t7 = t + FORWARD_MS
+        let n = 0
+        for (const q of quakeRows) {
+          if (q.country !== iso) continue
+          const qt = new Date(q.occurred_at).getTime()
+          if (qt < t || qt > t7) continue
+          const mag = (q.payload as Record<string, unknown>)?.magnitude
+          if (typeof mag === "number" && mag >= 4) n += 1
+        }
+        spikes.push({
+          iso,
+          date: (arr[i].bucket_start ?? "").slice(0, 10),
+          delta,
+          forwardQuakes: n,
+        })
+      }
+    }
+    const total = spikes.length
+    const meanForward = total > 0 ? spikes.reduce((s, x) => s + x.forwardQuakes, 0) / total : 0
+    const spikesAbove1Quake = spikes.filter((s) => s.forwardQuakes >= 1).length
+    return { spikes, meanForward, spikesAbove1Quake, windowDays: 90 }
+  }, [ciiRows, quakeRows])
+}
+
 /** Per-country CII rows for the last 30 d, grouped + sorted by current
  *  score desc. Used by the leaderboard panel (#142). Reads cii_v1 rows
  *  directly from Supabase + breaks them out by ISO. */
@@ -516,6 +622,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const ciiByCountry = useLatestCiiByCountry()
   const ciiCountries = useCiiByCountry()
   const sourceLatency = useSourceLatency()
+  const hindsight = useHindsightCorrelation()
 
   /** Hero KPIs — pure reduces over the in-memory buffer + latest scores
    *  read. See #139 for the spec. */
@@ -1258,6 +1365,134 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             Green = within cadence. Amber = 1.5x cadence overdue. Red = 3x
             overdue. Cadences match the beat schedule in app/tasks.py.
           </p>
+        </div>
+
+        {/* Hindsight Validator (#143). Look back 90 d for CII spikes
+         *  (delta-7 >= +0.10) per country. For each spike, count M4+
+         *  USGS quakes in the next 7 d in that country. Scatter plot
+         *  spike size vs forward-quake count. Module E (#65) still
+         *  gates ACLED + AUROC, so this is the descriptive precursor. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Hindsight · CII spikes vs forward M4+ quakes · last {hindsight.windowDays} d
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              n = {hindsight.spikes.length} spikes
+            </span>
+          </div>
+          {hindsight.spikes.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No CII spikes (Δ-7 ≥ +0.10) detected yet — historical data still
+              accruing. Module E gate (#65) keeps ACLED + AUROC out for now;
+              this panel is the descriptive precursor.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3 pb-3 font-mono text-[10px] uppercase tracking-wider">
+                <div className="rounded border border-neutral-800 bg-neutral-900/40 p-2">
+                  <div className="text-neutral-500">spikes detected</div>
+                  <div className="mt-1 text-lg tabular-nums text-neutral-100">
+                    {hindsight.spikes.length}
+                  </div>
+                </div>
+                <div className="rounded border border-neutral-800 bg-neutral-900/40 p-2">
+                  <div className="text-neutral-500">mean forward quakes</div>
+                  <div className="mt-1 text-lg tabular-nums text-neutral-100">
+                    {hindsight.meanForward.toFixed(2)}
+                  </div>
+                </div>
+                <div className="rounded border border-neutral-800 bg-neutral-900/40 p-2">
+                  <div className="text-neutral-500">% with ≥ 1 quake</div>
+                  <div className="mt-1 text-lg tabular-nums text-neutral-100">
+                    {(
+                      (hindsight.spikesAbove1Quake / Math.max(1, hindsight.spikes.length)) *
+                      100
+                    ).toFixed(0)}
+                    %
+                  </div>
+                </div>
+              </div>
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
+                    <XAxis
+                      type="number"
+                      dataKey="delta"
+                      stroke="rgba(115,115,115,0.6)"
+                      fontSize={10}
+                      domain={[0.08, "auto"]}
+                      tickFormatter={(v) => (typeof v === "number" ? v.toFixed(2) : String(v))}
+                      label={{
+                        value: "Δ-7 CII",
+                        position: "insideBottom",
+                        offset: -2,
+                        fill: "rgba(115,115,115,0.7)",
+                        fontSize: 10,
+                      }}
+                    />
+                    <YAxis
+                      type="number"
+                      dataKey="forwardQuakes"
+                      stroke="rgba(115,115,115,0.6)"
+                      fontSize={10}
+                      allowDecimals={false}
+                      label={{
+                        value: "M4+ quakes (7 d forward)",
+                        angle: -90,
+                        position: "insideLeft",
+                        fill: "rgba(115,115,115,0.7)",
+                        fontSize: 10,
+                      }}
+                    />
+                    <ZAxis range={[60, 60]} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "rgba(10,10,10,0.92)",
+                        border: "1px solid rgba(82,82,82,0.6)",
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                      }}
+                      formatter={(v, name) => {
+                        if (name === "delta") return [(v as number).toFixed(2), "Δ-7 CII"]
+                        if (name === "forwardQuakes") return [v, "fwd M4+"]
+                        return [String(v), name as string]
+                      }}
+                      labelFormatter={() => ""}
+                      cursor={{ stroke: "#a3a3a3", strokeDasharray: "3 3" }}
+                      content={(props) => {
+                        const p = props.payload?.[0]?.payload as HindsightSpike | undefined
+                        if (!p) return null
+                        return (
+                          <div
+                            style={{
+                              background: "rgba(10,10,10,0.92)",
+                              border: "1px solid rgba(82,82,82,0.6)",
+                              padding: "6px 8px",
+                              fontFamily: "monospace",
+                              fontSize: 11,
+                            }}
+                          >
+                            <div>{`${countryFlagEmoji(p.iso)} ${p.iso} · ${p.date}`}</div>
+                            <div>Δ-7 CII: {p.delta.toFixed(3)}</div>
+                            <div>fwd M4+ quakes: {p.forwardQuakes}</div>
+                          </div>
+                        )
+                      }}
+                    />
+                    <Scatter data={hindsight.spikes} fill="#22d3ee" />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-2 font-mono text-[10px] text-neutral-600">
+                Each dot = one CII spike (Δ over 7 d ≥ +0.10) for a Tier-1
+                country. Y-axis = M4+ USGS quakes in the 7 d after the spike,
+                same country. Module E (#65) still gates ACLED + AUROC; this
+                is the descriptive baseline.
+              </p>
+            </>
+          )}
         </div>
       </div>
 
