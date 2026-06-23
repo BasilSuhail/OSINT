@@ -702,7 +702,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
       if (!Number.isFinite(t) || t < cutoff) continue
       const p = (ev.payload ?? {}) as Record<string, unknown>
       let primary: string
-      let status: string | null = null
+      let status: string | null
       if (ev.source === "abuse-ch-urlhaus") {
         const tags = Array.isArray(p.tags) ? (p.tags as string[]) : []
         primary = (tags[0] ?? (p.threat as string | null) ?? "url").toString()
