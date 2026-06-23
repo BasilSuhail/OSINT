@@ -962,6 +962,17 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                   typeof p?.sentiment_label === "string" ? (p.sentiment_label as string) : null
                 const tileColor =
                   sentiment !== null ? sentimentBarColor(sentiment) : severityBarColor(sev)
+                const entitiesRaw = Array.isArray(p?.entities) ? (p.entities as unknown[]) : []
+                const topEntities = entitiesRaw
+                  .filter(
+                    (e): e is { text: string; label: string } =>
+                      typeof e === "object" &&
+                      e !== null &&
+                      "text" in e &&
+                      "label" in e &&
+                      typeof (e as { text: unknown }).text === "string",
+                  )
+                  .slice(0, 3)
                 return (
                   <li key={ev.id}>
                     <a
@@ -1040,6 +1051,15 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                           >
                             impact {impact.toFixed(2)}
                           </span>
+                          {topEntities.map((e) => (
+                            <span
+                              key={`${e.text}-${e.label}`}
+                              className="rounded border border-indigo-900/60 bg-indigo-950/30 px-1.5 py-0.5 text-indigo-300"
+                              title={`${e.label} entity (spaCy NER)`}
+                            >
+                              {e.text}
+                            </span>
+                          ))}
                           <span className="ml-auto tabular-nums text-neutral-600">
                             {relativeTime(ev.occurred_at)} · {format(new Date(ev.occurred_at), "HH:mm")}
                           </span>
