@@ -31,14 +31,14 @@ from app.db_models import EventRow, HousekeepingRunRow
 # keep-everything — but until then, only macro / market series with
 # irreplaceable history are exempt.
 RETENTION_DAYS: dict[str, int | None] = {
-    # News = nobody wants yesterday's headlines. 1 d window matches
-    # what you'd actually read on the dashboard.
-    "rss-bbc-world": 1,
-    "rss-bbc-uk": 1,
-    "rss-reuters-world": 1,
-    "rss-dawn": 1,
-    "rss-guardian-world": 1,
-    "rss-geo-english": 1,
+    # News = 3 d window keeps yesterday's headlines on the dashboard
+    # but not last week's. Matches the time-range picker's max.
+    "rss-bbc-world": 3,
+    "rss-bbc-uk": 3,
+    "rss-reuters-world": 3,
+    "rss-dawn": 3,
+    "rss-guardian-world": 3,
+    "rss-geo-english": 3,
     # Hazard + geopolitical = only "live" matters analytically. 2 d
     # gives the convergence detector enough overlap to see today's
     # rising cluster.
@@ -93,8 +93,8 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
         deleted_by_source[source] = _prune_source(session, source=source, days=days, now=now)
 
     # Generic RSS prefix rule: any rss-* source not explicitly listed in
-    # RETENTION_DAYS gets the 1-day news window. Keeps the registry-driven
-    # feeds from #158 pruned without re-listing every slug here.
+    # RETENTION_DAYS gets the 3-day news window — matches the explicit
+    # entries above + the dashboard time-range picker's max.
     explicit = set(RETENTION_DAYS)
     seen_rss = session.execute(
         select(EventRow.source).where(EventRow.source.like("rss-%")).distinct()
@@ -102,7 +102,7 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
     for (src,) in seen_rss:
         if src in explicit:
             continue
-        deleted_by_source[src] = _prune_source(session, source=src, days=1, now=now)
+        deleted_by_source[src] = _prune_source(session, source=src, days=3, now=now)
 
     total_deleted = sum(deleted_by_source.values())
     duration_ms = int((time.monotonic() - started_at) * 1000)
