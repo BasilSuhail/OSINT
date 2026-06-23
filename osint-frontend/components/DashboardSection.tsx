@@ -1016,6 +1016,48 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     return out.sort((a, b) => b.score - a.score).slice(0, 12)
   }, [events, windowMs])
 
+
+  /** Hourly arrival rate (#180). Bins events/hour for the last 48 h
+   *  by category. Surfaces pipeline cadence + spike detection at a
+   *  glance — a category that suddenly arrives 10x its baseline is
+   *  the same signal the convergence detector picks up but presented
+   *  as a time series. */
+  const hourlyArrivalRate = useMemo(() => {
+    const HOURS = 48
+    const now = Date.now()
+    const hourMs = 60 * 60 * 1000
+    const cutoff = now - HOURS * hourMs
+    const buckets: { hour: string; news: number; hazard: number; geo: number; market: number; cyber: number; tracking: number }[] = []
+    for (let i = HOURS - 1; i >= 0; i--) {
+      const t = now - i * hourMs
+      buckets.push({
+        hour: new Date(t).toISOString().slice(11, 13),
+        news: 0,
+        hazard: 0,
+        geo: 0,
+        market: 0,
+        cyber: 0,
+        tracking: 0,
+      })
+    }
+    for (const ev of events) {
+      const t = new Date(ev.occurred_at).getTime()
+      if (!Number.isFinite(t) || t < cutoff) continue
+      const idx = Math.min(HOURS - 1, Math.max(0, Math.floor((t - cutoff) / hourMs)))
+      const b = buckets[idx]
+      if (!b) continue
+      const cat = (ev.category ?? "").toLowerCase()
+      if (cat === "news") b.news += 1
+      else if (cat === "hazard") b.hazard += 1
+      else if (cat === "geopolitical") b.geo += 1
+      else if (cat === "market") b.market += 1
+      else if (cat === "cyber") b.cyber += 1
+      else if (cat === "tracking") b.tracking += 1
+    }
+    return buckets
+  }, [events])
+
+
   /** Cyber-threat rollup (#177). Aggregates abuse.ch URLhaus + Feodo
    *  rows from the in-memory buffer over the chosen window. Surfaces
    *  the data shipped by #163 — counts per malware tag + a top-20
@@ -1070,6 +1112,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     out.sort((a, b) => (b.ev.severity ?? 0) - (a.ev.severity ?? 0))
     return out.slice(0, 12)
   }, [events])
+
 
   if (!configured) return null
 
@@ -1539,6 +1582,56 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             co-occur in the same cell within the last 24 h. Score = 25 ×
             categories + min(25, events × 2). Critical = 4+ categories or
             score ≥ 90.
+          </p>
+        </div>
+
+        {/* Hourly arrival rate (#180). Stacked bar of events / hour
+         *  last 48 h by category. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Hourly arrival rate · last 48 h
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              {hourlyArrivalRate.reduce(
+                (s, b) => s + b.news + b.hazard + b.geo + b.market + b.cyber + b.tracking,
+                0,
+              )}{" "}
+              events
+            </span>
+          </div>
+          <div className="h-44 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={hourlyArrivalRate} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
+                <XAxis
+                  dataKey="hour"
+                  stroke="rgba(115,115,115,0.6)"
+                  fontSize={10}
+                  interval={5}
+                />
+                <YAxis stroke="rgba(115,115,115,0.6)" fontSize={10} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    background: "rgba(10,10,10,0.92)",
+                    border: "1px solid rgba(82,82,82,0.6)",
+                    fontFamily: "monospace",
+                    fontSize: 11,
+                  }}
+                />
+                <Bar dataKey="news" stackId="a" fill="#22d3ee" />
+                <Bar dataKey="hazard" stackId="a" fill="#f97316" />
+                <Bar dataKey="geo" stackId="a" fill="#ef4444" />
+                <Bar dataKey="market" stackId="a" fill="#22c55e" />
+                <Bar dataKey="cyber" stackId="a" fill="#a855f7" />
+                <Bar dataKey="tracking" stackId="a" fill="#94a3b8" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="mt-2 font-mono text-[10px] text-neutral-600">
+            Categories stacked. Cyan = news, orange = hazard, red = geopolitical,
+            green = market, violet = cyber, grey = tracking. Hour ticks every 6 h
+            for readability.
           </p>
         </div>
 
