@@ -28,6 +28,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# NER enrichment. Optional because spaCy + model add ~50 MB to the
+# image; CI test step doesn't install it and the fetcher falls back
+# gracefully to empty entity lists (see app/enrichment/ner.py).
+# Install in prod with:
+#   pip install -e ".[nlp]"
+#   python -m spacy download en_core_web_sm
+nlp = [
+    "spacy>=3.7",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
