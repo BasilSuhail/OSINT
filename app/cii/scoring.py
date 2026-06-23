@@ -24,7 +24,7 @@ from app.cii.config import CiiBaseline, baseline_for
 
 #: Bumped together with any change to weights, sub-score formulas, or the
 #: baseline table. Never edit a prior version in place.
-CII_METHOD_VERSION: str = "cii.v1.1"
+CII_METHOD_VERSION: str = "cii.v1.2"
 
 #: Top-level blend (baseline vs event aggregate).
 _BASELINE_WEIGHT: float = 0.40
@@ -57,6 +57,11 @@ class CiiInputs:
     quake_m5_plus: int = 0
     #: GDACS alerts with alert_level in {orange, red}.
     hazard_orange_red: int = 0
+    #: EONET active hazard events (NASA — wildfires, storms, floods,
+    #: volcanic activity). v1.2 adds these to the Security sub-score
+    #: so a country with no GDACS-grade alerts but persistent EONET
+    #: hazards still registers.
+    eonet_events: int = 0
     #: Any news / RSS rows in the 24 h window. Drives information stress.
     news_volume: int = 0
 
@@ -109,15 +114,22 @@ def _conflict(inputs: CiiInputs, multiplier: float) -> float:
 
 
 def _security(inputs: CiiInputs, multiplier: float) -> float:
-    """0-100. M5+ quakes + GDACS orange/red.
+    """0-100. M5+ quakes + GDACS orange/red + EONET active hazards.
 
-    Quakes weigh 6 pts each (capped at 60); GDACS at 12 each (capped at 60).
-    Multiplier amplifies for fragile regions (UA / IR) where the cascade
-    risk on top of a hazard is structurally higher.
+    Quakes weigh 6 pts each (capped at 60); GDACS at 12 each (capped 60).
+    EONET active hazards (NASA — wildfires, storms, floods, volcanoes)
+    contribute 4 pts each (capped at 40) — softer weight because EONET
+    is much higher-volume than GDACS and a single EONET event isn't as
+    severe as a GDACS orange/red alert. Multiplier amplifies for fragile
+    regions (UA / IR) where cascade risk on top of a hazard is
+    structurally higher.
+
+    v1.2 adds the EONET term — see CII-METHODOLOGY.md.
     """
     quake = min(60.0, inputs.quake_m5_plus * 6.0)
     hazard = min(60.0, inputs.hazard_orange_red * 12.0)
-    return min(100.0, (quake + hazard) * multiplier)
+    eonet = min(40.0, inputs.eonet_events * 4.0)
+    return min(100.0, (quake + hazard + eonet) * multiplier)
 
 
 def _information(inputs: CiiInputs, multiplier: float) -> float:
