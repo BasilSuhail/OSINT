@@ -1197,9 +1197,46 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             ))}
           </div>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">
-          {events.length.toLocaleString()} events in buffer · window {windowLabel}
-        </span>
+        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-widest text-neutral-600">
+          {(() => {
+            // Newest event in buffer as "last_event_at" stamp. Defends
+            // against the dashboard going stale silently — the user sees
+            // exactly how fresh the data is.
+            let newest = 0
+            for (const ev of events) {
+              const t = new Date(ev.occurred_at).getTime()
+              if (Number.isFinite(t) && t > newest) newest = t
+            }
+            const ageMin = newest > 0 ? (Date.now() - newest) / 60_000 : null
+            const ageStr =
+              ageMin === null
+                ? "never"
+                : ageMin < 1
+                  ? "<1 m ago"
+                  : ageMin < 60
+                    ? `${Math.round(ageMin)} m ago`
+                    : `${(ageMin / 60).toFixed(1)} h ago`
+            const fresh = ageMin !== null && ageMin < 15
+            return (
+              <span
+                className={
+                  "rounded border px-1.5 py-0.5 " +
+                  (fresh
+                    ? "border-emerald-900/60 bg-emerald-950/30 text-emerald-300"
+                    : ageMin === null
+                      ? "border-neutral-800 bg-neutral-900/50 text-neutral-500"
+                      : "border-amber-900/60 bg-amber-950/30 text-amber-300")
+                }
+                title="Newest occurred_at in the in-memory buffer"
+              >
+                last event {ageStr}
+              </span>
+            )
+          })()}
+          <span>
+            {events.length.toLocaleString()} events in buffer · window {windowLabel}
+          </span>
+        </div>
       </div>
 
       {/* Hero KPI row (#139). 4 stat tiles at the top of the dashboard
