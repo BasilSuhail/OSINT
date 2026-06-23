@@ -688,6 +688,50 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     return out.sort((a, b) => b.score - a.score).slice(0, 12)
   }, [events, windowMs])
 
+  /** Entity frequency (#182). Aggregate spaCy NER tags shipped via #154
+   *  across news rows in the current window. Sort by total mentions,
+   *  trim to top 20. Per entity track the sentiment band (mean |sent|)
+   *  + label so the panel surfaces the most-mentioned people / orgs /
+   *  places with their stress reading. */
+  const entityFrequency = useMemo(() => {
+    const cutoff = Date.now() - windowMs
+    type Acc = { count: number; sumAbsSent: number; sentN: number; label: string }
+    const acc = new Map<string, Acc>()
+    for (const ev of events) {
+      const t = new Date(ev.occurred_at).getTime()
+      if (!Number.isFinite(t) || t < cutoff) continue
+      const p = (ev.payload ?? {}) as Record<string, unknown>
+      const entities = Array.isArray(p.entities) ? (p.entities as unknown[]) : []
+      const sentiment = typeof p.sentiment === "number" ? Math.abs(p.sentiment as number) : null
+      for (const e of entities) {
+        if (typeof e !== "object" || e === null) continue
+        const text = (e as { text?: unknown }).text
+        const label = (e as { label?: unknown }).label
+        if (typeof text !== "string" || typeof label !== "string") continue
+        const key = `${text}|${label}`
+        const existing = acc.get(key) ?? { count: 0, sumAbsSent: 0, sentN: 0, label }
+        existing.count += 1
+        if (sentiment !== null) {
+          existing.sumAbsSent += sentiment
+          existing.sentN += 1
+        }
+        acc.set(key, existing)
+      }
+    }
+    const out: { text: string; label: string; count: number; meanAbsSent: number }[] = []
+    for (const [key, a] of acc) {
+      const [text] = key.split("|")
+      out.push({
+        text,
+        label: a.label,
+        count: a.count,
+        meanAbsSent: a.sentN > 0 ? a.sumAbsSent / a.sentN : 0,
+      })
+    }
+    out.sort((a, b) => b.count - a.count)
+    return out.slice(0, 20)
+  }, [events, windowMs])
+
 
   if (!configured) return null
 
@@ -1178,6 +1222,43 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             the last 24 h. A long right tail (orange / red bars) flags a
             high-severity cluster worth zooming the map in on.
           </p>
+        </div>
+
+        {/* Entity frequency (#182). Aggregates spaCy NER tags shipped
+         *  by #154. Reads the indigo chips on the news cards in panel form. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-7">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Top entities · last {windowLabel}
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              {entityFrequency.length}
+            </span>
+          </div>
+          {entityFrequency.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No NER-tagged entities in this window yet. Install spaCy +
+              en_core_web_sm in prod to populate (see ENRICHMENT-METHODOLOGY.md).
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-1">
+              {entityFrequency.map((e) => (
+                <li
+                  key={`${e.text}-${e.label}`}
+                  className="flex items-center gap-1.5 rounded border border-indigo-900/60 bg-indigo-950/30 px-2 py-1 text-[11px] text-indigo-300"
+                  title={`${e.label} · mean |sentiment| = ${e.meanAbsSent.toFixed(2)}`}
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-indigo-500">
+                    {e.label}
+                  </span>
+                  <span>{e.text}</span>
+                  <span className="font-mono text-[10px] tabular-nums text-indigo-400">
+                    ×{e.count}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Source latency (#144). Replaces the old buffer-bar source-health
