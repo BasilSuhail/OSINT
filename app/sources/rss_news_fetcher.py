@@ -41,6 +41,14 @@ import feedparser
 import httpx
 
 from app.enrichment.city import city_for
+from app.enrichment.ner import (
+    NER_METHOD_VERSION,
+    entities_to_payload,
+    extract_entities,
+)
+from app.enrichment.ner import (
+    is_available as ner_available,
+)
 from app.enrichment.sentiment import SENTIMENT_METHOD_VERSION, score_text
 from app.models import Category, Event
 from app.sources.base import Fetcher
@@ -199,6 +207,11 @@ def entry_to_event(
     # convenience derived via VADER's published cut-offs.
     sentiment = score_text(f"{title}. {summary}".strip())
 
+    # spaCy NER over title + summary (#154). Falls back to an empty
+    # list when spacy or the model wheel isn't installed — see
+    # app/enrichment/ner.py.
+    entities = extract_entities(f"{title}. {summary}".strip())
+
     payload: dict[str, Any] = {
         "title": title,
         "source_url": link,
@@ -211,7 +224,11 @@ def entry_to_event(
         "sentiment": sentiment.compound if sentiment else None,
         "sentiment_label": sentiment.label if sentiment else None,
         "news_scope": news_scope,
-        "enrichment_meta": {"sentiment_model": SENTIMENT_METHOD_VERSION},
+        "entities": entities_to_payload(entities),
+        "enrichment_meta": {
+            "sentiment_model": SENTIMENT_METHOD_VERSION,
+            "ner_model": NER_METHOD_VERSION if ner_available() else "none",
+        },
     }
 
     return Event(
