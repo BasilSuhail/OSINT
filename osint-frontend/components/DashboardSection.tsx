@@ -111,14 +111,47 @@ function relativeTime(iso: string): string {
 
 /** Editorial source weights for the impact ranking. Mirrors the NIP
  *  formula (BasilSuhail/news-intelligence-platform / 03-IMPACT-SCORE-ALGORITHM).
- *  Higher = more credibility / global reach. Out-of-table sources get 0.5. */
+ *  Higher = more credibility / global reach. Out-of-table sources get 0.5.
+ *
+ *  Updated for the 25 RSS feeds shipped via #158 + the regional papers
+ *  added later. Tiers:
+ *  - 1.00 — wire-service grade global desk
+ *  - 0.90–0.95 — top-tier national broadsheet w/ international desk
+ *  - 0.80–0.85 — strong regional broadsheet
+ *  - 0.65–0.75 — niche / opinion-heavy / partial-translation outlet
+ *  - 0.55–0.60 — state mouthpiece (signal exists, bias caveat)
+ */
 const NEWS_SOURCE_WEIGHTS: Record<string, number> = {
+  // Wire-service / top global
   "rss-bbc-world": 1.0,
   "rss-reuters-world": 1.0,
+  "rss-nyt-world": 0.95,
   "rss-bbc-uk": 0.95,
   "rss-guardian-world": 0.9,
+  "rss-aljazeera": 0.9,
+  // National broadsheet, international desk
+  "rss-france24-en": 0.85,
+  "rss-dw-world": 0.85,
+  "rss-nhk-world": 0.85,
+  "rss-cbc-world": 0.85,
+  "rss-abc-au-world": 0.85,
+  "rss-cnn-world": 0.8,
+  // Regional / national
   "rss-dawn": 0.85,
+  "rss-tribune-pk": 0.75,
+  "rss-times-of-india": 0.8,
+  "rss-the-hindu": 0.8,
+  "rss-straits-times-world": 0.8,
+  "rss-rnz-world": 0.8,
+  "rss-arab-news": 0.7,
+  "rss-jpost-world": 0.75,
+  "rss-haaretz-en": 0.8,
+  "rss-kyiv-independent": 0.8,
   "rss-geo-english": 0.7,
+  // State-mouthpiece tier (signal still useful w/ bias caveat)
+  "rss-rt-news": 0.55,
+  "rss-tass-en": 0.55,
+  // Crime data is its own thing — low impact weight, surfaces via category
   "uk-police": 0.6,
 }
 
@@ -151,19 +184,68 @@ function impactScoreFor(ev: EventRow): number {
 
 const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boolean }[] = [
   { key: "all", label: "All", match: () => true },
-  { key: "uk", label: "UK", match: (ev) => ev.source === "rss-bbc-uk" || ev.country === "GB" },
   {
     key: "world",
     label: "World",
     match: (ev) =>
       ev.source === "rss-bbc-world" ||
       ev.source === "rss-reuters-world" ||
-      ev.source === "rss-guardian-world",
+      ev.source === "rss-guardian-world" ||
+      ev.source === "rss-aljazeera" ||
+      ev.source === "rss-cnn-world" ||
+      ev.source === "rss-nyt-world" ||
+      ev.source === "rss-france24-en" ||
+      ev.source === "rss-dw-world" ||
+      ev.source === "rss-nhk-world",
   },
+  { key: "uk", label: "UK", match: (ev) => ev.source === "rss-bbc-uk" || ev.country === "GB" },
   {
     key: "pakistan",
     label: "Pakistan",
-    match: (ev) => ev.source === "rss-dawn" || ev.source === "rss-geo-english" || ev.country === "PK",
+    match: (ev) =>
+      ev.source === "rss-dawn" ||
+      ev.source === "rss-geo-english" ||
+      ev.source === "rss-tribune-pk" ||
+      ev.country === "PK",
+  },
+  {
+    key: "india",
+    label: "India",
+    match: (ev) =>
+      ev.source === "rss-times-of-india" ||
+      ev.source === "rss-the-hindu" ||
+      ev.country === "IN",
+  },
+  {
+    key: "middle-east",
+    label: "ME",
+    match: (ev) =>
+      ev.source === "rss-jpost-world" ||
+      ev.source === "rss-haaretz-en" ||
+      ev.source === "rss-arab-news" ||
+      ["IL", "SA", "IR", "AE", "QA", "TR", "EG", "JO", "LB", "SY", "IQ", "YE"].includes(
+        ev.country ?? "",
+      ),
+  },
+  {
+    key: "russia-ukraine",
+    label: "RU/UA",
+    match: (ev) =>
+      ev.source === "rss-rt-news" ||
+      ev.source === "rss-tass-en" ||
+      ev.source === "rss-kyiv-independent" ||
+      ev.country === "RU" ||
+      ev.country === "UA",
+  },
+  {
+    key: "asia-pacific",
+    label: "Asia-Pac",
+    match: (ev) =>
+      ev.source === "rss-nhk-world" ||
+      ev.source === "rss-abc-au-world" ||
+      ev.source === "rss-rnz-world" ||
+      ev.source === "rss-straits-times-world" ||
+      ["JP", "AU", "NZ", "SG", "KR", "PH", "ID", "TH", "VN", "MY"].includes(ev.country ?? ""),
   },
   { key: "crime", label: "Crime", match: (ev) => ev.source === "uk-police" },
 ]
@@ -217,13 +299,38 @@ const SOURCE_CADENCE_MIN: Record<string, number> = {
   gdacs: 15,
   "nasa-firms": 60,
   eonet: 30,
+  // All 25 RSS feeds run hourly per the registry in app/sources/rss_feeds.json.
   "rss-bbc-world": 60,
   "rss-bbc-uk": 60,
   "rss-reuters-world": 60,
   "rss-dawn": 60,
   "rss-guardian-world": 60,
   "rss-geo-english": 60,
+  "rss-aljazeera": 60,
+  "rss-cnn-world": 60,
+  "rss-nyt-world": 60,
+  "rss-france24-en": 60,
+  "rss-dw-world": 60,
+  "rss-nhk-world": 60,
+  "rss-rt-news": 60,
+  "rss-tass-en": 60,
+  "rss-times-of-india": 60,
+  "rss-the-hindu": 60,
+  "rss-tribune-pk": 60,
+  "rss-cbc-world": 60,
+  "rss-abc-au-world": 60,
+  "rss-rnz-world": 60,
+  "rss-straits-times-world": 60,
+  "rss-jpost-world": 60,
+  "rss-haaretz-en": 60,
+  "rss-arab-news": 60,
+  "rss-kyiv-independent": 60,
   "uk-police": 24 * 60,
+  // Source-expansion batch.
+  "opensky-adsb": 2,
+  "abuse-ch-urlhaus": 15,
+  "abuse-ch-feodo": 15,
+  polymarket: 30,
 }
 
 interface IngestHealthRow {
