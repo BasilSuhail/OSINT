@@ -24,7 +24,7 @@ from app.cii.config import CiiBaseline, baseline_for
 
 #: Bumped together with any change to weights, sub-score formulas, or the
 #: baseline table. Never edit a prior version in place.
-CII_METHOD_VERSION: str = "cii.v1.0"
+CII_METHOD_VERSION: str = "cii.v1.1"
 
 #: Top-level blend (baseline vs event aggregate).
 _BASELINE_WEIGHT: float = 0.40
