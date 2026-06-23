@@ -708,11 +708,27 @@ function useCiiSeries(days: number) {
   return useScoreSeries("cii_v1", days)
 }
 
-const KPI_ACCENT: Record<string, string> = {
-  cyan: "border-l-cyan-700",
-  rose: "border-l-rose-700",
-  amber: "border-l-amber-700",
-  emerald: "border-l-emerald-700",
+const KPI_ACCENT: Record<string, { border: string; bg: string; text: string }> = {
+  cyan: {
+    border: "border-l-cyan-700",
+    bg: "bg-gradient-to-br from-cyan-950/30 via-neutral-950 to-neutral-950",
+    text: "text-cyan-300",
+  },
+  rose: {
+    border: "border-l-rose-700",
+    bg: "bg-gradient-to-br from-rose-950/30 via-neutral-950 to-neutral-950",
+    text: "text-rose-300",
+  },
+  amber: {
+    border: "border-l-amber-700",
+    bg: "bg-gradient-to-br from-amber-950/30 via-neutral-950 to-neutral-950",
+    text: "text-amber-300",
+  },
+  emerald: {
+    border: "border-l-emerald-700",
+    bg: "bg-gradient-to-br from-emerald-950/30 via-neutral-950 to-neutral-950",
+    text: "text-emerald-300",
+  },
 }
 
 function KpiTile({
@@ -726,16 +742,41 @@ function KpiTile({
   sub: string
   accent: keyof typeof KPI_ACCENT
 }) {
+  const a = KPI_ACCENT[accent] ?? KPI_ACCENT.cyan
   return (
     <div
       className={
-        "rounded-md border border-neutral-800 bg-neutral-950 p-3 border-l-2 " +
-        (KPI_ACCENT[accent] ?? "")
+        "rounded-md border border-neutral-800 p-4 border-l-4 transition-colors hover:border-neutral-700 " +
+        `${a.border} ${a.bg}`
       }
     >
-      <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">{label}</p>
-      <p className="mt-1 truncate text-xl font-semibold tabular-nums text-neutral-100">{value}</p>
-      <p className="mt-1 truncate font-mono text-[10px] text-neutral-500">{sub}</p>
+      <p className={`font-mono text-[10px] uppercase tracking-widest ${a.text}`}>{label}</p>
+      <p className="mt-2 truncate text-2xl font-bold tabular-nums text-neutral-100">{value}</p>
+      <p className="mt-1 truncate font-mono text-[10px] text-neutral-400">{sub}</p>
+    </div>
+  )
+}
+
+function SectionHeader({
+  label,
+  color,
+}: {
+  label: string
+  color: "cyan" | "amber" | "rose" | "emerald"
+}) {
+  const map = {
+    cyan: "border-cyan-700 text-cyan-300",
+    amber: "border-amber-700 text-amber-300",
+    rose: "border-rose-700 text-rose-300",
+    emerald: "border-emerald-700 text-emerald-300",
+  }
+  return (
+    <div
+      className={`col-span-full mt-2 flex items-center gap-2 border-l-4 pl-2 ${map[color]}`}
+      aria-label={label}
+    >
+      <span className="font-mono text-[10px] uppercase tracking-[0.2em]">{label}</span>
+      <span className="h-px flex-1 bg-neutral-800" />
     </div>
   )
 }
@@ -985,8 +1026,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     >
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-            Dashboard
+          <h2 className="font-mono text-sm uppercase tracking-[0.25em] text-neutral-200">
+            OSINT Dashboard
           </h2>
           {/* Global time-range picker (#141). Every panel below scopes
            *  its memo to the chosen window so the page reads consistently. */}
@@ -1057,6 +1098,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12">
+        <SectionHeader label="Risk" color="rose" />
+
         {/* CII v1 time series — mean across Tier-1 countries. See
          *  docs/architecture/CII-METHODOLOGY.md. */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-12">
@@ -1173,6 +1216,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             (unrest / conflict / security / information).
           </p>
         </div>
+
+        <SectionHeader label="Events" color="cyan" />
 
         {/* News feed — card layout with thumbnail + impact ranking.
          *  Pattern mirrors NIP (BasilSuhail/news-intelligence-platform)
@@ -1495,6 +1540,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             high-severity cluster worth zooming the map in on.
           </p>
         </div>
+
+        <SectionHeader label="Health & Validation" color="emerald" />
 
         {/* Source latency (#144). Replaces the old buffer-bar source-health
          *  panel with a real read against the ingest_health table. Each
