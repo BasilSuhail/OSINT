@@ -1,8 +1,8 @@
 # CII v1 — Country Instability Index Methodology
 
-**Status:** v1.0 — first published version, ships in PR closing issue #127.
+**Status:** v1.1 — Tier-1 expanded from 12 → 31 countries to match WM CII v8 coverage. v1.0 shipped in PR closing #127.
 **Module:** `app.cii.scoring`
-**Method version stamp:** `cii.v1.0`
+**Method version stamp:** `cii.v1.1`
 
 ## What this is
 
@@ -55,22 +55,43 @@ Each ISO carries two coefficients:
   conflict regions; values < 1 for high-volume English-language feeds (US /
   UK) where 200 news rows is a quiet day, not stress.
 
-The v1 seed (Tier-1, n = 12):
+v1.1 Tier-1 (n = 31, matches WM CII v8 coverage):
 
 | ISO | Baseline | Multiplier | Notes |
 |---|---|---|---|
-| US | 18 | 0.6 | High volume, low structural risk |
-| GB | 14 | 0.65 | Same — UK news volume dominates |
+| **v1.0 seed (12)** | | | |
+| US | 18 | 0.60 | High volume, low structural risk |
+| GB | 14 | 0.65 | UK news volume dominates |
 | PK | 42 | 1.15 | Active fragility |
 | IN | 24 | 0.95 | Mid-volume, moderate baseline |
-| CN | 26 | 0.85 | News access constrained → mid baseline |
+| CN | 26 | 0.85 | News access constrained |
 | RU | 38 | 1.10 | Sanctions, conflict-adjacent |
 | UA | 46 | 1.25 | Active conflict |
 | IR | 44 | 1.20 | Persistent escalation risk |
 | IL | 40 | 1.15 | Persistent escalation risk |
 | SA | 28 | 0.95 | Regional cascade exposure |
 | TR | 30 | 1.00 | Mid-fragility |
-| BR | 22 | 0.85 | Mid-volume Latin America anchor |
+| BR | 22 | 0.85 | Latin America anchor |
+| **v1.1 expansion (+19)** | | | |
+| TW | 32 | 1.05 | Cross-strait risk |
+| KP | 46 | 1.20 | Closed regime, persistent risk |
+| PL | 20 | 0.90 | NATO frontline |
+| DE | 14 | 0.65 | High-volume European desk |
+| FR | 18 | 0.75 | Mid-volume European desk |
+| SY | 48 | 1.30 | Active conflict |
+| YE | 48 | 1.30 | Active conflict |
+| MM | 44 | 1.25 | Active conflict / coup-era |
+| VE | 38 | 1.10 | Persistent instability |
+| CU | 30 | 1.00 | Mid-fragility |
+| MX | 28 | 0.95 | Cartel violence cascade |
+| AE | 20 | 0.85 | Gulf cascade exposure |
+| KR | 18 | 0.80 | KP-cascade sensitive |
+| IQ | 42 | 1.20 | Persistent fragility |
+| AF | 48 | 1.30 | Taliban-era persistent risk |
+| LB | 42 | 1.15 | Persistent fragility |
+| EG | 30 | 1.00 | Mid-fragility |
+| JP | 14 | 0.65 | Low risk, hazard-only |
+| QA | 18 | 0.85 | Mediation pivot, low domestic risk |
 
 Countries outside the table fall back to `(baseline = 15, multiplier = 1.0)`.
 
@@ -95,7 +116,7 @@ historical comparisons stay reproducible.
 | Sub-scores | Unrest / Conflict / Security / Information | Same |
 | Top-level blend | 40 / 60 baseline vs event | Same |
 | Sub-weights | 25 / 30 / 20 / 25 | Same |
-| Tier-1 countries | 31 | 12 (v1 seed) |
+| Tier-1 countries | 31 | 31 (v1.1) |
 | ACLED source | Yes | No — gated by issue #65 |
 | OREF / Israel boost | Yes | No — out of v1 scope |
 | Advisory floors / UCDP floors | Yes | No — v2 candidate |

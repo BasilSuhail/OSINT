@@ -13,7 +13,7 @@ from app.cii.scoring import CII_METHOD_VERSION, CiiInputs, compute_cii
 
 
 def test_method_version_constant() -> None:
-    assert CII_METHOD_VERSION == "cii.v1.0"
+    assert CII_METHOD_VERSION == "cii.v1.1"
 
 
 def test_zero_inputs_returns_pure_baseline_contribution() -> None:
