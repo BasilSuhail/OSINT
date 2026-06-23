@@ -135,10 +135,33 @@ function recencyFor(ev: EventRow): number {
   return Math.max(0, 1 - ageH / 24)
 }
 
-/** Impact score per NIP, minus cluster size (own follow-up issue).
+/** Lowercase character-bigram set of a title — used for Jaccard similarity
+ *  in the article-clustering memo (#172). Strips non-word chars then walks
+ *  word boundaries so "Trump" / "TRUMP" / "trump." all map to the same set. */
+function titleBigrams(title: string): Set<string> {
+  const cleaned = title.toLowerCase().replace(/[^a-z0-9\s]/g, " ")
+  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 2)
+  const out = new Set<string>()
+  for (let i = 0; i < tokens.length - 1; i++) {
+    out.add(`${tokens[i]}_${tokens[i + 1]}`)
+  }
+  // Single tokens too, so very short titles still group.
+  for (const t of tokens) out.add(t)
+  return out
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
+  let inter = 0
+  for (const x of a) if (b.has(x)) inter += 1
+  const uni = a.size + b.size - inter
+  return uni === 0 ? 0 : inter / uni
+}
+
+/** Impact score per NIP including the cluster size term (#172).
  *  Falls back to the keyword-boosted severity when sentiment is missing
  *  so pre-#131 rows still rank meaningfully. */
-function impactScoreFor(ev: EventRow): number {
+function impactScoreFor(ev: EventRow, clusterSize: number = 1): number {
   const p = (ev.payload ?? {}) as Record<string, unknown>
   const rawSentiment =
     typeof p?.sentiment === "number"
@@ -146,7 +169,13 @@ function impactScoreFor(ev: EventRow): number {
       : typeof ev.severity === "number"
         ? Math.abs(ev.severity - 0.35) * 2 // map 0.35→0, 0.85→1
         : 0
-  return 0.45 * rawSentiment + 0.30 * recencyFor(ev) + 0.25 * sourceWeightFor(ev)
+  const clusterTerm = Math.min(clusterSize / 10, 1)
+  return (
+    0.3 * rawSentiment +
+    0.25 * clusterTerm +
+    0.25 * sourceWeightFor(ev) +
+    0.2 * recencyFor(ev)
+  )
 }
 
 const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boolean }[] = [
@@ -587,18 +616,62 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const [newsFilter, setNewsFilter] = useState<string>("all")
   const [newsSort, setNewsSort] = useState<"impact" | "time">("impact")
 
+  /** Article-clustering (#172): bigram-Jaccard single-link cluster over
+   *  the news rows in the current window. Threshold 0.4 catches stories
+   *  shared across BBC + Reuters + Al Jazeera etc without over-merging
+   *  unrelated headlines. */
+  const newsClusters = useMemo(() => {
+    const ids = allNews.map((ev) => ev.id)
+    const bigrams = allNews.map((ev) => titleBigrams(bestTitle(ev)))
+    const parent = ids.map((_, i) => i)
+    const find = (i: number): number => {
+      while (parent[i] !== i) {
+        parent[i] = parent[parent[i]]
+        i = parent[i]
+      }
+      return i
+    }
+    const union = (a: number, b: number): void => {
+      const ra = find(a)
+      const rb = find(b)
+      if (ra !== rb) parent[ra] = rb
+    }
+    const THRESHOLD = 0.4
+    // O(n^2) — fine while filteredNews shows top 30 from the buffer.
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        if (jaccard(bigrams[i], bigrams[j]) >= THRESHOLD) union(i, j)
+      }
+    }
+    const sizeByRoot = new Map<number, number>()
+    for (let i = 0; i < ids.length; i++) {
+      const r = find(i)
+      sizeByRoot.set(r, (sizeByRoot.get(r) ?? 0) + 1)
+    }
+    const out = new Map<string | number, { clusterId: number; clusterSize: number }>()
+    for (let i = 0; i < ids.length; i++) {
+      const r = find(i)
+      out.set(ids[i], { clusterId: r, clusterSize: sizeByRoot.get(r) ?? 1 })
+    }
+    return out
+  }, [allNews])
+
+  const clusterSizeFor = (ev: EventRow): number => newsClusters.get(ev.id)?.clusterSize ?? 1
+
   const filteredNews = useMemo(() => {
     const f = NEWS_FILTERS.find((x) => x.key === newsFilter) ?? NEWS_FILTERS[0]
     const matched = allNews.filter(f.match)
     if (newsSort === "impact") {
       return matched
-        .map((ev) => ({ ev, score: impactScoreFor(ev) }))
+        .map((ev) => ({ ev, score: impactScoreFor(ev, clusterSizeFor(ev)) }))
         .sort((a, b) => b.score - a.score)
         .slice(0, 30)
         .map((x) => x.ev)
     }
     return matched.slice(0, 30)
-  }, [allNews, newsFilter, newsSort])
+    // clusterSizeFor closes over newsClusters; reads in render below stay live.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allNews, newsFilter, newsSort, newsClusters])
 
   /** Severity histogram: events in last 24 h binned by severity into 10
    *  fixed-width buckets [0, 0.1) … [0.9, 1.0]. Drives the bar chart.
@@ -954,7 +1027,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                 const sev = typeof ev.severity === "number" ? ev.severity : 0
                 const imageUrl =
                   typeof p?.image_url === "string" ? (p.image_url as string) : null
-                const impact = impactScoreFor(ev)
+                const clusterSize = clusterSizeFor(ev)
+                const impact = impactScoreFor(ev, clusterSize)
                 const firstLetter = title.charAt(0).toUpperCase() || "N"
                 const sentiment =
                   typeof p?.sentiment === "number" ? (p.sentiment as number) : null
@@ -1036,10 +1110,18 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                           )}
                           <span
                             className="rounded border border-amber-900/60 bg-amber-950/30 px-1.5 py-0.5 tabular-nums text-amber-300"
-                            title="impact = 0.45 |sentiment| + 0.30 recency + 0.25 source weight"
+                            title="impact = 0.30 |sentiment| + 0.25 cluster + 0.25 source + 0.20 recency"
                           >
                             impact {impact.toFixed(2)}
                           </span>
+                          {clusterSize > 1 && (
+                            <span
+                              className="rounded border border-violet-900/60 bg-violet-950/30 px-1.5 py-0.5 tabular-nums text-violet-300"
+                              title={`Story carried by ${clusterSize} sources in window`}
+                            >
+                              +{clusterSize - 1} sources
+                            </span>
+                          )}
                           <span className="ml-auto tabular-nums text-neutral-600">
                             {relativeTime(ev.occurred_at)} · {format(new Date(ev.occurred_at), "HH:mm")}
                           </span>
