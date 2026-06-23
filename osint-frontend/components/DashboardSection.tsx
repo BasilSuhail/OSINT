@@ -1434,8 +1434,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                         fontFamily: "monospace",
                         fontSize: 11,
                       }}
-                      formatter={(v, name, props) => {
-                        const s = props?.payload as HindsightSpike
+                      formatter={(v, name) => {
                         if (name === "delta") return [(v as number).toFixed(2), "Δ-7 CII"]
                         if (name === "forwardQuakes") return [v, "fwd M4+"]
                         return [String(v), name as string]
