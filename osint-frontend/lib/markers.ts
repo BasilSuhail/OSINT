@@ -39,6 +39,17 @@ export function markerStyle(ev: EventRow): MarkerStyle {
     case "yfinance":
       return { shape: "circle", size: 7, color }
     default:
+      // Category-based fallback for new sources (opensky-adsb, abuse-ch,
+      // polymarket, etc.) that don't have a SourceKey yet.
+      if (ev.source === "opensky-adsb" || ev.category === "tracking") {
+        return { shape: "diamond", size: 4, color }
+      }
+      if (ev.source.startsWith("abuse-ch-") || ev.category === "cyber") {
+        return { shape: "diamond", size: 6, color }
+      }
+      if (ev.source === "polymarket" || ev.category === "market") {
+        return { shape: "circle", size: 6, color }
+      }
       return { shape: "circle", size: 6, color }
   }
 }
