@@ -1016,6 +1016,60 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
     return out.sort((a, b) => b.score - a.score).slice(0, 12)
   }, [events, windowMs])
 
+  /** Cyber-threat rollup (#177). Aggregates abuse.ch URLhaus + Feodo
+   *  rows from the in-memory buffer over the chosen window. Surfaces
+   *  the data shipped by #163 — counts per malware tag + a top-20
+   *  list with status / severity. */
+  const cyberThreats = useMemo(() => {
+    const cutoff = Date.now() - windowMs
+    const tagCounts = new Map<string, number>()
+    const rows: { ev: EventRow; primary: string; status: string | null; severity: number }[] = []
+    for (const ev of events) {
+      if (ev.source !== "abuse-ch-urlhaus" && ev.source !== "abuse-ch-feodo") continue
+      const t = new Date(ev.occurred_at).getTime()
+      if (!Number.isFinite(t) || t < cutoff) continue
+      const p = (ev.payload ?? {}) as Record<string, unknown>
+      let primary: string
+      let status: string | null
+      if (ev.source === "abuse-ch-urlhaus") {
+        const tags = Array.isArray(p.tags) ? (p.tags as string[]) : []
+        primary = (tags[0] ?? (p.threat as string | null) ?? "url").toString()
+        for (const t of tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)
+        status = (p.status as string | null) ?? null
+      } else {
+        primary = (p.malware as string | null) ?? "botnet"
+        tagCounts.set(primary, (tagCounts.get(primary) ?? 0) + 1)
+        status = (p.c2_status as string | null) ?? null
+      }
+      const sev = typeof ev.severity === "number" ? ev.severity : 0
+      rows.push({ ev, primary, status, severity: sev })
+    }
+    const topTags = Array.from(tagCounts.entries())
+      .map(([tag, n]) => ({ tag, n }))
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 6)
+    rows.sort((a, b) => {
+      if (b.severity !== a.severity) return b.severity - a.severity
+      return new Date(b.ev.occurred_at).getTime() - new Date(a.ev.occurred_at).getTime()
+    })
+    return { rows: rows.slice(0, 20), tagBreakdown: topTags, total: rows.length }
+  }, [events, windowMs])
+
+  /** Polymarket top-stress markets (#177 companion). Sorted by severity
+   *  which is the "tail-event awareness" reading from #164. Surfaces
+   *  the data so the market layer is visible. */
+  const polyTopStress = useMemo(() => {
+    const out: { ev: EventRow; price: number | null; question: string }[] = []
+    for (const ev of events) {
+      if (ev.source !== "polymarket") continue
+      const p = (ev.payload ?? {}) as Record<string, unknown>
+      const price = typeof p.yes_price === "number" ? (p.yes_price as number) : null
+      const question = (p.question as string | null) ?? "—"
+      out.push({ ev, price, question })
+    }
+    out.sort((a, b) => (b.ev.severity ?? 0) - (a.ev.severity ?? 0))
+    return out.slice(0, 12)
+  }, [events])
 
   if (!configured) return null
 
@@ -1538,6 +1592,121 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             Distribution of event severities for rows whose occurred_at is in
             the last 24 h. A long right tail (orange / red bars) flags a
             high-severity cluster worth zooming the map in on.
+          </p>
+        </div>
+
+
+
+        {/* Cyber-threat rollup (#177). Surfaces abuse.ch URLhaus + Feodo
+         *  rows shipped via #163. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Cyber threats · last {windowLabel}
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              {cyberThreats.total} indicators
+            </span>
+          </div>
+          {cyberThreats.tagBreakdown.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {cyberThreats.tagBreakdown.map((t) => (
+                <span
+                  key={t.tag}
+                  className="rounded border border-rose-900/60 bg-rose-950/30 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-rose-300"
+                >
+                  {t.tag} · {t.n}
+                </span>
+              ))}
+            </div>
+          )}
+          {cyberThreats.rows.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No abuse.ch rows in this window yet.
+            </p>
+          ) : (
+            <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
+              {cyberThreats.rows.map(({ ev, primary, status, severity }) => {
+                const p = (ev.payload ?? {}) as Record<string, unknown>
+                const target = (p.url as string | null) ?? (p.dst_ip as string | null) ?? "—"
+                return (
+                  <li
+                    key={ev.id}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-[11px] hover:bg-neutral-900"
+                  >
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: severityBarColor(severity) }}
+                      aria-hidden="true"
+                    />
+                    <span className="w-12 font-mono text-[10px] uppercase text-neutral-500">
+                      {ev.source === "abuse-ch-feodo" ? "feodo" : "urlhaus"}
+                    </span>
+                    <span className="rounded border border-neutral-800 bg-neutral-900 px-1 font-mono text-[10px] uppercase tracking-wider text-neutral-300">
+                      {primary}
+                    </span>
+                    {status && (
+                      <span className="font-mono text-[10px] uppercase text-neutral-500">
+                        {status}
+                      </span>
+                    )}
+                    <span className="flex-1 truncate font-mono text-[10px] text-neutral-400">
+                      {target}
+                    </span>
+                    <span className="font-mono text-[10px] tabular-nums text-neutral-600">
+                      {relativeTime(ev.occurred_at)}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Polymarket top-stress markets (#177 companion). */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Polymarket · top stress markets
+            </h3>
+            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+              {polyTopStress.length} of {events.filter((e) => e.source === "polymarket").length}
+            </span>
+          </div>
+          {polyTopStress.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No Polymarket rows yet. 30 min cadence.
+            </p>
+          ) : (
+            <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
+              {polyTopStress.map(({ ev, price, question }) => (
+                <li
+                  key={ev.id}
+                  className="flex items-center gap-2 rounded px-2 py-1 text-[11px] hover:bg-neutral-900"
+                >
+                  <span
+                    className="inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: severityBarColor(ev.severity ?? 0),
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span className="flex-1 truncate text-neutral-300">{question}</span>
+                  <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+                    p = {price !== null ? price.toFixed(2) : "?"}
+                  </span>
+                  <span
+                    className="font-mono text-[10px] tabular-nums"
+                    style={{ color: severityBarColor(ev.severity ?? 0) }}
+                  >
+                    s {ev.severity?.toFixed(2)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 font-mono text-[10px] text-neutral-600">
+            Severity = 1 − |p − 0.5| × 2 — peaks at maximum uncertainty.
           </p>
         </div>
 
