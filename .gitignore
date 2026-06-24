@@ -1,3 +1,7 @@
+# Local-only scratch folder — do not push (presentation prep, etc.)
+extra/
+OSINT-presentation.md
+
 # Python
 __pycache__/
 *.py[cod]
