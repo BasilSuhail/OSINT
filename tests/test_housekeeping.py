@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db_models import EventRow, HousekeepingRunRow
-from app.housekeeping import RETENTION_DAYS, prune_events
+from app.housekeeping import RETENTION_DAYS, prune_events, retention_days
 
 
 def _make_event_row(*, source: str, occurred_at: datetime, suffix: str) -> EventRow:
@@ -42,6 +42,15 @@ def _seed(session: Session, now: datetime) -> None:
         session.add(_make_event_row(source=source, occurred_at=fresh, suffix="fresh"))
         session.add(_make_event_row(source=source, occurred_at=stale, suffix="stale"))
     session.commit()
+
+
+def test_retention_days_reads_settings(monkeypatch):
+    monkeypatch.setattr("app.housekeeping.settings.retention_gdelt_days", 1)
+    monkeypatch.setattr("app.housekeeping.settings.retention_news_days", 2)
+    rd = retention_days()
+    assert rd["gdelt"] == 1
+    assert rd["rss-bbc-world"] == 2
+    assert rd["fred"] is None
 
 
 def test_prune_drops_stale_keeps_fresh(db_session: Session) -> None:

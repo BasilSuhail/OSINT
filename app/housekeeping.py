@@ -3,7 +3,7 @@
 Different sources have different retention needs:
 
 - NASA FIRMS dumps ~35 k rows/day. Without pruning the table balloons past
-  Supabase's free-tier ceiling inside a fortnight. 30 days of fire history is
+  the local disk budget inside a fortnight. 30 days of fire history is
   plenty for the hazard rolling-z baseline, so we prune aggressively.
 - GDELT is denser but the geopolitical signal benefits from longer history.
 - yfinance + FRED are tiny — never delete.
@@ -21,47 +21,42 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db_models import EventRow, HousekeepingRunRow
+from app.settings import settings
 
-#: Per-source retention windows in days. ``None`` means "never delete" (keep
-#: forever — used for low-volume series whose history is irreplaceable).
-# Storage budget while we're on Supabase free tier (#106 + #156): prune
-# every high-volume source to 3 d so we have room to add the
-# source-expansion batch without breaking the free-tier ceiling. When the
-# project moves off Supabase to local HDDs the policy flips back to
-# keep-everything — but until then, only macro / market series with
-# irreplaceable history are exempt.
-RETENTION_DAYS: dict[str, int | None] = {
-    # News = 3 d window keeps yesterday's headlines on the dashboard
-    # but not last week's. Matches the time-range picker's max.
-    "rss-bbc-world": 3,
-    "rss-bbc-uk": 3,
-    "rss-reuters-world": 3,
-    "rss-dawn": 3,
-    "rss-guardian-world": 3,
-    "rss-geo-english": 3,
-    # Hazard + geopolitical = only "live" matters analytically. 2 d
-    # gives the convergence detector enough overlap to see today's
-    # rising cluster.
-    "nasa-firms": 2,
-    "usgs-quake": 2,
-    "gdacs": 2,
-    "eonet": 2,
-    "gdelt": 2,
-    # ADS-B = only live matters. 2 d window matches the hazard layer.
-    "opensky-adsb": 2,
-    # Cyber-threat = live only matters; old C2 IPs / malware URLs
-    # rotate fast. 2 d window aligns with hazard layer retention.
-    "abuse-ch-urlhaus": 2,
-    "abuse-ch-feodo": 2,
-    # Polymarket = only "live" market state matters; price 2 d ago is
-    # irrelevant for stress reading.
-    "polymarket": 2,
-    # UK Police = monthly batch ingest, low row volume.
-    "uk-police": 7,
-    # Market / macro = low volume + trend context matters.
-    "yfinance": 30,
-    "fred": None,
-}
+def retention_days() -> dict[str, int | None]:
+    """Per-source retention windows (days). ``None`` = never delete.
+
+    High-volume sources are pruned to a few days to keep the local disk
+    budget small (GDELT is the largest table). News/hazard/GDELT windows are
+    env-overridable via RETENTION_*_DAYS; market/macro history is irreplaceable
+    so it is exempt.
+    """
+    news = settings.retention_news_days
+    hazard = settings.retention_hazard_days
+    return {
+        "rss-bbc-world": news,
+        "rss-bbc-uk": news,
+        "rss-reuters-world": news,
+        "rss-dawn": news,
+        "rss-guardian-world": news,
+        "rss-geo-english": news,
+        "nasa-firms": hazard,
+        "usgs-quake": hazard,
+        "gdacs": hazard,
+        "eonet": hazard,
+        "gdelt": settings.retention_gdelt_days,
+        "opensky-adsb": hazard,
+        "abuse-ch-urlhaus": hazard,
+        "abuse-ch-feodo": hazard,
+        "polymarket": hazard,
+        "uk-police": 7,
+        "yfinance": 30,
+        "fred": None,
+    }
+
+
+# Backward compatibility: expose the function result as a module-level constant for tests
+RETENTION_DAYS: dict[str, int | None] = retention_days()
 
 
 def _prune_source(session: Session, *, source: str, days: int, now: datetime) -> int:
@@ -86,23 +81,24 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
     now = now or datetime.now(UTC)
 
     deleted_by_source: dict[str, int] = {}
-    for source, days in RETENTION_DAYS.items():
+    policy = retention_days()
+    for source, days in policy.items():
         if days is None:
             deleted_by_source[source] = 0
             continue
         deleted_by_source[source] = _prune_source(session, source=source, days=days, now=now)
 
     # Generic RSS prefix rule: any rss-* source not explicitly listed in
-    # RETENTION_DAYS gets the 3-day news window — matches the explicit
+    # the retention policy gets the configured news window — matches the explicit
     # entries above + the dashboard time-range picker's max.
-    explicit = set(RETENTION_DAYS)
+    explicit = set(policy)
     seen_rss = session.execute(
         select(EventRow.source).where(EventRow.source.like("rss-%")).distinct()
     )
     for (src,) in seen_rss:
         if src in explicit:
             continue
-        deleted_by_source[src] = _prune_source(session, source=src, days=3, now=now)
+        deleted_by_source[src] = _prune_source(session, source=src, days=settings.retention_news_days, now=now)
 
     total_deleted = sum(deleted_by_source.values())
     duration_ms = int((time.monotonic() - started_at) * 1000)
