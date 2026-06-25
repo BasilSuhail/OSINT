@@ -231,6 +231,24 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     return () => window.removeEventListener("osint:flyto", handler)
   }, [mapRef])
 
+  // Lift the country / state borders out of the near-black default so the
+  // ground reads against the hillshade. The OpenFreeMap dark style ships them
+  // at ~21-23% grey; bump to a legible mid-grey. Runs once the style is ready.
+  useEffect(() => {
+    if (!mapRef) return
+    const map = mapRef.getMap()
+    const brightenBorders = () => {
+      for (const id of ["boundary_country_z0-4", "boundary_country_z5-"]) {
+        if (map.getLayer(id)) map.setPaintProperty(id, "line-color", "hsl(0,0%,55%)")
+      }
+      if (map.getLayer("boundary_state")) {
+        map.setPaintProperty("boundary_state", "line-color", "hsl(0,0%,40%)")
+      }
+    }
+    if (map.isStyleLoaded()) brightenBorders()
+    else map.once("load", brightenBorders)
+  }, [mapRef])
+
   const positioned = useMemo<Positioned[]>(() => {
     const out: Positioned[] = []
     for (const ev of events) {
@@ -364,6 +382,33 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         dragRotate={false}
         style={{ position: "absolute", inset: 0 }}
       >
+        {/* Terrain hillshade so quakes / hazards read against real ground —
+            mountains, coastlines, relief — like the GDACS shakemap. Free AWS
+            Terrarium DEM (no API key). Inserted before `waterway` (the first
+            line layer) so borders + labels stay on top of the relief. */}
+        <Source
+          id="terrain-dem"
+          type="raster-dem"
+          tiles={["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"]}
+          encoding="terrarium"
+          tileSize={256}
+          maxzoom={13}
+        >
+          <Layer
+            id="hillshade"
+            type="hillshade"
+            beforeId="waterway"
+            paint={{
+              // Punchy enough to read as real terrain on the near-black theme —
+              // ridgelines/coast catch a warm-grey highlight, valleys go black.
+              "hillshade-exaggeration": 0.95,
+              "hillshade-shadow-color": "#000000",
+              "hillshade-highlight-color": "#7a766b",
+              "hillshade-accent-color": "#3a3a3a",
+              "hillshade-illumination-direction": 315,
+            }}
+          />
+        </Source>
         {scoredGeo && (
           <Source id="countries" type="geojson" data={scoredGeo}>
             <Layer
