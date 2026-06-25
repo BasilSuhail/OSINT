@@ -108,6 +108,30 @@ function EventMarker({
         style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer" }}
         className="relative grid place-items-center"
       >
+        {/* Emphasis ring for notable quakes (#P3): a steady circle the user
+            can't scroll past, plus a radar ping echoing the GDACS shockwave. */}
+        {style.ring && (
+          <>
+            <span
+              aria-hidden
+              className="absolute rounded-full"
+              style={{
+                width: size + 10,
+                height: size + 10,
+                border: `1.5px solid ${style.color}`,
+                boxShadow: `0 0 6px ${style.color}`,
+              }}
+            />
+            <motion.span
+              aria-hidden
+              className="absolute rounded-full"
+              style={{ width: size + 10, height: size + 10, border: `1.5px solid ${style.color}` }}
+              initial={{ scale: 0.8, opacity: 0.7 }}
+              animate={{ scale: 1.9, opacity: 0 }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
+            />
+          </>
+        )}
         <span
           className="block"
           style={{
