@@ -60,6 +60,9 @@ jobs:
       - name: Ephemeris unit tests (node --test)
         run: node --test --experimental-strip-types lib/ephemeris.test.mts
 
+      - name: Unit tests (vitest)
+        run: pnpm test
+
       # `next build` is intentionally not run here. Next 16 + Turbopack hangs
       # indefinitely on GitHub-hosted runners (telemetry prompt + first-run
       # font/cache fetches); a 60-min wait is worse than no signal. tsc +
