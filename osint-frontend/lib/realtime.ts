@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from "@supabase/supabase-js"
 import { getSupabase } from "./supabase"
-import type { EventRow } from "./types"
+import { sourceKeyForEvent, type EventRow } from "./types"
 
 export type ConnectionStatus =
   | "connecting"
@@ -72,6 +72,11 @@ export class EventBuffer {
     let changed = false
     for (const row of rows) {
       if (!row?.id || this.byId.has(row.id)) continue
+      // Skip events with no source toggle (aviation/cyber/etc.). They are
+      // never rendered from this buffer, and high-frequency feeds like
+      // opensky-adsb (~190k rows/day) would otherwise flood the live stream
+      // and evict every displayable event under the MAX_EVENTS cap.
+      if (sourceKeyForEvent(row) === null) continue
       this.byId.add(row.id)
       this.events.push(row)
       this.lastEventAt = new Date()
@@ -252,6 +257,7 @@ export class EventBuffer {
       const { data, error } = await supabase
         .from("events")
         .select("*")
+        .neq("source", "opensky-adsb")
         .gt("fetched_at", since)
         .order("occurred_at", { ascending: false })
         .limit(500)

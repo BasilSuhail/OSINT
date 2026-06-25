@@ -1,3 +1,7 @@
+# Local-only scratch folder — do not push (presentation prep, etc.)
+extra/
+OSINT-presentation.md
+
 # Python
 __pycache__/
 *.py[cod]
@@ -59,3 +63,6 @@ logs/
 # Local dev artefacts
 .tmp/
 scratch/
+
+# DB snapshots (scripts/snapshot.py output — data dumps, never commit)
+backups/
