@@ -21,6 +21,10 @@ from app.db_models import Base
 @pytest.fixture
 def db_session() -> Iterator[Session]:
     """Yield a session against a fresh in-memory SQLite database."""
+    # FastAPI's TestClient runs sync endpoints in a thread pool via anyio.to_thread.run_sync.
+    # SQLite :memory: connections are per-connection by default, so StaticPool forces all
+    # threads to share the one connection created here, making seeded data visible across
+    # threads. check_same_thread=False disables pysqlite's cross-thread safety guard.
     engine = create_engine(
         "sqlite:///:memory:",
         future=True,
