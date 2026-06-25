@@ -459,7 +459,10 @@ function useLatestCiiByCountry(): Map<string, { iso: string; score: number }> {
 
   return useMemo(() => {
     const latest = new Map<string, { iso: string; score: number }>()
-    for (const r of data) {
+    const sorted = [...data].sort((a, b) =>
+      (b.bucket_start ?? "") > (a.bucket_start ?? "") ? 1 : -1,
+    )
+    for (const r of sorted) {
       const iso = r.country
       if (!iso) continue
       if (latest.has(iso)) continue
