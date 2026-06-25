@@ -1,5 +1,14 @@
 import type { EventRow, ScoreRow } from "./types"
 
+export interface IngestHealthRow {
+  source: string
+  day: string
+  success_n: number | null
+  failure_n: number | null
+  last_success: string | null
+  last_failure: string | null
+}
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 // Local API always has a valid default base; kept as a named export so call
@@ -29,6 +38,12 @@ export async function fetchScores(limit = 5000): Promise<ScoreRow[]> {
   const res = await fetch(`${API_BASE}/scores?limit=${limit}`)
   if (!res.ok) throw new Error(`GET /scores ${res.status}`)
   return (await res.json()) as ScoreRow[]
+}
+
+export async function fetchIngestHealth(days = 7): Promise<IngestHealthRow[]> {
+  const res = await fetch(`${API_BASE}/ingest-health?days=${days}`)
+  if (!res.ok) throw new Error(`GET /ingest-health ${res.status}`)
+  return (await res.json()) as IngestHealthRow[]
 }
 
 export function streamUrl(): string {

@@ -18,7 +18,7 @@ import {
   ZAxis,
 } from "recharts"
 import { useEvents } from "@/app/providers"
-import { fetchEvents, fetchScores } from "@/lib/apiClient"
+import { fetchEvents, fetchIngestHealth, fetchScores, type IngestHealthRow } from "@/lib/apiClient"
 import type { EventRow, ScoreRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
@@ -358,15 +358,6 @@ const SOURCE_CADENCE_MIN: Record<string, number> = {
   polymarket: 30,
 }
 
-interface IngestHealthRow {
-  source: string
-  day: string
-  success_n: number | null
-  failure_n: number | null
-  last_success: string | null
-  last_failure: string | null
-}
-
 interface SourceLatencyRow {
   source: string
   lastSuccess: string | null
@@ -377,9 +368,15 @@ interface SourceLatencyRow {
 }
 
 function useSourceLatency(): SourceLatencyRow[] {
-  // ingest_health is not exposed via the REST API — return empty until a
-  // dedicated /ingest-health endpoint is added to the backend.
-  const [rows] = useState<IngestHealthRow[]>([])
+  const [rows, setRows] = useState<IngestHealthRow[]>([])
+
+  useEffect(() => {
+    let alive = true
+    fetchIngestHealth(7)
+      .then((data) => { if (alive) setRows(data) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   return useMemo(() => {
     const latest = new Map<string, IngestHealthRow>()
