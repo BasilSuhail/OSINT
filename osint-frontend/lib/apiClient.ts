@@ -1,0 +1,35 @@
+import type { EventRow, ScoreRow } from "./types"
+
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+
+// Local API always has a valid default base; kept as a named export so call
+// sites read the same way the old isSupabaseConfigured did.
+export const isApiConfigured = true
+
+export interface EventQuery {
+  since?: string
+  sources?: string[]
+  exclude?: string[]
+  limit?: number
+}
+
+export async function fetchEvents(params: EventQuery = {}): Promise<EventRow[]> {
+  const qs = new URLSearchParams()
+  if (params.since) qs.set("since", params.since)
+  if (params.sources?.length) qs.set("sources", params.sources.join(","))
+  if (params.exclude?.length) qs.set("exclude", params.exclude.join(","))
+  if (params.limit != null) qs.set("limit", String(params.limit))
+  const res = await fetch(`${API_BASE}/events?${qs.toString()}`)
+  if (!res.ok) throw new Error(`GET /events ${res.status}`)
+  return (await res.json()) as EventRow[]
+}
+
+export async function fetchScores(limit = 5000): Promise<ScoreRow[]> {
+  const res = await fetch(`${API_BASE}/scores?limit=${limit}`)
+  if (!res.ok) throw new Error(`GET /scores ${res.status}`)
+  return (await res.json()) as ScoreRow[]
+}
+
+export function streamUrl(): string {
+  return `${API_BASE}/stream`
+}
