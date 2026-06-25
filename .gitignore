@@ -63,3 +63,6 @@ logs/
 # Local dev artefacts
 .tmp/
 scratch/
+
+# DB snapshots (scripts/snapshot.py output — data dumps, never commit)
+backups/
