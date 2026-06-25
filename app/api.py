@@ -6,7 +6,7 @@ Read-only over the local Postgres. Serves recent events + latest scores, and
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session_factory
-from app.db_models import EventRow, ScoreRow
+from app.db_models import EventRow, IngestHealthRow, ScoreRow
 from app.events_bus import subscribe_new_events
 from app.settings import settings
 
@@ -65,6 +65,33 @@ def _score_dict(row: ScoreRow) -> dict:
         "components": row.components,
         "method_version": row.method_version,
     }
+
+
+def _ingest_health_dict(row: IngestHealthRow) -> dict:
+    return {
+        "source": row.source,
+        "day": row.day.isoformat(),
+        "success_n": row.success_n,
+        "failure_n": row.failure_n,
+        "last_success": row.last_success.isoformat() if row.last_success else None,
+        "last_failure": row.last_failure.isoformat() if row.last_failure else None,
+    }
+
+
+@app.get("/ingest-health")
+def ingest_health(
+    session: Session = Depends(get_session),
+    days: int = Query(default=7),
+    limit: int = Query(default=2000, le=5000),
+) -> list[dict]:
+    cutoff = date.today() - timedelta(days=days)
+    stmt = (
+        select(IngestHealthRow)
+        .where(IngestHealthRow.day >= cutoff)
+        .order_by(IngestHealthRow.day.desc())
+        .limit(limit)
+    )
+    return [_ingest_health_dict(r) for r in session.execute(stmt).scalars()]
 
 
 @app.get("/health")

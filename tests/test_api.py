@@ -1,10 +1,10 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api import app, get_session
-from app.db_models import EventRow
+from app.db_models import EventRow, IngestHealthRow, ScoreRow
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +46,37 @@ def test_events_exclude_filter(db_session):
     client = _client(db_session)
     rows = client.get("/events?exclude=opensky-adsb").json()
     assert all(r["source"] != "opensky-adsb" for r in rows)
+
+
+def test_ingest_health_returns_rows(db_session):
+    db_session.add(IngestHealthRow(source="gdelt", day=date.today(),
+                                   success_n=3, failure_n=1))
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+    rows = client.get("/ingest-health").json()
+    assert rows and rows[0]["source"] == "gdelt"
+    assert rows[0]["success_n"] == 3 and rows[0]["failure_n"] == 1
+    assert "day" in rows[0]
+
+
+def test_scores_ordered_bucket_start_desc(db_session):
+    from datetime import UTC, datetime, timedelta
+    now = datetime.now(UTC)
+    db_session.add_all([
+        ScoreRow(country="US", bucket_start=now - timedelta(hours=2),
+                 bucket_length=timedelta(hours=1), score_name="cii_v1",
+                 score_value=0.1, components={}, method_version="v1"),
+        ScoreRow(country="US", bucket_start=now,
+                 bucket_length=timedelta(hours=1), score_name="cii_v1",
+                 score_value=0.9, components={}, method_version="v1"),
+    ])
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+    rows = client.get("/scores").json()
+    starts = [r["bucket_start"] for r in rows]
+    assert starts == sorted(starts, reverse=True)  # newest first
 
 
 def test_stream_emits_ticks():
