@@ -24,6 +24,13 @@ const TARGET_ROWS = 5000
  * Range header. Before this change the buffer only saw whatever fit in the
  * very first 1000 rows — FIRMS dominated that slice and the map effectively
  * showed ~50 GDELT events even though the DB had 90k+ in the last 3 days.
+ *
+ * We also exclude the `opensky-adsb` aviation feed at the query level: it
+ * emits ~190k rows/day (every aircraft, every 2 min) with current timestamps,
+ * so without this it saturates the entire `occurred_at`-ordered budget and
+ * starves every displayable source — the map renders 0 events. Aviation has
+ * no source toggle, so it is never shown from this buffer anyway. See the
+ * `sourceKeyForEvent === null` guard in EventBuffer.ingest for the live path.
  */
 async function fetchRecentEvents(): Promise<EventRow[]> {
   const supabase = getSupabase()
@@ -35,6 +42,7 @@ async function fetchRecentEvents(): Promise<EventRow[]> {
     const { data, error } = await supabase
       .from("events")
       .select("*")
+      .neq("source", "opensky-adsb")
       .gte("occurred_at", since)
       .order("occurred_at", { ascending: false })
       .range(offset, end)
