@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import useSWR from "swr"
 import { EventBuffer, type ConnectionDiagnostics, type ConnectionStatus } from "@/lib/realtime"
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
+import { fetchEvents, isApiConfigured } from "@/lib/apiClient"
 import type { EventRow } from "@/lib/types"
 
 interface RealtimeContextValue {
@@ -33,25 +33,8 @@ const TARGET_ROWS = 5000
  * `sourceKeyForEvent === null` guard in EventBuffer.ingest for the live path.
  */
 async function fetchRecentEvents(): Promise<EventRow[]> {
-  const supabase = getSupabase()
-  if (!supabase) return []
   const since = new Date(Date.now() - WINDOW_MS).toISOString()
-  const out: EventRow[] = []
-  for (let offset = 0; offset < TARGET_ROWS; offset += PAGE_SIZE) {
-    const end = Math.min(offset + PAGE_SIZE - 1, TARGET_ROWS - 1)
-    const { data, error } = await supabase
-      .from("events")
-      .select("*")
-      .neq("source", "opensky-adsb")
-      .gte("occurred_at", since)
-      .order("occurred_at", { ascending: false })
-      .range(offset, end)
-    if (error) throw error
-    const rows = (data ?? []) as EventRow[]
-    out.push(...rows)
-    if (rows.length < PAGE_SIZE) break // last page was short → done
-  }
-  return out
+  return fetchEvents({ since, exclude: ["opensky-adsb"], limit: TARGET_ROWS })
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
@@ -60,20 +43,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const buffer = bufferRef.current
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!isApiConfigured) return
     buffer.connect()
     return () => buffer.disconnect()
   }, [buffer])
 
   // SWR fallback: poll every 30s (and once on mount) to backfill / recover.
-  useSWR(isSupabaseConfigured ? "events-window" : null, fetchRecentEvents, {
+  useSWR(isApiConfigured ? "events-window" : null, fetchRecentEvents, {
     refreshInterval: 30_000,
     revalidateOnFocus: false,
     onSuccess: (rows) => buffer.ingest(rows),
   })
 
   const value = useMemo<RealtimeContextValue>(
-    () => ({ buffer, configured: isSupabaseConfigured }),
+    () => ({ buffer, configured: isApiConfigured }),
     [buffer],
   )
 

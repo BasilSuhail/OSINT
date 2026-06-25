@@ -18,7 +18,7 @@ import {
   ZAxis,
 } from "recharts"
 import { useEvents } from "@/app/providers"
-import { getSupabase } from "@/lib/supabase"
+import { fetchEvents, fetchScores } from "@/lib/apiClient"
 import type { EventRow, ScoreRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
@@ -285,19 +285,12 @@ const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boole
 function useScoreSeries(scoreName: string, days: number = COMPOSITE_BUCKETS): { day: string; score: number; n: number }[] {
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = subDays(new Date(), days).toISOString()
-    supabase
-      .from("scores")
-      .select("*")
-      .eq("score_name", scoreName)
-      .gte("bucket_start", since)
-      .order("bucket_start", { ascending: true })
-      .limit(5000)
-      .then(({ data: rows, error }) => {
-        if (!error && rows) setData(rows as ScoreRow[])
+    fetchScores(5000)
+      .then((rows) => {
+        setData(rows.filter((r) => r.score_name === scoreName && (r.bucket_start ?? "") >= since))
       })
+      .catch(() => {/* ignore fetch errors */})
   }, [scoreName, days])
 
   return useMemo(() => {
@@ -384,21 +377,9 @@ interface SourceLatencyRow {
 }
 
 function useSourceLatency(): SourceLatencyRow[] {
-  const [rows, setRows] = useState<IngestHealthRow[]>([])
-  useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
-    const since = subDays(new Date(), 7).toISOString().slice(0, 10)
-    supabase
-      .from("ingest_health")
-      .select("*")
-      .gte("day", since)
-      .order("day", { ascending: false })
-      .limit(2000)
-      .then(({ data, error }) => {
-        if (!error && data) setRows(data as IngestHealthRow[])
-      })
-  }, [])
+  // ingest_health is not exposed via the REST API — return empty until a
+  // dedicated /ingest-health endpoint is added to the backend.
+  const [rows] = useState<IngestHealthRow[]>([])
 
   return useMemo(() => {
     const latest = new Map<string, IngestHealthRow>()
@@ -468,19 +449,12 @@ function ageLabel(min: number | null): string {
 function useLatestCiiByCountry(): Map<string, { iso: string; score: number }> {
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = subDays(new Date(), 2).toISOString()
-    supabase
-      .from("scores")
-      .select("*")
-      .eq("score_name", "cii_v1")
-      .gte("bucket_start", since)
-      .order("bucket_start", { ascending: false })
-      .limit(2000)
-      .then(({ data: rows, error }) => {
-        if (!error && rows) setData(rows as ScoreRow[])
+    fetchScores(2000)
+      .then((rows) => {
+        setData(rows.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
       })
+      .catch(() => {/* ignore fetch errors */})
   }, [])
 
   return useMemo(() => {
@@ -541,28 +515,15 @@ function useHindsightCorrelation(): HindsightStats {
   const [ciiRows, setCiiRows] = useState<ScoreRow[]>([])
   const [quakeRows, setQuakeRows] = useState<EventRow[]>([])
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = subDays(new Date(), 90).toISOString()
-    void supabase
-      .from("scores")
-      .select("*")
-      .eq("score_name", "cii_v1")
-      .gte("bucket_start", since)
-      .order("bucket_start", { ascending: true })
-      .limit(20000)
-      .then(({ data, error }) => {
-        if (!error && data) setCiiRows(data as ScoreRow[])
+    void fetchScores(20000)
+      .then((rows) => {
+        setCiiRows(rows.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
       })
-    void supabase
-      .from("events")
-      .select("*")
-      .eq("source", "usgs-quake")
-      .gte("occurred_at", since)
-      .limit(20000)
-      .then(({ data, error }) => {
-        if (!error && data) setQuakeRows(data as EventRow[])
-      })
+      .catch(() => {/* ignore fetch errors */})
+    void fetchEvents({ sources: ["usgs-quake"], since, limit: 20000 })
+      .then((rows) => { setQuakeRows(rows) })
+      .catch(() => {/* ignore fetch errors */})
   }, [])
 
   return useMemo(() => {
@@ -615,19 +576,12 @@ function useHindsightCorrelation(): HindsightStats {
 function useCiiByCountry(): CiiCountryRow[] {
   const [rows, setRows] = useState<ScoreRow[]>([])
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = subDays(new Date(), 30).toISOString()
-    supabase
-      .from("scores")
-      .select("*")
-      .eq("score_name", "cii_v1")
-      .gte("bucket_start", since)
-      .order("bucket_start", { ascending: true })
-      .limit(20000)
-      .then(({ data: result, error }) => {
-        if (!error && result) setRows(result as ScoreRow[])
+    fetchScores(20000)
+      .then((result) => {
+        setRows(result.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
       })
+      .catch(() => {/* ignore fetch errors */})
   }, [])
 
   return useMemo(() => {
