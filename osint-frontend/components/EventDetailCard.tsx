@@ -42,10 +42,15 @@ function bestTitle(ev: EventRow): string {
     if (place) return place
   }
 
-  // GDACS already ships a payload.title / event_type + country_name.
+  // GDACS: event_type + country_name. For earthquakes, prefix the magnitude
+  // (same as USGS) so the headline reads "M6.9 · Venezuela" instead of a bare
+  // "EARTHQUAKE · Venezuela" the user can scroll past.
   if (source === "gdacs") {
-    const type = typeof p?.event_type === "string" ? p.event_type.toUpperCase() : null
+    const mag = typeof p?.magnitude === "number" ? p.magnitude : null
+    const rawType = typeof p?.event_type === "string" ? p.event_type.toUpperCase() : null
+    const type = rawType === "EQ" ? "EARTHQUAKE" : rawType
     const place = typeof p?.country_name === "string" ? p.country_name : null
+    if (mag && place) return `M${mag.toFixed(1)} · ${place}`
     if (type && place) return `${type} · ${place}`
   }
 

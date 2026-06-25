@@ -79,13 +79,16 @@ export function SourceSignals({ ev }: { ev: EventRow }) {
       { label: "felt", value: asNumber(p.felt) },
     ]
   } else if (source === "gdacs") {
+    // Earthquakes carry magnitude (value attr) + depth (parsed from text);
+    // other hazards leave both null so the rows drop out. severity_raw is the
+    // free-text blurb ("Magnitude 6.9M, Depth:50.9km") and is no longer numeric.
+    const mag = asNumber(p.magnitude)
+    const depth = asNumber(p.depth_km)
     rows = [
       { label: "type", value: asString(p.event_type)?.toUpperCase() ?? null },
       { label: "alert", value: asString(p.alert_level)?.toUpperCase() ?? null },
-      {
-        label: "severity (raw)",
-        value: asNumber(p.severity_raw)?.toFixed(2) ?? null,
-      },
+      { label: "magnitude", value: mag !== null ? `M${mag.toFixed(1)}` : null },
+      { label: "depth", value: depth !== null ? `${depth.toFixed(1)} km` : null },
     ]
   } else if (source === "yfinance" || source === "yf") {
     const close = asNumber(p.close)

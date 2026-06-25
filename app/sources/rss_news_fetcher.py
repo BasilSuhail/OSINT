@@ -17,9 +17,14 @@ helpers below.
 
 Country tagging:
 
-- If the feed carries a default ISO (e.g. BBC UK → ``"GB"``), use it.
-- Otherwise the feed-level country is None and downstream enrichment can
-  attach one later (URL hint, NER, etc.).
+- Country is taken from the city matched in the headline (see
+  ``app/enrichment/city.py``). The feed's ``default_country`` only biases
+  that match (Cambridge UK > Cambridge MA on a BBC UK feed); it is **not**
+  used as a blanket fallback. National papers (Dawn, Geo) republish world
+  news, so feed-country tagging mislabelled foreign stories and polluted the
+  country panel — see migration ``0002`` and ``news_scope`` below.
+- No city match → country is None; downstream enrichment can attach one
+  later (URL hint, NER, etc.).
 
 Geolocation:
 
@@ -182,7 +187,12 @@ def entry_to_event(
     city = city_for(f"{title} {summary}", country_hint=config.default_country)
     lat = city.lat if city else None
     lon = city.lon if city else None
-    country = (city.iso if city else None) or config.default_country
+    # Country comes from the matched city only — never the feed's
+    # default_country. National papers (Dawn, Geo) republish world news
+    # (foreign quakes, Oscars); blanket-tagging uncitied items with the feed
+    # country polluted that country's panel (#166 stopped the map blob, but
+    # the rows still carried country='PK'). No city → no country.
+    country = city.iso if city else None
 
     # News scope classifier (#166): a Pakistani-paper headline mentioning
     # a US politician is "world", not "local". Drives the map render —

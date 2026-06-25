@@ -81,3 +81,44 @@ def test_world_feed_no_city_match_is_unknown() -> None:
     )
     assert ev is not None
     assert ev.payload["news_scope"] == "unknown"
+
+
+def test_pk_feed_no_city_match_has_no_country() -> None:
+    """Unknown-scope news on a national feed must NOT inherit the feed country.
+
+    Geo / Dawn republish world news (Oscars, foreign quakes). Falling back to
+    ``default_country`` tagged those rows ``country='PK'`` and polluted the
+    Pakistan country panel. Without a city match the row stays country-less.
+    """
+    ev = entry_to_event(
+        _entry("Jacob Elordi, Jenna Ortega score major Oscars honour"),
+        config=PK_FEED,
+        fetched_at=FETCHED_AT,
+    )
+    assert ev is not None
+    assert ev.payload["news_scope"] == "unknown"
+    assert ev.country is None
+
+
+def test_pk_feed_pk_city_keeps_country() -> None:
+    """Local-scope news (city in the feed country) still attributes to it."""
+    ev = entry_to_event(
+        _entry("Karachi blast wounds five"),
+        config=PK_FEED,
+        fetched_at=FETCHED_AT,
+    )
+    assert ev is not None
+    assert ev.payload["news_scope"] == "local"
+    assert ev.country == "PK"
+
+
+def test_pk_feed_foreign_city_uses_real_country() -> None:
+    """World-scope news attributes to the city's real country, not the feed."""
+    ev = entry_to_event(
+        _entry("Trump speech in New York rattles markets"),
+        config=PK_FEED,
+        fetched_at=FETCHED_AT,
+    )
+    assert ev is not None
+    assert ev.payload["news_scope"] == "world"
+    assert ev.country == "US"

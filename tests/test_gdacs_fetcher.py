@@ -28,6 +28,7 @@ def _build_rss(
     iso3: str = "JPN",
     point: str = "35.0 140.0",
     severity_raw: str = "6.5",
+    severity_value: str = "6.5",
     pub_date: str = "Wed, 18 Jun 2026 12:00:00 GMT",
 ) -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -43,7 +44,7 @@ def _build_rss(
       <gdacs:alertlevel>{alert_level}</gdacs:alertlevel>
       <gdacs:country>Japan</gdacs:country>
       <gdacs:iso3>{iso3}</gdacs:iso3>
-      <gdacs:severity unit="M">{severity_raw}</gdacs:severity>
+      <gdacs:severity unit="M" value="{severity_value}">{severity_raw}</gdacs:severity>
       <gdacs:fromdate>2026-06-18T12:00:00</gdacs:fromdate>
       <gdacs:todate>2026-06-18T13:00:00</gdacs:todate>
       <georss:point>{point}</georss:point>
@@ -104,6 +105,31 @@ class TestItemToEvent:
         assert event.payload["severity_raw"] == "6.5"
         assert "gdacs" in event.keywords
         assert "eq" in event.keywords
+
+    def test_earthquake_magnitude_and_depth_parsed(self) -> None:
+        # Real GDACS quake severity: value attr = magnitude, text carries depth.
+        body = _build_rss(
+            severity_value="6.9",
+            severity_raw="Magnitude 6.9M, Depth:50.9km",
+        )
+        root = ET.fromstring(body)
+        item = root.find(".//item")
+        assert item is not None
+        event = item_to_event(item, fetched_at=datetime.now(UTC))
+        assert event is not None
+        assert event.payload["magnitude"] == 6.9
+        assert event.payload["depth_km"] == 50.9
+
+    def test_non_earthquake_has_no_magnitude(self) -> None:
+        # A tropical cyclone's severity value is wind speed, not magnitude.
+        body = _build_rss(event_type="TC", severity_value="120", severity_raw="120 km/h")
+        root = ET.fromstring(body)
+        item = root.find(".//item")
+        assert item is not None
+        event = item_to_event(item, fetched_at=datetime.now(UTC))
+        assert event is not None
+        assert event.payload["magnitude"] is None
+        assert event.payload["depth_km"] is None
 
     def test_unknown_alert_skips_item(self) -> None:
         body = _build_rss(alert_level="Purple")
