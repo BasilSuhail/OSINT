@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     environment: str = Field(default="development")
 
+    data_dir: str = Field(default="./data")
+
+    retention_gdelt_days: int = Field(default=2)
+    retention_news_days: int = Field(default=3)
+    retention_hazard_days: int = Field(default=2)
+
+    api_cors_origins: str = Field(default="http://localhost:3000")
+
     @property
     def postgres_url(self) -> str:
         return (
