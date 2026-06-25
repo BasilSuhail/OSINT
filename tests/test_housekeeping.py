@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db_models import EventRow, HousekeepingRunRow
-from app.housekeeping import RETENTION_DAYS, prune_events, retention_days
+from app.housekeeping import prune_events, retention_days
 
 
 def _make_event_row(*, source: str, occurred_at: datetime, suffix: str) -> EventRow:
@@ -30,7 +30,7 @@ def _make_event_row(*, source: str, occurred_at: datetime, suffix: str) -> Event
 
 def _seed(session: Session, now: datetime) -> None:
     """Two rows per source: one well inside retention, one well outside."""
-    for source, days in RETENTION_DAYS.items():
+    for source, days in retention_days().items():
         if days is None:
             # Keep-forever sources still need fixture data so we can prove no
             # rows are dropped even when the row is ancient.
@@ -62,14 +62,14 @@ def test_prune_drops_stale_keeps_fresh(db_session: Session) -> None:
 
     # Each source with a retention window should have dropped exactly 1 row
     # (the stale one). Keep-forever sources should drop 0.
-    for source, days in RETENTION_DAYS.items():
+    for source, days in retention_days().items():
         expected = 1 if days is not None else 0
         assert result[source] == expected, f"{source}: expected {expected}, got {result[source]}"
 
     # Every fresh row must still exist; every stale row gone.
     remaining = db_session.execute(select(EventRow)).scalars().all()
     for row in remaining:
-        if RETENTION_DAYS.get(row.source) is None:
+        if retention_days().get(row.source) is None:
             continue  # keep-forever
         assert row.source_event_id.endswith(":fresh") or row.source_event_id.endswith(":ancient")
 
@@ -85,7 +85,7 @@ def test_prune_writes_housekeeping_audit_row(db_session: Session) -> None:
     assert len(runs) == 1
     run = runs[0]
     assert run.job_name == "events-retention"
-    expected_total = sum(1 for d in RETENTION_DAYS.values() if d is not None)
+    expected_total = sum(1 for d in retention_days().values() if d is not None)
     assert run.deleted_count == expected_total
     assert run.archived_count == 0  # Parquet archival is a follow-up.
     assert run.duration_ms >= 0
@@ -94,7 +94,7 @@ def test_prune_writes_housekeeping_audit_row(db_session: Session) -> None:
 def test_prune_is_idempotent_when_no_stale_rows(db_session: Session) -> None:
     now = datetime.now(UTC)
     # Seed only fresh rows.
-    for source in RETENTION_DAYS:
+    for source in retention_days():
         fresh = now - timedelta(hours=1)
         db_session.add(_make_event_row(source=source, occurred_at=fresh, suffix="fresh"))
     db_session.commit()

@@ -55,10 +55,6 @@ def retention_days() -> dict[str, int | None]:
     }
 
 
-# Backward compatibility: expose the function result as a module-level constant for tests
-RETENTION_DAYS: dict[str, int | None] = retention_days()
-
-
 def _prune_source(session: Session, *, source: str, days: int, now: datetime) -> int:
     """Delete events for ``source`` older than ``days``. Returns rows deleted."""
     cutoff = now - timedelta(days=days)
