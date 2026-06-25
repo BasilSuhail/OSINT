@@ -12,6 +12,7 @@ debugged from the database alone.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Final
 from xml.etree import ElementTree as ET
@@ -153,6 +154,41 @@ def _text(element: ET.Element | None) -> str | None:
     return text or None
 
 
+#: GDACS quake severity text reads "Magnitude 6.9M, Depth:50.9km".
+_DEPTH_RE: Final[re.Pattern[str]] = re.compile(r"Depth:\s*([\d.]+)\s*km", re.IGNORECASE)
+
+
+def _parse_eq_magnitude_depth(
+    severity_el: ET.Element | None, event_type: str
+) -> tuple[float | None, float | None]:
+    """Pull (magnitude, depth_km) from a GDACS earthquake severity element.
+
+    Only earthquakes (``event_type == "EQ"``) carry a magnitude — for other
+    hazards the severity ``value`` is wind speed, water level, etc., so we
+    return ``(None, None)``. Magnitude comes from the ``value`` attribute
+    (e.g. ``value="6.9"``); depth is parsed from the element text.
+    """
+    if severity_el is None or event_type != "EQ":
+        return (None, None)
+    magnitude: float | None = None
+    value = severity_el.get("value")
+    if value:
+        try:
+            parsed = float(value)
+            magnitude = parsed if parsed > 0 else None
+        except ValueError:
+            magnitude = None
+    depth_km: float | None = None
+    if severity_el.text:
+        match = _DEPTH_RE.search(severity_el.text)
+        if match:
+            try:
+                depth_km = float(match.group(1))
+            except ValueError:
+                depth_km = None
+    return (magnitude, depth_km)
+
+
 def _parse_point(point_text: str | None) -> tuple[float | None, float | None]:
     if not point_text:
         return (None, None)
@@ -193,13 +229,18 @@ def item_to_event(item: ET.Element, *, fetched_at: datetime) -> Event | None:
     country = iso3_to_iso2(iso3)
     lat, lon = _parse_point(_text(item.find("georss:point", _NAMESPACES)))
 
+    severity_el = item.find("gdacs:severity", _NAMESPACES)
+    magnitude, depth_km = _parse_eq_magnitude_depth(severity_el, event_type)
+
     payload = {
         "gdacs_event_id": event_id,
         "event_type": event_type,
         "alert_level": alert_level,
         "country_name": _text(item.find("gdacs:country", _NAMESPACES)),
         "iso3": iso3,
-        "severity_raw": _text(item.find("gdacs:severity", _NAMESPACES)),
+        "severity_raw": _text(severity_el),
+        "magnitude": magnitude,
+        "depth_km": depth_km,
         "from_date": _text(item.find("gdacs:fromdate", _NAMESPACES)),
         "to_date": _text(item.find("gdacs:todate", _NAMESPACES)),
         "link": _text(item.find("link")),
