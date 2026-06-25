@@ -1,5 +1,4 @@
-import type { RealtimeChannel } from "@supabase/supabase-js"
-import { getSupabase } from "./supabase"
+import { fetchEvents, streamUrl } from "./apiClient"
 import { sourceKeyForEvent, type EventRow } from "./types"
 
 export type ConnectionStatus =
@@ -20,38 +19,29 @@ export interface ConnectionDiagnostics {
 
 const MAX_EVENTS = 5000
 
-const HEARTBEAT_INTERVAL_MS = 20_000
-const HEARTBEAT_TIMEOUT_MS = 5_000
 const POLL_INTERVAL_MS = 30_000
 const MAX_RECONNECT_BEFORE_POLL = 3
-// Exponential backoff between reconnect attempts.
-const BACKOFF_SCHEDULE_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000]
-
-function backoffMs(attempt: number): number {
-  const idx = Math.min(attempt, BACKOFF_SCHEDULE_MS.length - 1)
-  return BACKOFF_SCHEDULE_MS[idx]
-}
 
 /**
- * In-memory ring buffer of the most recent events plus a Supabase Realtime
- * subscription with heartbeat + reconnect + polling fallback. Both panes read
- * from the same buffer. Components subscribe via `subscribe()` and receive an
- * immutable snapshot whenever it changes.
+ * In-memory ring buffer of the most recent events plus an SSE EventSource
+ * subscription with polling fallback. Both panes read from the same buffer.
+ * Components subscribe via `subscribe()` and receive an immutable snapshot
+ * whenever it changes.
  *
  * Connection lifecycle:
- *   connecting → connected → (silent channel) → reconnecting (exponential backoff)
- *                         → polling (after 3 failed reconnects)
- *                         → connected (if any later reconnect succeeds)
+ *   connecting → connected → (stream error) → reconnecting (EventSource retries automatically)
+ *                         → polling (after MAX_RECONNECT_BEFORE_POLL errors)
+ *                         → connected (if stream recovers)
  *
- * On every successful reconnect we backfill events via REST since `lastEventAt`
- * so the dashboard catches up to anything that landed during the outage.
+ * On every SSE open/message we backfill events via REST since `lastEventAt`
+ * so the dashboard catches up to anything that landed during any outage.
  */
 export class EventBuffer {
   private events: EventRow[] = []
   private byId = new Set<string>()
   private listeners = new Set<() => void>()
   private statusListeners = new Set<(d: ConnectionDiagnostics) => void>()
-  private channel: RealtimeChannel | null = null
+  private source: EventSource | null = null
   private status: ConnectionStatus = "connecting"
   private snapshot: EventRow[] = []
   private reconnectAttempts = 0
@@ -59,13 +49,8 @@ export class EventBuffer {
   private lastSeenAt: Date | null = null
 
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private stopped = false
-  /** Re-entry guard. `removeChannel` synchronously fires a CLOSED status which
-   *  routes back through the subscribe callback into scheduleReconnect again —
-   *  before this flag, that recursed until the JS stack blew up. */
-  private reconnecting = false
 
   /** Seed/merge a batch of events (e.g. from the initial query or SWR refetch). */
   ingest(rows: EventRow[]): void {
@@ -124,44 +109,31 @@ export class EventBuffer {
     for (const l of this.statusListeners) l(diag)
   }
 
-  /** Open the realtime channel + start the heartbeat. Idempotent. */
+  /** Open the SSE stream. EventSource auto-reconnects, so no manual backoff. */
   connect(): void {
     this.stopped = false
-    const supabase = getSupabase()
-    if (!supabase || this.channel) return
-
-    this.setStatus(this.reconnectAttempts > 0 ? "reconnecting" : "connecting")
-    this.channel = supabase
-      .channel("events-realtime")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "events" },
-        (payload) => {
-          this.lastSeenAt = new Date()
-          this.ingest([payload.new as EventRow])
-        },
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          this.lastSeenAt = new Date()
-          this.setStatus("connected")
-          if (this.reconnectAttempts > 0) {
-            this.backfillSinceLastSeen().catch(() => {})
-          }
-          this.reconnectAttempts = 0
-          this.stopPolling()
-          this.startHeartbeat()
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          this.scheduleReconnect()
-        } else if (status === "CLOSED") {
-          if (!this.stopped) this.scheduleReconnect()
-        }
-      })
-  }
-
-  private startHeartbeat(): void {
-    this.stopHeartbeat()
-    this.heartbeatTimer = setInterval(() => this.pingHeartbeat(), HEARTBEAT_INTERVAL_MS)
+    if (this.source) return
+    this.setStatus("connecting")
+    const es = new EventSource(streamUrl())
+    this.source = es
+    es.onopen = () => {
+      this.lastSeenAt = new Date()
+      this.setStatus("connected")
+      this.reconnectAttempts = 0
+      this.stopPolling()
+      void this.backfillSinceLastSeen()
+    }
+    es.onmessage = () => {
+      this.lastSeenAt = new Date()
+      void this.backfillSinceLastSeen()
+    }
+    es.onerror = () => {
+      // EventSource retries on its own; surface the state + arm the poll
+      // fallback so data still flows if the stream stays down.
+      this.setStatus(this.reconnectAttempts >= MAX_RECONNECT_BEFORE_POLL ? "polling" : "reconnecting")
+      this.reconnectAttempts += 1
+      if (this.reconnectAttempts >= MAX_RECONNECT_BEFORE_POLL) this.startPolling()
+    }
   }
 
   private stopHeartbeat(): void {
@@ -171,69 +143,14 @@ export class EventBuffer {
     }
   }
 
-  /**
-   * Best-effort liveness check: if `lastSeenAt` has gone quiet for more than
-   * one heartbeat interval, the channel is considered stalled and we cycle
-   * back to reconnect. (Supabase Realtime sends presence diffs + pings under
-   * the hood; absence of any traffic for ~25 s is suspicious.)
-   */
-  private pingHeartbeat(): void {
-    if (this.stopped) return
-    const last = this.lastSeenAt?.getTime() ?? 0
-    if (last === 0) {
-      this.scheduleReconnect()
-      return
-    }
-    if (Date.now() - last > HEARTBEAT_INTERVAL_MS + HEARTBEAT_TIMEOUT_MS) {
-      this.scheduleReconnect()
-    }
-  }
-
-  private scheduleReconnect(): void {
-    if (this.stopped) return
-    if (this.reconnecting) return
-    this.reconnecting = true
-    try {
-      this.stopHeartbeat()
-      // Null the channel *before* removeChannel: Supabase's removeChannel
-      // synchronously fires a CLOSED status frame which routes back through
-      // .subscribe()'s callback into scheduleReconnect again. Clearing
-      // this.channel first means the second call sees no channel to remove
-      // and the `reconnecting` flag aborts re-entry anyway.
-      const supabase = getSupabase()
-      const ch = this.channel
-      this.channel = null
-      if (supabase && ch) {
-        try {
-          supabase.removeChannel(ch)
-        } catch {
-          /* removeChannel can throw on already-closed channels */
-        }
-      }
-      if (this.reconnectAttempts >= MAX_RECONNECT_BEFORE_POLL) {
-        this.setStatus("polling")
-        this.startPolling()
-      } else {
-        this.setStatus("reconnecting")
-      }
-      if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = setTimeout(() => {
-        this.reconnectAttempts += 1
-        this.connect()
-      }, backoffMs(this.reconnectAttempts))
-    } finally {
-      this.reconnecting = false
-    }
-  }
-
   private startPolling(): void {
     if (this.pollTimer) return
     this.pollTimer = setInterval(() => {
-      this.backfillSinceLastSeen().catch(() => {})
+      void this.backfillSinceLastSeen()
     }, POLL_INTERVAL_MS)
     // Immediate pull so the user doesn't stare at stale data for a full
     // poll interval after the demotion.
-    this.backfillSinceLastSeen().catch(() => {})
+    void this.backfillSinceLastSeen()
   }
 
   private stopPolling(): void {
@@ -248,23 +165,14 @@ export class EventBuffer {
    * during polling fallback and immediately after a successful reconnect.
    */
   private async backfillSinceLastSeen(): Promise<void> {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = this.lastEventAt
       ? this.lastEventAt.toISOString()
       : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     try {
-      const { data, error } = await supabase
-        .from("events")
-        .select("*")
-        .neq("source", "opensky-adsb")
-        .gt("fetched_at", since)
-        .order("occurred_at", { ascending: false })
-        .limit(500)
-      if (error) return
-      if (data && data.length) this.ingest(data as EventRow[])
+      const rows = await fetchEvents({ since, exclude: ["opensky-adsb"], limit: 500 })
+      if (rows.length) this.ingest(rows)
     } catch {
-      // Network blip; next poll tick will retry.
+      // Network blip; next SSE message or poll tick retries.
     }
   }
 
@@ -272,14 +180,9 @@ export class EventBuffer {
     this.stopped = true
     this.stopHeartbeat()
     this.stopPolling()
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = null
-    }
-    const supabase = getSupabase()
-    if (this.channel && supabase) {
-      supabase.removeChannel(this.channel)
-      this.channel = null
+    if (this.source) {
+      this.source.close()
+      this.source = null
     }
     this.setStatus("disconnected")
   }
