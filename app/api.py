@@ -10,14 +10,17 @@ from datetime import datetime
 
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session_factory
 from app.db_models import EventRow, ScoreRow
+from app.events_bus import subscribe_new_events
 from app.settings import settings
 
 app = FastAPI(title="OSINT local API", version="1.0")
+app.state.event_source = subscribe_new_events
 
 app.add_middleware(
     CORSMiddleware,
@@ -94,3 +97,15 @@ def scores(
 ) -> list[dict]:
     stmt = select(ScoreRow).order_by(ScoreRow.bucket_start.desc()).limit(limit)
     return [_score_dict(r) for r in session.execute(stmt).scalars()]
+
+
+@app.get("/stream")
+def stream() -> StreamingResponse:
+    source = app.state.event_source
+
+    def gen():
+        yield ": connected\n\n"  # prelude so EventSource fires onopen
+        for count in source():
+            yield f"data: {count}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")

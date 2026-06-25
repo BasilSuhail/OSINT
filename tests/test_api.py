@@ -46,3 +46,18 @@ def test_events_exclude_filter(db_session):
     client = _client(db_session)
     rows = client.get("/events?exclude=opensky-adsb").json()
     assert all(r["source"] != "opensky-adsb" for r in rows)
+
+
+def test_stream_emits_ticks():
+    from app.api import app
+    app.state.event_source = lambda: iter(["3", "5"])
+    client = TestClient(app)
+    with client.stream("GET", "/stream") as resp:
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers["content-type"]
+        body = ""
+        for chunk in resp.iter_text():
+            body += chunk
+            if "data: 5" in body:
+                break
+    assert "data: 3" in body and "data: 5" in body
