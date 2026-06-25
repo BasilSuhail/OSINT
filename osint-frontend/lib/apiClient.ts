@@ -19,7 +19,8 @@ export async function fetchEvents(params: EventQuery = {}): Promise<EventRow[]> 
   if (params.sources?.length) qs.set("sources", params.sources.join(","))
   if (params.exclude?.length) qs.set("exclude", params.exclude.join(","))
   if (params.limit != null) qs.set("limit", String(params.limit))
-  const res = await fetch(`${API_BASE}/events?${qs.toString()}`)
+  const q = qs.toString()
+  const res = await fetch(`${API_BASE}/events${q ? `?${q}` : ""}`)
   if (!res.ok) throw new Error(`GET /events ${res.status}`)
   return (await res.json()) as EventRow[]
 }
