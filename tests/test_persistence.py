@@ -124,3 +124,21 @@ class TestUpsertEvents:
 
         with pytest.raises(ValueError):
             upsert_events([_make_event("X")], db_session, batch_size=0)
+
+
+class TestUpsertEventsPublish:
+    def test_upsert_publishes_inserted_count(self, db_session: Session) -> None:
+        from unittest.mock import patch
+
+        events = [_make_event("a"), _make_event("b")]
+        with patch("app.persistence.publish_new_events") as pub:
+            inserted = upsert_events(events, db_session)
+        assert inserted == 2
+        pub.assert_called_once_with(2)
+
+    def test_upsert_publish_failure_does_not_raise(self, db_session: Session) -> None:
+        from unittest.mock import patch
+
+        with patch("app.persistence.publish_new_events", side_effect=RuntimeError("redis down")):
+            inserted = upsert_events([_make_event("x")], db_session)
+        assert inserted == 1  # ingestion survives a dead Redis

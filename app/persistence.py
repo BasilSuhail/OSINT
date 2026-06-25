@@ -19,6 +19,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.db_models import EventRow
+from app.events_bus import publish_new_events
 from app.models import Event
 
 #: Rows per upsert statement. 12 cols x 1000 = 12 000 bound params — well under
@@ -95,4 +96,10 @@ def upsert_events(
     inserted = 0
     for start in range(0, len(rows), batch_size):
         inserted += _upsert_batch(rows[start : start + batch_size], session, dialect)
+    try:
+        publish_new_events(inserted)
+    except Exception:
+        # A dead Redis must never fail an ingest; the SSE clients fall back to
+        # their 30s SWR poll. Swallow and continue.
+        pass
     return inserted
