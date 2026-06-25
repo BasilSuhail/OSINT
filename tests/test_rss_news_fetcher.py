@@ -138,8 +138,18 @@ class TestEntryToEvent:
         assert event is not None
         assert event.occurred_at == fetched_at
 
-    def test_default_country_attached(self) -> None:
+    def test_no_city_means_no_country(self) -> None:
+        # A headline with no recognised city must NOT inherit the feed's
+        # default_country — that blanket fallback polluted country panels
+        # with republished world news (#166 follow-up).
         entry = {"title": "Hello", "link": "u", "summary": "s"}
+        event = entry_to_event(entry, config=CFG, fetched_at=datetime.now(UTC))
+        assert event is not None
+        assert event.country is None
+
+    def test_local_city_attaches_feed_country(self) -> None:
+        # A city inside the feed country still attributes to it.
+        entry = {"title": "Edinburgh council meets", "link": "u", "summary": "s"}
         event = entry_to_event(entry, config=CFG, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.country == "GB"
