@@ -68,4 +68,47 @@ describe("footprintFeatures", () => {
   it("emits nothing when there is no usable geometry", () => {
     expect(footprintFeatures(row({ source: "gdelt", payload: {}, lat: null, lon: null }))).toHaveLength(0)
   })
+  it("passes real upstream geometry through when payload has footprint_geojson", () => {
+    const f = footprintFeatures(
+      row({
+        source: "gdacs",
+        payload: {
+          event_type: "WF",
+          alert_level: "Red",
+          footprint_geojson: {
+            type: "FeatureCollection",
+            features: [
+              {
+                geometry: { type: "MultiPolygon", coordinates: [[[[0, 0], [1, 0], [1, 1], [0, 0]]]] },
+                properties: { color: "#ef4444", fillOpacity: 0.25 },
+              },
+            ],
+          },
+        },
+      }),
+    )
+    expect(f).toHaveLength(1)
+    expect(f[0].geometry.type).toBe("MultiPolygon")
+    expect(f[0].properties.color).toBe("#ef4444")
+  })
+  it("prefers real geometry over the synthesized circle even with coords present", () => {
+    const f = footprintFeatures(
+      row({
+        source: "usgs-quake",
+        lat: 10,
+        lon: 20,
+        payload: {
+          magnitude: 6.5,
+          footprint_geojson: {
+            type: "FeatureCollection",
+            features: [
+              { geometry: { type: "MultiLineString", coordinates: [[[0, 0], [1, 1]]] }, properties: { color: "#90f2ff", fillOpacity: 0 } },
+            ],
+          },
+        },
+      }),
+    )
+    expect(f).toHaveLength(1)
+    expect(f[0].geometry.type).toBe("MultiLineString")
+  })
 })

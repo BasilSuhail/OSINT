@@ -3,12 +3,14 @@
 import type { EventRow } from "./types"
 import { circlePolygon, fireRadiusKm, parseBurnedHa, quakeBands } from "./footprints"
 
-/** Minimal GeoJSON polygon feature for synthesized footprints (avoids a
- *  @types/geojson dependency — mirrors the local types in lib/geo.ts). */
+/** Minimal GeoJSON feature for footprints (avoids a @types/geojson dependency —
+ *  mirrors the local types in lib/geo.ts). Geometry is loose so it carries both
+ *  synthesized circles (Polygon) and real upstream geometry passed straight
+ *  through (MultiLineString MMI contours, Polygon/MultiPolygon burn scars). */
 export interface HazardFeature {
   type: "Feature"
   properties: { color: string; fillOpacity: number }
-  geometry: { type: "Polygon"; coordinates: [number, number][][] }
+  geometry: { type: string; coordinates: unknown }
 }
 
 export type HazardKind = "EQ" | "WF" | "TC" | "FL" | "VO" | "other"
@@ -71,14 +73,43 @@ function poly(ring: [number, number][], color: string, fillOpacity: number): Haz
   }
 }
 
-/** Synthesized footprint polygons for an event (largest first so smaller, hotter
- *  rings paint on top). Empty when the event has no coordinates or no usable size. */
+/** Real footprint geometry stashed on the payload by the backend enrichment
+ *  (issue #205): USGS ShakeMap MMI contours / GDACS burn-flood polygons. Passed
+ *  straight through to the map layers with the colour the backend tagged. */
+function realFootprintFeatures(p: Record<string, unknown>): HazardFeature[] | null {
+  const fc = p.footprint_geojson as
+    | { features?: Array<{ geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }> }
+    | undefined
+  if (!fc || !Array.isArray(fc.features) || fc.features.length === 0) return null
+  const out: HazardFeature[] = []
+  for (const f of fc.features) {
+    const geom = f.geometry
+    if (!geom || typeof geom.type !== "string" || geom.coordinates == null) continue
+    const props = f.properties ?? {}
+    const color = typeof props.color === "string" ? props.color : ORANGE
+    const fillOpacity = typeof props.fillOpacity === "number" ? props.fillOpacity : 0.2
+    out.push({
+      type: "Feature",
+      properties: { color, fillOpacity },
+      geometry: { type: geom.type, coordinates: geom.coordinates },
+    })
+  }
+  return out.length > 0 ? out : null
+}
+
+/** Footprint polygons for an event. Prefers the real upstream geometry when the
+ *  backend has enriched it; otherwise falls back to a synthesized circle (largest
+ *  first so smaller, hotter rings paint on top). Empty when the event has no
+ *  coordinates or no usable size. */
 export function footprintFeatures(ev: EventRow): HazardFeature[] {
+  const p = payload(ev)
+  const real = realFootprintFeatures(p)
+  if (real) return real
+
   const lon = ev.lon
   const lat = ev.lat
   if (lon == null || lat == null) return []
   const kind = hazardKind(ev)
-  const p = payload(ev)
 
   if (kind === "EQ") {
     const mag = Number(p.magnitude ?? 0)
