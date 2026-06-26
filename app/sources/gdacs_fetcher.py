@@ -12,9 +12,10 @@ debugged from the database alone.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
-from typing import Final
+from typing import Any, Final
 from xml.etree import ElementTree as ET
 
 import httpx
@@ -24,6 +25,17 @@ from app.sources.base import Fetcher
 
 GDACS_FEED_URL: Final[str] = "https://www.gdacs.org/xml/rss.xml"
 GDACS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+
+#: GDACS event-list search API. Unlike the 4-day ``rss.xml`` alert feed (which
+#: carries no volcanoes and only the 1-2 most recent cyclones), this returns the
+#: full active set per event type. It caps at 100 results per call, so we query
+#: each type separately — otherwise the frequent earthquakes / wildfires crowd
+#: out the sparse volcanoes and cyclones the map needs.
+GDACS_API_SEARCH_URL: Final[str] = (
+    "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH"
+    "?eventlist={eventlist}&alertlevel=Green;Orange;Red"
+)
+GDACS_API_EVENT_TYPES: Final[tuple[str, ...]] = ("EQ", "TC", "FL", "VO", "DR", "WF")
 
 _NAMESPACES: Final[dict[str, str]] = {
     "gdacs": "http://www.gdacs.org",
@@ -277,8 +289,121 @@ def parse_rss_body(body: str, *, fetched_at: datetime) -> list[Event]:
     return events
 
 
+def _parse_iso_datetime(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Event | None:
+    """Convert a GDACS geteventlist GeoJSON feature into a canonical Event.
+
+    Keeps the same ``{eventtype}:{eventid}`` source id as the RSS path so the two
+    feeds dedup against one another, but enriches the payload with the direct
+    footprint ``geometry_url`` (correct episode baked in) used by the footprint
+    enrichment, plus the GDACS report link and event name.
+    """
+    if not isinstance(feature, dict):
+        return None
+    props = feature.get("properties") or {}
+    geometry = feature.get("geometry") or {}
+
+    event_type = props.get("eventtype")
+    event_id = props.get("eventid")
+    alert_level = props.get("alertlevel")
+    severity = _alert_to_severity(alert_level)
+    if not event_type or event_id is None or severity is None:
+        return None
+
+    coordinates = geometry.get("coordinates") or []
+    lon: float | None = None
+    lat: float | None = None
+    if isinstance(coordinates, list) and len(coordinates) >= 2:
+        try:
+            lon = float(coordinates[0])
+            lat = float(coordinates[1])
+        except (TypeError, ValueError):
+            lon = lat = None
+
+    occurred_at = _parse_iso_datetime(props.get("fromdate")) or fetched_at
+    iso3 = props.get("iso3")
+    country = iso3_to_iso2(iso3)
+
+    sev = props.get("severitydata") or {}
+    severity_text = sev.get("severitytext") if isinstance(sev, dict) else None
+    magnitude: float | None = None
+    depth_km: float | None = None
+    if event_type == "EQ" and isinstance(sev, dict):
+        raw_mag = sev.get("severity")
+        try:
+            magnitude = float(raw_mag) if raw_mag is not None else None
+        except (TypeError, ValueError):
+            magnitude = None
+        if severity_text:
+            match = _DEPTH_RE.search(severity_text)
+            if match:
+                try:
+                    depth_km = float(match.group(1))
+                except ValueError:
+                    depth_km = None
+
+    url = props.get("url") if isinstance(props.get("url"), dict) else {}
+    payload = {
+        "gdacs_event_id": str(event_id),
+        "event_type": event_type,
+        "alert_level": alert_level,
+        "country_name": props.get("country"),
+        "iso3": iso3,
+        "severity_raw": severity_text or None,
+        "magnitude": magnitude,
+        "depth_km": depth_km,
+        "from_date": props.get("fromdate"),
+        "to_date": props.get("todate"),
+        "link": url.get("report"),
+        "episodeid": props.get("episodeid"),
+        "geometry_url": url.get("geometry"),
+        "eventname": props.get("eventname"),
+    }
+
+    return Event(
+        source="gdacs",
+        source_event_id=f"{event_type}:{event_id}",
+        occurred_at=occurred_at,
+        fetched_at=fetched_at,
+        category=Category.HAZARD,
+        severity=severity,
+        confidence=None,
+        keywords=["gdacs", str(event_type).lower()],
+        country=country,
+        lat=lat,
+        lon=lon,
+        payload=payload,
+    )
+
+
+def parse_eventlist_json(body: str, *, fetched_at: datetime) -> list[Event]:
+    """Parse a GDACS geteventlist JSON body into Events. Never raises on bad data."""
+    try:
+        document = json.loads(body)
+    except json.JSONDecodeError:
+        return []
+    features = document.get("features") if isinstance(document, dict) else None
+    if not isinstance(features, list):
+        return []
+    events: list[Event] = []
+    for feature in features:
+        event = feature_to_event_api(feature, fetched_at=fetched_at)
+        if event is not None:
+            events.append(event)
+    return events
+
+
 class GdacsFetcher(Fetcher):
-    """GDACS multi-hazard RSS fetcher."""
+    """GDACS multi-hazard fetcher (geteventlist API, per event type)."""
 
     name = "gdacs"
     queue = "slow"
@@ -290,12 +415,22 @@ class GdacsFetcher(Fetcher):
 
     def fetch(self) -> list[Event]:
         fetched_at = datetime.now(UTC)
+        merged: dict[str, Event] = {}
         with httpx.Client(
             timeout=self.timeout_seconds, headers={"User-Agent": GDACS_USER_AGENT}
         ) as client:
-            response = client.get(GDACS_FEED_URL)
-            response.raise_for_status()
-            return parse_rss_body(response.text, fetched_at=fetched_at)
+            for event_type in GDACS_API_EVENT_TYPES:
+                try:
+                    response = client.get(
+                        GDACS_API_SEARCH_URL.format(eventlist=event_type)
+                    )
+                    response.raise_for_status()
+                except httpx.HTTPError:
+                    # One type failing must not lose the others.
+                    continue
+                for event in parse_eventlist_json(response.text, fetched_at=fetched_at):
+                    merged[event.source_event_id] = event
+        return list(merged.values())
 
     def archive_path(self) -> str:
         now = datetime.now(UTC)

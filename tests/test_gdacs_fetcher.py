@@ -11,11 +11,13 @@ import respx
 
 from app.models import Category
 from app.sources.gdacs_fetcher import (
-    GDACS_FEED_URL,
+    GDACS_API_EVENT_TYPES,
     GdacsFetcher,
     _alert_to_severity,
+    feature_to_event_api,
     iso3_to_iso2,
     item_to_event,
+    parse_eventlist_json,
     parse_rss_body,
 )
 
@@ -217,16 +219,92 @@ class TestFetcherContract:
             GdacsFetcher(timeout_seconds=0)
 
 
+def _api_feature(event_type: str, event_id: int, *, alert: str = "Green") -> dict:
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [137.5, 34.0]},
+        "properties": {
+            "eventtype": event_type,
+            "eventid": event_id,
+            "episodeid": 18,
+            "eventname": f"{event_type}-{event_id}",
+            "alertlevel": alert,
+            "country": "Japan",
+            "iso3": "JPN",
+            "fromdate": "2026-06-26T16:06:49",
+            "todate": "2026-06-27T00:00:00",
+            "severitydata": {"severity": 6.0, "severitytext": "Magnitude 6M, Depth:30km"},
+            "url": {
+                "geometry": "https://www.gdacs.org/geom.geojson",
+                "report": "https://www.gdacs.org/report.aspx",
+            },
+        },
+    }
+
+
+def _api_body(*features: dict) -> str:
+    import json
+
+    return json.dumps({"type": "FeatureCollection", "features": list(features)})
+
+
+class TestApiParser:
+    def test_feature_to_event_api_basic(self) -> None:
+        at = datetime(2026, 6, 26, tzinfo=UTC)
+        ev = feature_to_event_api(_api_feature("VO", 1000141, alert="Orange"), fetched_at=at)
+        assert ev is not None
+        assert ev.source == "gdacs"
+        assert ev.source_event_id == "VO:1000141"
+        assert ev.category is Category.HAZARD
+        assert ev.lat == 34.0 and ev.lon == 137.5
+        assert ev.payload["event_type"] == "VO"
+        assert ev.payload["geometry_url"] == "https://www.gdacs.org/geom.geojson"
+        assert ev.payload["link"] == "https://www.gdacs.org/report.aspx"
+
+    def test_feature_to_event_api_parses_eq_magnitude_depth(self) -> None:
+        at = datetime(2026, 6, 26, tzinfo=UTC)
+        ev = feature_to_event_api(_api_feature("EQ", 555), fetched_at=at)
+        assert ev is not None
+        assert ev.payload["magnitude"] == 6.0
+        assert ev.payload["depth_km"] == 30.0
+
+    def test_feature_to_event_api_drops_invalid(self) -> None:
+        at = datetime(2026, 6, 26, tzinfo=UTC)
+        assert feature_to_event_api({"properties": {}}, fetched_at=at) is None
+        # unknown alert level → severity None → dropped
+        assert feature_to_event_api(_api_feature("TC", 1, alert="Bogus"), fetched_at=at) is None
+
+    def test_parse_eventlist_json(self) -> None:
+        body = _api_body(_api_feature("TC", 1), _api_feature("VO", 2))
+        events = parse_eventlist_json(body, fetched_at=datetime(2026, 6, 26, tzinfo=UTC))
+        assert {e.source_event_id for e in events} == {"TC:1", "VO:2"}
+
+    def test_parse_eventlist_json_bad_input(self) -> None:
+        at = datetime(2026, 6, 26, tzinfo=UTC)
+        assert parse_eventlist_json("not json", fetched_at=at) == []
+        assert parse_eventlist_json("{}", fetched_at=at) == []
+
+
 class TestFetcherHttp:
     @respx.mock
-    def test_fetch_returns_events(self) -> None:
-        respx.get(GDACS_FEED_URL).mock(return_value=httpx.Response(200, text=_build_rss()))
+    def test_fetch_queries_each_type_and_dedups(self) -> None:
+        # One respx route matches every per-type API call; return a TC + VO each.
+        body = _api_body(_api_feature("TC", 1), _api_feature("VO", 2))
+        respx.get(url__startswith="https://www.gdacs.org/gdacsapi/api/events/geteventlist").mock(
+            return_value=httpx.Response(200, text=body)
+        )
         events = GdacsFetcher().fetch()
-        assert len(events) == 1
-        assert events[0].source_event_id == "EQ:1000001"
+        # Same features returned for every type → deduped by source_event_id.
+        assert {e.source_event_id for e in events} == {"TC:1", "VO:2"}
 
     @respx.mock
-    def test_http_error_raises(self) -> None:
-        respx.get(GDACS_FEED_URL).mock(return_value=httpx.Response(503))
-        with pytest.raises(httpx.HTTPStatusError):
-            GdacsFetcher().fetch()
+    def test_one_type_failing_does_not_lose_others(self) -> None:
+        # All calls 503 → best-effort fetch returns empty, never raises.
+        respx.get(url__startswith="https://www.gdacs.org/gdacsapi/api/events/geteventlist").mock(
+            return_value=httpx.Response(503)
+        )
+        assert GdacsFetcher().fetch() == []
+
+    def test_event_types_cover_volcano_and_cyclone(self) -> None:
+        assert "VO" in GDACS_API_EVENT_TYPES
+        assert "TC" in GDACS_API_EVENT_TYPES

@@ -105,14 +105,21 @@ def gdacs_footprint_url(event_type: str, event_id: str, episode: int = 1) -> str
     )
 
 
+#: GDACS footprint geometries we keep. Areas (wind zones, burn scars, flood
+#: extent) are filled; line geometries (cyclone track) are stroked only.
+_GDACS_AREA_TYPES: Final[tuple[str, ...]] = ("Polygon", "MultiPolygon")
+_GDACS_LINE_TYPES: Final[tuple[str, ...]] = ("LineString", "MultiLineString")
+
+
 def normalize_gdacs_footprint(
     fc: dict[str, Any], color: str
 ) -> dict[str, Any] | None:
-    """Keep only the real area geometry (Polygon/MultiPolygon) from a GDACS
-    footprint FeatureCollection, tagging each with the alert colour + fill.
+    """Keep the real area + track geometry from a GDACS footprint FeatureCollection.
 
-    The Point marker GDACS ships alongside the polygon is dropped (the map
-    already pins the event). Returns ``None`` when no area geometry exists.
+    Areas (Polygon/MultiPolygon — wind zones, burn scars, flood extent) are
+    filled; the cyclone track (LineString/MultiLineString) is stroked only. The
+    Point marker GDACS ships is dropped (the map already pins the event).
+    Returns ``None`` when no usable geometry exists.
     """
     features = _features(fc)
     if not features:
@@ -120,16 +127,19 @@ def normalize_gdacs_footprint(
     out: list[dict[str, Any]] = []
     for ft in features:
         geom = ft.get("geometry") if isinstance(ft, dict) else None
-        if not isinstance(geom, dict):
+        if not isinstance(geom, dict) or "coordinates" not in geom:
             continue
-        if geom.get("type") not in ("Polygon", "MultiPolygon"):
-            continue
-        if "coordinates" not in geom:
+        geom_type = geom.get("type")
+        if geom_type in _GDACS_AREA_TYPES:
+            fill_opacity = _POLYGON_FILL_OPACITY
+        elif geom_type in _GDACS_LINE_TYPES:
+            fill_opacity = 0
+        else:
             continue
         out.append(
             {
                 "type": "Feature",
-                "properties": {"color": color, "fillOpacity": _POLYGON_FILL_OPACITY},
+                "properties": {"color": color, "fillOpacity": fill_opacity},
                 "geometry": geom,
             }
         )
@@ -211,10 +221,17 @@ def footprint_for_event(
             return fetch_usgs_footprint(usgs_id, client=client)
         return None
     if source == "gdacs":
+        color = alert_color(payload.get("alert_level"))
+        # Prefer the direct geometry URL from the geteventlist API — it has the
+        # correct episode baked in and returns the full footprint (wind zones +
+        # cyclone track). Fall back to the contentdata resource for older rows.
+        geometry_url = payload.get("geometry_url")
+        if isinstance(geometry_url, str) and geometry_url.startswith("http"):
+            fc = _get_json(client, geometry_url)
+            return normalize_gdacs_footprint(fc, color) if fc is not None else None
         event_type = payload.get("event_type")
         event_id = payload.get("gdacs_event_id")
         if isinstance(event_type, str) and isinstance(event_id, str) and event_id:
-            color = alert_color(payload.get("alert_level"))
             return fetch_gdacs_footprint(
                 event_type, event_id, color=color, client=client
             )
