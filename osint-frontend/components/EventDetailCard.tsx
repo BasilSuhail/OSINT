@@ -74,6 +74,11 @@ function bestSourceUrl(ev: EventRow): string | null {
   // "20260620064500"), not a real URL. Skip when it doesn't start with http.
   const direct = (p?.source_url ?? p?.link ?? p?.url) as string | undefined
   if (typeof direct === "string" && direct.startsWith("http")) return direct
+  // USGS quakes store only `usgs_id` — no URL. Derive the canonical event page
+  // so "open source" links straight to the ShakeMap / report like GDACS does.
+  if (typeof p?.usgs_id === "string" && p.usgs_id) {
+    return `https://earthquake.usgs.gov/earthquakes/eventpage/${p.usgs_id}`
+  }
   const sources = p?.sources as Array<Record<string, unknown>> | undefined
   if (Array.isArray(sources) && sources[0]?.url && typeof sources[0].url === "string") {
     return sources[0].url as string
@@ -138,6 +143,37 @@ function CopyButton({
   )
 }
 
+/** GDACS-style 0–3 alert gauge. We store severity as 0–1; scale to 0–3 so the
+ *  marker sits in green (<1) / orange (1–2) / red (>2) like the GDACS score bar. */
+function ScoreGauge({ severity }: { severity: number }) {
+  const score = Math.max(0, Math.min(3, severity * 3))
+  const pct = (score / 3) * 100
+  return (
+    <div className="mt-2">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-400">
+          Alert score
+        </span>
+        <span className="font-mono text-[11px] tabular-nums text-neutral-200">
+          {score.toFixed(1)} / 3
+        </span>
+      </div>
+      <div className="relative h-2 w-full overflow-hidden rounded-full">
+        <div className="absolute inset-0 flex">
+          <div className="h-full flex-1" style={{ backgroundColor: "#22c55e" }} />
+          <div className="h-full flex-1" style={{ backgroundColor: "#f97316" }} />
+          <div className="h-full flex-1" style={{ backgroundColor: "#ef4444" }} />
+        </div>
+        <div
+          className="absolute top-1/2 h-3 w-3 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white bg-neutral-900"
+          style={{ left: `${pct}%` }}
+          aria-hidden
+        />
+      </div>
+    </div>
+  )
+}
+
 export function EventDetailCard({
   event,
   onSelectCountry,
@@ -151,6 +187,8 @@ export function EventDetailCard({
   const url = bestSourceUrl(event)
   const flag = countryFlagEmoji(event.country)
   const sev = typeof event.severity === "number" ? event.severity : 0
+  const p = (event.payload ?? {}) as Record<string, unknown>
+  const isHazard = event.category === "hazard" || event.category === "weather"
   const payloadJson = useMemo(() => {
     const raw = JSON.stringify(event.payload ?? {}, null, 2)
     if (raw.length > HARD_LIMIT_PAYLOAD_KB * 1024) {
@@ -210,6 +248,31 @@ export function EventDetailCard({
           {severityLabel(sev)} · {sev.toFixed(2)}
         </span>
       </div>
+
+      {/* GDACS-style 0–3 score gauge + hazard metadata */}
+      {isHazard && (
+        <>
+          <ScoreGauge severity={sev} />
+          <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px]">
+            {(
+              [
+                ["Country", (p.country_name as string) || event.country],
+                ["Magnitude", p.magnitude != null ? `M${Number(p.magnitude).toFixed(1)}` : null],
+                ["Depth", p.depth_km != null ? `${Number(p.depth_km).toFixed(0)} km` : null],
+                ["Burned area", typeof p.severity_raw === "string" ? p.severity_raw : null],
+                ["ID", (p.gdacs_event_id as string) || (p.usgs_id as string) || null],
+              ] as [string, string | null][]
+            )
+              .filter(([, v]) => v)
+              .map(([k, v]) => (
+                <div key={k} className="contents">
+                  <dt className="text-neutral-500">{k}</dt>
+                  <dd className="truncate text-neutral-200">{v as string}</dd>
+                </div>
+              ))}
+          </dl>
+        </>
+      )}
 
       {/* Field grid */}
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">

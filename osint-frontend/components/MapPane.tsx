@@ -11,16 +11,33 @@ import MapGL, {
   type MapRef,
 } from "react-map-gl/maplibre"
 import { AnimatePresence, motion } from "framer-motion"
+import { Activity, Droplets, Flame, Triangle, Wind } from "lucide-react"
 import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
+import {
+  footprintFeatures,
+  hazardColor,
+  hazardIcon,
+  hazardKind,
+  type HazardFeature,
+  type HazardIcon,
+} from "@/lib/hazardSymbols"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
 import { PaneStatus } from "./PaneStatus"
 import { TimeScrubber } from "./TimeScrubber"
+
+const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
+  activity: Activity,
+  flame: Flame,
+  wind: Wind,
+  droplets: Droplets,
+  triangle: Triangle,
+}
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
 const MAX_MARKERS = 700
@@ -108,41 +125,42 @@ function EventMarker({
         style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer" }}
         className="relative grid place-items-center"
       >
-        {/* Emphasis ring for notable quakes (#P3): a steady circle the user
-            can't scroll past, plus a radar ping echoing the GDACS shockwave. */}
-        {style.ring && (
-          <>
+        {(() => {
+          const kind = hazardKind(ev)
+          const iconKey = hazardIcon(kind)
+          const color = hazardColor(ev)
+          if (iconKey !== "dot" && !clusterable && ev.source !== "nasa-firms") {
+            const Icon = HAZARD_ICONS[iconKey]
+            return (
+              <span
+                className="grid place-items-center rounded-sm"
+                style={{
+                  width: 18,
+                  height: 18,
+                  backgroundColor: color,
+                  boxShadow: `0 0 4px ${color}aa`,
+                  border: "1px solid rgba(255,255,255,0.5)",
+                }}
+              >
+                <Icon size={12} color="#0a0a0a" strokeWidth={2.5} aria-hidden />
+              </span>
+            )
+          }
+          // non-hazard: keep the simple dot/diamond
+          return (
             <span
-              aria-hidden
-              className="absolute rounded-full"
+              className="block"
               style={{
-                width: size + 10,
-                height: size + 10,
-                border: `1.5px solid ${style.color}`,
-                boxShadow: `0 0 6px ${style.color}`,
+                width: size,
+                height: size,
+                backgroundColor: style.color,
+                borderRadius: style.shape === "diamond" ? 2 : "9999px",
+                transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
+                boxShadow: `0 0 3px ${style.color}`,
               }}
             />
-            <motion.span
-              aria-hidden
-              className="absolute rounded-full"
-              style={{ width: size + 10, height: size + 10, border: `1.5px solid ${style.color}` }}
-              initial={{ scale: 0.8, opacity: 0.7 }}
-              animate={{ scale: 1.9, opacity: 0 }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
-            />
-          </>
-        )}
-        <span
-          className="block"
-          style={{
-            width: size,
-            height: size,
-            backgroundColor: style.color,
-            borderRadius: style.shape === "diamond" ? 2 : "9999px",
-            transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
-            boxShadow: `0 0 3px ${style.color}`,
-          }}
-        />
+          )
+        })()}
       </motion.div>
     </Marker>
   )
@@ -231,6 +249,24 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     return () => window.removeEventListener("osint:flyto", handler)
   }, [mapRef])
 
+  // Lift the country / state borders out of the near-black default so the
+  // ground reads against the hillshade. The OpenFreeMap dark style ships them
+  // at ~21-23% grey; bump to a legible mid-grey. Runs once the style is ready.
+  useEffect(() => {
+    if (!mapRef) return
+    const map = mapRef.getMap()
+    const brightenBorders = () => {
+      for (const id of ["boundary_country_z0-4", "boundary_country_z5-"]) {
+        if (map.getLayer(id)) map.setPaintProperty(id, "line-color", "hsl(0,0%,55%)")
+      }
+      if (map.getLayer("boundary_state")) {
+        map.setPaintProperty("boundary_state", "line-color", "hsl(0,0%,40%)")
+      }
+    }
+    if (map.isStyleLoaded()) brightenBorders()
+    else map.once("load", brightenBorders)
+  }, [mapRef])
+
   const positioned = useMemo<Positioned[]>(() => {
     const out: Positioned[] = []
     for (const ev of events) {
@@ -262,6 +298,20 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     }
     return out
   }, [events, centroids])
+
+  /** Merged synthesized footprints for hazard / weather events. Rendered as
+   *  MapLibre GeoJSON fill+line layers UNDER the markers, revealed on zoom-in
+   *  (opacity ramps 0→full between zoom 4 and 6) so the world view stays clean
+   *  pins-only and zooming in shows the event's real extent (shake rings, burn
+   *  scar). */
+  const hazardFootprints = useMemo<{ type: "FeatureCollection"; features: HazardFeature[] }>(() => {
+    const features: HazardFeature[] = []
+    for (const { ev } of positioned) {
+      if (ev.category !== "hazard" && ev.category !== "weather") continue
+      for (const f of footprintFeatures(ev)) features.push(f)
+    }
+    return { type: "FeatureCollection", features }
+  }, [positioned])
 
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
@@ -364,6 +414,64 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         dragRotate={false}
         style={{ position: "absolute", inset: 0 }}
       >
+        {/* Terrain hillshade so quakes / hazards read against real ground —
+            mountains, coastlines, relief — like the GDACS shakemap. Free AWS
+            Terrarium DEM (no API key). Inserted before `waterway` (the first
+            line layer) so borders + labels stay on top of the relief. */}
+        <Source
+          id="terrain-dem"
+          type="raster-dem"
+          tiles={["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"]}
+          encoding="terrarium"
+          tileSize={256}
+          maxzoom={13}
+        >
+          <Layer
+            id="hillshade"
+            type="hillshade"
+            beforeId="waterway"
+            paint={{
+              // Punchy enough to read as real terrain on the near-black theme —
+              // ridgelines/coast catch a warm-grey highlight, valleys go black.
+              "hillshade-exaggeration": 0.95,
+              "hillshade-shadow-color": "#000000",
+              "hillshade-highlight-color": "#7a766b",
+              "hillshade-accent-color": "#3a3a3a",
+              "hillshade-illumination-direction": 315,
+            }}
+          />
+        </Source>
+        {/* Synthesized hazard footprints — revealed on zoom-in (opacity 0 at
+            zoom 4 → full at zoom 6). Sits under the country fill + markers. */}
+        <Source id="hazard-footprints" type="geojson" data={hazardFootprints}>
+          <Layer
+            id="hazard-footprint-fill"
+            type="fill"
+            minzoom={4}
+            paint={{
+              "fill-color": ["get", "color"],
+              "fill-opacity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                4,
+                0,
+                6,
+                ["get", "fillOpacity"],
+              ],
+            }}
+          />
+          <Layer
+            id="hazard-footprint-line"
+            type="line"
+            minzoom={4}
+            paint={{
+              "line-color": ["get", "color"],
+              "line-width": 1,
+              "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.8],
+            }}
+          />
+        </Source>
         {scoredGeo && (
           <Source id="countries" type="geojson" data={scoredGeo}>
             <Layer
