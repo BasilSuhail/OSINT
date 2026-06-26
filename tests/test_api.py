@@ -79,6 +79,78 @@ def test_scores_ordered_bucket_start_desc(db_session):
     assert starts == sorted(starts, reverse=True)  # newest first
 
 
+def test_events_fetched_since_catches_past_occurred_at(db_session):
+    """fetched_since uses fetched_at; since uses occurred_at — they must be independent."""
+    now = datetime.now(UTC)
+    past = now - timedelta(days=5)
+    two_min_ago = now - timedelta(minutes=2)
+
+    db_session.add(
+        EventRow(
+            source="gdelt",
+            source_event_id="news-old",
+            occurred_at=past,
+            fetched_at=now,
+            category="news",
+            keywords=[],
+            payload={},
+        )
+    )
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    cutoff_iso = two_min_ago.isoformat()
+
+    # fetched_since filter: should RETURN the row (fetched_at=now >= two_min_ago)
+    rows_fetched = client.get("/events", params={"fetched_since": cutoff_iso}).json()
+    assert any(r["source_event_id"] == "news-old" for r in rows_fetched), (
+        "fetched_since filter should return rows with fetched_at >= cutoff"
+    )
+
+    # since filter: should NOT return the row (occurred_at=past < two_min_ago)
+    rows_since = client.get("/events", params={"since": cutoff_iso}).json()
+    assert not any(r["source_event_id"] == "news-old" for r in rows_since), (
+        "since filter must exclude rows where occurred_at < cutoff"
+    )
+
+
+def test_events_country_filter(db_session):
+    now = datetime.now(UTC)
+    db_session.add_all([
+        EventRow(source="gdelt", source_event_id="us-1", occurred_at=now,
+                 category="conflict", country="US", keywords=[], payload={}),
+        EventRow(source="gdelt", source_event_id="gb-1",
+                 occurred_at=now - timedelta(seconds=1),
+                 category="conflict", country="GB", keywords=[], payload={}),
+    ])
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    rows = client.get("/events?country=US").json()
+    assert all(r["country"] == "US" for r in rows)
+    assert any(r["source_event_id"] == "us-1" for r in rows)
+    assert not any(r["source_event_id"] == "gb-1" for r in rows)
+
+
+def test_events_ordered_occurred_at_desc(db_session):
+    now = datetime.now(UTC)
+    db_session.add_all([
+        EventRow(source="gdelt", source_event_id="old", occurred_at=now - timedelta(hours=3),
+                 category="conflict", keywords=[], payload={}),
+        EventRow(source="gdelt", source_event_id="new", occurred_at=now,
+                 category="conflict", keywords=[], payload={}),
+    ])
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    rows = client.get("/events").json()
+    occurred_ats = [r["occurred_at"] for r in rows]
+    assert occurred_ats == sorted(occurred_ats, reverse=True), "events must be newest-first"
+
+
 def test_stream_emits_ticks():
     from app.api import app
     app.state.event_source = lambda: iter(["3", "5"])

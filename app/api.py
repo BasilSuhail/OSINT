@@ -81,8 +81,8 @@ def _ingest_health_dict(row: IngestHealthRow) -> dict:
 @app.get("/ingest-health")
 def ingest_health(
     session: Session = Depends(get_session),
-    days: int = Query(default=7),
-    limit: int = Query(default=2000, le=5000),
+    days: int = Query(default=7, ge=0),
+    limit: int = Query(default=2000, ge=1, le=5000),
 ) -> list[dict]:
     cutoff = date.today() - timedelta(days=days)
     stmt = (
@@ -103,24 +103,30 @@ def health() -> dict:
 def events(
     session: Session = Depends(get_session),
     since: datetime | None = Query(default=None),
+    fetched_since: datetime | None = Query(default=None),
     sources: str | None = Query(default=None),
     exclude: str | None = Query(default=None),
-    limit: int = Query(default=5000, le=10000),
+    country: str | None = Query(default=None),
+    limit: int = Query(default=5000, ge=1, le=10000),
 ) -> list[dict]:
     stmt = select(EventRow).order_by(EventRow.occurred_at.desc()).limit(limit)
     if since is not None:
         stmt = stmt.where(EventRow.occurred_at >= since)
+    if fetched_since is not None:
+        stmt = stmt.where(EventRow.fetched_at >= fetched_since)
     if sources:
         stmt = stmt.where(EventRow.source.in_([s.strip() for s in sources.split(",")]))
     if exclude:
         stmt = stmt.where(EventRow.source.notin_([s.strip() for s in exclude.split(",")]))
+    if country is not None:
+        stmt = stmt.where(EventRow.country == country)
     return [_event_dict(r) for r in session.execute(stmt).scalars()]
 
 
 @app.get("/scores")
 def scores(
     session: Session = Depends(get_session),
-    limit: int = Query(default=5000, le=10000),
+    limit: int = Query(default=5000, ge=1, le=10000),
 ) -> list[dict]:
     stmt = select(ScoreRow).order_by(ScoreRow.bucket_start.desc()).limit(limit)
     return [_score_dict(r) for r in session.execute(stmt).scalars()]
