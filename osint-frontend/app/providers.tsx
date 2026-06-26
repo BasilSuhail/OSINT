@@ -14,7 +14,6 @@ interface RealtimeContextValue {
 const RealtimeContext = createContext<RealtimeContextValue | null>(null)
 
 const WINDOW_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
-const PAGE_SIZE = 1000
 const TARGET_ROWS = 5000
 
 /**

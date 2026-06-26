@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.db_models import EventRow, HousekeepingRunRow
 from app.settings import settings
 
+
 def retention_days() -> dict[str, int | None]:
     """Per-source retention windows (days). ``None`` = never delete.
 
@@ -94,7 +95,9 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
     for (src,) in seen_rss:
         if src in explicit:
             continue
-        deleted_by_source[src] = _prune_source(session, source=src, days=settings.retention_news_days, now=now)
+        deleted_by_source[src] = _prune_source(
+            session, source=src, days=settings.retention_news_days, now=now
+        )
 
     total_deleted = sum(deleted_by_source.values())
     duration_ms = int((time.monotonic() - started_at) * 1000)

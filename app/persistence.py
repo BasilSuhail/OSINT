@@ -12,6 +12,7 @@ parse cost low and to leave headroom if the row shape grows.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -96,10 +97,8 @@ def upsert_events(
     inserted = 0
     for start in range(0, len(rows), batch_size):
         inserted += _upsert_batch(rows[start : start + batch_size], session, dialect)
-    try:
+    # A dead Redis must never fail an ingest; the SSE clients fall back to
+    # their 30s SWR poll. Swallow and continue.
+    with contextlib.suppress(Exception):
         publish_new_events(inserted)
-    except Exception:
-        # A dead Redis must never fail an ingest; the SSE clients fall back to
-        # their 30s SWR poll. Swallow and continue.
-        pass
     return inserted
