@@ -130,6 +130,32 @@ export function sourceFiltersForPane(pane: Pane): SourceFilterDef[] {
   return SOURCE_FILTERS.filter((f) => f.pane === pane)
 }
 
+/** GDACS / USGS / EONET all carry the "hazard" category but lump many distinct
+ *  disasters together. These are the source keys whose events are filtered by
+ *  disaster TYPE instead of by source, so the rail can offer "hide volcanoes"
+ *  rather than one giant "multi-hazard" switch. */
+export const HAZARD_SOURCE_KEYS: SourceKey[] = ["USGS", "GDACS", "EONET"]
+
+/** Disaster-type filter keys (mirror HazardKind, minus "other"). */
+export type HazardTypeKey = "EQ" | "TC" | "FL" | "VO" | "DR" | "WF"
+
+export interface HazardTypeDef {
+  key: HazardTypeKey
+  label: string
+  hex: string
+}
+
+/** The per-type disaster filters shown on the map rail, each with a distinct
+ *  colour so the legend reads at a glance. */
+export const HAZARD_TYPE_FILTERS: HazardTypeDef[] = [
+  { key: "EQ", label: "Earthquakes", hex: "#ef4444" },
+  { key: "TC", label: "Cyclones", hex: "#f97316" },
+  { key: "FL", label: "Floods", hex: "#38bdf8" },
+  { key: "WF", label: "Wildfires", hex: "#eab308" },
+  { key: "VO", label: "Volcanoes", hex: "#d946ef" },
+  { key: "DR", label: "Droughts", hex: "#a16207" },
+]
+
 /** Which pane should render this event. Returns null if the source is unknown. */
 export function paneForEvent(ev: EventRow): Pane | null {
   const sk = sourceKeyForEvent(ev)

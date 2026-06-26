@@ -1,9 +1,12 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand"
-import type { SourceKey } from "@/lib/types"
+import { HAZARD_TYPE_FILTERS, type HazardTypeKey, type SourceKey } from "@/lib/types"
 
 export interface FilterState {
   /** Enabled source toggles. */
   sources: Record<SourceKey, boolean>
+  /** Enabled disaster-type toggles (earthquake / cyclone / flood / …). Hazard
+   *  events are filtered by these instead of by their lump-sum source. */
+  hazardTypes: Record<HazardTypeKey, boolean>
   severity: [number, number]
   countries: string[]
   keyword: string
@@ -22,6 +25,10 @@ export interface FilterState {
   showCelestial: boolean
 
   toggleSource: (key: SourceKey) => void
+  /** Turn every source on (select all) or off (clear all) at once. */
+  setAllSources: (on: boolean) => void
+  toggleHazardType: (key: HazardTypeKey) => void
+  setAllHazardTypes: (on: boolean) => void
   setSeverity: (range: [number, number]) => void
   setCountries: (countries: string[]) => void
   toggleCountry: (country: string) => void
@@ -49,11 +56,16 @@ const defaultSources: Record<SourceKey, boolean> = {
   NEWS: true,
 }
 
+const defaultHazardTypes = Object.fromEntries(
+  HAZARD_TYPE_FILTERS.map((h) => [h.key, true]),
+) as Record<HazardTypeKey, boolean>
+
 export type FilterStore = UseBoundStore<StoreApi<FilterState>>
 
 export function createFilterStore(): FilterStore {
   return create<FilterState>((set) => ({
     sources: { ...defaultSources },
+    hazardTypes: { ...defaultHazardTypes },
     severity: [0, 1],
     countries: [],
     keyword: "",
@@ -67,6 +79,20 @@ export function createFilterStore(): FilterStore {
 
     toggleSource: (key) =>
       set((s) => ({ sources: { ...s.sources, [key]: !s.sources[key] } })),
+    setAllSources: (on) =>
+      set((s) => {
+        const next = { ...s.sources }
+        for (const k of Object.keys(next) as SourceKey[]) next[k] = on
+        return { sources: next }
+      }),
+    toggleHazardType: (key) =>
+      set((s) => ({ hazardTypes: { ...s.hazardTypes, [key]: !s.hazardTypes[key] } })),
+    setAllHazardTypes: (on) =>
+      set((s) => {
+        const next = { ...s.hazardTypes }
+        for (const k of Object.keys(next) as HazardTypeKey[]) next[k] = on
+        return { hazardTypes: next }
+      }),
     setSeverity: (range) => set({ severity: range }),
     setCountries: (countries) => set({ countries }),
     toggleCountry: (country) =>
@@ -87,6 +113,7 @@ export function createFilterStore(): FilterStore {
     reset: () =>
       set({
         sources: { ...defaultSources },
+        hazardTypes: { ...defaultHazardTypes },
         severity: [0, 1],
         countries: [],
         keyword: "",

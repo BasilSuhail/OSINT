@@ -1,18 +1,41 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, ChevronsUpDown, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react"
+import {
+  Activity,
+  AlertTriangle,
+  Check,
+  ChevronsUpDown,
+  Droplets,
+  Flame,
+  Landmark,
+  type LucideIcon,
+  Mountain,
+  Newspaper,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Sun,
+  TrendingUp,
+  Triangle,
+  Wind,
+  X,
+} from "lucide-react"
 import { formatDistanceToNowStrict } from "date-fns"
 import { useEvents } from "@/app/providers"
 import { useEventsInWindow } from "@/lib/queries"
 import {
+  HAZARD_SOURCE_KEYS,
+  HAZARD_TYPE_FILTERS,
   paneForEvent,
   sourceFiltersForPane,
   sourceKeyForEvent,
   type EventRow,
+  type HazardTypeKey,
   type Pane,
   type SourceKey,
 } from "@/lib/types"
+import { hazardKind } from "@/lib/hazardSymbols"
 import { cameoLabel } from "@/lib/cameo"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
@@ -86,6 +109,28 @@ function countryFlagEmoji(iso: string): string {
   return String.fromCodePoint(...codePoints)
 }
 
+/** Per-source type icon so the rail reads at a glance (quake / fire / storm…)
+ *  instead of a bare colour dot. */
+const SOURCE_ICONS: Record<SourceKey, LucideIcon> = {
+  NEWS: Newspaper,
+  GDELT: Landmark,
+  USGS: Activity,
+  GDACS: AlertTriangle,
+  FIRMS: Flame,
+  EONET: Mountain,
+  yfinance: TrendingUp,
+}
+
+/** Disaster-type icons — match the map pins (quake waveform, fire flame, …). */
+const HAZARD_TYPE_ICONS: Record<HazardTypeKey, LucideIcon> = {
+  EQ: Activity,
+  TC: Wind,
+  FL: Droplets,
+  WF: Flame,
+  VO: Triangle,
+  DR: Sun,
+}
+
 interface FilterRailProps {
   pane: Pane
   side: "left" | "right"
@@ -104,6 +149,10 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
   const satelliteGroup = useStore((s) => s.satelliteGroup)
   const showCelestial = useStore((s) => s.showCelestial)
   const toggleSource = useStore((s) => s.toggleSource)
+  const setAllSources = useStore((s) => s.setAllSources)
+  const hazardTypes = useStore((s) => s.hazardTypes)
+  const toggleHazardType = useStore((s) => s.toggleHazardType)
+  const setAllHazardTypes = useStore((s) => s.setAllHazardTypes)
   const setSeverity = useStore((s) => s.setSeverity)
   const toggleCountry = useStore((s) => s.toggleCountry)
   const setKeyword = useStore((s) => s.setKeyword)
@@ -129,8 +178,15 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
     [visibleEvents],
   )
 
-  /** Only show source toggles that render on this pane. */
-  const paneFilters = useMemo(() => sourceFiltersForPane(pane), [pane])
+  /** Source toggles for this pane, minus the hazard sources (USGS / GDACS /
+   *  EONET) — those are filtered by disaster type instead, below. */
+  const paneFilters = useMemo(
+    () => sourceFiltersForPane(pane).filter((f) => !HAZARD_SOURCE_KEYS.includes(f.key)),
+    [pane],
+  )
+
+  /** Disaster types are only relevant on the map pane (hazards live there). */
+  const showHazardTypes = pane === "map"
 
   /** Pane-scoped events: only counts what would actually appear on this pane. */
   const paneEvents = useMemo(() => {
@@ -143,6 +199,18 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
     for (const ev of paneEvents) {
       const sk = sourceKeyForEvent(ev)
       if (sk) m.set(sk, (m.get(sk) ?? 0) + 1)
+    }
+    return m
+  }, [paneEvents])
+
+  /** Live count of hazard events per disaster type on this pane. */
+  const typeCounts = useMemo(() => {
+    const m = new Map<HazardTypeKey, number>()
+    for (const ev of paneEvents) {
+      if (ev.category !== "hazard") continue
+      const k = hazardKind(ev)
+      if (k === "other") continue
+      m.set(k as HazardTypeKey, (m.get(k as HazardTypeKey) ?? 0) + 1)
     }
     return m
   }, [paneEvents])
@@ -208,6 +276,7 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
 
   const activeCount =
     paneFilters.filter((f) => !sources[f.key]).length +
+    (showHazardTypes ? HAZARD_TYPE_FILTERS.filter((h) => !hazardTypes[h.key]).length : 0) +
     (severity[0] > 0 || severity[1] < 1 ? 1 : 0) +
     (countries.length > 0 ? 1 : 0) +
     (keyword.trim() ? 1 : 0) +
@@ -327,21 +396,52 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             </span>
           )}
         </button>
-        {/* Source dots as quick toggles */}
-        {paneFilters.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            aria-label={`${f.label} ${sources[f.key] ? "on" : "off"}`}
-            onClick={() => toggleSource(f.key)}
-            className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full transition-opacity"
-              style={{ backgroundColor: f.hex, opacity: sources[f.key] ? 1 : 0.25 }}
-            />
-          </button>
-        ))}
+        {/* Source type icons as quick toggles */}
+        {paneFilters.map((f) => {
+          const Icon = SOURCE_ICONS[f.key]
+          const on = sources[f.key]
+          return (
+            <button
+              key={f.key}
+              type="button"
+              aria-label={`${f.label} ${on ? "on" : "off"}`}
+              aria-pressed={on}
+              onClick={() => toggleSource(f.key)}
+              className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
+            >
+              <span
+                className="grid h-5 w-5 place-items-center rounded-md transition-opacity"
+                style={{ backgroundColor: f.hex, opacity: on ? 1 : 0.25 }}
+              >
+                {Icon && <Icon className="h-3 w-3 text-neutral-950" strokeWidth={2.5} />}
+              </span>
+            </button>
+          )
+        })}
+        {/* Disaster-type quick toggles (map pane) — same set as the expanded
+         *  Disasters section, so the collapsed strip shows every filter too. */}
+        {showHazardTypes &&
+          HAZARD_TYPE_FILTERS.map((h) => {
+            const Icon = HAZARD_TYPE_ICONS[h.key]
+            const on = hazardTypes[h.key]
+            return (
+              <button
+                key={h.key}
+                type="button"
+                aria-label={`${h.label} ${on ? "on" : "off"}`}
+                aria-pressed={on}
+                onClick={() => toggleHazardType(h.key)}
+                className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
+              >
+                <span
+                  className="grid h-5 w-5 place-items-center rounded-md transition-opacity"
+                  style={{ backgroundColor: h.hex, opacity: on ? 1 : 0.25 }}
+                >
+                  <Icon className="h-3 w-3 text-neutral-950" strokeWidth={2.5} />
+                </span>
+              </button>
+            )
+          })}
         {isGlobe && (
           <button
             type="button"
@@ -415,31 +515,67 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
 
           {tab === "filters" && (
           <>
-          {/* Source toggles */}
+          {/* Source toggles — every source on by default; click one to hide it
+           *  (e.g. mute the quakes when they crowd the map). Select-all /
+           *  clear-all flip them in one go. */}
           <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+                Layers
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAllSources(true)}
+                  className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  All
+                </button>
+                <span className="text-neutral-700">·</span>
+                <button
+                  type="button"
+                  onClick={() => setAllSources(false)}
+                  className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  None
+                </button>
+              </div>
+            </div>
             {paneFilters.map((f) => {
               const n = sourceCounts.get(f.key) ?? 0
+              const Icon = SOURCE_ICONS[f.key]
+              const on = sources[f.key]
               return (
                 <button
                   key={f.key}
                   type="button"
+                  aria-pressed={on}
                   onClick={() => toggleSource(f.key)}
                   className={cn(
                     "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
-                    sources[f.key]
+                    on
                       ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
                       : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
                   )}
                 >
                   <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: f.hex, opacity: sources[f.key] ? 1 : 0.3 }}
-                  />
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-md transition-opacity"
+                    style={{ backgroundColor: f.hex, opacity: on ? 1 : 0.25 }}
+                  >
+                    {Icon && <Icon className="h-3.5 w-3.5 text-neutral-950" strokeWidth={2.5} />}
+                  </span>
                   <span className="flex-1">{f.label}</span>
                   <span className="font-mono text-[10px] tabular-nums text-neutral-400">
                     {n.toLocaleString()}
                   </span>
-                  <span className="font-mono text-[10px] uppercase text-neutral-500">{f.key}</span>
+                  <span
+                    className={cn(
+                      "grid h-4 w-4 shrink-0 place-items-center rounded-sm border",
+                      on ? "border-emerald-500 bg-emerald-500/20" : "border-neutral-700",
+                    )}
+                  >
+                    {on && <Check className="h-3 w-3 text-emerald-400" strokeWidth={3} />}
+                  </span>
                 </button>
               )
             })}
@@ -501,6 +637,74 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
               </>
             )}
           </div>
+
+          {/* Disaster types — replaces the single GDACS "multi-hazard" switch so
+           *  each disaster (earthquake / cyclone / flood / volcano / drought /
+           *  wildfire) can be hidden on its own. */}
+          {showHazardTypes && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between px-0.5">
+                <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+                  Disasters
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setAllHazardTypes(true)}
+                    className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                  >
+                    All
+                  </button>
+                  <span className="text-neutral-700">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setAllHazardTypes(false)}
+                    className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                  >
+                    None
+                  </button>
+                </div>
+              </div>
+              {HAZARD_TYPE_FILTERS.map((h) => {
+                const Icon = HAZARD_TYPE_ICONS[h.key]
+                const on = hazardTypes[h.key]
+                const n = typeCounts.get(h.key) ?? 0
+                return (
+                  <button
+                    key={h.key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleHazardType(h.key)}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
+                      on
+                        ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
+                        : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
+                    )}
+                  >
+                    <span
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded-md transition-opacity"
+                      style={{ backgroundColor: h.hex, opacity: on ? 1 : 0.25 }}
+                    >
+                      <Icon className="h-3.5 w-3.5 text-neutral-950" strokeWidth={2.5} />
+                    </span>
+                    <span className="flex-1">{h.label}</span>
+                    <span className="font-mono text-[10px] tabular-nums text-neutral-400">
+                      {n.toLocaleString()}
+                    </span>
+                    <span
+                      className={cn(
+                        "grid h-4 w-4 shrink-0 place-items-center rounded-sm border",
+                        on ? "border-emerald-500 bg-emerald-500/20" : "border-neutral-700",
+                      )}
+                    >
+                      {on && <Check className="h-3 w-3 text-emerald-400" strokeWidth={3} />}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           {/* Severity */}
           <div className="flex flex-col gap-2">

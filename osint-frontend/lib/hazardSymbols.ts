@@ -13,8 +13,8 @@ export interface HazardFeature {
   geometry: { type: string; coordinates: unknown }
 }
 
-export type HazardKind = "EQ" | "WF" | "TC" | "FL" | "VO" | "other"
-export type HazardIcon = "activity" | "flame" | "wind" | "droplets" | "triangle" | "dot"
+export type HazardKind = "EQ" | "WF" | "TC" | "FL" | "VO" | "DR" | "other"
+export type HazardIcon = "activity" | "flame" | "wind" | "droplets" | "triangle" | "sun" | "dot"
 
 const GREEN = "#22c55e"
 const ORANGE = "#f97316"
@@ -29,13 +29,14 @@ export function hazardKind(ev: EventRow): HazardKind {
   if (src.includes("usgs")) return "EQ"
   if (src.includes("firms")) return "WF"
   const t = String(payload(ev).event_type ?? "").toUpperCase()
-  if (t === "EQ" || t === "WF" || t === "TC" || t === "FL" || t === "VO") return t
+  if (t === "EQ" || t === "WF" || t === "TC" || t === "FL" || t === "VO" || t === "DR") return t
   // EONET has no event_type code — infer the kind from the title so its
   // storms / volcanoes get the right symbol instead of a plain dot.
   const title = String(payload(ev).title ?? "").toLowerCase()
   if (/storm|typhoon|cyclone|hurricane/.test(title)) return "TC"
   if (title.includes("volcano")) return "VO"
   if (title.includes("flood")) return "FL"
+  if (title.includes("drought")) return "DR"
   if (title.includes("wildfire") || title.includes("fire")) return "WF"
   return "other"
 }
@@ -66,6 +67,7 @@ export function hazardIcon(kind: HazardKind): HazardIcon {
     case "TC": return "wind"
     case "FL": return "droplets"
     case "VO": return "triangle"
+    case "DR": return "sun"
     default: return "dot"
   }
 }
@@ -90,7 +92,11 @@ function poly(ring: [number, number][], color: string, fillOpacity: number): Haz
  *  straight through to the map layers with the colour the backend tagged. */
 const LINE_TYPES = new Set(["LineString", "MultiLineString"])
 
-function realFootprintFeatures(p: Record<string, unknown>, kind: HazardKind): HazardFeature[] | null {
+function realFootprintFeatures(
+  p: Record<string, unknown>,
+  kind: HazardKind,
+  expanded: boolean,
+): HazardFeature[] | null {
   const fc = p.footprint_geojson as
     | { features?: Array<{ geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }> }
     | undefined
@@ -99,9 +105,10 @@ function realFootprintFeatures(p: Record<string, unknown>, kind: HazardKind): Ha
   for (const f of fc.features) {
     const geom = f.geometry
     if (!geom || typeof geom.type !== "string" || geom.coordinates == null) continue
-    // Cyclones are minimised to their track line only — the wind-probability
-    // cones span thousands of km and crowd the whole map. Drop the polygons.
-    if (kind === "TC" && !LINE_TYPES.has(geom.type)) continue
+    // Cyclones collapse to their track line when not selected — the
+    // wind-probability cones span thousands of km and crowd the whole map.
+    // Clicking the storm expands it to the full footprint (cones + track).
+    if (kind === "TC" && !expanded && !LINE_TYPES.has(geom.type)) continue
     const props = f.properties ?? {}
     const color = typeof props.color === "string" ? props.color : ORANGE
     const fillOpacity = typeof props.fillOpacity === "number" ? props.fillOpacity : 0.2
@@ -118,10 +125,10 @@ function realFootprintFeatures(p: Record<string, unknown>, kind: HazardKind): Ha
  *  backend has enriched it; otherwise falls back to a synthesized circle (largest
  *  first so smaller, hotter rings paint on top). Empty when the event has no
  *  coordinates or no usable size. */
-export function footprintFeatures(ev: EventRow): HazardFeature[] {
+export function footprintFeatures(ev: EventRow, expanded = false): HazardFeature[] {
   const p = payload(ev)
   const kind = hazardKind(ev)
-  const real = realFootprintFeatures(p, kind)
+  const real = realFootprintFeatures(p, kind, expanded)
   if (real) return real
 
   const lon = ev.lon

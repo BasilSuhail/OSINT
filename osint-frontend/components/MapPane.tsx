@@ -11,7 +11,7 @@ import MapGL, {
   type MapRef,
 } from "react-map-gl/maplibre"
 import { AnimatePresence, motion } from "framer-motion"
-import { Activity, Droplets, Flame, Triangle, Wind } from "lucide-react"
+import { Activity, Droplets, Flame, Sun, Triangle, Wind } from "lucide-react"
 import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
@@ -26,7 +26,6 @@ import {
 } from "@/lib/hazardSymbols"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
-import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
 import { PaneStatus } from "./PaneStatus"
 import { TimeScrubber } from "./TimeScrubber"
@@ -37,6 +36,7 @@ const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
   wind: Wind,
   droplets: Droplets,
   triangle: Triangle,
+  sun: Sun,
 }
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
@@ -49,6 +49,10 @@ interface MapPaneProps {
   onRailOpenChange: (open: boolean) => void
   onSelectCountry: (iso: string) => void
   onCount: (n: number) => void
+  /** Bubble a clicked event up to the shared centred detail overlay. */
+  onSelectEvent: (ev: VisibleEvent) => void
+  /** Id of the currently-selected event (drives the expanded cyclone footprint). */
+  selectedEventId: VisibleEvent["id"] | null
 }
 
 interface Positioned {
@@ -217,7 +221,7 @@ function ClusterChip({
   )
 }
 
-export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount }: MapPaneProps) {
+export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount, onSelectEvent, selectedEventId }: MapPaneProps) {
   const { events, windowEnd, total } = useEventsInWindow(useStore, "map")
   const { byCountry } = useLatestScores()
   const scoredGeo = useScoredGeo(byCountry)
@@ -225,7 +229,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const configured = useConfigured()
   const allEvents = useEvents()
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
-  const [selected, setSelected] = useState<{ ev: VisibleEvent; lat: number; lon: number } | null>(null)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const [openCluster, setOpenCluster] = useState<ClusterMarker | null>(null)
 
@@ -315,10 +318,12 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     const features: HazardFeature[] = []
     for (const { ev } of positioned) {
       if (ev.category !== "hazard" && ev.category !== "weather") continue
-      for (const f of footprintFeatures(ev)) features.push(f)
+      // Selecting a cyclone expands it from its track line to the full footprint
+      // (wind cones + track); other hazards ignore the flag.
+      for (const f of footprintFeatures(ev, ev.id === selectedEventId)) features.push(f)
     }
     return { type: "FeatureCollection", features }
-  }, [positioned])
+  }, [positioned, selectedEventId])
 
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
@@ -377,18 +382,11 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
 
   const handleSelectMarker = useCallback(
     (ev: VisibleEvent) => {
-      const lat = ev.lat
-      const lon = ev.lon
-      if (lat == null || lon == null) {
-        if (!ev.country) return
-        const c = centroids.get(ev.country)
-        if (!c) return
-        setSelected({ ev, lat: c[1], lon: c[0] })
-        return
-      }
-      setSelected({ ev, lat, lon })
+      // Bubble up to the shared centred detail overlay (#207); the map no longer
+      // renders its own popup. Selecting a cyclone also expands its footprint.
+      onSelectEvent(ev)
     },
-    [centroids],
+    [onSelectEvent],
   )
 
   /** Cluster click: zoom in two levels at the centroid. The cell precision
@@ -505,26 +503,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           ))}
         </AnimatePresence>
 
-        {selected && (
-          <Popup
-            longitude={selected.lon}
-            latitude={selected.lat}
-            anchor="bottom"
-            closeButton={false}
-            closeOnClick={false}
-            onClose={() => setSelected(null)}
-            offset={12}
-            maxWidth="360px"
-            className="osint-popup"
-          >
-            <EventDetailCard
-              event={selected.ev}
-              onSelectCountry={onSelectCountry}
-              onClose={() => setSelected(null)}
-              embedded
-            />
-          </Popup>
-        )}
 
         {openCluster && (
           <Popup
@@ -628,42 +606,8 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
-      {/* Marker colour legend — bottom-right, fades on hover so it
-       *  doesn't fight the time scrubber. */}
-      <div className="pointer-events-none absolute bottom-16 right-3 z-20 hidden flex-col gap-1 rounded-md border border-neutral-800 bg-neutral-950/85 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400 backdrop-blur sm:flex">
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#38bdf8" }} aria-hidden="true" />
-          news
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#a3a3a3" }} aria-hidden="true" />
-          geopolitical
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#ef4444" }} aria-hidden="true" />
-          hazard / quake
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#f97316" }} aria-hidden="true" />
-          GDACS alert
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#eab308" }} aria-hidden="true" />
-          fire
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#22c55e" }} aria-hidden="true" />
-          market
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#06b6d4" }} aria-hidden="true" />
-          ADS-B
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#a855f7" }} aria-hidden="true" />
-          cyber
-        </div>
-      </div>
+      {/* The marker legend moved into the left filter rail (icons + colours +
+          toggles) so it is interactive, not a static key in the corner. */}
 
       <FilterRail pane="map" side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />

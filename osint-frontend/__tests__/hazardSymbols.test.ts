@@ -16,6 +16,8 @@ describe("hazardKind", () => {
   it("reads GDACS event_type", () => {
     expect(hazardKind(row({ payload: { event_type: "TC" } }))).toBe("TC")
     expect(hazardKind(row({ payload: { event_type: "FL" } }))).toBe("FL")
+    expect(hazardKind(row({ payload: { event_type: "VO" } }))).toBe("VO")
+    expect(hazardKind(row({ payload: { event_type: "DR" } }))).toBe("DR")
   })
   it("infers EONET kind from the title", () => {
     expect(hazardKind(row({ source: "eonet", payload: { title: "Typhoon Mekkhala" } }))).toBe("TC")
