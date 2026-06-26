@@ -418,6 +418,30 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             </button>
           )
         })}
+        {/* Disaster-type quick toggles (map pane) — same set as the expanded
+         *  Disasters section, so the collapsed strip shows every filter too. */}
+        {showHazardTypes &&
+          HAZARD_TYPE_FILTERS.map((h) => {
+            const Icon = HAZARD_TYPE_ICONS[h.key]
+            const on = hazardTypes[h.key]
+            return (
+              <button
+                key={h.key}
+                type="button"
+                aria-label={`${h.label} ${on ? "on" : "off"}`}
+                aria-pressed={on}
+                onClick={() => toggleHazardType(h.key)}
+                className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
+              >
+                <span
+                  className="grid h-5 w-5 place-items-center rounded-md transition-opacity"
+                  style={{ backgroundColor: h.hex, opacity: on ? 1 : 0.25 }}
+                >
+                  <Icon className="h-3 w-3 text-neutral-950" strokeWidth={2.5} />
+                </span>
+              </button>
+            )
+          })}
         {isGlobe && (
           <button
             type="button"
