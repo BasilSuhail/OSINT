@@ -306,19 +306,18 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     return priority.concat(fill.slice(0, Math.max(0, MAX_MARKERS - priority.length)))
   }, [events, centroids])
 
-  /** Merged synthesized footprints for hazard / weather events. Rendered as
-   *  MapLibre GeoJSON fill+line layers UNDER the markers, revealed on zoom-in
-   *  (opacity ramps 0→full between zoom 4 and 6) so the world view stays clean
-   *  pins-only and zooming in shows the event's real extent (shake rings, burn
-   *  scar). */
+  /** Footprint of the SELECTED hazard only. Rendering every event's footprint
+   *  at once buried the map in overlapping cyclone wind-cones (each spans
+   *  thousands of km) — a green soup. Like GDACS, the projection (shake rings /
+   *  burn scar / cyclone track + wind cone) is drawn only for the event the user
+   *  clicks, so the default view stays clean small pins. */
   const hazardFootprints = useMemo<{ type: "FeatureCollection"; features: HazardFeature[] }>(() => {
-    const features: HazardFeature[] = []
-    for (const { ev } of positioned) {
-      if (ev.category !== "hazard" && ev.category !== "weather") continue
-      for (const f of footprintFeatures(ev)) features.push(f)
+    const ev = selected?.ev
+    if (!ev || (ev.category !== "hazard" && ev.category !== "weather")) {
+      return { type: "FeatureCollection", features: [] }
     }
-    return { type: "FeatureCollection", features }
-  }, [positioned])
+    return { type: "FeatureCollection", features: footprintFeatures(ev) }
+  }, [selected])
 
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
@@ -448,34 +447,26 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             }}
           />
         </Source>
-        {/* Synthesized hazard footprints — revealed on zoom-in (opacity 0 at
-            zoom 4 → full at zoom 6). Sits under the country fill + markers. */}
+        {/* Footprint of the selected hazard only (shake rings / burn scar /
+            cyclone track + wind cone). Drawn at full strength immediately — it
+            is summoned by clicking the event, so no zoom gate. Sits under the
+            country fill + markers. */}
         <Source id="hazard-footprints" type="geojson" data={hazardFootprints}>
           <Layer
             id="hazard-footprint-fill"
             type="fill"
-            minzoom={4}
             paint={{
               "fill-color": ["get", "color"],
-              "fill-opacity": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                4,
-                0,
-                6,
-                ["get", "fillOpacity"],
-              ],
+              "fill-opacity": ["get", "fillOpacity"],
             }}
           />
           <Layer
             id="hazard-footprint-line"
             type="line"
-            minzoom={4}
             paint={{
               "line-color": ["get", "color"],
-              "line-width": 1,
-              "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.8],
+              "line-width": 1.2,
+              "line-opacity": 0.85,
             }}
           />
         </Source>
