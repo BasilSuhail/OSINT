@@ -36,6 +36,20 @@ async function fetchRecentEvents(): Promise<EventRow[]> {
   return fetchEvents({ since, exclude: ["opensky-adsb"], limit: TARGET_ROWS })
 }
 
+/** Sparse but high-value hazard sources. NASA FIRMS alone emits ~50k rows in
+ *  the 30-day window, so the `occurred_at`-ordered firehose budget (5000) is
+ *  consumed by fire detections before GDACS floods / cyclones / droughts or
+ *  the handful of USGS quakes ever appear — the map silently dropped them
+ *  (flash floods were missing despite GDACS showing them). A dedicated fetch
+ *  guarantees every hazard event reaches the buffer; the volumes are tiny
+ *  (hundreds of rows) so this is cheap. The buffer dedups on ingest. */
+const HAZARD_SOURCES = ["gdacs", "usgs-quake", "eonet"]
+
+async function fetchHazardEvents(): Promise<EventRow[]> {
+  const since = new Date(Date.now() - WINDOW_MS).toISOString()
+  return fetchEvents({ since, sources: HAZARD_SOURCES, limit: TARGET_ROWS })
+}
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const bufferRef = useRef<EventBuffer | null>(null)
   if (!bufferRef.current) bufferRef.current = new EventBuffer()
@@ -50,6 +64,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   // SWR fallback: poll every 30s (and once on mount) to backfill / recover.
   useSWR(isApiConfigured ? "events-window" : null, fetchRecentEvents, {
     refreshInterval: 30_000,
+    revalidateOnFocus: false,
+    onSuccess: (rows) => buffer.ingest(rows),
+  })
+
+  // Dedicated hazard poll so sparse GDACS / USGS / EONET events are never
+  // starved out of the firehose budget by NASA FIRMS volume (#206).
+  useSWR(isApiConfigured ? "events-hazard" : null, fetchHazardEvents, {
+    refreshInterval: 60_000,
     revalidateOnFocus: false,
     onSuccess: (rows) => buffer.ingest(rows),
   })

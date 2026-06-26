@@ -34,16 +34,21 @@ export function hazardKind(ev: EventRow): HazardKind {
 }
 
 export function hazardColor(ev: EventRow): string {
+  // Earthquakes are coloured by magnitude across BOTH sources (USGS + GDACS) so
+  // the same quake never reads orange from one feed and red from another — the
+  // colour was inconsistent because USGS used magnitude while GDACS used its
+  // alert level. M>=6 red, M>=4.5 orange, else green.
+  if (hazardKind(ev) === "EQ") {
+    const mag = Number(payload(ev).magnitude ?? 0)
+    if (mag >= 6) return RED
+    if (mag >= 4.5) return ORANGE
+    return GREEN
+  }
+  // Non-quake hazards: colour by the GDACS alert level.
   const alert = String(payload(ev).alert_level ?? "").toLowerCase()
   if (alert === "red") return RED
   if (alert === "orange") return ORANGE
   if (alert === "green") return GREEN
-  const src = (ev.source ?? "").toLowerCase()
-  if (src.includes("usgs")) {
-    const mag = Number(payload(ev).magnitude ?? 0)
-    if (mag >= 6) return RED
-    if (mag >= 4.5) return ORANGE
-  }
   return GREEN
 }
 

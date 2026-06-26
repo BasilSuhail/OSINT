@@ -26,10 +26,20 @@ describe("hazardColor", () => {
     expect(hazardColor(row({ payload: { alert_level: "Orange" } }))).toBe("#f97316")
     expect(hazardColor(row({ payload: { alert_level: "Green" } }))).toBe("#22c55e")
   })
-  it("falls back to USGS magnitude bands", () => {
+  it("colours USGS quakes by magnitude band", () => {
     expect(hazardColor(row({ source: "usgs-quake", payload: { magnitude: 6.4 } }))).toBe("#ef4444")
     expect(hazardColor(row({ source: "usgs-quake", payload: { magnitude: 5.0 } }))).toBe("#f97316")
     expect(hazardColor(row({ source: "usgs-quake", payload: { magnitude: 3.0 } }))).toBe("#22c55e")
+  })
+  it("colours quakes consistently across sources (magnitude, not GDACS alert)", () => {
+    // A GDACS quake uses magnitude too — so the same M5.0 quake reads orange
+    // whether it came from USGS or GDACS, even if GDACS tagged it green alert.
+    const usgs = hazardColor(row({ source: "usgs-quake", payload: { magnitude: 5.0 } }))
+    const gdacs = hazardColor(
+      row({ source: "gdacs", payload: { event_type: "EQ", magnitude: 5.0, alert_level: "Green" } }),
+    )
+    expect(gdacs).toBe(usgs)
+    expect(gdacs).toBe("#f97316")
   })
 })
 
