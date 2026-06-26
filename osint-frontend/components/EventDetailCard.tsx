@@ -74,6 +74,11 @@ function bestSourceUrl(ev: EventRow): string | null {
   // "20260620064500"), not a real URL. Skip when it doesn't start with http.
   const direct = (p?.source_url ?? p?.link ?? p?.url) as string | undefined
   if (typeof direct === "string" && direct.startsWith("http")) return direct
+  // USGS quakes store only `usgs_id` — no URL. Derive the canonical event page
+  // so "open source" links straight to the ShakeMap / report like GDACS does.
+  if (typeof p?.usgs_id === "string" && p.usgs_id) {
+    return `https://earthquake.usgs.gov/earthquakes/eventpage/${p.usgs_id}`
+  }
   const sources = p?.sources as Array<Record<string, unknown>> | undefined
   if (Array.isArray(sources) && sources[0]?.url && typeof sources[0].url === "string") {
     return sources[0].url as string
