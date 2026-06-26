@@ -22,6 +22,8 @@ export interface FilterState {
   showCelestial: boolean
 
   toggleSource: (key: SourceKey) => void
+  /** Turn every source on (select all) or off (clear all) at once. */
+  setAllSources: (on: boolean) => void
   setSeverity: (range: [number, number]) => void
   setCountries: (countries: string[]) => void
   toggleCountry: (country: string) => void
@@ -67,6 +69,12 @@ export function createFilterStore(): FilterStore {
 
     toggleSource: (key) =>
       set((s) => ({ sources: { ...s.sources, [key]: !s.sources[key] } })),
+    setAllSources: (on) =>
+      set((s) => {
+        const next = { ...s.sources }
+        for (const k of Object.keys(next) as SourceKey[]) next[k] = on
+        return { sources: next }
+      }),
     setSeverity: (range) => set({ severity: range }),
     setCountries: (countries) => set({ countries }),
     toggleCountry: (country) =>

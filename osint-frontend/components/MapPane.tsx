@@ -605,42 +605,8 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
-      {/* Marker colour legend — bottom-right, fades on hover so it
-       *  doesn't fight the time scrubber. */}
-      <div className="pointer-events-none absolute bottom-16 right-3 z-20 hidden flex-col gap-1 rounded-md border border-neutral-800 bg-neutral-950/85 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400 backdrop-blur sm:flex">
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#38bdf8" }} aria-hidden="true" />
-          news
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#a3a3a3" }} aria-hidden="true" />
-          geopolitical
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#ef4444" }} aria-hidden="true" />
-          hazard / quake
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#f97316" }} aria-hidden="true" />
-          GDACS alert
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#eab308" }} aria-hidden="true" />
-          fire
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#22c55e" }} aria-hidden="true" />
-          market
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#06b6d4" }} aria-hidden="true" />
-          ADS-B
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#a855f7" }} aria-hidden="true" />
-          cyber
-        </div>
-      </div>
+      {/* The marker legend moved into the left filter rail (icons + colours +
+          toggles) so it is interactive, not a static key in the corner. */}
 
       <FilterRail pane="map" side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />

@@ -1,7 +1,22 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, ChevronsUpDown, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react"
+import {
+  Activity,
+  AlertTriangle,
+  Check,
+  ChevronsUpDown,
+  Flame,
+  Landmark,
+  type LucideIcon,
+  Mountain,
+  Newspaper,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  TrendingUp,
+  X,
+} from "lucide-react"
 import { formatDistanceToNowStrict } from "date-fns"
 import { useEvents } from "@/app/providers"
 import { useEventsInWindow } from "@/lib/queries"
@@ -86,6 +101,18 @@ function countryFlagEmoji(iso: string): string {
   return String.fromCodePoint(...codePoints)
 }
 
+/** Per-source type icon so the rail reads at a glance (quake / fire / storm…)
+ *  instead of a bare colour dot. */
+const SOURCE_ICONS: Record<SourceKey, LucideIcon> = {
+  NEWS: Newspaper,
+  GDELT: Landmark,
+  USGS: Activity,
+  GDACS: AlertTriangle,
+  FIRMS: Flame,
+  EONET: Mountain,
+  yfinance: TrendingUp,
+}
+
 interface FilterRailProps {
   pane: Pane
   side: "left" | "right"
@@ -104,6 +131,7 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
   const satelliteGroup = useStore((s) => s.satelliteGroup)
   const showCelestial = useStore((s) => s.showCelestial)
   const toggleSource = useStore((s) => s.toggleSource)
+  const setAllSources = useStore((s) => s.setAllSources)
   const setSeverity = useStore((s) => s.setSeverity)
   const toggleCountry = useStore((s) => s.toggleCountry)
   const setKeyword = useStore((s) => s.setKeyword)
@@ -327,21 +355,28 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
             </span>
           )}
         </button>
-        {/* Source dots as quick toggles */}
-        {paneFilters.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            aria-label={`${f.label} ${sources[f.key] ? "on" : "off"}`}
-            onClick={() => toggleSource(f.key)}
-            className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full transition-opacity"
-              style={{ backgroundColor: f.hex, opacity: sources[f.key] ? 1 : 0.25 }}
-            />
-          </button>
-        ))}
+        {/* Source type icons as quick toggles */}
+        {paneFilters.map((f) => {
+          const Icon = SOURCE_ICONS[f.key]
+          const on = sources[f.key]
+          return (
+            <button
+              key={f.key}
+              type="button"
+              aria-label={`${f.label} ${on ? "on" : "off"}`}
+              aria-pressed={on}
+              onClick={() => toggleSource(f.key)}
+              className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
+            >
+              <span
+                className="grid h-5 w-5 place-items-center rounded-md transition-opacity"
+                style={{ backgroundColor: f.hex, opacity: on ? 1 : 0.25 }}
+              >
+                {Icon && <Icon className="h-3 w-3 text-neutral-950" strokeWidth={2.5} />}
+              </span>
+            </button>
+          )
+        })}
         {isGlobe && (
           <button
             type="button"
@@ -415,31 +450,67 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
 
           {tab === "filters" && (
           <>
-          {/* Source toggles */}
+          {/* Source toggles — every source on by default; click one to hide it
+           *  (e.g. mute the quakes when they crowd the map). Select-all /
+           *  clear-all flip them in one go. */}
           <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+                Layers
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAllSources(true)}
+                  className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  All
+                </button>
+                <span className="text-neutral-700">·</span>
+                <button
+                  type="button"
+                  onClick={() => setAllSources(false)}
+                  className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  None
+                </button>
+              </div>
+            </div>
             {paneFilters.map((f) => {
               const n = sourceCounts.get(f.key) ?? 0
+              const Icon = SOURCE_ICONS[f.key]
+              const on = sources[f.key]
               return (
                 <button
                   key={f.key}
                   type="button"
+                  aria-pressed={on}
                   onClick={() => toggleSource(f.key)}
                   className={cn(
                     "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
-                    sources[f.key]
+                    on
                       ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
                       : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
                   )}
                 >
                   <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: f.hex, opacity: sources[f.key] ? 1 : 0.3 }}
-                  />
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-md transition-opacity"
+                    style={{ backgroundColor: f.hex, opacity: on ? 1 : 0.25 }}
+                  >
+                    {Icon && <Icon className="h-3.5 w-3.5 text-neutral-950" strokeWidth={2.5} />}
+                  </span>
                   <span className="flex-1">{f.label}</span>
                   <span className="font-mono text-[10px] tabular-nums text-neutral-400">
                     {n.toLocaleString()}
                   </span>
-                  <span className="font-mono text-[10px] uppercase text-neutral-500">{f.key}</span>
+                  <span
+                    className={cn(
+                      "grid h-4 w-4 shrink-0 place-items-center rounded-sm border",
+                      on ? "border-emerald-500 bg-emerald-500/20" : "border-neutral-700",
+                    )}
+                  >
+                    {on && <Check className="h-3 w-3 text-emerald-400" strokeWidth={3} />}
+                  </span>
                 </button>
               )
             })}
