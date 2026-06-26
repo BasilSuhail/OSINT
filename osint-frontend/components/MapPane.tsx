@@ -26,7 +26,6 @@ import {
 } from "@/lib/hazardSymbols"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
-import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
 import { PaneStatus } from "./PaneStatus"
 import { TimeScrubber } from "./TimeScrubber"
@@ -49,6 +48,10 @@ interface MapPaneProps {
   onRailOpenChange: (open: boolean) => void
   onSelectCountry: (iso: string) => void
   onCount: (n: number) => void
+  /** Bubble a clicked event up to the shared centred detail overlay. */
+  onSelectEvent: (ev: VisibleEvent) => void
+  /** Id of the currently-selected event (drives the expanded cyclone footprint). */
+  selectedEventId: VisibleEvent["id"] | null
 }
 
 interface Positioned {
@@ -217,7 +220,7 @@ function ClusterChip({
   )
 }
 
-export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount }: MapPaneProps) {
+export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount, onSelectEvent, selectedEventId }: MapPaneProps) {
   const { events, windowEnd, total } = useEventsInWindow(useStore, "map")
   const { byCountry } = useLatestScores()
   const scoredGeo = useScoredGeo(byCountry)
@@ -225,7 +228,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const configured = useConfigured()
   const allEvents = useEvents()
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
-  const [selected, setSelected] = useState<{ ev: VisibleEvent; lat: number; lon: number } | null>(null)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const [openCluster, setOpenCluster] = useState<ClusterMarker | null>(null)
 
@@ -315,10 +317,12 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     const features: HazardFeature[] = []
     for (const { ev } of positioned) {
       if (ev.category !== "hazard" && ev.category !== "weather") continue
-      for (const f of footprintFeatures(ev)) features.push(f)
+      // Selecting a cyclone expands it from its track line to the full footprint
+      // (wind cones + track); other hazards ignore the flag.
+      for (const f of footprintFeatures(ev, ev.id === selectedEventId)) features.push(f)
     }
     return { type: "FeatureCollection", features }
-  }, [positioned])
+  }, [positioned, selectedEventId])
 
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
@@ -377,18 +381,11 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
 
   const handleSelectMarker = useCallback(
     (ev: VisibleEvent) => {
-      const lat = ev.lat
-      const lon = ev.lon
-      if (lat == null || lon == null) {
-        if (!ev.country) return
-        const c = centroids.get(ev.country)
-        if (!c) return
-        setSelected({ ev, lat: c[1], lon: c[0] })
-        return
-      }
-      setSelected({ ev, lat, lon })
+      // Bubble up to the shared centred detail overlay (#207); the map no longer
+      // renders its own popup. Selecting a cyclone also expands its footprint.
+      onSelectEvent(ev)
     },
-    [centroids],
+    [onSelectEvent],
   )
 
   /** Cluster click: zoom in two levels at the centroid. The cell precision
@@ -505,26 +502,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           ))}
         </AnimatePresence>
 
-        {selected && (
-          <Popup
-            longitude={selected.lon}
-            latitude={selected.lat}
-            anchor="bottom"
-            closeButton={false}
-            closeOnClick={false}
-            onClose={() => setSelected(null)}
-            offset={12}
-            maxWidth="360px"
-            className="osint-popup"
-          >
-            <EventDetailCard
-              event={selected.ev}
-              onSelectCountry={onSelectCountry}
-              onClose={() => setSelected(null)}
-              embedded
-            />
-          </Popup>
-        )}
 
         {openCluster && (
           <Popup

@@ -90,7 +90,11 @@ function poly(ring: [number, number][], color: string, fillOpacity: number): Haz
  *  straight through to the map layers with the colour the backend tagged. */
 const LINE_TYPES = new Set(["LineString", "MultiLineString"])
 
-function realFootprintFeatures(p: Record<string, unknown>, kind: HazardKind): HazardFeature[] | null {
+function realFootprintFeatures(
+  p: Record<string, unknown>,
+  kind: HazardKind,
+  expanded: boolean,
+): HazardFeature[] | null {
   const fc = p.footprint_geojson as
     | { features?: Array<{ geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }> }
     | undefined
@@ -99,9 +103,10 @@ function realFootprintFeatures(p: Record<string, unknown>, kind: HazardKind): Ha
   for (const f of fc.features) {
     const geom = f.geometry
     if (!geom || typeof geom.type !== "string" || geom.coordinates == null) continue
-    // Cyclones are minimised to their track line only — the wind-probability
-    // cones span thousands of km and crowd the whole map. Drop the polygons.
-    if (kind === "TC" && !LINE_TYPES.has(geom.type)) continue
+    // Cyclones collapse to their track line when not selected — the
+    // wind-probability cones span thousands of km and crowd the whole map.
+    // Clicking the storm expands it to the full footprint (cones + track).
+    if (kind === "TC" && !expanded && !LINE_TYPES.has(geom.type)) continue
     const props = f.properties ?? {}
     const color = typeof props.color === "string" ? props.color : ORANGE
     const fillOpacity = typeof props.fillOpacity === "number" ? props.fillOpacity : 0.2
@@ -118,10 +123,10 @@ function realFootprintFeatures(p: Record<string, unknown>, kind: HazardKind): Ha
  *  backend has enriched it; otherwise falls back to a synthesized circle (largest
  *  first so smaller, hotter rings paint on top). Empty when the event has no
  *  coordinates or no usable size. */
-export function footprintFeatures(ev: EventRow): HazardFeature[] {
+export function footprintFeatures(ev: EventRow, expanded = false): HazardFeature[] {
   const p = payload(ev)
   const kind = hazardKind(ev)
-  const real = realFootprintFeatures(p, kind)
+  const real = realFootprintFeatures(p, kind, expanded)
   if (real) return real
 
   const lon = ev.lon

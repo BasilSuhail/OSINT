@@ -35,6 +35,23 @@ function asString(v: unknown): string | null {
   return null
 }
 
+/** GDACS event-type codes → full human names so the viewer never has to decode
+ *  "TC" / "FL" or visit the source. */
+const HAZARD_TYPE_NAMES: Record<string, string> = {
+  EQ: "Earthquake",
+  TC: "Tropical Cyclone",
+  FL: "Flood",
+  VO: "Volcano",
+  DR: "Drought",
+  WF: "Wildfire",
+}
+
+function hazardTypeName(code: unknown): string | null {
+  const c = asString(code)
+  if (!c) return null
+  return HAZARD_TYPE_NAMES[c.toUpperCase()] ?? c
+}
+
 /**
  * Per-source signal block rendered inside EventDetailCard. Picks out the
  * fields a viewer actually cares about for each source so they don't have
@@ -85,8 +102,9 @@ export function SourceSignals({ ev }: { ev: EventRow }) {
     const mag = asNumber(p.magnitude)
     const depth = asNumber(p.depth_km)
     rows = [
-      { label: "type", value: asString(p.event_type)?.toUpperCase() ?? null },
-      { label: "alert", value: asString(p.alert_level)?.toUpperCase() ?? null },
+      { label: "type", value: hazardTypeName(p.event_type) },
+      { label: "name", value: asString(p.eventname) },
+      { label: "alert level", value: asString(p.alert_level) },
       { label: "magnitude", value: mag !== null ? `M${mag.toFixed(1)}` : null },
       { label: "depth", value: depth !== null ? `${depth.toFixed(1)} km` : null },
     ]

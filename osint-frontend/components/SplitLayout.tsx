@@ -6,6 +6,7 @@ import { format } from "date-fns"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { useConfigured, useEvents } from "@/app/providers"
 import { SOURCE_FILTERS } from "@/lib/types"
+import type { VisibleEvent } from "@/lib/queries"
 import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneStore } from "@/stores/rightPaneStore"
@@ -13,6 +14,8 @@ import type { FilterStore } from "@/stores/createFilterStore"
 import { ConnectionIndicator } from "./ConnectionIndicator"
 import { CountrySidePanel } from "./CountrySidePanel"
 import { DashboardSection } from "./DashboardSection"
+import { DetailOverlay } from "./DetailOverlay"
+import { EventDetailCard } from "./EventDetailCard"
 
 const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
   ssr: false,
@@ -51,8 +54,13 @@ export function SplitLayout() {
   const [focused, setFocused] = useState<"left" | "right">("left")
   const [activePane, setActivePane] = useState<"left" | "right">("left")
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<VisibleEvent | null>(null)
+  // Separator position as a % of the viewport, so detail overlays can centre on
+  // the divider and follow it as it is dragged (#207). 50 until the first layout.
+  const [separatorPct, setSeparatorPct] = useState(50)
   const [leftCount, setLeftCount] = useState(0)
   const [rightCount, setRightCount] = useState(0)
+  const overlayPct = isNarrow ? 50 : separatorPct
 
   // re-render trigger for filter summaries when toggles change
   const [, setTick] = useState(0)
@@ -150,6 +158,8 @@ export function SplitLayout() {
               onRailOpenChange={setLeftRailOpen}
               onSelectCountry={onSelectCountry}
               onCount={setLeftCount}
+              onSelectEvent={setSelectedEvent}
+              selectedEventId={selectedEvent?.id ?? null}
             />
           </div>
           <div
@@ -161,15 +171,22 @@ export function SplitLayout() {
               useStore={useRightPaneStore}
               railOpen={rightRailOpen}
               onRailOpenChange={setRightRailOpen}
-              onSelectCountry={onSelectCountry}
               onCount={setRightCount}
+              onSelectEvent={setSelectedEvent}
             />
           </div>
           <CountrySidePanel country={selectedCountry} onClose={() => setSelectedCountry(null)} />
         </div>
       ) : (
-        <PanelGroup orientation="horizontal" className="h-full w-full">
-          <Panel defaultSize={50} minSize={20}>
+        <PanelGroup
+          orientation="horizontal"
+          className="h-full w-full"
+          onLayoutChange={(layout: Record<string, number>) => {
+            const pct = layout["map"]
+            if (typeof pct === "number") setSeparatorPct(pct)
+          }}
+        >
+          <Panel id="map" defaultSize={50} minSize={20}>
             <div
               className="h-full w-full"
               onMouseEnter={() => setFocused("left")}
@@ -181,6 +198,8 @@ export function SplitLayout() {
                 onRailOpenChange={setLeftRailOpen}
                 onSelectCountry={onSelectCountry}
                 onCount={setLeftCount}
+                onSelectEvent={setSelectedEvent}
+                selectedEventId={selectedEvent?.id ?? null}
               />
             </div>
           </Panel>
@@ -200,8 +219,8 @@ export function SplitLayout() {
                 useStore={useRightPaneStore}
                 railOpen={rightRailOpen}
                 onRailOpenChange={setRightRailOpen}
-                onSelectCountry={onSelectCountry}
                 onCount={setRightCount}
+                onSelectEvent={setSelectedEvent}
               />
               <CountrySidePanel
                 country={selectedCountry}
@@ -211,6 +230,19 @@ export function SplitLayout() {
           </Panel>
         </PanelGroup>
       )}
+
+      {/* Event detail — centred on the split separator, follows it as it drags.
+          Map + globe stay live behind it (#207). */}
+      <DetailOverlay open={!!selectedEvent} leftPct={overlayPct}>
+        {selectedEvent && (
+          <EventDetailCard
+            event={selectedEvent}
+            onSelectCountry={onSelectCountry}
+            onClose={() => setSelectedEvent(null)}
+            embedded
+          />
+        )}
+      </DetailOverlay>
 
       {/* Bottom-left latest timestamp */}
       <div className="pointer-events-none absolute bottom-[calc(8%+8px)] left-3 z-30 min-h-[16px]">

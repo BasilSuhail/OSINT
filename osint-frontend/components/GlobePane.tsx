@@ -22,7 +22,6 @@ import { useDriftedNeos, useNeos, type NeoAsteroid } from "@/lib/neos"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { EphemerisChip } from "./EphemerisChip"
-import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
 import { PaneStatus } from "./PaneStatus"
 import { SatelliteDetailCard } from "./SatelliteDetailCard"
@@ -159,11 +158,12 @@ interface GlobePaneProps {
   useStore: FilterStore
   railOpen: boolean
   onRailOpenChange: (open: boolean) => void
-  onSelectCountry: (iso: string) => void
   onCount: (n: number) => void
+  /** Bubble a clicked event up to the shared centred detail overlay (#207). */
+  onSelectEvent: (ev: VisibleEvent) => void
 }
 
-export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount }: GlobePaneProps) {
+export function GlobePane({ useStore, railOpen, onRailOpenChange, onCount, onSelectEvent }: GlobePaneProps) {
   const { events, windowEnd, total } = useEventsInWindow(useStore, "globe")
   const configured = useConfigured()
   const allEvents = useEvents()
@@ -176,7 +176,6 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [autoRotate, setAutoRotate] = useState(true)
-  const [selected, setSelected] = useState<VisibleEvent | null>(null)
   const [selectedSat, setSelectedSat] = useState<Satellite | null>(null)
   const [selectedCelestial, setSelectedCelestial] = useState<CelestialBody | null>(null)
   const [showAsteroids, setShowAsteroids] = useState(true)
@@ -359,9 +358,12 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
     return out
   }, [events])
 
-  const handlePointClick = useCallback((pt: object) => {
-    setSelected(pt as VisibleEvent)
-  }, [])
+  const handlePointClick = useCallback(
+    (pt: object) => {
+      onSelectEvent(pt as VisibleEvent)
+    },
+    [onSelectEvent],
+  )
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#000010" }}>
@@ -510,16 +512,7 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onSelectCountr
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
-      {/* Floating event card */}
-      {selected && (
-        <div className="absolute left-1/2 top-4 z-40 -translate-x-1/2">
-          <EventDetailCard
-            event={selected}
-            onSelectCountry={onSelectCountry}
-            onClose={() => setSelected(null)}
-          />
-        </div>
-      )}
+      {/* Event detail now renders in the shared centred overlay (#207). */}
 
       {/* Celestial floating card */}
       {selectedCelestial && (

@@ -48,9 +48,20 @@ function bestTitle(ev: EventRow): string {
   if (source === "gdacs") {
     const mag = typeof p?.magnitude === "number" ? p.magnitude : null
     const rawType = typeof p?.event_type === "string" ? p.event_type.toUpperCase() : null
-    const type = rawType === "EQ" ? "EARTHQUAKE" : rawType
+    const names: Record<string, string> = {
+      EQ: "Earthquake",
+      TC: "Tropical Cyclone",
+      FL: "Flood",
+      VO: "Volcano",
+      DR: "Drought",
+      WF: "Wildfire",
+    }
+    const type = rawType ? (names[rawType] ?? rawType) : null
+    const name = typeof p?.eventname === "string" ? p.eventname : null
     const place = typeof p?.country_name === "string" ? p.country_name : null
     if (mag && place) return `M${mag.toFixed(1)} · ${place}`
+    // Storms carry a name (e.g. HALONG) — surface it: "Tropical Cyclone HALONG · Japan".
+    if (type && name && place) return `${type} ${name} · ${place}`
     if (type && place) return `${type} · ${place}`
   }
 
