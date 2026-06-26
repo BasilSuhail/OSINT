@@ -3,12 +3,14 @@
 import type { EventRow } from "./types"
 import { circlePolygon, fireRadiusKm, parseBurnedHa, quakeBands } from "./footprints"
 
-/** Minimal GeoJSON polygon feature for synthesized footprints (avoids a
- *  @types/geojson dependency — mirrors the local types in lib/geo.ts). */
+/** Minimal GeoJSON feature for footprints (avoids a @types/geojson dependency —
+ *  mirrors the local types in lib/geo.ts). Geometry is loose so it carries both
+ *  synthesized circles (Polygon) and real upstream geometry passed straight
+ *  through (MultiLineString MMI contours, Polygon/MultiPolygon burn scars). */
 export interface HazardFeature {
   type: "Feature"
   properties: { color: string; fillOpacity: number }
-  geometry: { type: "Polygon"; coordinates: [number, number][][] }
+  geometry: { type: string; coordinates: unknown }
 }
 
 export type HazardKind = "EQ" | "WF" | "TC" | "FL" | "VO" | "other"
@@ -28,20 +30,32 @@ export function hazardKind(ev: EventRow): HazardKind {
   if (src.includes("firms")) return "WF"
   const t = String(payload(ev).event_type ?? "").toUpperCase()
   if (t === "EQ" || t === "WF" || t === "TC" || t === "FL" || t === "VO") return t
+  // EONET has no event_type code — infer the kind from the title so its
+  // storms / volcanoes get the right symbol instead of a plain dot.
+  const title = String(payload(ev).title ?? "").toLowerCase()
+  if (/storm|typhoon|cyclone|hurricane/.test(title)) return "TC"
+  if (title.includes("volcano")) return "VO"
+  if (title.includes("flood")) return "FL"
+  if (title.includes("wildfire") || title.includes("fire")) return "WF"
   return "other"
 }
 
 export function hazardColor(ev: EventRow): string {
+  // Earthquakes are coloured by magnitude across BOTH sources (USGS + GDACS) so
+  // the same quake never reads orange from one feed and red from another — the
+  // colour was inconsistent because USGS used magnitude while GDACS used its
+  // alert level. M>=6 red, M>=4.5 orange, else green.
+  if (hazardKind(ev) === "EQ") {
+    const mag = Number(payload(ev).magnitude ?? 0)
+    if (mag >= 6) return RED
+    if (mag >= 4.5) return ORANGE
+    return GREEN
+  }
+  // Non-quake hazards: colour by the GDACS alert level.
   const alert = String(payload(ev).alert_level ?? "").toLowerCase()
   if (alert === "red") return RED
   if (alert === "orange") return ORANGE
   if (alert === "green") return GREEN
-  const src = (ev.source ?? "").toLowerCase()
-  if (src.includes("usgs")) {
-    const mag = Number(payload(ev).magnitude ?? 0)
-    if (mag >= 6) return RED
-    if (mag >= 4.5) return ORANGE
-  }
   return GREEN
 }
 
@@ -71,14 +85,51 @@ function poly(ring: [number, number][], color: string, fillOpacity: number): Haz
   }
 }
 
-/** Synthesized footprint polygons for an event (largest first so smaller, hotter
- *  rings paint on top). Empty when the event has no coordinates or no usable size. */
+/** Real footprint geometry stashed on the payload by the backend enrichment
+ *  (issue #205): USGS ShakeMap MMI contours / GDACS burn-flood polygons. Passed
+ *  straight through to the map layers with the colour the backend tagged. */
+const LINE_TYPES = new Set(["LineString", "MultiLineString"])
+
+function realFootprintFeatures(p: Record<string, unknown>, kind: HazardKind): HazardFeature[] | null {
+  const fc = p.footprint_geojson as
+    | { features?: Array<{ geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }> }
+    | undefined
+  if (!fc || !Array.isArray(fc.features) || fc.features.length === 0) return null
+  const out: HazardFeature[] = []
+  for (const f of fc.features) {
+    const geom = f.geometry
+    if (!geom || typeof geom.type !== "string" || geom.coordinates == null) continue
+    // Cyclones are minimised to their track line only — the wind-probability
+    // cones span thousands of km and crowd the whole map. Drop the polygons.
+    if (kind === "TC" && !LINE_TYPES.has(geom.type)) continue
+    const props = f.properties ?? {}
+    const color = typeof props.color === "string" ? props.color : ORANGE
+    const fillOpacity = typeof props.fillOpacity === "number" ? props.fillOpacity : 0.2
+    out.push({
+      type: "Feature",
+      properties: { color, fillOpacity },
+      geometry: { type: geom.type, coordinates: geom.coordinates },
+    })
+  }
+  return out.length > 0 ? out : null
+}
+
+/** Footprint polygons for an event. Prefers the real upstream geometry when the
+ *  backend has enriched it; otherwise falls back to a synthesized circle (largest
+ *  first so smaller, hotter rings paint on top). Empty when the event has no
+ *  coordinates or no usable size. */
 export function footprintFeatures(ev: EventRow): HazardFeature[] {
+  const p = payload(ev)
+  const kind = hazardKind(ev)
+  const real = realFootprintFeatures(p, kind)
+  if (real) return real
+
   const lon = ev.lon
   const lat = ev.lat
   if (lon == null || lat == null) return []
-  const kind = hazardKind(ev)
-  const p = payload(ev)
+  // Cyclones with no real track have nothing compact to draw — keep the pin
+  // only rather than a huge synthesized extent circle.
+  if (kind === "TC") return []
 
   if (kind === "EQ") {
     const mag = Number(p.magnitude ?? 0)

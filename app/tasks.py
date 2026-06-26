@@ -13,7 +13,9 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
+import httpx
 from celery.schedules import crontab
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.celery_app import app
@@ -21,12 +23,16 @@ from app.cii.scoring import CII_METHOD_VERSION
 from app.cii.task import _compute_cii_body
 from app.composite.task import _compute_composite_body
 from app.db import session_scope
-from app.db_models import IngestFailureRow, IngestHealthRow
+from app.db_models import EventRow, IngestFailureRow, IngestHealthRow
+from app.enrichment.footprint import USER_AGENT, footprint_for_event
 from app.fetcher_registry import get_fetcher
 from app.housekeeping import prune_events
 from app.persistence import upsert_events
 from app.sources.rss_registry import feed_cadence_map
 from app.watchdog import check_sources
+
+#: Hazard sources whose real footprint geometry we enrich (issue #205).
+_FOOTPRINT_SOURCES: tuple[str, ...] = ("usgs-quake", "gdacs")
 
 
 def _record_success(session: Session, *, source: str) -> None:
@@ -116,6 +122,60 @@ def compute_cii(method_version: str = CII_METHOD_VERSION) -> dict[str, Any]:
     ``score_name`` discriminator.
     """
     return _compute_cii_body(method_version=method_version)
+
+
+def _enrich_footprints_body(
+    *, limit: int = 200, client: httpx.Client | None = None
+) -> dict[str, Any]:
+    """Backfill real footprint geometry onto hazard events missing it.
+
+    Walks the most recent hazard rows (USGS quakes / GDACS events) that have no
+    ``payload.footprint_geojson`` yet, fetches the real geometry from upstream,
+    and writes it into the payload. Best-effort: any single fetch failing leaves
+    that row untouched for the next run. ``upsert_events`` never updates existing
+    rows (ON CONFLICT DO NOTHING), so this is the only path that mutates them.
+    """
+    owns_client = client is None
+    if client is None:
+        client = httpx.Client(timeout=30.0, headers={"User-Agent": USER_AGENT})
+    scanned = 0
+    enriched = 0
+    try:
+        with session_scope() as session:
+            stmt = (
+                select(EventRow)
+                .where(EventRow.source.in_(_FOOTPRINT_SOURCES))
+                .order_by(EventRow.occurred_at.desc())
+                .limit(limit)
+            )
+            for row in session.execute(stmt).scalars():
+                payload = dict(row.payload or {})
+                if "footprint_geojson" in payload:
+                    continue
+                scanned += 1
+                geojson = footprint_for_event(row.source, payload, client=client)
+                if geojson is None:
+                    continue
+                payload["footprint_geojson"] = geojson
+                row.payload = payload  # reassign so SQLAlchemy flags the jsonb dirty
+                enriched += 1
+    finally:
+        if owns_client:
+            client.close()
+    return {"scanned": scanned, "enriched": enriched}
+
+
+@app.task(
+    name="app.tasks.enrich_footprints",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def enrich_footprints(limit: int = 200) -> dict[str, Any]:
+    """Celery entry point for real hazard footprint enrichment (issue #205)."""
+    return _enrich_footprints_body(limit=limit)
 
 
 @app.task(name="app.tasks.ingest_watchdog")
@@ -229,6 +289,12 @@ app.conf.beat_schedule = {
     "cii-hourly": {
         "task": "app.tasks.compute_cii",
         "schedule": crontab(hour="*/1", minute=25),
+    },
+    # Real hazard footprint geometry (issue #205). Runs a few minutes after the
+    # USGS/GDACS fetchers so freshly-ingested events get their real shapes.
+    "enrich-footprints-15min": {
+        "task": "app.tasks.enrich_footprints",
+        "schedule": crontab(minute="11,26,41,56"),
     },
     "ingest-watchdog-15min": {
         "task": "app.tasks.ingest_watchdog",

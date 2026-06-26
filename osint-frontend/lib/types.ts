@@ -121,7 +121,7 @@ export const SOURCE_FILTERS: SourceFilterDef[] = [
   { key: "USGS", label: "Earthquakes", category: "hazard", color: "rgb(239,68,68)", hex: "#ef4444", pane: "map" },
   { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316", pane: "map" },
   { key: "FIRMS", label: "Active fires (satellite)", category: "weather", color: "rgb(234,179,8)", hex: "#eab308", pane: "globe" },
-  { key: "EONET", label: "Natural events (NASA)", category: "hazard", color: "rgb(217,70,239)", hex: "#d946ef", pane: "globe" },
+  { key: "EONET", label: "Natural events (NASA)", category: "hazard", color: "rgb(217,70,239)", hex: "#d946ef", pane: "map" },
   { key: "NEWS", label: "News (RSS)", category: "news", color: "rgb(56,189,248)", hex: "#38bdf8", pane: "map" },
 ]
 

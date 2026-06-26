@@ -17,6 +17,11 @@ describe("hazardKind", () => {
     expect(hazardKind(row({ payload: { event_type: "TC" } }))).toBe("TC")
     expect(hazardKind(row({ payload: { event_type: "FL" } }))).toBe("FL")
   })
+  it("infers EONET kind from the title", () => {
+    expect(hazardKind(row({ source: "eonet", payload: { title: "Typhoon Mekkhala" } }))).toBe("TC")
+    expect(hazardKind(row({ source: "eonet", payload: { title: "Tropical Storm Higos" } }))).toBe("TC")
+    expect(hazardKind(row({ source: "eonet", payload: { title: "Kilauea Volcano" } }))).toBe("VO")
+  })
   it("falls back to other", () => expect(hazardKind(row({ source: "gdelt", payload: {} }))).toBe("other"))
 })
 
@@ -26,10 +31,20 @@ describe("hazardColor", () => {
     expect(hazardColor(row({ payload: { alert_level: "Orange" } }))).toBe("#f97316")
     expect(hazardColor(row({ payload: { alert_level: "Green" } }))).toBe("#22c55e")
   })
-  it("falls back to USGS magnitude bands", () => {
+  it("colours USGS quakes by magnitude band", () => {
     expect(hazardColor(row({ source: "usgs-quake", payload: { magnitude: 6.4 } }))).toBe("#ef4444")
     expect(hazardColor(row({ source: "usgs-quake", payload: { magnitude: 5.0 } }))).toBe("#f97316")
     expect(hazardColor(row({ source: "usgs-quake", payload: { magnitude: 3.0 } }))).toBe("#22c55e")
+  })
+  it("colours quakes consistently across sources (magnitude, not GDACS alert)", () => {
+    // A GDACS quake uses magnitude too — so the same M5.0 quake reads orange
+    // whether it came from USGS or GDACS, even if GDACS tagged it green alert.
+    const usgs = hazardColor(row({ source: "usgs-quake", payload: { magnitude: 5.0 } }))
+    const gdacs = hazardColor(
+      row({ source: "gdacs", payload: { event_type: "EQ", magnitude: 5.0, alert_level: "Green" } }),
+    )
+    expect(gdacs).toBe(usgs)
+    expect(gdacs).toBe("#f97316")
   })
 })
 
@@ -59,13 +74,74 @@ describe("footprintFeatures", () => {
     expect(f[0].properties?.color).toBeTypeOf("string")
     expect(f[0].properties?.fillOpacity).toBeTypeOf("number")
   })
-  it("emits one severity-extent circle for a storm", () => {
+  it("emits no synthesized circle for a storm (cyclones are minimised)", () => {
     const f = footprintFeatures(row({ payload: { event_type: "TC", alert_level: "Orange" }, severity: 0.7 }))
+    expect(f).toHaveLength(0)
+  })
+  it("keeps only the track line for a cyclone with real geometry", () => {
+    const f = footprintFeatures(
+      row({
+        source: "gdacs",
+        payload: {
+          event_type: "TC",
+          alert_level: "Green",
+          footprint_geojson: {
+            type: "FeatureCollection",
+            features: [
+              { geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] }, properties: { color: "#22c55e", fillOpacity: 0.25 } },
+              { geometry: { type: "LineString", coordinates: [[0, 0], [1, 1], [2, 2]] }, properties: { color: "#22c55e", fillOpacity: 0 } },
+            ],
+          },
+        },
+      }),
+    )
     expect(f).toHaveLength(1)
-    expect(f[0].properties?.color).toBeTypeOf("string")
-    expect(f[0].properties?.fillOpacity).toBeTypeOf("number")
+    expect(f[0].geometry.type).toBe("LineString")
   })
   it("emits nothing when there is no usable geometry", () => {
     expect(footprintFeatures(row({ source: "gdelt", payload: {}, lat: null, lon: null }))).toHaveLength(0)
+  })
+  it("passes real upstream geometry through when payload has footprint_geojson", () => {
+    const f = footprintFeatures(
+      row({
+        source: "gdacs",
+        payload: {
+          event_type: "WF",
+          alert_level: "Red",
+          footprint_geojson: {
+            type: "FeatureCollection",
+            features: [
+              {
+                geometry: { type: "MultiPolygon", coordinates: [[[[0, 0], [1, 0], [1, 1], [0, 0]]]] },
+                properties: { color: "#ef4444", fillOpacity: 0.25 },
+              },
+            ],
+          },
+        },
+      }),
+    )
+    expect(f).toHaveLength(1)
+    expect(f[0].geometry.type).toBe("MultiPolygon")
+    expect(f[0].properties.color).toBe("#ef4444")
+  })
+  it("prefers real geometry over the synthesized circle even with coords present", () => {
+    const f = footprintFeatures(
+      row({
+        source: "usgs-quake",
+        lat: 10,
+        lon: 20,
+        payload: {
+          magnitude: 6.5,
+          footprint_geojson: {
+            type: "FeatureCollection",
+            features: [
+              { geometry: { type: "MultiLineString", coordinates: [[[0, 0], [1, 1]]] }, properties: { color: "#90f2ff", fillOpacity: 0 } },
+            ],
+          },
+        },
+      }),
+    )
+    expect(f).toHaveLength(1)
+    expect(f[0].geometry.type).toBe("MultiLineString")
   })
 })

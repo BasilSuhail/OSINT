@@ -268,7 +268,14 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   }, [mapRef])
 
   const positioned = useMemo<Positioned[]>(() => {
-    const out: Positioned[] = []
+    // Two buckets so the MAX_MARKERS budget never drops sparse-but-important
+    // hazards. News / GDELT pour in continuously and used to fill the whole 700
+    // budget (occurred_at-ordered), starving the handful of GDACS floods /
+    // cyclones / quakes — the map showed only fire + quakes. Keep ALL
+    // non-clusterable rows (hazards, quakes, market, EONET) and spend the cap
+    // only on the clusterable firehose.
+    const priority: Positioned[] = []
+    const fill: Positioned[] = []
     for (const ev of events) {
       let lat = ev.lat
       let lon = ev.lon
@@ -293,17 +300,17 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         }
       }
       if (lat == null || lon == null) continue
-      out.push({ ev, lat, lon })
-      if (out.length >= MAX_MARKERS) break
+      ;(isClusterable(ev) ? fill : priority).push({ ev, lat, lon })
     }
-    return out
+    // All priority rows, then clusterable until the total budget is spent.
+    return priority.concat(fill.slice(0, Math.max(0, MAX_MARKERS - priority.length)))
   }, [events, centroids])
 
-  /** Merged synthesized footprints for hazard / weather events. Rendered as
-   *  MapLibre GeoJSON fill+line layers UNDER the markers, revealed on zoom-in
-   *  (opacity ramps 0→full between zoom 4 and 6) so the world view stays clean
-   *  pins-only and zooming in shows the event's real extent (shake rings, burn
-   *  scar). */
+  /** Footprints for all hazards, revealed on zoom-in. Floods / fires / quakes /
+   *  volcanoes are compact geographical overlays (burn scar, flood extent, shake
+   *  rings) and stay on. Cyclones are minimised to just their track line in
+   *  footprintFeatures — their wind-probability cones span thousands of km and
+   *  buried the map in a green soup. */
   const hazardFootprints = useMemo<{ type: "FeatureCollection"; features: HazardFeature[] }>(() => {
     const features: HazardFeature[] = []
     for (const { ev } of positioned) {
@@ -441,8 +448,10 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             }}
           />
         </Source>
-        {/* Synthesized hazard footprints — revealed on zoom-in (opacity 0 at
-            zoom 4 → full at zoom 6). Sits under the country fill + markers. */}
+        {/* Hazard footprints — revealed on zoom-in (opacity 0 at zoom 4 → full
+            at zoom 6) so the world view stays clean pins. Burn scars / flood
+            extent / shake rings / volcano zones; cyclones show only their track
+            line (cones are minimised in footprintFeatures). Under the markers. */}
         <Source id="hazard-footprints" type="geojson" data={hazardFootprints}>
           <Layer
             id="hazard-footprint-fill"
