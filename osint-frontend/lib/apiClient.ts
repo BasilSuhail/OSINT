@@ -1,13 +1,4 @@
-import type { EventRow, ScoreRow } from "./types"
-
-export interface IngestHealthRow {
-  source: string
-  day: string
-  success_n: number | null
-  failure_n: number | null
-  last_success: string | null
-  last_failure: string | null
-}
+import type { EventRow, IngestHealthRow, ScoreRow } from "./types"
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 

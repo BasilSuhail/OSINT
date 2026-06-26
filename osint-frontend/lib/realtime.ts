@@ -48,7 +48,6 @@ export class EventBuffer {
   private lastEventAt: Date | null = null
   private lastSeenAt: Date | null = null
 
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private stopped = false
 
@@ -136,13 +135,6 @@ export class EventBuffer {
     }
   }
 
-  private stopHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer)
-      this.heartbeatTimer = null
-    }
-  }
-
   private startPolling(): void {
     if (this.pollTimer) return
     this.pollTimer = setInterval(() => {
@@ -178,7 +170,6 @@ export class EventBuffer {
 
   disconnect(): void {
     this.stopped = true
-    this.stopHeartbeat()
     this.stopPolling()
     if (this.source) {
       this.source.close()

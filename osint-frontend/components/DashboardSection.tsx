@@ -18,8 +18,8 @@ import {
   ZAxis,
 } from "recharts"
 import { useEvents } from "@/app/providers"
-import { fetchEvents, fetchIngestHealth, fetchScores, type IngestHealthRow } from "@/lib/apiClient"
-import type { EventRow, ScoreRow } from "@/lib/types"
+import { fetchEvents, fetchIngestHealth, fetchScores } from "@/lib/apiClient"
+import type { EventRow, IngestHealthRow, ScoreRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
 
