@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { useEvents } from "@/app/providers"
 import { fetchEvents, fetchScores as apiFetchScores } from "./apiClient"
-import { paneForEvent, sourceKeyForEvent, type EventRow, type Pane, type ScoreRow } from "./types"
+import { paneForEvent, sourceKeyForEvent, type EventRow, type HazardTypeKey, type Pane, type ScoreRow } from "./types"
+import { hazardKind } from "./hazardSymbols"
 import type { FilterStore } from "@/stores/createFilterStore"
 
 export interface VisibleEvent extends EventRow {
@@ -34,6 +35,7 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
   const allEvents = useEvents()
 
   const sources = useStore((s) => s.sources)
+  const hazardTypes = useStore((s) => s.hazardTypes)
   const severity = useStore((s) => s.severity)
   const countries = useStore((s) => s.countries)
   const keyword = useStore((s) => s.keyword)
@@ -75,6 +77,13 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
       const sk = sourceKeyForEvent(ev)
       if (!sk || !sources[sk]) continue
       if (pane && paneForEvent(ev) !== pane) continue
+      // Hazards are filtered by disaster TYPE, not their lump-sum source: hide
+      // just the volcanoes / cyclones / quakes the user muted. Unknown ("other")
+      // hazards always pass so nothing silently disappears.
+      if (ev.category === "hazard") {
+        const kind = hazardKind(ev)
+        if (kind !== "other" && hazardTypes[kind as HazardTypeKey] === false) continue
+      }
       if (ev.severity < severity[0] || ev.severity > severity[1]) continue
       if (countrySet.size > 0 && (!ev.country || !countrySet.has(ev.country))) continue
       if (kw) {
@@ -104,7 +113,7 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allEvents, sources, severity, countries, keyword, windowLengthMs, windowEndOffsetMs, pane])
+  }, [allEvents, sources, hazardTypes, severity, countries, keyword, windowLengthMs, windowEndOffsetMs, pane])
 }
 
 async function fetchScores(): Promise<ScoreRow[]> {
