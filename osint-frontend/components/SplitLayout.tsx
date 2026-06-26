@@ -96,7 +96,7 @@ export function SplitLayout() {
       <div className="relative h-dvh w-full overflow-hidden">
       {!configured && (
         <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
-          Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+          Local API unreachable — start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)
         </div>
       )}
 
