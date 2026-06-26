@@ -60,20 +60,31 @@ cd osint-frontend && pnpm install && cd ..
 
 ### ALL ON — every day (even if Docker is fully off)
 
-Run each long-lived process in its own terminal (or append `&` to background it):
+**Easiest — one command** brings up the stores + worker + beat + API (the
+backend runs in the **background**; logs land in `logs/`):
 
 ```bash
-# 1. stores — starts Docker containers if the engine/containers are down
-docker compose up -d                                   # postgres + redis
-
-# 2. backend workers + scheduler + read-API
-.venv/bin/celery -A app.celery_app worker -l info      # terminal A
-.venv/bin/celery -A app.celery_app beat   -l info      # terminal B
-.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000   # terminal C
-
-# 3. dashboard
-cd osint-frontend && pnpm dev                          # terminal D → http://localhost:3000
+make up                                 # stores + worker + beat + API (backgrounded)
+cd osint-frontend && pnpm dev           # dashboard → http://localhost:3000
 ```
+
+That's it. `make up` is safe to re-run — it skips anything already running and
+starts whatever is down. Watch the backend with `make logs`.
+
+<details><summary>Manual — one process per terminal (if you'd rather not background them)</summary>
+
+> ⚠️ Each command below **runs forever in the foreground** — it does not return
+> to a prompt, and `Ctrl-C` **stops that service**. Give each its own terminal
+> tab; don't run them one after another in the same one.
+
+```bash
+docker compose up -d                                       # stores (returns immediately)
+.venv/bin/celery -A app.celery_app worker -l info          # terminal A — stays running
+.venv/bin/celery -A app.celery_app beat   -l info          # terminal B — stays running
+.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000   # terminal C — stays running
+cd osint-frontend && pnpm dev                              # terminal D — stays running
+```
+</details>
 
 Open **http://localhost:3000**. The dashboard reads the API at
 `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). Serving the dashboard
@@ -83,15 +94,13 @@ the API process to that origin, or the browser is CORS-blocked.
 ### ALL OFF
 
 ```bash
-# 1. stop the foreground processes: Ctrl-C in terminals A–D
-#    (or, if backgrounded: pkill -f 'celery -A app.celery_app'; pkill -f 'uvicorn app.api'; pkill -f 'next dev')
-# 2. stop the stores (data is preserved in $OSINT_DATA_DIR)
-docker compose stop
+# Ctrl-C the dashboard (pnpm dev), then:
+make down                               # stops worker + beat + API + stores (keeps data)
 ```
 
-`docker compose stop` halts the containers but **keeps your data**. Next
-`docker compose up -d` resumes exactly where you left off. To also remove the
-containers (still keeping data): `docker compose down`.
+`make down` also catches strays started by hand. It stops the Docker stores too
+but **keeps your data** in `$OSINT_DATA_DIR` — next `make up` resumes where you
+left off. (Manual equivalent: Ctrl-C each terminal, then `docker compose stop`.)
 
 ### Managing the data folder
 

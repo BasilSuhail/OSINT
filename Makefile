@@ -3,7 +3,16 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: data-size data-prune data-reset
+.PHONY: up down logs data-size data-prune data-reset
+
+up:  ## Start the whole backend (stores + worker + beat + API) in the background
+	@bash scripts/dev-up.sh
+
+down:  ## Stop the backend processes + Docker stores (keeps data)
+	@bash scripts/dev-down.sh
+
+logs:  ## Tail the background backend logs (Ctrl-C to stop tailing; stack keeps running)
+	@tail -n 40 -F logs/*.log
 
 data-size:  ## Show disk used by each data subfolder
 	@du -sh $(OSINT_DATA_DIR)/* 2>/dev/null || echo "no data yet at $(OSINT_DATA_DIR)"
