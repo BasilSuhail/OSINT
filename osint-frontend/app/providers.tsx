@@ -46,8 +46,10 @@ async function fetchRecentEvents(): Promise<EventRow[]> {
 const HAZARD_SOURCES = ["gdacs", "usgs-quake", "eonet"]
 
 async function fetchHazardEvents(): Promise<EventRow[]> {
-  const since = new Date(Date.now() - WINDOW_MS).toISOString()
-  return fetchEvents({ since, sources: HAZARD_SOURCES, limit: TARGET_ROWS })
+  // No `since` filter: GDACS volcanoes / long-running cyclones can have started
+  // months ago yet still be active, so the 30-day window would drop them. The
+  // hazard sources are sparse (hundreds of rows), so pulling the lot is cheap.
+  return fetchEvents({ sources: HAZARD_SOURCES, limit: TARGET_ROWS })
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {

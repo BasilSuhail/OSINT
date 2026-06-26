@@ -82,13 +82,23 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
         if (!hay.includes(kw)) continue
       }
       const occurredMs = +new Date(ev.occurred_at)
-      if (occurredMs > windowEnd || occurredMs < windowStart) continue
+      // Hazards (GDACS / USGS / EONET — all category "hazard") are persistent
+      // state, not points in the news stream: an active volcano or cyclone can
+      // have started weeks ago yet is still "current". The 3-day scrubber window
+      // is tuned for the news firehose and was hiding them — and fading the
+      // older ones to near-transparent. Exempt hazards from the window cutoff
+      // and the age fade so every active disaster shows at full opacity. FIRMS
+      // fire detections are category "weather" (globe pane) and stay windowed.
+      const isHazard = ev.category === "hazard"
       const age = windowLengthMs > 0 ? (windowEnd - occurredMs) / windowLengthMs : 0
-      if (age > 1) continue
+      if (!isHazard) {
+        if (occurredMs > windowEnd || occurredMs < windowStart) continue
+        if (age > 1) continue
+      }
       visible.push({
         ...ev,
-        age,
-        opacity: Math.max(0.1, 1 - age),
+        age: isHazard ? 0 : age,
+        opacity: isHazard ? 1 : Math.max(0.1, 1 - age),
         occurredMs,
       })
     }
