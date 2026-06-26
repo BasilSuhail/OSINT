@@ -74,11 +74,29 @@ describe("footprintFeatures", () => {
     expect(f[0].properties?.color).toBeTypeOf("string")
     expect(f[0].properties?.fillOpacity).toBeTypeOf("number")
   })
-  it("emits one severity-extent circle for a storm", () => {
+  it("emits no synthesized circle for a storm (cyclones are minimised)", () => {
     const f = footprintFeatures(row({ payload: { event_type: "TC", alert_level: "Orange" }, severity: 0.7 }))
+    expect(f).toHaveLength(0)
+  })
+  it("keeps only the track line for a cyclone with real geometry", () => {
+    const f = footprintFeatures(
+      row({
+        source: "gdacs",
+        payload: {
+          event_type: "TC",
+          alert_level: "Green",
+          footprint_geojson: {
+            type: "FeatureCollection",
+            features: [
+              { geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] }, properties: { color: "#22c55e", fillOpacity: 0.25 } },
+              { geometry: { type: "LineString", coordinates: [[0, 0], [1, 1], [2, 2]] }, properties: { color: "#22c55e", fillOpacity: 0 } },
+            ],
+          },
+        },
+      }),
+    )
     expect(f).toHaveLength(1)
-    expect(f[0].properties?.color).toBeTypeOf("string")
-    expect(f[0].properties?.fillOpacity).toBeTypeOf("number")
+    expect(f[0].geometry.type).toBe("LineString")
   })
   it("emits nothing when there is no usable geometry", () => {
     expect(footprintFeatures(row({ source: "gdelt", payload: {}, lat: null, lon: null }))).toHaveLength(0)

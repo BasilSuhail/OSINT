@@ -88,7 +88,9 @@ function poly(ring: [number, number][], color: string, fillOpacity: number): Haz
 /** Real footprint geometry stashed on the payload by the backend enrichment
  *  (issue #205): USGS ShakeMap MMI contours / GDACS burn-flood polygons. Passed
  *  straight through to the map layers with the colour the backend tagged. */
-function realFootprintFeatures(p: Record<string, unknown>): HazardFeature[] | null {
+const LINE_TYPES = new Set(["LineString", "MultiLineString"])
+
+function realFootprintFeatures(p: Record<string, unknown>, kind: HazardKind): HazardFeature[] | null {
   const fc = p.footprint_geojson as
     | { features?: Array<{ geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }> }
     | undefined
@@ -97,6 +99,9 @@ function realFootprintFeatures(p: Record<string, unknown>): HazardFeature[] | nu
   for (const f of fc.features) {
     const geom = f.geometry
     if (!geom || typeof geom.type !== "string" || geom.coordinates == null) continue
+    // Cyclones are minimised to their track line only — the wind-probability
+    // cones span thousands of km and crowd the whole map. Drop the polygons.
+    if (kind === "TC" && !LINE_TYPES.has(geom.type)) continue
     const props = f.properties ?? {}
     const color = typeof props.color === "string" ? props.color : ORANGE
     const fillOpacity = typeof props.fillOpacity === "number" ? props.fillOpacity : 0.2
@@ -115,13 +120,16 @@ function realFootprintFeatures(p: Record<string, unknown>): HazardFeature[] | nu
  *  coordinates or no usable size. */
 export function footprintFeatures(ev: EventRow): HazardFeature[] {
   const p = payload(ev)
-  const real = realFootprintFeatures(p)
+  const kind = hazardKind(ev)
+  const real = realFootprintFeatures(p, kind)
   if (real) return real
 
   const lon = ev.lon
   const lat = ev.lat
   if (lon == null || lat == null) return []
-  const kind = hazardKind(ev)
+  // Cyclones with no real track have nothing compact to draw — keep the pin
+  // only rather than a huge synthesized extent circle.
+  if (kind === "TC") return []
 
   if (kind === "EQ") {
     const mag = Number(p.magnitude ?? 0)
