@@ -16,6 +16,7 @@ The thesis is one specific claim: **a composite of three heterogeneous OSINT sig
 - [Ten-week timeline](#ten-week-timeline)
 - [How we get started](#how-we-get-started)
 - [Run book — turn it on / off](#run-book--turn-it-on--off)
+- [Project map — where everything lives](#project-map--where-everything-lives)
 - [Layer 3 — dashboard breadth (not in thesis)](#layer-3--dashboard-breadth-not-in-thesis)
 - [Documentation index](#documentation-index)
 - [Inspirations and lineage](#inspirations-and-lineage)
@@ -402,6 +403,70 @@ docker compose up -d            # fresh empty stores
 .venv/bin/alembic upgrade head  # recreate schema
 # then "ALL ON" above
 ```
+
+---
+
+## Project map — where everything lives
+
+Essentials only — the files you actually open. Two apps (Python backend +
+Next.js frontend) over local Postgres/Redis; all data sits in one folder.
+
+```text
+OSINT/
+├── app/                      ← PYTHON BACKEND (ingest · score · serve)
+│   ├── api.py                  FastAPI read-API: /events /scores /ingest-health /stream(SSE)
+│   ├── celery_app.py           Celery app instance (broker = Redis)
+│   ├── tasks.py                Celery tasks + beat schedule (cadence + 03:00 prune)
+│   ├── fetcher_registry.py     maps source name → fetcher
+│   ├── persistence.py          upsert events into Postgres (+ Redis "new rows" tick)
+│   ├── events_bus.py           Redis pub/sub channel powering the live SSE stream
+│   ├── housekeeping.py         retention policy (GDELT 2d / news 3d / hazard 2d)
+│   ├── db.py / db_models.py    SQLAlchemy engine/session  +  table definitions
+│   ├── settings.py             ALL config (reads .env): POSTGRES_*, OSINT_DATA_DIR, RETENTION_*
+│   ├── models.py               canonical Event/Score pydantic shapes
+│   ├── watchdog.py             ingest health monitor
+│   ├── sources/                one fetcher per feed (gdelt, gdacs, nasa_firms, fred, abuse_ch…)
+│   ├── cii/                    Country Instability Index scoring
+│   ├── composite/              composite-score aggregation/normalisation
+│   └── enrichment/             country/city geocode · NER · sentiment (+ enrichment/data/ polygons)
+│
+├── osint-frontend/           ← NEXT.JS DASHBOARD (reads app/api.py)
+│   ├── app/                    routes: page.tsx (dashboard), layout.tsx, providers.tsx, api/
+│   ├── lib/
+│   │   ├── apiClient.ts          ★ all backend calls (fetchEvents/Scores/IngestHealth, SSE url)
+│   │   ├── queries.ts            data hooks (windowing, filters, latest scores)
+│   │   ├── realtime.ts           EventSource SSE buffer + reconnect/poll fallback
+│   │   └── types.ts              EventRow / ScoreRow / IngestHealthRow types
+│   ├── components/             panes: MapPane, GlobePane, DashboardSection, FilterRail, ui/
+│   ├── stores/                 zustand filter store
+│   └── public/                 static assets
+│
+├── data/        ← ALL LOCAL STORAGE (= $OSINT_DATA_DIR, gitignored)
+│   ├── postgres/                Postgres data files (the actual DB)
+│   └── redis/                   Redis append-only file
+├── backups/     ← snapshot.py dumps (gzipped CSV per table, gitignored)
+│
+├── migrations/  ← Alembic schema migrations (versions/ = each change)
+├── scripts/     ← one-off tools: snapshot.py (backup) · prune_now.py · backfill_*.py · enrich_*.py
+├── tests/       ← pytest suite (backend);  frontend tests live in osint-frontend/__tests__ + lib/*.test.mts
+│
+├── docs/        ← architecture-spec.md · methodology.md · data-coverage.md · frontend/ · superpowers/(specs+plans)
+│
+├── docker-compose.yml   ← Postgres + Redis services (bind-mount → $OSINT_DATA_DIR)
+├── Makefile             ← make data-size / data-prune / data-reset
+├── alembic.ini          ← migration config
+├── pyproject.toml       ← Python deps + build  (requirements.txt mirrors runtime deps)
+├── env.example          ← copy → .env, then fill secrets
+└── .env                 ← YOUR live config + secrets (gitignored — never commit)
+```
+
+**Quick "where is…?"**
+- **My config / secrets** → `.env` (template: `env.example`); read in code via `app/settings.py`.
+- **The database itself** → `data/postgres/` (change location with `OSINT_DATA_DIR`).
+- **What the dashboard fetches** → `osint-frontend/lib/apiClient.ts` ↔ served by `app/api.py`.
+- **Add/adjust a data source** → `app/sources/` + register in `app/fetcher_registry.py`.
+- **How long data is kept** → `app/housekeeping.py` (+ `RETENTION_*` in `.env`).
+- **A backup of old data** → `backups/<timestamp>/`.
 
 ---
 
