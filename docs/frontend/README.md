@@ -66,6 +66,19 @@ NEXT_PUBLIC_API_URL=http://localhost:8000   # local dev
 # NEXT_PUBLIC_API_URL=http://pi.local:8000  # Pi on LAN / Tailscale
 ```
 
+> **CORS note for LAN / Pi / Tailscale deployments:** when the dashboard is
+> served from a non-localhost origin (e.g. `http://pi.local:3000`) the
+> browser will CORS-block every `fetch` and `EventSource` request to the API
+> unless you also set `API_CORS_ORIGINS` on the API process. The value is a
+> comma-separated list of allowed origins, e.g.:
+>
+> ```bash
+> API_CORS_ORIGINS=http://pi.local:3000,http://100.x.y.z:3000
+> ```
+>
+> Without this, both `/events` and the `/stream` SSE connection will be
+> blocked by the browser with a CORS error even though the API is reachable.
+
 ### 4. Start the frontend
 
 ```bash
