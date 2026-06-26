@@ -268,7 +268,14 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   }, [mapRef])
 
   const positioned = useMemo<Positioned[]>(() => {
-    const out: Positioned[] = []
+    // Two buckets so the MAX_MARKERS budget never drops sparse-but-important
+    // hazards. News / GDELT pour in continuously and used to fill the whole 700
+    // budget (occurred_at-ordered), starving the handful of GDACS floods /
+    // cyclones / quakes — the map showed only fire + quakes. Keep ALL
+    // non-clusterable rows (hazards, quakes, market, EONET) and spend the cap
+    // only on the clusterable firehose.
+    const priority: Positioned[] = []
+    const fill: Positioned[] = []
     for (const ev of events) {
       let lat = ev.lat
       let lon = ev.lon
@@ -293,10 +300,10 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         }
       }
       if (lat == null || lon == null) continue
-      out.push({ ev, lat, lon })
-      if (out.length >= MAX_MARKERS) break
+      ;(isClusterable(ev) ? fill : priority).push({ ev, lat, lon })
     }
-    return out
+    // All priority rows, then clusterable until the total budget is spent.
+    return priority.concat(fill.slice(0, Math.max(0, MAX_MARKERS - priority.length)))
   }, [events, centroids])
 
   /** Merged synthesized footprints for hazard / weather events. Rendered as

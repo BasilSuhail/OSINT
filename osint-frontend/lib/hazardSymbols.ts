@@ -30,6 +30,13 @@ export function hazardKind(ev: EventRow): HazardKind {
   if (src.includes("firms")) return "WF"
   const t = String(payload(ev).event_type ?? "").toUpperCase()
   if (t === "EQ" || t === "WF" || t === "TC" || t === "FL" || t === "VO") return t
+  // EONET has no event_type code — infer the kind from the title so its
+  // storms / volcanoes get the right symbol instead of a plain dot.
+  const title = String(payload(ev).title ?? "").toLowerCase()
+  if (/storm|typhoon|cyclone|hurricane/.test(title)) return "TC"
+  if (title.includes("volcano")) return "VO"
+  if (title.includes("flood")) return "FL"
+  if (title.includes("wildfire") || title.includes("fire")) return "WF"
   return "other"
 }
 

@@ -17,6 +17,11 @@ describe("hazardKind", () => {
     expect(hazardKind(row({ payload: { event_type: "TC" } }))).toBe("TC")
     expect(hazardKind(row({ payload: { event_type: "FL" } }))).toBe("FL")
   })
+  it("infers EONET kind from the title", () => {
+    expect(hazardKind(row({ source: "eonet", payload: { title: "Typhoon Mekkhala" } }))).toBe("TC")
+    expect(hazardKind(row({ source: "eonet", payload: { title: "Tropical Storm Higos" } }))).toBe("TC")
+    expect(hazardKind(row({ source: "eonet", payload: { title: "Kilauea Volcano" } }))).toBe("VO")
+  })
   it("falls back to other", () => expect(hazardKind(row({ source: "gdelt", payload: {} }))).toBe("other"))
 })
 
