@@ -39,6 +39,11 @@ describe("hazardIcon", () => {
     expect(hazardIcon("WF")).toBe("flame")
     expect(hazardIcon("other")).toBe("dot")
   })
+  it("maps storm/flood/volcano icons", () => {
+    expect(hazardIcon("TC")).toBe("wind")
+    expect(hazardIcon("FL")).toBe("droplets")
+    expect(hazardIcon("VO")).toBe("triangle")
+  })
 })
 
 describe("footprintFeatures", () => {
@@ -51,6 +56,14 @@ describe("footprintFeatures", () => {
   it("emits one circle for a fire with a burned area", () => {
     const f = footprintFeatures(row({ payload: { event_type: "WF", severity_raw: "... in 8028 ha", alert_level: "Green" } }))
     expect(f).toHaveLength(1)
+    expect(f[0].properties?.color).toBeTypeOf("string")
+    expect(f[0].properties?.fillOpacity).toBeTypeOf("number")
+  })
+  it("emits one severity-extent circle for a storm", () => {
+    const f = footprintFeatures(row({ payload: { event_type: "TC", alert_level: "Orange" }, severity: 0.7 }))
+    expect(f).toHaveLength(1)
+    expect(f[0].properties?.color).toBeTypeOf("string")
+    expect(f[0].properties?.fillOpacity).toBeTypeOf("number")
   })
   it("emits nothing when there is no usable geometry", () => {
     expect(footprintFeatures(row({ source: "gdelt", payload: {}, lat: null, lon: null }))).toHaveLength(0)

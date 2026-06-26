@@ -28,9 +28,12 @@ export function hazardColor(ev: EventRow): string {
   if (alert === "red") return RED
   if (alert === "orange") return ORANGE
   if (alert === "green") return GREEN
-  const mag = Number(payload(ev).magnitude ?? 0)
-  if (mag >= 6) return RED
-  if (mag >= 4.5) return ORANGE
+  const src = (ev.source ?? "").toLowerCase()
+  if (src.includes("usgs")) {
+    const mag = Number(payload(ev).magnitude ?? 0)
+    if (mag >= 6) return RED
+    if (mag >= 4.5) return ORANGE
+  }
   return GREEN
 }
 
