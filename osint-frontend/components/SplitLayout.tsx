@@ -175,7 +175,6 @@ export function SplitLayout() {
               onSelectEvent={setSelectedEvent}
             />
           </div>
-          <CountrySidePanel country={selectedCountry} onClose={() => setSelectedCountry(null)} />
         </div>
       ) : (
         <PanelGroup
@@ -222,10 +221,6 @@ export function SplitLayout() {
                 onCount={setRightCount}
                 onSelectEvent={setSelectedEvent}
               />
-              <CountrySidePanel
-                country={selectedCountry}
-                onClose={() => setSelectedCountry(null)}
-              />
             </div>
           </Panel>
         </PanelGroup>
@@ -242,6 +237,12 @@ export function SplitLayout() {
             embedded
           />
         )}
+      </DetailOverlay>
+
+      {/* Country overview — same centred overlay, offset down so it can coexist
+          with an open event card. */}
+      <DetailOverlay open={!!selectedCountry} leftPct={overlayPct}>
+        <CountrySidePanel country={selectedCountry} onClose={() => setSelectedCountry(null)} />
       </DetailOverlay>
 
       {/* Bottom-left latest timestamp */}

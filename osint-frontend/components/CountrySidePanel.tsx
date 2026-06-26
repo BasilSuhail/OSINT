@@ -1,6 +1,5 @@
 "use client"
 
-import { AnimatePresence, motion } from "framer-motion"
 import { formatDistanceToNowStrict } from "date-fns"
 import { ExternalLink, X } from "lucide-react"
 import { useCountryEvents, useLatestScores } from "@/lib/queries"
@@ -93,17 +92,12 @@ export function CountrySidePanel({ country, onClose }: CountrySidePanelProps) {
   const { events, isLoading } = useCountryEvents(country)
   const score = country ? byCountry.get(country) : undefined
 
+  // Rendered inside the shared centred DetailOverlay (#207), which owns
+  // positioning + animation — this is just the bounded, scrollable card.
+  if (!country) return null
+
   return (
-    <AnimatePresence>
-      {country && (
-        <motion.aside
-          key={country}
-          initial={{ x: 320, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          exit={{ x: 320, opacity: 0 }}
-          transition={{ duration: 0.25, ease: "easeOut" }}
-          className="absolute inset-y-0 right-0 z-40 flex w-[320px] flex-col gap-4 border-l border-neutral-800 bg-neutral-950/95 p-4 backdrop-blur-md"
-        >
+    <aside className="flex max-h-[82vh] w-[340px] max-w-[88vw] flex-col gap-4 overflow-y-auto rounded-md border border-neutral-800 bg-neutral-950/95 p-4 shadow-2xl backdrop-blur-md">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -175,8 +169,6 @@ export function CountrySidePanel({ country, onClose }: CountrySidePanelProps) {
               )}
             </div>
           </div>
-        </motion.aside>
-      )}
-    </AnimatePresence>
+    </aside>
   )
 }
