@@ -421,9 +421,7 @@ class GdacsFetcher(Fetcher):
         ) as client:
             for event_type in GDACS_API_EVENT_TYPES:
                 try:
-                    response = client.get(
-                        GDACS_API_SEARCH_URL.format(eventlist=event_type)
-                    )
+                    response = client.get(GDACS_API_SEARCH_URL.format(eventlist=event_type))
                     response.raise_for_status()
                 except httpx.HTTPError:
                     # One type failing must not lose the others.

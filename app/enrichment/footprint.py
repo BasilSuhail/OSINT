@@ -100,9 +100,7 @@ def normalize_usgs_footprint(fc: dict[str, Any]) -> dict[str, Any] | None:
 
 def gdacs_footprint_url(event_type: str, event_id: str, episode: int = 1) -> str:
     """Build the GDACS footprint GeoJSON resource URL."""
-    return GDACS_FOOTPRINT_URL.format(
-        event_type=event_type, event_id=event_id, episode=episode
-    )
+    return GDACS_FOOTPRINT_URL.format(event_type=event_type, event_id=event_id, episode=episode)
 
 
 #: GDACS footprint geometries we keep. Areas (wind zones, burn scars, flood
@@ -111,9 +109,7 @@ _GDACS_AREA_TYPES: Final[tuple[str, ...]] = ("Polygon", "MultiPolygon")
 _GDACS_LINE_TYPES: Final[tuple[str, ...]] = ("LineString", "MultiLineString")
 
 
-def normalize_gdacs_footprint(
-    fc: dict[str, Any], color: str
-) -> dict[str, Any] | None:
+def normalize_gdacs_footprint(fc: dict[str, Any], color: str) -> dict[str, Any] | None:
     """Keep the real area + track geometry from a GDACS footprint FeatureCollection.
 
     Areas (Polygon/MultiPolygon — wind zones, burn scars, flood extent) are
@@ -177,9 +173,7 @@ def _get_json(client: httpx.Client, url: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def fetch_usgs_footprint(
-    usgs_id: str, *, client: httpx.Client
-) -> dict[str, Any] | None:
+def fetch_usgs_footprint(usgs_id: str, *, client: httpx.Client) -> dict[str, Any] | None:
     """Fetch + normalise the ShakeMap MMI contours for a USGS event."""
     detail = _get_json(client, USGS_DETAIL_URL.format(usgs_id=usgs_id))
     if detail is None:
@@ -232,8 +226,6 @@ def footprint_for_event(
         event_type = payload.get("event_type")
         event_id = payload.get("gdacs_event_id")
         if isinstance(event_type, str) and isinstance(event_id, str) and event_id:
-            return fetch_gdacs_footprint(
-                event_type, event_id, color=color, client=client
-            )
+            return fetch_gdacs_footprint(event_type, event_id, color=color, client=client)
         return None
     return None
