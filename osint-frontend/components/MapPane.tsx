@@ -11,16 +11,26 @@ import MapGL, {
   type MapRef,
 } from "react-map-gl/maplibre"
 import { AnimatePresence, motion } from "framer-motion"
+import { Activity, Droplets, Flame, Triangle, Wind } from "lucide-react"
 import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
+import { hazardColor, hazardIcon, hazardKind, type HazardIcon } from "@/lib/hazardSymbols"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { EventDetailCard } from "./EventDetailCard"
 import { FilterRail } from "./FilterRail"
 import { PaneStatus } from "./PaneStatus"
 import { TimeScrubber } from "./TimeScrubber"
+
+const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
+  activity: Activity,
+  flame: Flame,
+  wind: Wind,
+  droplets: Droplets,
+  triangle: Triangle,
+}
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
 const MAX_MARKERS = 700
@@ -108,41 +118,42 @@ function EventMarker({
         style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer" }}
         className="relative grid place-items-center"
       >
-        {/* Emphasis ring for notable quakes (#P3): a steady circle the user
-            can't scroll past, plus a radar ping echoing the GDACS shockwave. */}
-        {style.ring && (
-          <>
+        {(() => {
+          const kind = hazardKind(ev)
+          const iconKey = hazardIcon(kind)
+          const color = hazardColor(ev)
+          if (iconKey !== "dot" && !clusterable && ev.source !== "nasa-firms") {
+            const Icon = HAZARD_ICONS[iconKey]
+            return (
+              <span
+                className="grid place-items-center rounded-sm"
+                style={{
+                  width: 18,
+                  height: 18,
+                  backgroundColor: color,
+                  boxShadow: `0 0 4px ${color}aa`,
+                  border: "1px solid rgba(255,255,255,0.5)",
+                }}
+              >
+                <Icon size={12} color="#0a0a0a" strokeWidth={2.5} aria-hidden />
+              </span>
+            )
+          }
+          // non-hazard: keep the simple dot/diamond
+          return (
             <span
-              aria-hidden
-              className="absolute rounded-full"
+              className="block"
               style={{
-                width: size + 10,
-                height: size + 10,
-                border: `1.5px solid ${style.color}`,
-                boxShadow: `0 0 6px ${style.color}`,
+                width: size,
+                height: size,
+                backgroundColor: style.color,
+                borderRadius: style.shape === "diamond" ? 2 : "9999px",
+                transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
+                boxShadow: `0 0 3px ${style.color}`,
               }}
             />
-            <motion.span
-              aria-hidden
-              className="absolute rounded-full"
-              style={{ width: size + 10, height: size + 10, border: `1.5px solid ${style.color}` }}
-              initial={{ scale: 0.8, opacity: 0.7 }}
-              animate={{ scale: 1.9, opacity: 0 }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
-            />
-          </>
-        )}
-        <span
-          className="block"
-          style={{
-            width: size,
-            height: size,
-            backgroundColor: style.color,
-            borderRadius: style.shape === "diamond" ? 2 : "9999px",
-            transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
-            boxShadow: `0 0 3px ${style.color}`,
-          }}
-        />
+          )
+        })()}
       </motion.div>
     </Marker>
   )
