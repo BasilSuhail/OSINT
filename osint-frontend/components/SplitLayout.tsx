@@ -57,7 +57,7 @@ export function SplitLayout() {
   const [selectedEvent, setSelectedEvent] = useState<VisibleEvent | null>(null)
   // Separator position as a % of the viewport, so detail overlays can centre on
   // the divider and follow it as it is dragged (#207). 50 until the first layout.
-  const [separatorPct, setSeparatorPct] = useState(50)
+  const [separatorPct, setSeparatorPct] = useState(80)
   const [leftCount, setLeftCount] = useState(0)
   const [rightCount, setRightCount] = useState(0)
   const overlayPct = isNarrow ? 50 : separatorPct
@@ -185,7 +185,7 @@ export function SplitLayout() {
             if (typeof pct === "number") setSeparatorPct(pct)
           }}
         >
-          <Panel id="map" defaultSize={50} minSize={20}>
+          <Panel id="map" defaultSize={80} minSize={20}>
             <div
               className="h-full w-full"
               onMouseEnter={() => setFocused("left")}
@@ -208,7 +208,7 @@ export function SplitLayout() {
             <span className="absolute left-1/2 top-1/2 z-30 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-700 transition-colors group-hover:bg-emerald-500" />
           </PanelResizeHandle>
 
-          <Panel defaultSize={50} minSize={20}>
+          <Panel defaultSize={20} minSize={12}>
             <div
               className="relative h-full w-full"
               onMouseEnter={() => setFocused("right")}
