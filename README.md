@@ -102,6 +102,27 @@ make down                               # stops worker + beat + API + stores (ke
 but **keeps your data** in `$OSINT_DATA_DIR` — next `make up` resumes where you
 left off. (Manual equivalent: Ctrl-C each terminal, then `docker compose stop`.)
 
+**`make down` stops the containers, not Docker itself.** Docker Desktop and its
+Linux VM keep running in the background (the menu-bar whale stays on). To turn
+everything *fully* off and free the RAM:
+
+```bash
+make down                              # stop containers + worker/beat/API
+osascript -e 'quit app "Docker"'       # quit Docker Desktop → shuts the VM
+#   (or: menu-bar whale → Quit Docker Desktop)
+```
+
+`.venv` is just a Python folder — not a VM, nothing to shut down.
+
+| How far off | Commands |
+|-------------|----------|
+| Pause app, keep DB warm | `make down` |
+| Fully off, free all RAM | `make down` → `osascript -e 'quit app "Docker"'` |
+| Wipe data too | `make data-reset` (then quit Docker) |
+
+Restart from fully-off: open Docker Desktop (wait for the green whale) →
+`make up` → `cd osint-frontend && pnpm dev`.
+
 ### Managing the data folder
 
 ```bash
