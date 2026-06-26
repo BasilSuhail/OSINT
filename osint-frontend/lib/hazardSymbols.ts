@@ -3,6 +3,14 @@
 import type { EventRow } from "./types"
 import { circlePolygon, fireRadiusKm, parseBurnedHa, quakeBands } from "./footprints"
 
+/** Minimal GeoJSON polygon feature for synthesized footprints (avoids a
+ *  @types/geojson dependency — mirrors the local types in lib/geo.ts). */
+export interface HazardFeature {
+  type: "Feature"
+  properties: { color: string; fillOpacity: number }
+  geometry: { type: "Polygon"; coordinates: [number, number][][] }
+}
+
 export type HazardKind = "EQ" | "WF" | "TC" | "FL" | "VO" | "other"
 export type HazardIcon = "activity" | "flame" | "wind" | "droplets" | "triangle" | "dot"
 
@@ -55,7 +63,7 @@ function severityRadiusKm(severity: number): number {
   return 20
 }
 
-function poly(ring: [number, number][], color: string, fillOpacity: number): GeoJSON.Feature {
+function poly(ring: [number, number][], color: string, fillOpacity: number): HazardFeature {
   return {
     type: "Feature",
     properties: { color, fillOpacity },
@@ -65,7 +73,7 @@ function poly(ring: [number, number][], color: string, fillOpacity: number): Geo
 
 /** Synthesized footprint polygons for an event (largest first so smaller, hotter
  *  rings paint on top). Empty when the event has no coordinates or no usable size. */
-export function footprintFeatures(ev: EventRow): GeoJSON.Feature[] {
+export function footprintFeatures(ev: EventRow): HazardFeature[] {
   const lon = ev.lon
   const lat = ev.lat
   if (lon == null || lat == null) return []
