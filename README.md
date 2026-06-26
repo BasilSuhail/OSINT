@@ -502,6 +502,7 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 
 ## Documentation index
 
+- **[`docs/storage.md`](docs/storage.md)** — local storage & data: `OSINT_DATA_DIR`, where the live DB lives vs backups vs the config pointer, retention, move/back-up/restore/wipe
 - **[`docs/requirements.md`](docs/requirements.md)** — PX5928 university spec, group context, three-layer scope analysis, deliverable checklist
 - **[`docs/methodology.md`](docs/methodology.md)**
   - Part A — pre-registered evaluation protocol (ground truth, splits, baselines, metrics, sensitivity, reporting checklist)
