@@ -165,11 +165,11 @@ export class EventBuffer {
    * during polling fallback and immediately after a successful reconnect.
    */
   private async backfillSinceLastSeen(): Promise<void> {
-    const since = this.lastEventAt
+    const watermark = this.lastEventAt
       ? this.lastEventAt.toISOString()
       : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     try {
-      const rows = await fetchEvents({ since, exclude: ["opensky-adsb"], limit: 500 })
+      const rows = await fetchEvents({ fetchedSince: watermark, exclude: ["opensky-adsb"], limit: 500 })
       if (rows.length) this.ingest(rows)
     } catch {
       // Network blip; next SSE message or poll tick retries.

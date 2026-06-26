@@ -143,9 +143,7 @@ export function useCountryEvents(country: string | null): { events: EventRow[]; 
     country ? ["country-events", country] : null,
     async () => {
       if (!country) return []
-      return fetchEvents({ sources: undefined, limit: 200 }).then((rows) =>
-        rows.filter((r) => r.country === country),
-      )
+      return fetchEvents({ country, exclude: ["opensky-adsb"], limit: 50 })
     },
     { revalidateOnFocus: false },
   )
