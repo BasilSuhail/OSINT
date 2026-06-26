@@ -16,7 +16,14 @@ import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
-import { hazardColor, hazardIcon, hazardKind, type HazardIcon } from "@/lib/hazardSymbols"
+import {
+  footprintFeatures,
+  hazardColor,
+  hazardIcon,
+  hazardKind,
+  type HazardFeature,
+  type HazardIcon,
+} from "@/lib/hazardSymbols"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { EventDetailCard } from "./EventDetailCard"
@@ -292,6 +299,20 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     return out
   }, [events, centroids])
 
+  /** Merged synthesized footprints for hazard / weather events. Rendered as
+   *  MapLibre GeoJSON fill+line layers UNDER the markers, revealed on zoom-in
+   *  (opacity ramps 0→full between zoom 4 and 6) so the world view stays clean
+   *  pins-only and zooming in shows the event's real extent (shake rings, burn
+   *  scar). */
+  const hazardFootprints = useMemo<{ type: "FeatureCollection"; features: HazardFeature[] }>(() => {
+    const features: HazardFeature[] = []
+    for (const { ev } of positioned) {
+      if (ev.category !== "hazard" && ev.category !== "weather") continue
+      for (const f of footprintFeatures(ev)) features.push(f)
+    }
+    return { type: "FeatureCollection", features }
+  }, [positioned])
+
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
    *    news/GDELT singleton in its own cell)
@@ -417,6 +438,37 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
               "hillshade-highlight-color": "#7a766b",
               "hillshade-accent-color": "#3a3a3a",
               "hillshade-illumination-direction": 315,
+            }}
+          />
+        </Source>
+        {/* Synthesized hazard footprints — revealed on zoom-in (opacity 0 at
+            zoom 4 → full at zoom 6). Sits under the country fill + markers. */}
+        <Source id="hazard-footprints" type="geojson" data={hazardFootprints}>
+          <Layer
+            id="hazard-footprint-fill"
+            type="fill"
+            minzoom={4}
+            paint={{
+              "fill-color": ["get", "color"],
+              "fill-opacity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                4,
+                0,
+                6,
+                ["get", "fillOpacity"],
+              ],
+            }}
+          />
+          <Layer
+            id="hazard-footprint-line"
+            type="line"
+            minzoom={4}
+            paint={{
+              "line-color": ["get", "color"],
+              "line-width": 1,
+              "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.8],
             }}
           />
         </Source>
