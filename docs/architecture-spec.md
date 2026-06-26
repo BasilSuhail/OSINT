@@ -131,7 +131,7 @@ Cross-link to [`07-risks.md`](architecture/07-risks.md). Headline items:
 | Pi disk failure | btrfs RAID1 + nightly restic + quarterly off-site |
 | Upstream API breakage during eval window | Watchdog (#71) + dead_letter_queue replay + multi-source redundancy in each composite domain |
 | Cold-start composite (all 0.5) | Historical backfill (#75) |
-| Supabase free tier fill | Retention policy (#76) + Pi as final home |
+| Local disk fill (GDELT volume) | Aggressive retention (GDELT 2d / news 3d) + Pi external HDD as final home |
 | Power outage during fetch | PoE+ HAT with brief carry-over; Celery beat will catch up on restart |
 | Reviewer originality challenge | Three-layer test above + literal-copy detection in CI (future) |
 
@@ -159,7 +159,7 @@ Operational targets, kept honest:
 
 ## 10. Live data coverage
 
-Snapshot of what is in Supabase right now and what we plan to ingest once
+Snapshot of what is in the local Postgres right now and what we plan to ingest once
 the Pi storage goes online: **[`docs/data-coverage.md`](data-coverage.md)**.
 That file is updated whenever a new backfill runs.
 

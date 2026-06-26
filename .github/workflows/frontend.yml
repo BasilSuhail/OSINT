@@ -19,10 +19,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Build needs the NEXT_PUBLIC envs to type-check the supabase init shim,
-      # but the values don't need to be real — never network-called at build.
-      NEXT_PUBLIC_SUPABASE_URL: "https://ci.example.invalid"
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "ci-dummy-key"
+      # Build-time default for the local read-API base (overridden at runtime).
+      NEXT_PUBLIC_API_URL: "http://localhost:8000"
       # Skip Next's interactive telemetry prompt — it stalls `next build` on
       # a fresh CI runner waiting on stdin.
       NEXT_TELEMETRY_DISABLED: "1"

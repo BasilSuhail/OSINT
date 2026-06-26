@@ -6,30 +6,34 @@ Copy the section below verbatim into [v0.dev](https://v0.dev).
 
 ---
 
-Build a Next.js 15 dashboard called "OSINT World Monitor" that reads data from a Supabase Postgres and renders a world map plus a list of recent news-style events. Two pages, dark theme, clean and analytical (think Bloomberg Terminal meets MapTiler). Refresh every 60 seconds.
+Build a Next.js 15 dashboard called "OSINT World Monitor" that reads data from a local FastAPI (`NEXT_PUBLIC_API_URL`) and renders a world map plus a list of recent news-style events. Two pages, dark theme, clean and analytical (think Bloomberg Terminal meets MapTiler). Refresh every 60 seconds.
 
 ## Stack
 
 - Next.js 15 App Router, TypeScript
 - Tailwind CSS
 - shadcn/ui for components
-- `@supabase/supabase-js` for data
+- native `fetch` + `swr` for data (REST calls to local FastAPI)
 - `react-map-gl` (MapLibre flavour, no Mapbox token needed) for the world map
 - `swr` for periodic refresh
 - `date-fns` for time formatting
 
 ## Environment
 
-Two public env vars only:
+One public env var:
 
 ```
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJ...
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-Create a `lib/supabase.ts` that initialises the client once. Never read these in components directly.
+Create a `lib/api.ts` helper that prefixes all fetch calls with `process.env.NEXT_PUBLIC_API_URL`. Never read this in components directly.
 
-## Database schema (already exists, read-only from frontend)
+## API (read-only from frontend)
+
+`GET /events` — query params: `category`, `country`, `severity_min`, `severity_max`, `since`, `limit`
+`GET /scores` — latest composite score per country
+
+Response shapes match the database schema below.
 
 Two tables are publicly readable via RLS:
 
@@ -115,9 +119,9 @@ Pagination: 50 cards per page.
 
 ## Data queries
 
-Build a `useEvents()` SWR hook hitting the Supabase client with proper filters. Build a `useLatestScores()` hook returning one row per country (latest by `computed_at`).
+Build a `useEvents()` SWR hook calling `GET /events` with proper query params. Build a `useLatestScores()` hook calling `GET /scores` (returns one row per country, latest composite).
 
-Do **not** select the `payload` column on list views — only fetch it when the side panel opens (separate query by event id).
+Do **not** request the `payload` field on list views — only fetch it when the side panel opens (separate call to `GET /events/{id}`).
 
 ## Visual rules
 
@@ -129,7 +133,7 @@ Do **not** select the `payload` column on list views — only fetch it when the 
 
 ## Error states
 
-- If Supabase env vars are missing → top banner "Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in your environment."
+- If `NEXT_PUBLIC_API_URL` is missing → top banner "Configure NEXT_PUBLIC_API_URL in your environment."
 - If a query fails → tiny inline error per panel, do not crash the page.
 
 ## Files to generate
@@ -137,7 +141,7 @@ Do **not** select the `payload` column on list views — only fetch it when the 
 - `app/layout.tsx` — dark theme, top bar
 - `app/page.tsx` — world map page
 - `app/articles/page.tsx` — articles page
-- `lib/supabase.ts` — Supabase client singleton
+- `lib/api.ts` — API client singleton (reads `NEXT_PUBLIC_API_URL`)
 - `lib/queries.ts` — query helpers
 - `components/WorldMap.tsx`
 - `components/CountryPanel.tsx`

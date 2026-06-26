@@ -130,7 +130,7 @@ def run_housekeeping() -> dict[str, int]:
     """Apply per-source retention to the events table.
 
     NASA FIRMS ingests ~35 k rows/day; without this the table fills the
-    Supabase free tier in roughly two weeks. See ``app.housekeeping`` for the
+    local disk within weeks without pruning. See ``app.housekeeping`` for the
     per-source policy.
     """
     with session_scope() as session:
@@ -195,7 +195,7 @@ app.conf.beat_schedule = {
         "schedule": crontab(hour=6, minute=0),
     },
     # OpenSky public ADS-B is rate-limited per anonymous IP at 10 s; we
-    # poll every 2 min to stay polite and not blow Supabase write quota.
+    # poll every 2 min to stay polite to the upstream source.
     "opensky-adsb-2min": {
         "task": "app.tasks.run_fetcher",
         "args": ["opensky-adsb"],

@@ -65,7 +65,7 @@ def run(batch_size: int = 1000, sources: Iterable[str] | None = None) -> dict[st
             if updates:
                 # Group ids by the iso they're being tagged with → one UPDATE
                 # statement per ISO with a WHERE id IN (…). Per-id UPDATEs hit
-                # Supabase's per-statement timeout once the backlog is large.
+                # the database's per-statement timeout once the backlog is large.
                 by_iso: dict[str, list[int]] = defaultdict(list)
                 for event_id, iso in updates:
                     by_iso[iso].append(event_id)

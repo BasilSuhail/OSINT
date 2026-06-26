@@ -82,11 +82,19 @@ export interface ScoreComponents {
 export interface ScoreRow {
   country: string
   bucket_start: string
-  bucket_length: string | number
   score_name: string
   score_value: number
   components: ScoreComponents | null
   method_version: string | null
+}
+
+export interface IngestHealthRow {
+  source: string
+  day: string
+  success_n: number | null
+  failure_n: number | null
+  last_success: string | null
+  last_failure: string | null
 }
 
 /** Which pane a source renders on. NASA / satellite-derived feeds belong on

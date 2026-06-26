@@ -18,8 +18,8 @@ import {
   ZAxis,
 } from "recharts"
 import { useEvents } from "@/app/providers"
-import { getSupabase } from "@/lib/supabase"
-import type { EventRow, ScoreRow } from "@/lib/types"
+import { fetchEvents, fetchIngestHealth, fetchScores } from "@/lib/apiClient"
+import type { EventRow, IngestHealthRow, ScoreRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
 
@@ -285,19 +285,12 @@ const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boole
 function useScoreSeries(scoreName: string, days: number = COMPOSITE_BUCKETS): { day: string; score: number; n: number }[] {
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = subDays(new Date(), days).toISOString()
-    supabase
-      .from("scores")
-      .select("*")
-      .eq("score_name", scoreName)
-      .gte("bucket_start", since)
-      .order("bucket_start", { ascending: true })
-      .limit(5000)
-      .then(({ data: rows, error }) => {
-        if (!error && rows) setData(rows as ScoreRow[])
+    fetchScores(5000)
+      .then((rows) => {
+        setData(rows.filter((r) => r.score_name === scoreName && (r.bucket_start ?? "") >= since))
       })
+      .catch(() => {/* ignore fetch errors */})
   }, [scoreName, days])
 
   return useMemo(() => {
@@ -365,15 +358,6 @@ const SOURCE_CADENCE_MIN: Record<string, number> = {
   polymarket: 30,
 }
 
-interface IngestHealthRow {
-  source: string
-  day: string
-  success_n: number | null
-  failure_n: number | null
-  last_success: string | null
-  last_failure: string | null
-}
-
 interface SourceLatencyRow {
   source: string
   lastSuccess: string | null
@@ -385,19 +369,13 @@ interface SourceLatencyRow {
 
 function useSourceLatency(): SourceLatencyRow[] {
   const [rows, setRows] = useState<IngestHealthRow[]>([])
+
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
-    const since = subDays(new Date(), 7).toISOString().slice(0, 10)
-    supabase
-      .from("ingest_health")
-      .select("*")
-      .gte("day", since)
-      .order("day", { ascending: false })
-      .limit(2000)
-      .then(({ data, error }) => {
-        if (!error && data) setRows(data as IngestHealthRow[])
-      })
+    let alive = true
+    fetchIngestHealth(7)
+      .then((data) => { if (alive) setRows(data) })
+      .catch(() => {})
+    return () => { alive = false }
   }, [])
 
   return useMemo(() => {
@@ -464,28 +442,24 @@ function ageLabel(min: number | null): string {
 
 /** Latest CII row per country for the hero leaderboard tile (#139).
  *  Reads the most-recent ``score_name = cii_v1`` row per ISO directly
- *  from Supabase. Pure read; no aggregation here. */
+ *  from the local API. Pure read; no aggregation here. */
 function useLatestCiiByCountry(): Map<string, { iso: string; score: number }> {
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = subDays(new Date(), 2).toISOString()
-    supabase
-      .from("scores")
-      .select("*")
-      .eq("score_name", "cii_v1")
-      .gte("bucket_start", since)
-      .order("bucket_start", { ascending: false })
-      .limit(2000)
-      .then(({ data: rows, error }) => {
-        if (!error && rows) setData(rows as ScoreRow[])
+    fetchScores(2000)
+      .then((rows) => {
+        setData(rows.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
       })
+      .catch(() => {/* ignore fetch errors */})
   }, [])
 
   return useMemo(() => {
     const latest = new Map<string, { iso: string; score: number }>()
-    for (const r of data) {
+    const sorted = [...data].sort((a, b) =>
+      (b.bucket_start ?? "") > (a.bucket_start ?? "") ? 1 : -1,
+    )
+    for (const r of sorted) {
       const iso = r.country
       if (!iso) continue
       if (latest.has(iso)) continue
@@ -534,35 +508,22 @@ interface HindsightStats {
  *
  *  Note: events buffer is constrained by retention (2 d for USGS), so
  *  the panel is effectively waiting on the historical data pile. Reads
- *  USGS rows directly from Supabase so even if the buffer is short,
+ *  USGS rows via the API client so even if the buffer is short,
  *  the panel still pulls the last 90 d of quakes that exist.
  */
 function useHindsightCorrelation(): HindsightStats {
   const [ciiRows, setCiiRows] = useState<ScoreRow[]>([])
   const [quakeRows, setQuakeRows] = useState<EventRow[]>([])
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = subDays(new Date(), 90).toISOString()
-    void supabase
-      .from("scores")
-      .select("*")
-      .eq("score_name", "cii_v1")
-      .gte("bucket_start", since)
-      .order("bucket_start", { ascending: true })
-      .limit(20000)
-      .then(({ data, error }) => {
-        if (!error && data) setCiiRows(data as ScoreRow[])
+    void fetchScores(20000)
+      .then((rows) => {
+        setCiiRows(rows.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
       })
-    void supabase
-      .from("events")
-      .select("*")
-      .eq("source", "usgs-quake")
-      .gte("occurred_at", since)
-      .limit(20000)
-      .then(({ data, error }) => {
-        if (!error && data) setQuakeRows(data as EventRow[])
-      })
+      .catch(() => {/* ignore fetch errors */})
+    void fetchEvents({ sources: ["usgs-quake"], since, limit: 20000 })
+      .then((rows) => { setQuakeRows(rows) })
+      .catch(() => {/* ignore fetch errors */})
   }, [])
 
   return useMemo(() => {
@@ -611,23 +572,16 @@ function useHindsightCorrelation(): HindsightStats {
 
 /** Per-country CII rows for the last 30 d, grouped + sorted by current
  *  score desc. Used by the leaderboard panel (#142). Reads cii_v1 rows
- *  directly from Supabase + breaks them out by ISO. */
+ *  via the API client + breaks them out by ISO. */
 function useCiiByCountry(): CiiCountryRow[] {
   const [rows, setRows] = useState<ScoreRow[]>([])
   useEffect(() => {
-    const supabase = getSupabase()
-    if (!supabase) return
     const since = subDays(new Date(), 30).toISOString()
-    supabase
-      .from("scores")
-      .select("*")
-      .eq("score_name", "cii_v1")
-      .gte("bucket_start", since)
-      .order("bucket_start", { ascending: true })
-      .limit(20000)
-      .then(({ data: result, error }) => {
-        if (!error && result) setRows(result as ScoreRow[])
+    fetchScores(20000)
+      .then((result) => {
+        setRows(result.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
       })
+      .catch(() => {/* ignore fetch errors */})
   }, [])
 
   return useMemo(() => {

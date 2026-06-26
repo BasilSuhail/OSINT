@@ -6,6 +6,8 @@ The thesis is one specific claim: **a composite of three heterogeneous OSINT sig
 
 ## Table of contents
 
+- [Run book — turn it on / off](#run-book--turn-it-on--off)
+- [Project map — where everything lives](#project-map--where-everything-lives)
 - [The thing in one diagram](#the-thing-in-one-diagram)
 - [What we are building, in plain words](#what-we-are-building-in-plain-words)
 - [Three input domains](#three-input-domains)
@@ -20,6 +22,192 @@ The thesis is one specific claim: **a composite of three heterogeneous OSINT sig
 - [Inspirations and lineage](#inspirations-and-lineage)
 - [Status](#status)
 - [Group presentation note](#group-presentation-note)
+
+---
+
+## Run book — turn it on / off
+
+Everything runs locally and off-grid. No Supabase, no cloud. All persistent
+data lives in **one folder** — `OSINT_DATA_DIR` (default `./data`,
+gitignored). Set it to an external disk for a Pi/HDD home, e.g.
+`OSINT_DATA_DIR=/mnt/hdd/osint`.
+
+Four moving parts:
+
+| Part | What | Command |
+|------|------|---------|
+| **Stores** | Postgres + Redis (Docker) | `docker compose up -d` |
+| **Workers** | Celery — fetch/normalise/persist | `.venv/bin/celery -A app.celery_app worker -l info` |
+| **Scheduler** | Celery beat — cadence + 03:00 prune | `.venv/bin/celery -A app.celery_app beat -l info` |
+| **Read-API** | FastAPI — feeds the dashboard | `.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000` |
+| **Dashboard** | Next.js frontend | `cd osint-frontend && pnpm dev` |
+
+### First time only — from scratch (nothing installed yet)
+
+```bash
+# 0. prerequisites: Docker Desktop, Python 3.14, Node + pnpm
+# 1. python env
+python3 -m venv .venv && .venv/bin/pip install -e .
+# 2. config — copy the template, then set a local POSTGRES_PASSWORD
+cp env.example .env            # edit .env: POSTGRES_PASSWORD=... (and any API keys)
+# 3. start the stores (creates $OSINT_DATA_DIR/postgres + /redis)
+docker compose up -d
+# 4. create the schema
+.venv/bin/alembic upgrade head
+# 5. frontend deps
+cd osint-frontend && pnpm install && cd ..
+```
+
+### ALL ON — every day (even if Docker is fully off)
+
+**Easiest — one command** brings up the stores + worker + beat + API (the
+backend runs in the **background**; logs land in `logs/`):
+
+```bash
+make up                                 # stores + worker + beat + API (backgrounded)
+cd osint-frontend && pnpm dev           # dashboard → http://localhost:3000
+```
+
+That's it. `make up` is safe to re-run — it skips anything already running and
+starts whatever is down. Watch the backend with `make logs`.
+
+<details><summary>Manual — one process per terminal (if you'd rather not background them)</summary>
+
+> ⚠️ Each command below **runs forever in the foreground** — it does not return
+> to a prompt, and `Ctrl-C` **stops that service**. Give each its own terminal
+> tab; don't run them one after another in the same one.
+
+```bash
+docker compose up -d                                       # stores (returns immediately)
+.venv/bin/celery -A app.celery_app worker -l info          # terminal A — stays running
+.venv/bin/celery -A app.celery_app beat   -l info          # terminal B — stays running
+.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000   # terminal C — stays running
+cd osint-frontend && pnpm dev                              # terminal D — stays running
+```
+</details>
+
+Open **http://localhost:3000**. The dashboard reads the API at
+`NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). Serving the dashboard
+from a non-localhost host (LAN/Tailscale/Pi)? Also set `API_CORS_ORIGINS` on
+the API process to that origin, or the browser is CORS-blocked.
+
+### ALL OFF
+
+```bash
+# Ctrl-C the dashboard (pnpm dev), then:
+make down                               # stops worker + beat + API + stores (keeps data)
+```
+
+`make down` also catches strays started by hand. It stops the Docker stores too
+but **keeps your data** in `$OSINT_DATA_DIR` — next `make up` resumes where you
+left off. (Manual equivalent: Ctrl-C each terminal, then `docker compose stop`.)
+
+**`make down` stops the containers, not Docker itself.** Docker Desktop and its
+Linux VM keep running in the background (the menu-bar whale stays on). To turn
+everything *fully* off and free the RAM:
+
+```bash
+make down                              # stop containers + worker/beat/API
+osascript -e 'quit app "Docker"'       # quit Docker Desktop → shuts the VM
+#   (or: menu-bar whale → Quit Docker Desktop)
+```
+
+`.venv` is just a Python folder — not a VM, nothing to shut down.
+
+| How far off | Commands |
+|-------------|----------|
+| Pause app, keep DB warm | `make down` |
+| Fully off, free all RAM | `make down` → `osascript -e 'quit app "Docker"'` |
+| Wipe data too | `make data-reset` (then quit Docker) |
+
+Restart from fully-off: open Docker Desktop (wait for the green whale) →
+`make up` → `cd osint-frontend && pnpm dev`.
+
+### Managing the data folder
+
+```bash
+make data-size     # how much disk each store is using
+make data-prune    # run retention now (don't wait for the 03:00 job)
+make data-reset    # ⚠️ stop stack + delete ALL local data ($OSINT_DATA_DIR)
+```
+
+Retention keeps only the latest few days so the folder stays small:
+GDELT **2 d**, news **3 d**, hazard **2 d** (override via `RETENTION_GDELT_DAYS`
+/ `RETENTION_NEWS_DAYS` / `RETENTION_HAZARD_DAYS` in `.env`). Beat prunes daily
+at 03:00 UTC; market/macro series are kept long.
+
+### Full wipe + rebuild from zero
+
+```bash
+make data-reset                 # removes containers + $OSINT_DATA_DIR
+docker compose up -d            # fresh empty stores
+.venv/bin/alembic upgrade head  # recreate schema
+# then "ALL ON" above
+```
+
+---
+
+## Project map — where everything lives
+
+Essentials only — the files you actually open. Two apps (Python backend +
+Next.js frontend) over local Postgres/Redis; all data sits in one folder.
+
+```text
+OSINT/
+├── app/                      ← PYTHON BACKEND (ingest · score · serve)
+│   ├── api.py                  FastAPI read-API: /events /scores /ingest-health /stream(SSE)
+│   ├── celery_app.py           Celery app instance (broker = Redis)
+│   ├── tasks.py                Celery tasks + beat schedule (cadence + 03:00 prune)
+│   ├── fetcher_registry.py     maps source name → fetcher
+│   ├── persistence.py          upsert events into Postgres (+ Redis "new rows" tick)
+│   ├── events_bus.py           Redis pub/sub channel powering the live SSE stream
+│   ├── housekeeping.py         retention policy (GDELT 2d / news 3d / hazard 2d)
+│   ├── db.py / db_models.py    SQLAlchemy engine/session  +  table definitions
+│   ├── settings.py             ALL config (reads .env): POSTGRES_*, OSINT_DATA_DIR, RETENTION_*
+│   ├── models.py               canonical Event/Score pydantic shapes
+│   ├── watchdog.py             ingest health monitor
+│   ├── sources/                one fetcher per feed (gdelt, gdacs, nasa_firms, fred, abuse_ch…)
+│   ├── cii/                    Country Instability Index scoring
+│   ├── composite/              composite-score aggregation/normalisation
+│   └── enrichment/             country/city geocode · NER · sentiment (+ enrichment/data/ polygons)
+│
+├── osint-frontend/           ← NEXT.JS DASHBOARD (reads app/api.py)
+│   ├── app/                    routes: page.tsx (dashboard), layout.tsx, providers.tsx, api/
+│   ├── lib/
+│   │   ├── apiClient.ts          ★ all backend calls (fetchEvents/Scores/IngestHealth, SSE url)
+│   │   ├── queries.ts            data hooks (windowing, filters, latest scores)
+│   │   ├── realtime.ts           EventSource SSE buffer + reconnect/poll fallback
+│   │   └── types.ts              EventRow / ScoreRow / IngestHealthRow types
+│   ├── components/             panes: MapPane, GlobePane, DashboardSection, FilterRail, ui/
+│   ├── stores/                 zustand filter store
+│   └── public/                 static assets
+│
+├── data/        ← ALL LOCAL STORAGE (= $OSINT_DATA_DIR, gitignored)
+│   ├── postgres/                Postgres data files (the actual DB)
+│   └── redis/                   Redis append-only file
+├── backups/     ← snapshot.py dumps (gzipped CSV per table, gitignored)
+│
+├── migrations/  ← Alembic schema migrations (versions/ = each change)
+├── scripts/     ← one-off tools: snapshot.py (backup) · prune_now.py · backfill_*.py · enrich_*.py
+├── tests/       ← pytest suite (backend);  frontend tests live in osint-frontend/__tests__ + lib/*.test.mts
+│
+├── docs/        ← architecture-spec.md · methodology.md · data-coverage.md · frontend/ · superpowers/(specs+plans)
+│
+├── docker-compose.yml   ← Postgres + Redis services (bind-mount → $OSINT_DATA_DIR)
+├── Makefile             ← make data-size / data-prune / data-reset
+├── alembic.ini          ← migration config
+├── pyproject.toml       ← Python deps + build  (requirements.txt mirrors runtime deps)
+├── env.example          ← copy → .env, then fill secrets
+└── .env                 ← YOUR live config + secrets (gitignored — never commit)
+```
+
+**Quick "where is…?"**
+- **My config / secrets** → `.env` (template: `env.example`); read in code via `app/settings.py`.
+- **The database itself** → `data/postgres/` (change location with `OSINT_DATA_DIR`).
+- **What the dashboard fetches** → `osint-frontend/lib/apiClient.ts` ↔ served by `app/api.py`.
+- **Add/adjust a data source** → `app/sources/` + register in `app/fetcher_registry.py`.
+- **How long data is kept** → `app/housekeeping.py` (+ `RETENTION_*` in `.env`).
+- **A backup of old data** → `backups/<timestamp>/`.
 
 ---
 
@@ -344,6 +532,7 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 
 ## Documentation index
 
+- **[`docs/storage.md`](docs/storage.md)** — local storage & data: `OSINT_DATA_DIR`, where the live DB lives vs backups vs the config pointer, retention, move/back-up/restore/wipe
 - **[`docs/requirements.md`](docs/requirements.md)** — PX5928 university spec, group context, three-layer scope analysis, deliverable checklist
 - **[`docs/methodology.md`](docs/methodology.md)**
   - Part A — pre-registered evaluation protocol (ground truth, splits, baselines, metrics, sensitivity, reporting checklist)

@@ -35,7 +35,7 @@ const META: Record<
   disconnected: {
     color: "bg-red-500",
     label: "offline",
-    longLabel: "Disconnected from Supabase",
+    longLabel: "Disconnected from live stream",
     pulse: false,
   },
 }

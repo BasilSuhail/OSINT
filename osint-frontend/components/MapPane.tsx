@@ -474,7 +474,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       {!configured && (
         <PaneStatus
           mode="error"
-          message="Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
+          message="Local API unreachable — start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)."
         />
       )}
       {/* Live source-count chips (top-left). Mirror the satellite chip

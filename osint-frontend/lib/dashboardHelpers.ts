@@ -4,7 +4,7 @@
  *  isolation (#188) and reused from other dashboard surfaces without
  *  pulling the whole DashboardSection component into the bundle.
  *
- *  Nothing here touches React state or Supabase — every export is a
+ *  Nothing here touches React state or the network — every export is a
  *  pure function over its inputs.
  */
 

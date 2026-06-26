@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { useEvents } from "@/app/providers"
-import { getSupabase } from "./supabase"
+import { fetchEvents, fetchScores as apiFetchScores } from "./apiClient"
 import { paneForEvent, sourceKeyForEvent, type EventRow, type Pane, type ScoreRow } from "./types"
 import type { FilterStore } from "@/stores/createFilterStore"
 
@@ -98,15 +98,7 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
 }
 
 async function fetchScores(): Promise<ScoreRow[]> {
-  const supabase = getSupabase()
-  if (!supabase) return []
-  const { data, error } = await supabase
-    .from("scores")
-    .select("*")
-    .order("bucket_start", { ascending: false })
-    .limit(5000)
-  if (error) throw error
-  return (data ?? []) as ScoreRow[]
+  return apiFetchScores(5000)
 }
 
 export interface LatestScore {
@@ -150,16 +142,8 @@ export function useCountryEvents(country: string | null): { events: EventRow[]; 
   const { data, isLoading } = useSWR(
     country ? ["country-events", country] : null,
     async () => {
-      const supabase = getSupabase()
-      if (!supabase || !country) return []
-      const { data, error } = await supabase
-        .from("events")
-        .select("*")
-        .eq("country", country)
-        .order("occurred_at", { ascending: false })
-        .limit(10)
-      if (error) throw error
-      return (data ?? []) as EventRow[]
+      if (!country) return []
+      return fetchEvents({ country, exclude: ["opensky-adsb"], limit: 50 })
     },
     { revalidateOnFocus: false },
   )

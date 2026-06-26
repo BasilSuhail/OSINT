@@ -11,10 +11,10 @@ Build a Next.js 15 dashboard called "OSINT World Monitor". Dark theme. Inspired 
 - Next.js 15 App Router, TypeScript, strict mode
 - Tailwind CSS
 - shadcn/ui for buttons / sliders / checkboxes / popovers
-- `@supabase/supabase-js` for data
+- native `fetch` + `swr` for data (REST calls to local FastAPI)
 - `react-map-gl` (MapLibre flavour, no Mapbox token) for the left flat map
 - `react-globe.gl` (Three.js under the hood) for the right 3D globe
-- Supabase **Realtime subscriptions** for new events
+- **SSE** (`EventSource` on `/stream`) for live event pushes
 - `swr` for periodic refetches as a fallback
 - `framer-motion` for fade / pulse animations
 - `date-fns` for time formatting
@@ -23,13 +23,19 @@ Build a Next.js 15 dashboard called "OSINT World Monitor". Dark theme. Inspired 
 ## Environment
 
 ```
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJ...
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-Initialise the Supabase client in `lib/supabase.ts`. Subscribe to the `events` table changes in a top-level provider so both panes share the same realtime stream.
+Initialise an API client helper in `lib/api.ts` (base URL from `NEXT_PUBLIC_API_URL`). Open an `EventSource` to `${NEXT_PUBLIC_API_URL}/stream` in a top-level provider so both panes share the same live event stream.
 
-## Database (read-only via anon RLS)
+## API endpoints (read-only from frontend)
+
+`GET /events?category=&country=&severity_min=&severity_max=&keyword=&since=&limit=`
+`GET /scores` → one row per country (latest composite score)
+`GET /ingest-health` → per-source last-seen timestamps
+`GET /stream` → SSE stream of new events as they are ingested
+
+## Data shapes
 
 **events**: `id, source, source_event_id, occurred_at, fetched_at, category, severity (0..1), keywords text[], country (ISO alpha-2), lat, lon, payload jsonb`
 
@@ -76,7 +82,7 @@ Below the toggles:
 - **Keyword** search input
 - **Reset** button at the bottom
 
-Each toggle's state lives in the per-pane zustand store. The map / globe query Supabase filtered by the active toggles and severity / country / keyword.
+Each toggle's state lives in the per-pane zustand store. The map / globe query `GET /events` filtered by the active toggles and severity / country / keyword.
 
 ## Visual encoding
 
@@ -127,15 +133,14 @@ Use `framer-motion` `AnimatePresence` for mount / unmount animations (200 ms fad
 
 ## Realtime
 
-In `lib/realtime.ts`, subscribe to:
+In `lib/stream.ts`, open an `EventSource` to `${NEXT_PUBLIC_API_URL}/stream`:
 
 ```ts
-supabase.channel('events-realtime')
-  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' }, payload => emit(payload.new))
-  .subscribe()
+const es = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/stream`)
+es.onmessage = (e) => emit(JSON.parse(e.data))
 ```
 
-Maintain a small in-memory ring buffer of the last 5000 events; both panes read from this. New events that match the current filter set animate in (`scale: 0 → 1`, opacity `0 → 1`, soft pulse). Existing events get re-evaluated against the current time window.
+Maintain a small in-memory ring buffer of the last 5000 events; both panes read from this. New events that match the current filter set animate in (`scale: 0 → 1`, opacity `0 → 1`, soft pulse). Existing events get re-evaluated against the current time window. Fall back to `swr` polling `GET /events` every 30 s if the SSE connection drops.
 
 ## Country side panel
 
@@ -150,16 +155,16 @@ Clicking a country (either pane) opens a thin floating right-side card with:
 ## Top overlays
 
 - Top-left: "OSINT WORLD MONITOR · LIVE" small caps, white at 80 % opacity
-- Top-right: small connection indicator — green dot if Supabase Realtime is connected, amber if reconnecting, red if disconnected
+- Top-right: small connection indicator — green dot if SSE stream is connected, amber if reconnecting, red if disconnected
 - Bottom-center thin status bar: "Showing N events in window | Map filter: hazards + geopolitical | Globe filter: hazards"
 
 ## Files to generate
 
 - `app/layout.tsx` — dark theme, root provider
 - `app/page.tsx` — split-pane layout, mounts both panes
-- `app/providers.tsx` — Supabase Realtime + ring-buffer provider
-- `lib/supabase.ts`
-- `lib/realtime.ts`
+- `app/providers.tsx` — SSE stream + ring-buffer provider
+- `lib/api.ts` — base fetch helper (reads `NEXT_PUBLIC_API_URL`)
+- `lib/stream.ts` — EventSource wrapper
 - `lib/queries.ts` — `useEventsInWindow(filterStore, timeWindow)`, `useLatestScores()`
 - `stores/leftPaneStore.ts` + `stores/rightPaneStore.ts` — zustand
 - `components/SplitLayout.tsx`
@@ -183,7 +188,7 @@ Clicking a country (either pane) opens a thin floating right-side card with:
 
 ## Error states
 
-- Missing env vars → red banner at top: "Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
-- Realtime disconnect → connection indicator turns red, fall back to SWR-polled refetch every 30 s
+- Missing env var → red banner at top: "Set NEXT_PUBLIC_API_URL in your environment."
+- API unreachable → connection indicator turns red, fall back to SWR-polled refetch every 30 s
 
 Make it production-ready. Type everything. Mark interactive components `"use client"`. Server-render whatever can be server-rendered. No `any`. No TODOs.
