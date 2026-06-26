@@ -1,6 +1,6 @@
 # Data coverage & backfill log
 
-Snapshot of what is in Supabase, how much was backfilled to date, and how
+Snapshot of what is in the local Postgres, how much was backfilled to date, and how
 much more we plan to ingest once the Pi + 2 × 4 TB btrfs RAID1 storage
 goes online. Kept here so the dissertation chapter on data has a single
 source of truth.
@@ -15,18 +15,18 @@ source of truth.
 
 | Backend | Hard cap | Today |
 |---|---|---|
-| Supabase free tier (interim demo) | 500 MB row data + 500 MB total | ~130 k rows (~30 MB) |
+| Local disk (Pi + external HDD) | bounded by retention windows | ~130 k rows (~30 MB) |
 | Pi btrfs RAID1 (after hookup) | 4 TB usable | TBD |
 
-The retention policy in `app/housekeeping.py` is calibrated for the free
-tier — FIRMS pruned at 30 d, GDELT at 90 d, etc. — and will be relaxed
+The retention policy in `app/housekeeping.py` is calibrated to keep local
+disk usage bounded — FIRMS pruned at 30 d, GDELT at 90 d, etc. — and will be relaxed
 once we move to the Pi (see "After the Pi goes live" below).
 
 ---
 
 ## Current state (2026-06-20)
 
-**Total events on Supabase: ~127 k.**
+**Total events in local Postgres: ~127 k.**
 
 | Source | Rows | Country-tagged |
 |---|---|---|
@@ -59,8 +59,7 @@ the same window is safe — duplicate rows are dropped by the unique index.
 ### Why 7 days, not 2 years
 
 Earlier conversations contemplated a 2-year GDELT backfill (~50 GB) to
-warm the rolling-z baseline. Held back deliberately so Supabase free tier
-stays well under quota and the demo Pi can be primed with a sensible
+warm the rolling-z baseline. Held back deliberately so local disk usage stays bounded and the demo Pi can be primed with a sensible
 snapshot rather than a flood. The bigger backfill happens *after* the Pi
 storage is online, see below.
 
