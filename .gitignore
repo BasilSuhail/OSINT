@@ -66,3 +66,6 @@ scratch/
 
 # DB snapshots (scripts/snapshot.py output — data dumps, never commit)
 backups/
+
+# Celery beat local schedule state
+celerybeat-schedule*
