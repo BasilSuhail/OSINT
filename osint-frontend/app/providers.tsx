@@ -20,7 +20,7 @@ const TARGET_ROWS = 5000
 /**
  * Pull the most-recent events into the buffer in 1000-row pages.
  *
- * Supabase REST hard-caps `.limit(N)` at 1000 unless you also page via the
+ * The API caps a single response at 1000 rows unless you also page via the
  * Range header. Before this change the buffer only saw whatever fit in the
  * very first 1000 rows — FIRMS dominated that slice and the map effectively
  * showed ~50 GDELT events even though the DB had 90k+ in the last 3 days.

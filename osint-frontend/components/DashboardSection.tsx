@@ -442,7 +442,7 @@ function ageLabel(min: number | null): string {
 
 /** Latest CII row per country for the hero leaderboard tile (#139).
  *  Reads the most-recent ``score_name = cii_v1`` row per ISO directly
- *  from Supabase. Pure read; no aggregation here. */
+ *  from the local API. Pure read; no aggregation here. */
 function useLatestCiiByCountry(): Map<string, { iso: string; score: number }> {
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
@@ -508,7 +508,7 @@ interface HindsightStats {
  *
  *  Note: events buffer is constrained by retention (2 d for USGS), so
  *  the panel is effectively waiting on the historical data pile. Reads
- *  USGS rows directly from Supabase so even if the buffer is short,
+ *  USGS rows via the API client so even if the buffer is short,
  *  the panel still pulls the last 90 d of quakes that exist.
  */
 function useHindsightCorrelation(): HindsightStats {
@@ -572,7 +572,7 @@ function useHindsightCorrelation(): HindsightStats {
 
 /** Per-country CII rows for the last 30 d, grouped + sorted by current
  *  score desc. Used by the leaderboard panel (#142). Reads cii_v1 rows
- *  directly from Supabase + breaks them out by ISO. */
+ *  via the API client + breaks them out by ISO. */
 function useCiiByCountry(): CiiCountryRow[] {
   const [rows, setRows] = useState<ScoreRow[]>([])
   useEffect(() => {

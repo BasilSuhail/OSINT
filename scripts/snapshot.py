@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Snapshot the live Postgres (Supabase) tables to local gzipped CSV.
+"""Snapshot the local Postgres tables to local gzipped CSV.
 
 A lightweight "so I can roll back to when it worked" backup. Streams each
 table out via server-side ``COPY ... TO STDOUT WITH CSV HEADER`` straight
 into a gzip file, so it stays memory-light even for the ~300k-row ``events``
-table and needs no ``pg_dump`` (our Homebrew pg_dump is v14 while Supabase
-runs PG16, so pg_dump refuses anyway).
+table and needs no ``pg_dump`` (our Homebrew pg_dump is v14 while the local
+Postgres may run a newer version, so pg_dump version mismatches can occur).
 
 Why CSV and not Parquet: ``pyarrow`` is not a project dependency, and CSV
 restores with a plain ``COPY ... FROM``. Why not the SQLAlchemy engine:
