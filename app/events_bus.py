@@ -3,6 +3,7 @@
 The payload is just the inserted-row count; subscribers re-query the DB for the
 actual rows. Redis is already the Celery broker, so no new infrastructure.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator

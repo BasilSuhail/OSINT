@@ -3,6 +3,7 @@
 Read-only over the local Postgres. Serves recent events + latest scores, and
 (see SSE task) a live stream. Run with: uvicorn app.api:app --port 8000
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator
