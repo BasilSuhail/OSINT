@@ -537,6 +537,7 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 - **[`docs/methodology.md`](docs/methodology.md)**
   - Part A — pre-registered evaluation protocol (ground truth, splits, baselines, metrics, sensitivity, reporting checklist)
   - Part B — literature baseline (citations, reading priority, BibTeX snippets)
+- **[`docs/project-direction.md`](docs/project-direction.md)** — what the project is, who it serves, why it matters, and the long-term product / research path
 - **[`docs/architecture/`](docs/architecture/)** — seven-section build spec, all sections drafted:
   - [01 overview](docs/architecture/01-overview.md) · [02 storage](docs/architecture/02-storage.md) · [03 ingestion](docs/architecture/03-ingestion.md) · [04 schema](docs/architecture/04-schema.md) · [05 originality](docs/architecture/05-originality.md) · [06 validation](docs/architecture/06-validation.md) · [07 risks](docs/architecture/07-risks.md)
   - [CII methodology](docs/architecture/CII-METHODOLOGY.md) — per-country baseline + 4-component event blend (cii.v1.1, 31 Tier-1 countries)
