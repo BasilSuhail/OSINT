@@ -143,13 +143,17 @@ export function footprintFeatures(ev: EventRow, expanded = false): HazardFeature
   const lon = ev.lon
   const lat = ev.lat
 
-  // Cyclones: show the real track (when enriched) PLUS a modest wind-extent
-  // circle at the current position so the storm's reach is always visible —
-  // EONET storms only ship a track line, GDACS ship a track + (on click) the
-  // full wind polygons via realFootprintFeatures.
+  // Cyclones: show the real geometry (track always; full wind cones once the
+  // storm is clicked/expanded). Add the synthesized wind-extent circle ONLY when
+  // there is no real wind area to show — i.e. an EONET track-only storm, or the
+  // collapsed default — so a clicked GDACS cyclone reveals its real cones
+  // instead of a fat circle drawn on top of them.
   if (kind === "TC") {
     const out: HazardFeature[] = real ? [...real] : []
-    if (lon != null && lat != null) {
+    const hasRealArea = out.some(
+      (f) => f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon",
+    )
+    if (!hasRealArea && lon != null && lat != null) {
       out.push(poly(circlePolygon(lon, lat, cycloneWindRadiusKm(p, ev.severity)), hazardColor(ev), 0.12))
     }
     return out
