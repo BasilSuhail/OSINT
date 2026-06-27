@@ -467,33 +467,55 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             extent / shake rings / volcano zones; cyclones show only their track
             line (cones are minimised in footprintFeatures). Under the markers. */}
         <Source id="hazard-footprints" type="geojson" data={hazardFootprints}>
+          {/* Non-selected footprints — reveal on zoom-in (0 at z4 → full z6).
+              MapLibre only allows a `zoom` expression at the top level of an
+              interpolate/step, so the selected-vs-not split is done with layer
+              filters, not a `case` inside the paint. */}
           <Layer
             id="hazard-footprint-fill"
             type="fill"
+            filter={["!", ["get", "selected"]]}
             paint={{
               "fill-color": ["get", "color"],
-              // Selected event → full fill at every zoom (no fade while its card
-              // is open). Everyone else → reveal on zoom-in (0 at z4 → full z6).
               "fill-opacity": [
-                "case",
-                ["get", "selected"],
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                4,
+                0,
+                6,
                 ["get", "fillOpacity"],
-                ["interpolate", ["linear"], ["zoom"], 4, 0, 6, ["get", "fillOpacity"]],
               ],
             }}
           />
           <Layer
             id="hazard-footprint-line"
             type="line"
+            filter={["!", ["get", "selected"]]}
             paint={{
               "line-color": ["get", "color"],
               "line-width": 1,
-              "line-opacity": [
-                "case",
-                ["get", "selected"],
-                0.85,
-                ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.8],
-              ],
+              "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.8],
+            }}
+          />
+          {/* Selected event — full opacity at every zoom (no fade while open). */}
+          <Layer
+            id="hazard-footprint-fill-selected"
+            type="fill"
+            filter={["==", ["get", "selected"], true]}
+            paint={{
+              "fill-color": ["get", "color"],
+              "fill-opacity": ["get", "fillOpacity"],
+            }}
+          />
+          <Layer
+            id="hazard-footprint-line-selected"
+            type="line"
+            filter={["==", ["get", "selected"], true]}
+            paint={{
+              "line-color": ["get", "color"],
+              "line-width": 1.2,
+              "line-opacity": 0.85,
             }}
           />
         </Source>
