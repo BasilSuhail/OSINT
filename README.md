@@ -123,6 +123,21 @@ osascript -e 'quit app "Docker"'       # quit Docker Desktop → shuts the VM
 Restart from fully-off: open Docker Desktop (wait for the green whale) →
 `make up` → `cd osint-frontend && pnpm dev`.
 
+### RESTART
+
+Use this when the app is acting stale, a branch changed, or backend code needs
+to reload. Stop the dashboard with `Ctrl-C` first if `pnpm dev` is already
+running.
+
+```bash
+make down
+make up
+cd osint-frontend && pnpm dev
+```
+
+If Docker Desktop was fully quit, open Docker Desktop first and wait until it
+is running, then use the same three commands above.
+
 ### Managing the data folder
 
 ```bash

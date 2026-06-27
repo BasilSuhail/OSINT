@@ -64,6 +64,9 @@ const EARTH_FRAGMENT_SHADER = `
   void main() {
     vec3 day = texture2D(dayTexture, vUv).rgb;
     vec3 night = texture2D(nightTexture, vUv).rgb;
+    // NASA Blue Marble oceans are a dark navy; lift the day side so the lit
+    // hemisphere reads as bright blue ocean + crisp land, not a dim globe.
+    day = day * 1.45 + vec3(0.02, 0.05, 0.10);
     float cosA = dot(normalize(vWorldNormal), normalize(sunDirection));
     float t = smoothstep(-0.18, 0.18, cosA) * dayMixStrength;
     vec3 color = mix(night, day, t);
@@ -327,9 +330,10 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onCount, onSel
     }
     controls.autoRotate = autoRotate
     controls.autoRotateSpeed = 0.5
-    // Pull the camera back a touch so the future satellite/moon/sun layer has
-    // room to breathe, while keeping LEO altitudes visible above the surface.
-    globe.pointOfView({ altitude: 3.0 }, 0)
+    // Pull the camera back so the globe sits comfortably in the narrower pane
+    // (the map now takes ~70% of the screen) with room for the sat / moon / sun
+    // layer, while keeping LEO altitudes visible above the surface.
+    globe.pointOfView({ altitude: 3.6 }, 0)
   }, [autoRotate, size.width])
 
   // Stop auto-rotation the moment the user grabs / pinches / scrolls the globe
