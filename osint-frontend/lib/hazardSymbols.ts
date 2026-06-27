@@ -125,18 +125,42 @@ function realFootprintFeatures(
  *  backend has enriched it; otherwise falls back to a synthesized circle (largest
  *  first so smaller, hotter rings paint on top). Empty when the event has no
  *  coordinates or no usable size. */
+/** Modest wind-extent radius (km) for a cyclone's current position. From the
+ *  reported wind speed (kts — EONET `magnitude_value`, GDACS `magnitude`) when
+ *  present, else the severity. Capped so it reads as the storm's reach without
+ *  recreating the old overlapping-cone soup. */
+function cycloneWindRadiusKm(p: Record<string, unknown>, severity: unknown): number {
+  const kts = Number(p.magnitude_value ?? p.magnitude ?? 0)
+  if (kts > 0) return Math.max(120, Math.min(500, kts * 6))
+  return severityRadiusKm(Number(severity ?? 0))
+}
+
 export function footprintFeatures(ev: EventRow, expanded = false): HazardFeature[] {
   const p = payload(ev)
   const kind = hazardKind(ev)
   const real = realFootprintFeatures(p, kind, expanded)
-  if (real) return real
 
   const lon = ev.lon
   const lat = ev.lat
+
+  // Cyclones: show the real geometry (track always; full wind cones once the
+  // storm is clicked/expanded). Add the synthesized wind-extent circle ONLY when
+  // there is no real wind area to show — i.e. an EONET track-only storm, or the
+  // collapsed default — so a clicked GDACS cyclone reveals its real cones
+  // instead of a fat circle drawn on top of them.
+  if (kind === "TC") {
+    const out: HazardFeature[] = real ? [...real] : []
+    const hasRealArea = out.some(
+      (f) => f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon",
+    )
+    if (!hasRealArea && lon != null && lat != null) {
+      out.push(poly(circlePolygon(lon, lat, cycloneWindRadiusKm(p, ev.severity)), hazardColor(ev), 0.12))
+    }
+    return out
+  }
+
+  if (real) return real
   if (lon == null || lat == null) return []
-  // Cyclones with no real track have nothing compact to draw — keep the pin
-  // only rather than a huge synthesized extent circle.
-  if (kind === "TC") return []
 
   if (kind === "EQ") {
     const mag = Number(p.magnitude ?? 0)
