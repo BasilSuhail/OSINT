@@ -309,18 +309,34 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     return priority.concat(fill.slice(0, Math.max(0, MAX_MARKERS - priority.length)))
   }, [events, centroids])
 
-  /** Footprints for all hazards, revealed on zoom-in. Floods / fires / quakes /
-   *  volcanoes are compact geographical overlays (burn scar, flood extent, shake
-   *  rings) and stay on. Cyclones are minimised to just their track line in
-   *  footprintFeatures — their wind-probability cones span thousands of km and
-   *  buried the map in a green soup. */
-  const hazardFootprints = useMemo<{ type: "FeatureCollection"; features: HazardFeature[] }>(() => {
-    const features: HazardFeature[] = []
+  /** Footprints for all hazards. Non-selected ones are revealed on zoom-in
+   *  (opacity ramps 4→6); the SELECTED event's footprint is tagged `selected`
+   *  so the paint keeps it full-opacity at every zoom — it must not fade away
+   *  while its detail card is open, even fully zoomed out (#218). Cyclones also
+   *  expand from track line to full cones when selected. */
+  const hazardFootprints = useMemo<{
+    type: "FeatureCollection"
+    features: Array<{
+      type: "Feature"
+      properties: { color: string; fillOpacity: number; selected: boolean }
+      geometry: HazardFeature["geometry"]
+    }>
+  }>(() => {
+    const features: {
+      type: "Feature"
+      properties: { color: string; fillOpacity: number; selected: boolean }
+      geometry: HazardFeature["geometry"]
+    }[] = []
     for (const { ev } of positioned) {
       if (ev.category !== "hazard" && ev.category !== "weather") continue
-      // Selecting a cyclone expands it from its track line to the full footprint
-      // (wind cones + track); other hazards ignore the flag.
-      for (const f of footprintFeatures(ev, ev.id === selectedEventId)) features.push(f)
+      const isSelected = ev.id === selectedEventId
+      for (const f of footprintFeatures(ev, isSelected)) {
+        features.push({
+          type: "Feature",
+          properties: { ...f.properties, selected: isSelected },
+          geometry: f.geometry,
+        })
+      }
     }
     return { type: "FeatureCollection", features }
   }, [positioned, selectedEventId])
@@ -454,28 +470,30 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           <Layer
             id="hazard-footprint-fill"
             type="fill"
-            minzoom={4}
             paint={{
               "fill-color": ["get", "color"],
+              // Selected event → full fill at every zoom (no fade while its card
+              // is open). Everyone else → reveal on zoom-in (0 at z4 → full z6).
               "fill-opacity": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                4,
-                0,
-                6,
+                "case",
+                ["get", "selected"],
                 ["get", "fillOpacity"],
+                ["interpolate", ["linear"], ["zoom"], 4, 0, 6, ["get", "fillOpacity"]],
               ],
             }}
           />
           <Layer
             id="hazard-footprint-line"
             type="line"
-            minzoom={4}
             paint={{
               "line-color": ["get", "color"],
               "line-width": 1,
-              "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.8],
+              "line-opacity": [
+                "case",
+                ["get", "selected"],
+                0.85,
+                ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.8],
+              ],
             }}
           />
         </Source>
