@@ -76,7 +76,11 @@ class TestCheckSources:
         assert rows[0].dedup_key.endswith(":gdelt:" + now.date().isoformat())
 
     def test_dedup_blocks_second_alert_same_day(self, db_session: Session) -> None:
-        now = datetime.now(UTC)
+        # Pin to midday UTC: the dedup is keyed by calendar day, and the second
+        # sweep is now + 5 min — using the live clock made this flake whenever the
+        # suite ran in the last 5 minutes before UTC midnight (the two sweeps
+        # straddled two days, so the dedup never engaged).
+        now = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
         _seed_health(db_session, source="gdelt", last_success=now - timedelta(minutes=120))
         # Seed every other source as fresh so only gdelt trips the alarm.
         for source in SOURCE_CADENCE_MIN:
