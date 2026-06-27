@@ -299,6 +299,18 @@ def _parse_iso_datetime(raw: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def _parse_bool(raw: Any) -> bool | None:
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        text = raw.strip().lower()
+        if text == "true":
+            return True
+        if text == "false":
+            return False
+    return None
+
+
 def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Event | None:
     """Convert a GDACS geteventlist GeoJSON feature into a canonical Event.
 
@@ -317,6 +329,9 @@ def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Ev
     alert_level = props.get("alertlevel")
     severity = _alert_to_severity(alert_level)
     if not event_type or event_id is None or severity is None:
+        return None
+    is_current = _parse_bool(props.get("iscurrent"))
+    if is_current is False:
         return None
 
     coordinates = geometry.get("coordinates") or []
@@ -363,6 +378,9 @@ def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Ev
         "depth_km": depth_km,
         "from_date": props.get("fromdate"),
         "to_date": props.get("todate"),
+        "date_modified": props.get("datemodified"),
+        "is_current": is_current,
+        "is_temporary": _parse_bool(props.get("istemporary")),
         "link": url.get("report"),
         "episodeid": props.get("episodeid"),
         "geometry_url": url.get("geometry"),

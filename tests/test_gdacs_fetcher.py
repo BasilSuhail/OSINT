@@ -219,7 +219,9 @@ class TestFetcherContract:
             GdacsFetcher(timeout_seconds=0)
 
 
-def _api_feature(event_type: str, event_id: int, *, alert: str = "Green") -> dict:
+def _api_feature(
+    event_type: str, event_id: int, *, alert: str = "Green", iscurrent: str = "true"
+) -> dict:
     return {
         "type": "Feature",
         "geometry": {"type": "Point", "coordinates": [137.5, 34.0]},
@@ -233,6 +235,9 @@ def _api_feature(event_type: str, event_id: int, *, alert: str = "Green") -> dic
             "iso3": "JPN",
             "fromdate": "2026-06-26T16:06:49",
             "todate": "2026-06-27T00:00:00",
+            "datemodified": "2026-06-27T01:02:03",
+            "iscurrent": iscurrent,
+            "istemporary": "false",
             "severitydata": {"severity": 6.0, "severitytext": "Magnitude 6M, Depth:30km"},
             "url": {
                 "geometry": "https://www.gdacs.org/geom.geojson",
@@ -260,6 +265,8 @@ class TestApiParser:
         assert ev.payload["event_type"] == "VO"
         assert ev.payload["geometry_url"] == "https://www.gdacs.org/geom.geojson"
         assert ev.payload["link"] == "https://www.gdacs.org/report.aspx"
+        assert ev.payload["is_current"] is True
+        assert ev.payload["is_temporary"] is False
 
     def test_feature_to_event_api_parses_eq_magnitude_depth(self) -> None:
         at = datetime(2026, 6, 26, tzinfo=UTC)
@@ -273,6 +280,8 @@ class TestApiParser:
         assert feature_to_event_api({"properties": {}}, fetched_at=at) is None
         # unknown alert level → severity None → dropped
         assert feature_to_event_api(_api_feature("TC", 1, alert="Bogus"), fetched_at=at) is None
+        # GDACS geteventlist includes historical rows; closed rows must not enter the live feed.
+        assert feature_to_event_api(_api_feature("TC", 2, iscurrent="false"), fetched_at=at) is None
 
     def test_parse_eventlist_json(self) -> None:
         body = _api_body(_api_feature("TC", 1), _api_feature("VO", 2))
