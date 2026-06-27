@@ -32,15 +32,17 @@ data lives in **one folder** — `OSINT_DATA_DIR` (default `./data`,
 gitignored). Set it to an external disk for a Pi/HDD home, e.g.
 `OSINT_DATA_DIR=/mnt/hdd/osint`.
 
-Four moving parts:
+Runtime pieces:
 
 | Part | What | Command |
 |------|------|---------|
-| **Stores** | Postgres + Redis (Docker) | `docker compose up -d` |
-| **Workers** | Celery — fetch/normalise/persist | `.venv/bin/celery -A app.celery_app worker -l info` |
-| **Scheduler** | Celery beat — cadence + 03:00 prune | `.venv/bin/celery -A app.celery_app beat -l info` |
-| **Read-API** | FastAPI — feeds the dashboard | `.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000` |
-| **Dashboard** | Next.js frontend | `cd osint-frontend && pnpm dev` |
+| **Stores** | Postgres + Redis | Docker |
+| **Workers** | Celery fetch/normalise/persist | background process |
+| **Scheduler** | Celery beat cadence + 03:00 prune | background process |
+| **Read-API** | FastAPI feeds the dashboard | background process on `:8000` |
+| **Dashboard** | Next.js frontend | background process on `:3000` |
+
+You normally do **not** start those one by one. Use the commands below.
 
 ### First time only — from scratch (nothing installed yet)
 
@@ -58,18 +60,37 @@ docker compose up -d
 cd osint-frontend && pnpm install && cd ..
 ```
 
-### ALL ON — every day (even if Docker is fully off)
+### ALL ON
 
-**Easiest — one command** brings up the stores + worker + beat + API (the
-backend runs in the **background**; logs land in `logs/`):
+One command starts everything: Docker stores, worker, beat, API, and frontend.
+It waits for both the API and dashboard to answer before saying the app is up.
 
 ```bash
-make up                                 # stores + worker + beat + API (backgrounded)
-cd osint-frontend && pnpm dev           # dashboard → http://localhost:3000
+cd /Users/basilsuhail/folders/OSINT
+make start
 ```
 
-That's it. `make up` is safe to re-run — it skips anything already running and
-starts whatever is down. Watch the backend with `make logs`.
+Open:
+
+```text
+http://localhost:3000
+```
+
+Health check:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Expected:
+
+```json
+{"status":"ok"}
+```
+
+`make start` is safe to re-run. It opens Docker Desktop if needed, skips
+services already running, and starts whatever is down. Logs are in `logs/`.
+Watch them with `make logs`.
 
 <details><summary>Manual — one process per terminal (if you'd rather not background them)</summary>
 
@@ -93,75 +114,44 @@ the API process to that origin, or the browser is CORS-blocked.
 
 ### ALL OFF
 
-`make down` stops the backend services it started: worker, beat, API, Postgres,
-and Redis. It does **not** stop the frontend if `pnpm dev` is still running in
-another terminal or was started by another tool.
-
 ```bash
-# normal shutdown
-make down
+cd /Users/basilsuhail/folders/OSINT
+make stop
 ```
 
-If the dashboard terminal still exists, press `Ctrl-C` there too. If the
-dashboard terminal is gone but http://localhost:3000 still opens, stop the
-leftover frontend process:
+`make stop` stops the frontend, worker, beat, API, Postgres, and Redis. It
+keeps your data in `$OSINT_DATA_DIR`.
 
-```bash
-FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true
-```
-
-Full local shutdown, including a lost frontend server:
+Full shutdown, including Docker Desktop:
 
 ```bash
 cd /Users/basilsuhail/folders/OSINT
-make down
-FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true
-osascript -e 'quit app "Docker"'
+make off
 ```
 
-`make down` also catches backend strays started by hand. It stops the Docker
-stores too but **keeps your data** in `$OSINT_DATA_DIR` — next `make up`
-resumes where you left off. (Manual equivalent: Ctrl-C each backend terminal,
-then `docker compose stop`.)
+`make off` runs `make stop`, then asks macOS to quit Docker Desktop.
 
-**`make down` stops the containers, not Docker itself.** Docker Desktop and its
-Linux VM keep running in the background (the menu-bar whale stays on). To turn
-everything *fully* off and free the RAM:
-
-```bash
-make down                              # stop containers + worker/beat/API
-FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true
-osascript -e 'quit app "Docker"'       # quit Docker Desktop → shuts the VM
-#   (or: menu-bar whale → Quit Docker Desktop)
-```
-
-`.venv` is just a Python folder — not a VM, nothing to shut down.
+`.venv` is just a Python folder, not a VM. There is nothing to shut down there.
 
 | How far off | Commands |
 |-------------|----------|
-| Pause backend + stores | `make down` |
-| Stop orphaned frontend | `FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true` |
-| Fully off, free all RAM | `make down` → stop frontend on `:3000` → `osascript -e 'quit app "Docker"'` |
+| App stopped, data kept | `make stop` |
+| Fully off, Docker quit | `make off` |
 | Wipe data too | `make data-reset` (then quit Docker) |
-
-Restart from fully-off: open Docker Desktop (wait for the green whale) →
-`make up` → `cd osint-frontend && pnpm dev`.
 
 ### RESTART
 
-Use this when the app is acting stale, a branch changed, or backend code needs
-to reload. Stop the dashboard with `Ctrl-C` first if `pnpm dev` is already
-running.
+Use this when the app is stale, a branch changed, or backend/frontend code needs
+to reload.
 
 ```bash
-make down
-FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true
-make up
-cd osint-frontend && pnpm dev
+cd /Users/basilsuhail/folders/OSINT
+make stop
+make start
 ```
 
-If Docker Desktop was fully quit, open Docker Desktop first and wait until it
-is running, then use the same three commands above.
+Old aliases still work: `make up` means `make start`, and `make down` means
+`make stop`.
 
 ### Managing the data folder
 
