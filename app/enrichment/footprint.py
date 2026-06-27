@@ -32,7 +32,11 @@ GDACS_FOOTPRINT_URL: Final[str] = (
     "https://www.gdacs.org/contentdata/resources/{event_type}/{event_id}/"
     "geojson_{event_id}_{episode}.geojson"
 )
+EONET_EVENT_URL: Final[str] = "https://eonet.gsfc.nasa.gov/api/v3/events/{eonet_id}"
 USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+#: EONET storms (cyclones) carry no alert level — draw the track in the storm
+#: green that matches the wind pin.
+_EONET_TRACK_COLOR: Final[str] = "#22c55e"
 
 #: GDACS alert level → footprint colour (mirrors the frontend hazard palette).
 _ALERT_COLOR: Final[dict[str, str]] = {
@@ -202,6 +206,53 @@ def fetch_gdacs_footprint(
     return normalize_gdacs_footprint(fc, color)
 
 
+def eonet_track_geojson(detail: dict[str, Any], color: str) -> dict[str, Any] | None:
+    """Build a storm-track LineString from an EONET event's geometry list.
+
+    EONET ships a severe-storm event as an ordered list of dated Point
+    observations (the path). Stitch their coordinates into a single LineString
+    so the map can draw the typhoon track. Returns ``None`` when there are
+    fewer than two usable points.
+    """
+    if not isinstance(detail, dict):
+        return None
+    geometry = detail.get("geometry")
+    if not isinstance(geometry, list):
+        return None
+    coords: list[list[float]] = []
+    for g in geometry:
+        if not isinstance(g, dict) or g.get("type") != "Point":
+            continue
+        c = g.get("coordinates")
+        if isinstance(c, list) and len(c) >= 2:
+            try:
+                coords.append([float(c[0]), float(c[1])])
+            except (TypeError, ValueError):
+                continue
+    if len(coords) < 2:
+        return None
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"color": color, "fillOpacity": 0},
+                "geometry": {"type": "LineString", "coordinates": coords},
+            }
+        ],
+    }
+
+
+def fetch_eonet_footprint(
+    eonet_id: str, *, color: str, client: httpx.Client
+) -> dict[str, Any] | None:
+    """Fetch an EONET event detail and build its storm-track LineString."""
+    detail = _get_json(client, EONET_EVENT_URL.format(eonet_id=eonet_id))
+    if detail is None:
+        return None
+    return eonet_track_geojson(detail, color)
+
+
 def footprint_for_event(
     source: str, payload: dict[str, Any], *, client: httpx.Client
 ) -> dict[str, Any] | None:
@@ -227,5 +278,10 @@ def footprint_for_event(
         event_id = payload.get("gdacs_event_id")
         if isinstance(event_type, str) and isinstance(event_id, str) and event_id:
             return fetch_gdacs_footprint(event_type, event_id, color=color, client=client)
+        return None
+    if source == "eonet":
+        eonet_id = payload.get("eonet_id")
+        if isinstance(eonet_id, str) and eonet_id:
+            return fetch_eonet_footprint(eonet_id, color=_EONET_TRACK_COLOR, client=client)
         return None
     return None

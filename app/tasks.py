@@ -32,7 +32,7 @@ from app.sources.rss_registry import feed_cadence_map
 from app.watchdog import check_sources
 
 #: Hazard sources whose real footprint geometry we enrich (issue #205).
-_FOOTPRINT_SOURCES: tuple[str, ...] = ("usgs-quake", "gdacs")
+_FOOTPRINT_SOURCES: tuple[str, ...] = ("usgs-quake", "gdacs", "eonet")
 
 
 def _record_success(session: Session, *, source: str) -> None:

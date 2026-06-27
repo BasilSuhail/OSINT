@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.enrichment.footprint import (
     alert_color,
+    eonet_track_geojson,
     fetch_usgs_footprint,
     footprint_for_event,
     gdacs_footprint_url,
@@ -218,6 +219,43 @@ def test_footprint_for_event_unknown_source() -> None:
     client = _FakeClient({})
     assert footprint_for_event("nasa-firms", {}, client=client) is None  # type: ignore[arg-type]
     assert footprint_for_event("usgs-quake", {}, client=client) is None  # type: ignore[arg-type]
+
+
+def test_eonet_track_geojson_builds_linestring() -> None:
+    detail = {
+        "geometry": [
+            {"type": "Point", "coordinates": [140.0, 13.7], "date": "2026-06-20"},
+            {"type": "Point", "coordinates": [137.5, 20.1], "date": "2026-06-23"},
+            {"type": "Point", "coordinates": [133.2, 31.6], "date": "2026-06-26"},
+        ]
+    }
+    out = eonet_track_geojson(detail, "#22c55e")
+    assert out is not None
+    feat = out["features"][0]
+    assert feat["geometry"]["type"] == "LineString"
+    assert len(feat["geometry"]["coordinates"]) == 3
+    assert feat["properties"]["color"] == "#22c55e"
+
+
+def test_eonet_track_geojson_none_when_single_point() -> None:
+    assert (
+        eonet_track_geojson({"geometry": [{"type": "Point", "coordinates": [1, 2]}]}, "#fff")
+        is None
+    )
+    assert eonet_track_geojson({}, "#fff") is None
+
+
+def test_footprint_for_event_dispatch_eonet() -> None:
+    track = {
+        "geometry": [
+            {"type": "Point", "coordinates": [1, 2]},
+            {"type": "Point", "coordinates": [3, 4]},
+        ]
+    }
+    client = _FakeClient({"eonet.gsfc.nasa.gov/api/v3/events/EONET_20606": track})
+    out = footprint_for_event("eonet", {"eonet_id": "EONET_20606"}, client=client)  # type: ignore[arg-type]
+    assert out is not None
+    assert out["features"][0]["geometry"]["type"] == "LineString"
 
 
 def test_footprint_for_event_gdacs_prefers_geometry_url() -> None:
