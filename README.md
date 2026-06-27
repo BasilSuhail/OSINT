@@ -93,14 +93,36 @@ the API process to that origin, or the browser is CORS-blocked.
 
 ### ALL OFF
 
+`make down` stops the backend services it started: worker, beat, API, Postgres,
+and Redis. It does **not** stop the frontend if `pnpm dev` is still running in
+another terminal or was started by another tool.
+
 ```bash
-# Ctrl-C the dashboard (pnpm dev), then:
-make down                               # stops worker + beat + API + stores (keeps data)
+# normal shutdown
+make down
 ```
 
-`make down` also catches strays started by hand. It stops the Docker stores too
-but **keeps your data** in `$OSINT_DATA_DIR` — next `make up` resumes where you
-left off. (Manual equivalent: Ctrl-C each terminal, then `docker compose stop`.)
+If the dashboard terminal still exists, press `Ctrl-C` there too. If the
+dashboard terminal is gone but http://localhost:3000 still opens, stop the
+leftover frontend process:
+
+```bash
+FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true
+```
+
+Full local shutdown, including a lost frontend server:
+
+```bash
+cd /Users/basilsuhail/folders/OSINT
+make down
+FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true
+osascript -e 'quit app "Docker"'
+```
+
+`make down` also catches backend strays started by hand. It stops the Docker
+stores too but **keeps your data** in `$OSINT_DATA_DIR` — next `make up`
+resumes where you left off. (Manual equivalent: Ctrl-C each backend terminal,
+then `docker compose stop`.)
 
 **`make down` stops the containers, not Docker itself.** Docker Desktop and its
 Linux VM keep running in the background (the menu-bar whale stays on). To turn
@@ -108,6 +130,7 @@ everything *fully* off and free the RAM:
 
 ```bash
 make down                              # stop containers + worker/beat/API
+FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true
 osascript -e 'quit app "Docker"'       # quit Docker Desktop → shuts the VM
 #   (or: menu-bar whale → Quit Docker Desktop)
 ```
@@ -116,8 +139,9 @@ osascript -e 'quit app "Docker"'       # quit Docker Desktop → shuts the VM
 
 | How far off | Commands |
 |-------------|----------|
-| Pause app, keep DB warm | `make down` |
-| Fully off, free all RAM | `make down` → `osascript -e 'quit app "Docker"'` |
+| Pause backend + stores | `make down` |
+| Stop orphaned frontend | `FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true` |
+| Fully off, free all RAM | `make down` → stop frontend on `:3000` → `osascript -e 'quit app "Docker"'` |
 | Wipe data too | `make data-reset` (then quit Docker) |
 
 Restart from fully-off: open Docker Desktop (wait for the green whale) →
@@ -131,6 +155,7 @@ running.
 
 ```bash
 make down
+FRONTEND_PID="$(lsof -ti tcp:3000)" && [ -n "$FRONTEND_PID" ] && kill $FRONTEND_PID || true
 make up
 cd osint-frontend && pnpm dev
 ```
