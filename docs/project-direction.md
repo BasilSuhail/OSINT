@@ -5,7 +5,7 @@ description. That framing is not useful. It is too broad, too loaded, and too ea
 
 The right framing is narrower and stronger:
 
-**This project is a self-hosted OSINT analyst workbench for lawful public data.**
+**This project is a self-hosted public-intelligence system for lawful open data.**
 It ingests, deduplicates, enriches, scores, and visualises public signals so one operator can
 understand emerging risk faster.
 
@@ -19,7 +19,7 @@ This is the product answer to the professor's three questions:
 
 If you want the short version for conversations:
 
-> An off-grid OSINT intelligence workspace that turns public data into ranked, explainable early warning.
+> An off-grid public-intelligence workspace that turns open data into ranked, explainable early warning.
 
 ---
 
@@ -38,8 +38,8 @@ The difference is that your system is:
 - thesis-driven
 - usable by one operator without a large organisation behind it
 
-That makes it a research product, a personal operations tool, and an open-source platform candidate.
-It is not a generic surveillance platform.
+That makes it an intelligence product, a research product, a personal operations tool, and an
+open-source platform candidate. It is not a generic surveillance platform.
 
 The current repo already points to that shape:
 
@@ -74,8 +74,29 @@ This project is solving that by giving the operator:
 4. country-level scoring
 5. a map / globe / dashboard for triage
 
-That is not "surveillance" in the broad, loaded sense.
+That is not "surveillance" in the people-tracking sense.
 It is operational sense-making over lawful public data.
+
+### Intelligence, not surveillance
+
+This distinction matters because the product should be judged by what it helps a human understand,
+not by how much private behavior it can observe.
+
+The project is intelligence because it focuses on:
+
+- public-source collection
+- signal fusion across domains
+- ranking and alerting
+- evidence trails
+- analyst review and interpretation
+
+The project is not surveillance because it does not need:
+
+- private device tracking
+- covert collection
+- identity graphing as a core feature
+- behavioral monitoring of named individuals
+- hidden profile construction
 
 ---
 
@@ -85,7 +106,8 @@ You need a real customer profile, even if the first customer is you.
 
 ### Primary customer
 
-The primary customer is a **single operator** who needs a private, always-on public-intelligence console.
+The primary customer is a **single operator** who needs a private, always-on intelligence console
+over lawful public data.
 
 That operator could be:
 
@@ -116,7 +138,7 @@ This is not trying to serve:
 - agencies that want hidden black-box scoring with no audit trail
 
 That last point matters. If the customer is "everyone", the product gets blurry and undeliverable.
-If the customer is "one operator who needs lawful public risk monitoring", the product becomes buildable.
+If the customer is "one operator who needs lawful public risk intelligence", the product becomes buildable.
 
 ---
 
@@ -124,7 +146,7 @@ If the customer is "one operator who needs lawful public risk monitoring", the p
 
 The strongest product thesis is:
 
-**Public signals can be fused into a practical early-warning layer that is more useful than any single feed alone.**
+**Public signals can be fused into a practical intelligence layer that is more useful than any single feed alone.**
 
 That is a research claim and a product claim at the same time.
 
@@ -319,7 +341,7 @@ If the goal is long-term value, the next priorities should be:
 
 If you need to answer quickly, use this:
 
-**This is a self-hosted OSINT early-warning workbench for a single operator or small team that needs lawful public-data situational awareness, explainable scoring, and a clear audit trail.**
+**This is a self-hosted public-intelligence system for a single operator or small team that needs lawful public-data situational awareness, explainable scoring, and a clear audit trail.**
 
 If you need the thesis version:
 
@@ -345,4 +367,3 @@ If you need the founder version:
 
 These references are not a claim that your project should copy Palantir.
 They are evidence that the market already values data integration, analyst workflows, and operational decision support.
-
