@@ -3,15 +3,22 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: up down logs data-size data-prune data-reset
+.PHONY: start stop off up down logs data-size data-prune data-reset
 
-up:  ## Start the whole backend (stores + worker + beat + API) in the background
+start:  ## Start the full local app (Docker stores + backend + frontend)
 	@bash scripts/dev-up.sh
 
-down:  ## Stop the backend processes + Docker stores (keeps data)
+stop:  ## Stop the full local app (frontend + backend + Docker stores; keeps data)
 	@bash scripts/dev-down.sh
 
-logs:  ## Tail the background backend logs (Ctrl-C to stop tailing; stack keeps running)
+off: stop  ## Stop the app, then quit Docker Desktop on macOS
+	@bash scripts/dev-off.sh
+
+up: start  ## Alias for make start
+
+down: stop  ## Alias for make stop
+
+logs:  ## Tail background app logs (Ctrl-C to stop tailing; stack keeps running)
 	@tail -n 40 -F logs/*.log
 
 data-size:  ## Show disk used by each data subfolder
