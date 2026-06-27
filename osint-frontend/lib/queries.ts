@@ -6,6 +6,7 @@ import { useEvents } from "@/app/providers"
 import { fetchEvents, fetchScores as apiFetchScores } from "./apiClient"
 import { paneForEvent, sourceKeyForEvent, type EventRow, type HazardTypeKey, type Pane, type ScoreRow } from "./types"
 import { hazardKind } from "./hazardSymbols"
+import { isPersistentActiveHazard } from "./hazardActivity"
 import type { FilterStore } from "@/stores/createFilterStore"
 
 export interface VisibleEvent extends EventRow {
@@ -91,28 +92,22 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
         if (!hay.includes(kw)) continue
       }
       const occurredMs = +new Date(ev.occurred_at)
-      // Hazards (GDACS / USGS / EONET — all category "hazard") are persistent
-      // state, not points in the news stream: an active volcano or cyclone can
-      // have started weeks ago yet is still "current". The 3-day scrubber window
-      // is tuned for the news firehose and was hiding them — and fading the
-      // older ones to near-transparent. Exempt hazards from the window cutoff
-      // and the age fade so every active disaster shows at full opacity. FIRMS
-      // fire detections are category "weather" (globe pane) and stay windowed.
-      const isHazard = ev.category === "hazard"
+      // Only active, stateful hazards are persistent. Closed GDACS cyclones /
+      // volcanoes and point-in-time hazards should obey the scrubber window.
+      const isPersistentHazard = isPersistentActiveHazard(ev, windowEnd)
       const age = windowLengthMs > 0 ? (windowEnd - occurredMs) / windowLengthMs : 0
-      if (!isHazard) {
+      if (!isPersistentHazard) {
         if (occurredMs > windowEnd || occurredMs < windowStart) continue
         if (age > 1) continue
       }
       visible.push({
         ...ev,
-        age: isHazard ? 0 : age,
-        opacity: isHazard ? 1 : Math.max(0.1, 1 - age),
+        age: isPersistentHazard ? 0 : age,
+        opacity: isPersistentHazard ? 1 : Math.max(0.1, 1 - age),
         occurredMs,
       })
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allEvents, sources, hazardTypes, severity, countries, keyword, windowLengthMs, windowEndOffsetMs, pane])
 }
 
