@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactElement } from "react"
 import { format, subDays } from "date-fns"
 import {
   Bar,
@@ -22,6 +22,14 @@ import { fetchEvents, fetchIngestHealth, fetchScores } from "@/lib/apiClient"
 import type { EventRow, IngestHealthRow, ScoreRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
+
+function StableResponsiveContainer({ children }: { children: ReactElement }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+      {children}
+    </ResponsiveContainer>
+  )
+}
 
 /** Global time-range picker options. The dashboard reads its panels off
  *  the chosen window so every chart / list scopes to the same period. */
@@ -1246,7 +1254,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             </span>
           </div>
           <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <StableResponsiveContainer>
               <LineChart data={ciiSeries} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
                 <XAxis
@@ -1279,7 +1287,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                   dot={false}
                 />
               </LineChart>
-            </ResponsiveContainer>
+            </StableResponsiveContainer>
           </div>
           <p className="mt-2 font-mono text-[10px] text-neutral-600">
             CII = 0.40 × baseline + 0.60 × (0.25 unrest + 0.30 conflict +
@@ -1638,7 +1646,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             </span>
           </div>
           <div className="h-44 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <StableResponsiveContainer>
               <BarChart data={hourlyArrivalRate} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
                 <XAxis
@@ -1663,7 +1671,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                 <Bar dataKey="cyber" stackId="a" fill="#a855f7" />
                 <Bar dataKey="tracking" stackId="a" fill="#94a3b8" />
               </BarChart>
-            </ResponsiveContainer>
+            </StableResponsiveContainer>
           </div>
           <p className="mt-2 font-mono text-[10px] text-neutral-600">
             Categories stacked. Cyan = news, orange = hazard, red = geopolitical,
@@ -1683,7 +1691,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             </span>
           </div>
           <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <StableResponsiveContainer>
               <BarChart data={severityBuckets} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
                 <XAxis
@@ -1716,7 +1724,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                   ))}
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </StableResponsiveContainer>
           </div>
           <p className="mt-2 font-mono text-[10px] text-neutral-600">
             Distribution of event severities for rows whose occurred_at is in
@@ -1989,7 +1997,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                 </div>
               </div>
               <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <StableResponsiveContainer>
                   <ScatterChart margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(115,115,115,0.15)" strokeDasharray="4 4" />
                     <XAxis
@@ -2058,7 +2066,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                     />
                     <Scatter data={hindsight.spikes} fill="#22d3ee" />
                   </ScatterChart>
-                </ResponsiveContainer>
+                </StableResponsiveContainer>
               </div>
               <p className="mt-2 font-mono text-[10px] text-neutral-600">
                 Each dot = one CII spike (Δ over 7 d ≥ +0.10) for a Tier-1
