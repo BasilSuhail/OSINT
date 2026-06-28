@@ -29,8 +29,22 @@ export async function fetchEvents(params: EventQuery = {}): Promise<EventRow[]> 
   return (await res.json()) as EventRow[]
 }
 
-export async function fetchScores(limit = 5000): Promise<ScoreRow[]> {
-  const res = await fetch(`${API_BASE}/scores?limit=${limit}`)
+export interface ScoreQuery {
+  scoreName?: string
+  since?: string
+  country?: string
+  limit?: number
+}
+
+export async function fetchScores(params: number | ScoreQuery = 5000): Promise<ScoreRow[]> {
+  const query = typeof params === "number" ? { limit: params } : params
+  const qs = new URLSearchParams()
+  if (query.scoreName) qs.set("score_name", query.scoreName)
+  if (query.since) qs.set("since", query.since)
+  if (query.country) qs.set("country", query.country)
+  if (query.limit != null) qs.set("limit", String(query.limit))
+  const q = qs.toString()
+  const res = await fetch(`${API_BASE}/scores${q ? `?${q}` : ""}`)
   if (!res.ok) throw new Error(`GET /scores ${res.status}`)
   return (await res.json()) as ScoreRow[]
 }
