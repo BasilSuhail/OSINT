@@ -110,7 +110,7 @@ source has a map/globe filter and its rows can render from `/events`.
 | yfinance | yes | none | yes, 5 min | map | Country ETF drawdown signal. |
 | FRED | yes | `FRED_API_KEY`; no-op when unset | yes, daily | map | Macro indicator rows; separate frontend source from yfinance. |
 | GDELT | yes | none | yes, 15 min | map | CAMEO 14-20 conflict/event signal from GDELT v2 export. |
-| ACLED | yes | `ACLED_EMAIL` + `ACLED_API_KEY`; no-op when unset | yes, hourly | map | Conflict/protest event feed; source rows are country/city detail visible. |
+| ACLED | yes | `ACLED_CSV_DIR` / `ACLED_CSV_PATH`; optional API only with `ACLED_API_ENABLED=true` | yes, hourly | map | Conflict/protest event import from manually downloaded ACLED CSVs. |
 | EM-DAT | yes | `EMDAT_CSV_PATH`; no-op when unset/missing | yes, daily | map | Local CSV import for disaster ground-truth/backfill records. |
 | USGS | yes | none | yes, 15 min | map | 4.5+ earthquake GeoJSON feed. |
 | NASA FIRMS | yes | `FIRMS_MAP_KEY`; no-op when unset | yes, hourly | globe | VIIRS active-fire area API. |
@@ -121,6 +121,7 @@ source has a map/globe filter and its rows can render from `/events`.
 | abuse.ch | yes | none; optional bounded public-IP geolocation | yes, 15 min | map | Cyber threat feeds; public IP indicators can enrich to country/city. |
 | OpenSky ADS-B | yes | none for anonymous public API | yes, 2 min | no | Excluded from frontend event buffer because volume starves visible map sources. |
 
-ACLED and EM-DAT are now wired as runtime sources, but both fail closed when the
-required credential/file is absent. EM-DAT remains a backfill/import source, not
-a near-real-time alert feed.
+ACLED and EM-DAT are wired as runtime import sources and fail closed when the
+required downloaded file/folder is absent. ACLED API access is intentionally
+disabled by default because normal myACLED accounts can authenticate but still
+receive API ``403 Access denied``.
