@@ -85,6 +85,7 @@ ISO3_TO_ISO2: Final[dict[str, str]] = {
     "GBR": "GB",
     "GEO": "GE",
     "GRC": "GR",
+    "GUM": "GU",
     "HKG": "HK",
     "HND": "HN",
     "HRV": "HR",
@@ -111,9 +112,11 @@ ISO3_TO_ISO2: Final[dict[str, str]] = {
     "MAR": "MA",
     "MDG": "MG",
     "MEX": "MX",
+    "MNP": "MP",
     "MYS": "MY",
     "NGA": "NG",
     "NIC": "NI",
+    "NCL": "NC",
     "NLD": "NL",
     "NOR": "NO",
     "NPL": "NP",
@@ -122,6 +125,8 @@ ISO3_TO_ISO2: Final[dict[str, str]] = {
     "PAN": "PA",
     "PER": "PE",
     "PHL": "PH",
+    "PLW": "PW",
+    "PNG": "PG",
     "POL": "PL",
     "PRT": "PT",
     "ROU": "RO",
@@ -311,6 +316,28 @@ def _parse_bool(raw: Any) -> bool | None:
     return None
 
 
+def _parse_affected_countries(raw: Any) -> list[dict[str, str]]:
+    if not isinstance(raw, list):
+        return []
+    countries: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        iso2 = item.get("iso2")
+        iso3 = item.get("iso3")
+        name = item.get("countryname")
+        entry: dict[str, str] = {}
+        if isinstance(iso2, str) and iso2.strip():
+            entry["iso2"] = iso2.strip().upper()
+        if isinstance(iso3, str) and iso3.strip():
+            entry["iso3"] = iso3.strip().upper()
+        if isinstance(name, str) and name.strip():
+            entry["countryname"] = name.strip()
+        if entry:
+            countries.append(entry)
+    return countries
+
+
 def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Event | None:
     """Convert a GDACS geteventlist GeoJSON feature into a canonical Event.
 
@@ -347,6 +374,7 @@ def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Ev
     occurred_at = _parse_iso_datetime(props.get("fromdate")) or fetched_at
     iso3 = props.get("iso3")
     country = iso3_to_iso2(iso3)
+    affected_countries = _parse_affected_countries(props.get("affectedcountries"))
 
     sev = props.get("severitydata") or {}
     severity_text = sev.get("severitytext") if isinstance(sev, dict) else None
@@ -381,6 +409,7 @@ def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Ev
         "date_modified": props.get("datemodified"),
         "is_current": is_current,
         "is_temporary": _parse_bool(props.get("istemporary")),
+        "affected_countries": affected_countries,
         "link": url.get("report"),
         "episodeid": props.get("episodeid"),
         "geometry_url": url.get("geometry"),

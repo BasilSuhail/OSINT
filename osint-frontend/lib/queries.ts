@@ -7,6 +7,7 @@ import { fetchEvents, fetchScores as apiFetchScores } from "./apiClient"
 import { paneForEvent, sourceKeyForEvent, type EventRow, type HazardTypeKey, type Pane, type ScoreRow } from "./types"
 import { hazardKind } from "./hazardSymbols"
 import { isPersistentActiveHazard } from "./hazardActivity"
+import { eventMatchesCountry } from "./countryMatching"
 import type { FilterStore } from "@/stores/createFilterStore"
 
 export interface VisibleEvent extends EventRow {
@@ -86,7 +87,7 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
         if (kind !== "other" && hazardTypes[kind as HazardTypeKey] === false) continue
       }
       if (ev.severity < severity[0] || ev.severity > severity[1]) continue
-      if (countrySet.size > 0 && (!ev.country || !countrySet.has(ev.country))) continue
+      if (!eventMatchesCountry(ev, countrySet)) continue
       if (kw) {
         const hay = `${ev.keywords?.join(" ") ?? ""} ${ev.category} ${JSON.stringify(ev.payload)}`.toLowerCase()
         if (!hay.includes(kw)) continue

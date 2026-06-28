@@ -37,6 +37,7 @@ import {
 } from "@/lib/types"
 import { hazardKind } from "@/lib/hazardSymbols"
 import { cameoLabel } from "@/lib/cameo"
+import { countryCodesForEvent } from "@/lib/countryMatching"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -218,7 +219,11 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
   /** Distinct country codes + their counts on this pane. */
   const countryCounts = useMemo(() => {
     const m = new Map<string, number>()
-    for (const ev of paneEvents) if (ev.country) m.set(ev.country, (m.get(ev.country) ?? 0) + 1)
+    for (const ev of paneEvents) {
+      for (const code of countryCodesForEvent(ev)) {
+        m.set(code, (m.get(code) ?? 0) + 1)
+      }
+    }
     return m
   }, [paneEvents])
 
