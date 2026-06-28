@@ -64,6 +64,9 @@ class TestIso3ToIso2:
         assert iso3_to_iso2("RUS") == "RU"
         assert iso3_to_iso2("UKR") == "UA"
         assert iso3_to_iso2("DEU") == "DE"
+        assert iso3_to_iso2("GUM") == "GU"
+        assert iso3_to_iso2("MNP") == "MP"
+        assert iso3_to_iso2("NCL") == "NC"
 
     def test_lowercase_accepted(self) -> None:
         assert iso3_to_iso2("jpn") == "JP"
@@ -233,6 +236,10 @@ def _api_feature(
             "alertlevel": alert,
             "country": "Japan",
             "iso3": "JPN",
+            "affectedcountries": [
+                {"iso2": "JP", "iso3": "JPN", "countryname": "Japan"},
+                {"iso2": "GU", "iso3": "GUM", "countryname": "Guam"},
+            ],
             "fromdate": "2026-06-26T16:06:49",
             "todate": "2026-06-27T00:00:00",
             "datemodified": "2026-06-27T01:02:03",
@@ -267,6 +274,10 @@ class TestApiParser:
         assert ev.payload["link"] == "https://www.gdacs.org/report.aspx"
         assert ev.payload["is_current"] is True
         assert ev.payload["is_temporary"] is False
+        assert ev.payload["affected_countries"] == [
+            {"iso2": "JP", "iso3": "JPN", "countryname": "Japan"},
+            {"iso2": "GU", "iso3": "GUM", "countryname": "Guam"},
+        ]
 
     def test_feature_to_event_api_parses_eq_magnitude_depth(self) -> None:
         at = datetime(2026, 6, 26, tzinfo=UTC)
