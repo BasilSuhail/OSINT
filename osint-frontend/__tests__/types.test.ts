@@ -25,4 +25,9 @@ describe("sourceKeyForEvent", () => {
     expect(sourceKeyForEvent(row({ source: "abuse-ch-feodo", category: "cyber" }))).toBe("CYBER")
     expect(sourceKeyForEvent(row({ source: "polymarket", category: "market" }))).toBe("POLYMARKET")
   })
+
+  it("keeps FRED separate from yfinance market drawdowns", () => {
+    expect(sourceKeyForEvent(row({ source: "fred", category: "market" }))).toBe("FRED")
+    expect(sourceKeyForEvent(row({ source: "yfinance", category: "market" }))).toBe("yfinance")
+  })
 })

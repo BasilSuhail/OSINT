@@ -99,6 +99,10 @@ function eventListTitle(ev: EventRow): string {
     const tkr = typeof p?.ticker === "string" ? p.ticker : null
     if (tkr) return `${tkr} drawdown`
   }
+  if (src === "fred") {
+    const series = typeof p?.series_id === "string" ? p.series_id : null
+    if (series) return `${series} macro`
+  }
   const title = typeof p?.title === "string" ? p.title : null
   return title ?? ev.source
 }
@@ -122,6 +126,7 @@ const SOURCE_ICONS: Record<SourceKey, LucideIcon> = {
   FIRMS: Flame,
   EONET: Mountain,
   yfinance: TrendingUp,
+  FRED: Landmark,
   CYBER: ShieldAlert,
   POLYMARKET: TrendingUp,
 }

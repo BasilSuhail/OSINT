@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import tasks
 from app.db_models import IngestHealthRow, NotificationRow
 from app.watchdog import (
     SOURCE_CADENCE_MIN,
@@ -137,6 +138,14 @@ def test_cadence_and_multiplier_sane() -> None:
     assert SOURCE_CADENCE_MIN["yfinance"] == 5
     assert SOURCE_CADENCE_MIN["nasa-firms"] == 60
     assert SOURCE_CADENCE_MIN["fred"] == 1440
+
+
+def test_watchdog_covers_every_scheduled_fetcher() -> None:
+    schedule = tasks.app.conf.beat_schedule
+    scheduled = {
+        entry["args"][0] for entry in schedule.values() if entry["task"] == "app.tasks.run_fetcher"
+    }
+    assert scheduled.issubset(SOURCE_CADENCE_MIN)
 
 
 # Placeholder so pytest collects this file even if SQLite RETURNING gets quirky

@@ -49,6 +49,7 @@ const DEFAULT_WINDOW = 3 * 24 * 60 * 60 * 1000
 const defaultSources: Record<SourceKey, boolean> = {
   GDELT: true,
   yfinance: true,
+  FRED: true,
   USGS: true,
   GDACS: true,
   FIRMS: true,
