@@ -19,6 +19,7 @@ import {
 } from "recharts"
 import { useEvents } from "@/app/providers"
 import { fetchEvents, fetchIngestHealth, fetchScores, fetchSourceCoverage } from "@/lib/apiClient"
+import { buildNewsStories } from "@/lib/dashboardHelpers"
 import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
@@ -140,108 +141,6 @@ function relativeTime(iso: string): string {
   if (h < 24) return `${h}h`
   const d = Math.round(h / 24)
   return `${d}d`
-}
-
-/** Editorial source weights for the impact ranking. Mirrors the NIP
- *  formula (BasilSuhail/news-intelligence-platform / 03-IMPACT-SCORE-ALGORITHM).
- *  Higher = more credibility / global reach. Out-of-table sources get 0.5.
- *
- *  Updated for the 25 RSS feeds shipped via #158 + the regional papers
- *  added later. Tiers:
- *  - 1.00 — wire-service grade global desk
- *  - 0.90–0.95 — top-tier national broadsheet w/ international desk
- *  - 0.80–0.85 — strong regional broadsheet
- *  - 0.65–0.75 — niche / opinion-heavy / partial-translation outlet
- *  - 0.55–0.60 — state mouthpiece (signal exists, bias caveat)
- */
-const NEWS_SOURCE_WEIGHTS: Record<string, number> = {
-  // Wire-service / top global
-  "rss-bbc-world": 1.0,
-  "rss-reuters-world": 1.0,
-  "rss-nyt-world": 0.95,
-  "rss-bbc-uk": 0.95,
-  "rss-guardian-world": 0.9,
-  "rss-aljazeera": 0.9,
-  // National broadsheet, international desk
-  "rss-france24-en": 0.85,
-  "rss-dw-world": 0.85,
-  "rss-nhk-world": 0.85,
-  "rss-cbc-world": 0.85,
-  "rss-abc-au-world": 0.85,
-  "rss-cnn-world": 0.8,
-  // Regional / national
-  "rss-dawn": 0.85,
-  "rss-tribune-pk": 0.75,
-  "rss-times-of-india": 0.8,
-  "rss-the-hindu": 0.8,
-  "rss-straits-times-world": 0.8,
-  "rss-rnz-world": 0.8,
-  "rss-arab-news": 0.7,
-  "rss-jpost-world": 0.75,
-  "rss-haaretz-en": 0.8,
-  "rss-kyiv-independent": 0.8,
-  "rss-geo-english": 0.7,
-  // State-mouthpiece tier (signal still useful w/ bias caveat)
-  "rss-rt-news": 0.55,
-  "rss-tass-en": 0.55,
-  // Crime data is its own thing — low impact weight, surfaces via category
-  "uk-police": 0.6,
-}
-
-function sourceWeightFor(ev: EventRow): number {
-  return NEWS_SOURCE_WEIGHTS[ev.source] ?? 0.5
-}
-
-/** 24 h linear-decay recency in [0, 1]. Cut to 0 once a row is more than
- *  a day old — the news feed is meant to be fresh. */
-function recencyFor(ev: EventRow): number {
-  const t = new Date(ev.occurred_at).getTime()
-  if (!Number.isFinite(t)) return 0
-  const ageH = Math.max(0, (Date.now() - t) / 3_600_000)
-  return Math.max(0, 1 - ageH / 24)
-}
-
-/** Lowercase character-bigram set of a title — used for Jaccard similarity
- *  in the article-clustering memo (#172). Strips non-word chars then walks
- *  word boundaries so "Trump" / "TRUMP" / "trump." all map to the same set. */
-function titleBigrams(title: string): Set<string> {
-  const cleaned = title.toLowerCase().replace(/[^a-z0-9\s]/g, " ")
-  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 2)
-  const out = new Set<string>()
-  for (let i = 0; i < tokens.length - 1; i++) {
-    out.add(`${tokens[i]}_${tokens[i + 1]}`)
-  }
-  // Single tokens too, so very short titles still group.
-  for (const t of tokens) out.add(t)
-  return out
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0
-  let inter = 0
-  for (const x of a) if (b.has(x)) inter += 1
-  const uni = a.size + b.size - inter
-  return uni === 0 ? 0 : inter / uni
-}
-
-/** Impact score per NIP including the cluster size term (#172).
- *  Falls back to the keyword-boosted severity when sentiment is missing
- *  so pre-#131 rows still rank meaningfully. */
-function impactScoreFor(ev: EventRow, clusterSize: number = 1): number {
-  const p = (ev.payload ?? {}) as Record<string, unknown>
-  const rawSentiment =
-    typeof p?.sentiment === "number"
-      ? Math.abs(p.sentiment as number)
-      : typeof ev.severity === "number"
-        ? Math.abs(ev.severity - 0.35) * 2 // map 0.35→0, 0.85→1
-        : 0
-  const clusterTerm = Math.min(clusterSize / 10, 1)
-  return (
-    0.3 * rawSentiment +
-    0.25 * clusterTerm +
-    0.25 * sourceWeightFor(ev) +
-    0.2 * recencyFor(ev)
-  )
 }
 
 const NEWS_FILTERS: { key: string; label: string; match: (ev: EventRow) => boolean }[] = [
@@ -880,62 +779,17 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const [newsFilter, setNewsFilter] = useState<string>("all")
   const [newsSort, setNewsSort] = useState<"impact" | "time">("impact")
 
-  /** Article-clustering (#172): bigram-Jaccard single-link cluster over
-   *  the news rows in the current window. Threshold 0.4 catches stories
-   *  shared across BBC + Reuters + Al Jazeera etc without over-merging
-   *  unrelated headlines. */
-  const newsClusters = useMemo(() => {
-    const ids = allNews.map((ev) => ev.id)
-    const bigrams = allNews.map((ev) => titleBigrams(bestTitle(ev)))
-    const parent = ids.map((_, i) => i)
-    const find = (i: number): number => {
-      while (parent[i] !== i) {
-        parent[i] = parent[parent[i]]
-        i = parent[i]
-      }
-      return i
-    }
-    const union = (a: number, b: number): void => {
-      const ra = find(a)
-      const rb = find(b)
-      if (ra !== rb) parent[ra] = rb
-    }
-    const THRESHOLD = 0.4
-    // O(n^2) — fine while filteredNews shows top 30 from the buffer.
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        if (jaccard(bigrams[i], bigrams[j]) >= THRESHOLD) union(i, j)
-      }
-    }
-    const sizeByRoot = new Map<number, number>()
-    for (let i = 0; i < ids.length; i++) {
-      const r = find(i)
-      sizeByRoot.set(r, (sizeByRoot.get(r) ?? 0) + 1)
-    }
-    const out = new Map<string | number, { clusterId: number; clusterSize: number }>()
-    for (let i = 0; i < ids.length; i++) {
-      const r = find(i)
-      out.set(ids[i], { clusterId: r, clusterSize: sizeByRoot.get(r) ?? 1 })
-    }
-    return out
-  }, [allNews])
-
-  const clusterSizeFor = (ev: EventRow): number => newsClusters.get(ev.id)?.clusterSize ?? 1
-
-  const filteredNews = useMemo(() => {
+  const filteredStories = useMemo(() => {
     const f = NEWS_FILTERS.find((x) => x.key === newsFilter) ?? NEWS_FILTERS[0]
     const matched = allNews.filter(f.match)
+    const stories = buildNewsStories(matched)
     if (newsSort === "impact") {
-      return matched
-        .map((ev) => ({ ev, score: impactScoreFor(ev, clusterSizeFor(ev)) }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 30)
-        .map((x) => x.ev)
+      return stories.slice(0, 30)
     }
-    return matched.slice(0, 30)
-    // clusterSizeFor closes over newsClusters; reads in render below stay live.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allNews, newsFilter, newsSort, newsClusters])
+    return stories
+      .sort((a, b) => +new Date(b.lead.occurred_at) - +new Date(a.lead.occurred_at))
+      .slice(0, 30)
+  }, [allNews, newsFilter, newsSort])
 
   /** Severity histogram: events in last 24 h binned by severity into 10
    *  fixed-width buckets [0, 0.1) … [0.9, 1.0]. Drives the bar chart.
@@ -1459,13 +1313,14 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
               })}
             </div>
           </div>
-          {filteredNews.length === 0 ? (
+          {filteredStories.length === 0 ? (
             <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
               No news in this bucket yet. RSS feeds populate hourly.
             </p>
           ) : (
             <ul className="grid max-h-[34rem] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
-              {filteredNews.map((ev) => {
+              {filteredStories.map((story) => {
+                const ev = story.lead
                 const p = (ev.payload ?? {}) as Record<string, unknown>
                 const url = typeof p?.source_url === "string" ? (p.source_url as string) : null
                 const title = bestTitle(ev)
@@ -1475,8 +1330,11 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                 const sev = typeof ev.severity === "number" ? ev.severity : 0
                 const imageUrl =
                   typeof p?.image_url === "string" ? (p.image_url as string) : null
-                const clusterSize = clusterSizeFor(ev)
-                const impact = impactScoreFor(ev, clusterSize)
+                const clusterSize = story.members.length
+                const impact = story.score
+                const outletLabels = story.members
+                  .slice(0, 4)
+                  .map((member) => newsSourceLabel(member))
                 const firstLetter = title.charAt(0).toUpperCase() || "N"
                 const sentiment =
                   typeof p?.sentiment === "number" ? (p.sentiment as number) : null
@@ -1496,7 +1354,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                   )
                   .slice(0, 3)
                 return (
-                  <li key={ev.id}>
+                  <li key={story.id}>
                     <a
                       href={url ?? "#"}
                       {...(url
@@ -1576,9 +1434,14 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                           {clusterSize > 1 && (
                             <span
                               className="rounded border border-violet-900/60 bg-violet-950/30 px-1.5 py-0.5 tabular-nums text-violet-300"
-                              title={`Story carried by ${clusterSize} sources in window`}
+                              title={`Story pickup: ${outletLabels.join(", ")}${clusterSize > outletLabels.length ? "…" : ""}`}
                             >
-                              +{clusterSize - 1} sources
+                              {clusterSize} articles · {story.outlets.length} outlets
+                            </span>
+                          )}
+                          {outletLabels.length > 1 && (
+                            <span className="truncate normal-case text-neutral-500">
+                              {outletLabels.join(" · ")}
                             </span>
                           )}
                           {topEntities.map((e) => (

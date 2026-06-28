@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   impactScoreFor,
+  buildNewsStories,
   jaccard,
   NEWS_SOURCE_WEIGHTS,
   recencyFor,
@@ -142,5 +143,50 @@ describe("impactScoreFor", () => {
     const v = impactScoreFor(ev, 100)
     expect(v).toBeGreaterThanOrEqual(0)
     expect(v).toBeLessThanOrEqual(1)
+  })
+})
+
+describe("buildNewsStories", () => {
+  it("collapses reworded headlines when entities match", () => {
+    const stories = buildNewsStories([
+      row({
+        id: "a",
+        source: "rss-bbc-world",
+        payload: {
+          title: "Strong earthquake strikes Honshu",
+          entities: [{ text: "Honshu", label: "GPE" }, { text: "Japan", label: "GPE" }],
+        },
+      }),
+      row({
+        id: "b",
+        source: "rss-reuters-world",
+        payload: {
+          title: "Japan quake disrupts rail services",
+          entities: [{ text: "Honshu", label: "GPE" }, { text: "Japan", label: "GPE" }],
+        },
+      }),
+    ])
+
+    expect(stories).toHaveLength(1)
+    expect(stories[0].members).toHaveLength(2)
+    expect(stories[0].outlets).toEqual(["rss-bbc-world", "rss-reuters-world"])
+  })
+
+  it("ranks broad pickup above an otherwise similar single outlet story", () => {
+    const pickedUp = [
+      row({ id: "a", source: "rss-bbc-world", payload: { title: "Leaders meet in Geneva", entities: [{ text: "Geneva", label: "GPE" }] } }),
+      row({ id: "b", source: "rss-reuters-world", payload: { title: "Geneva talks begin", entities: [{ text: "Geneva", label: "GPE" }] } }),
+      row({ id: "c", source: "rss-aljazeera", payload: { title: "Diplomats gather in Geneva", entities: [{ text: "Geneva", label: "GPE" }] } }),
+    ]
+    const oneOff = row({
+      id: "d",
+      source: "rss-bbc-world",
+      payload: { title: "Unrelated market note", entities: [{ text: "London", label: "GPE" }] },
+    })
+
+    const stories = buildNewsStories([...pickedUp, oneOff])
+
+    expect(stories[0].members.map((ev) => ev.id).sort()).toEqual(["a", "b", "c"])
+    expect(stories[0].score).toBeGreaterThan(stories[1].score)
   })
 })

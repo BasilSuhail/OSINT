@@ -109,3 +109,93 @@ export function impactScoreFor(ev: EventRow, clusterSize: number = 1): number {
     0.2 * recencyFor(ev)
   )
 }
+
+function bestStoryTitle(ev: EventRow): string {
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  const candidates = [p.title, p.headline, p.place, p.country_name]
+  for (const c of candidates) if (typeof c === "string" && c.trim()) return c
+  return `${ev.source} event`
+}
+
+function normalizedEntities(ev: EventRow): Set<string> {
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  const raw = Array.isArray(p.entities) ? p.entities : []
+  const out = new Set<string>()
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue
+    const text = (item as { text?: unknown }).text
+    if (typeof text !== "string") continue
+    const cleaned = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim()
+    if (cleaned.length > 2) out.add(cleaned)
+  }
+  if (ev.country) out.add(`country:${ev.country}`)
+  return out
+}
+
+function storySimilarity(a: EventRow, b: EventRow): number {
+  const titleScore = jaccard(titleBigrams(bestStoryTitle(a)), titleBigrams(bestStoryTitle(b)))
+  const entityScore = jaccard(normalizedEntities(a), normalizedEntities(b))
+  return Math.max(titleScore, entityScore)
+}
+
+export interface NewsStory {
+  id: string
+  lead: EventRow
+  members: EventRow[]
+  outlets: string[]
+  score: number
+}
+
+export function buildNewsStories(events: EventRow[]): NewsStory[] {
+  if (events.length === 0) return []
+
+  const parent = events.map((_, i) => i)
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]]
+      i = parent[i]
+    }
+    return i
+  }
+  const union = (a: number, b: number): void => {
+    const ra = find(a)
+    const rb = find(b)
+    if (ra !== rb) parent[ra] = rb
+  }
+
+  for (let i = 0; i < events.length; i++) {
+    for (let j = i + 1; j < events.length; j++) {
+      if (storySimilarity(events[i], events[j]) >= 0.4) union(i, j)
+    }
+  }
+
+  const groups = new Map<number, EventRow[]>()
+  for (let i = 0; i < events.length; i++) {
+    const root = find(i)
+    const rows = groups.get(root) ?? []
+    rows.push(events[i])
+    groups.set(root, rows)
+  }
+
+  const stories: NewsStory[] = []
+  for (const [root, members] of groups) {
+    const sortedMembers = [...members].sort((a, b) => {
+      const impactDelta = impactScoreFor(b, members.length) - impactScoreFor(a, members.length)
+      if (Math.abs(impactDelta) > 0.0001) return impactDelta
+      return +new Date(b.occurred_at) - +new Date(a.occurred_at)
+    })
+    const lead = sortedMembers[0]
+    const outlets = Array.from(new Set(sortedMembers.map((ev) => ev.source))).sort()
+    const pickup = Math.min(outlets.length / 8, 1)
+    const score = impactScoreFor(lead, members.length) + pickup * 0.35
+    stories.push({
+      id: `${root}-${lead.id}`,
+      lead,
+      members: sortedMembers,
+      outlets,
+      score,
+    })
+  }
+
+  return stories.sort((a, b) => b.score - a.score)
+}
