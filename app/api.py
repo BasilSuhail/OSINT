@@ -7,12 +7,12 @@ Read-only over the local Postgres. Serves recent events + latest scores, and
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session_factory
@@ -80,6 +80,19 @@ def _ingest_health_dict(row: IngestHealthRow) -> dict:
     }
 
 
+def _source_coverage_dict(row) -> dict:
+    return {
+        "source": row.source,
+        "total": row.total,
+        "recent": row.recent,
+        "geocoded": row.geocoded,
+        "latest_occurred_at": (
+            row.latest_occurred_at.isoformat() if row.latest_occurred_at else None
+        ),
+        "latest_fetched_at": row.latest_fetched_at.isoformat() if row.latest_fetched_at else None,
+    }
+
+
 @app.get("/ingest-health")
 def ingest_health(
     session: Session = Depends(get_session),
@@ -94,6 +107,40 @@ def ingest_health(
         .limit(limit)
     )
     return [_ingest_health_dict(r) for r in session.execute(stmt).scalars()]
+
+
+@app.get("/events/coverage")
+def event_coverage(
+    session: Session = Depends(get_session),
+    days: int = Query(default=30, ge=0, le=365),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> list[dict]:
+    """Per-source counts used to audit DB/API/frontend visibility.
+
+    This endpoint is intentionally aggregate-only: it lets the dashboard prove
+    that sparse feeds exist in the database even when `/events` is capped or
+    map rendering intentionally drops ungeocoded rows.
+    """
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    recent_count = func.sum(case((EventRow.occurred_at >= cutoff, 1), else_=0))
+    geocoded_count = func.sum(
+        case((EventRow.lat.is_not(None) & EventRow.lon.is_not(None), 1), else_=0)
+    )
+    stmt = (
+        select(
+            EventRow.source.label("source"),
+            func.count(EventRow.id).label("total"),
+            recent_count.label("recent"),
+            geocoded_count.label("geocoded"),
+            func.max(EventRow.occurred_at).label("latest_occurred_at"),
+            func.max(EventRow.fetched_at).label("latest_fetched_at"),
+        )
+        .group_by(EventRow.source)
+        .order_by(func.max(EventRow.fetched_at).desc())
+        .limit(limit)
+    )
+    return [_source_coverage_dict(r) for r in session.execute(stmt)]
 
 
 @app.get("/health")

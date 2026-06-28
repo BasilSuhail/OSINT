@@ -15,6 +15,8 @@ import {
   RotateCcw,
   Search,
   SlidersHorizontal,
+  ShieldAlert,
+  Snowflake,
   Sun,
   TrendingUp,
   Triangle,
@@ -120,6 +122,8 @@ const SOURCE_ICONS: Record<SourceKey, LucideIcon> = {
   FIRMS: Flame,
   EONET: Mountain,
   yfinance: TrendingUp,
+  CYBER: ShieldAlert,
+  POLYMARKET: TrendingUp,
 }
 
 /** Disaster-type icons — match the map pins (quake waveform, fire flame, …). */
@@ -130,6 +134,7 @@ const HAZARD_TYPE_ICONS: Record<HazardTypeKey, LucideIcon> = {
   WF: Flame,
   VO: Triangle,
   DR: Sun,
+  ICE: Snowflake,
 }
 
 interface FilterRailProps {

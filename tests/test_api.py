@@ -194,6 +194,57 @@ def test_events_country_filter(db_session):
     assert not any(r["source_event_id"] == "gb-1" for r in rows)
 
 
+def test_event_coverage_returns_per_source_counts(db_session):
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            EventRow(
+                source="eonet",
+                source_event_id="ice",
+                occurred_at=now,
+                fetched_at=now,
+                category="hazard",
+                lat=70,
+                lon=-40,
+                keywords=[],
+                payload={},
+            ),
+            EventRow(
+                source="rss-bbc-world",
+                source_event_id="news",
+                occurred_at=now - timedelta(days=10),
+                fetched_at=now,
+                category="news",
+                keywords=[],
+                payload={},
+            ),
+            EventRow(
+                source="rss-bbc-world",
+                source_event_id="old-news",
+                occurred_at=now - timedelta(days=40),
+                fetched_at=now - timedelta(days=40),
+                category="news",
+                keywords=[],
+                payload={},
+            ),
+        ]
+    )
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    rows = client.get("/events/coverage?days=30").json()
+    by_source = {r["source"]: r for r in rows}
+
+    assert by_source["eonet"]["total"] == 1
+    assert by_source["eonet"]["recent"] == 1
+    assert by_source["eonet"]["geocoded"] == 1
+    assert by_source["rss-bbc-world"]["total"] == 2
+    assert by_source["rss-bbc-world"]["recent"] == 1
+    assert by_source["rss-bbc-world"]["geocoded"] == 0
+    assert by_source["eonet"]["latest_fetched_at"] is not None
+
+
 def test_events_ordered_occurred_at_desc(db_session):
     now = datetime.now(UTC)
     db_session.add_all(

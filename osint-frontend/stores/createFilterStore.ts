@@ -54,6 +54,8 @@ const defaultSources: Record<SourceKey, boolean> = {
   FIRMS: true,
   EONET: true,
   NEWS: true,
+  CYBER: true,
+  POLYMARKET: true,
 }
 
 const defaultHazardTypes = Object.fromEntries(
