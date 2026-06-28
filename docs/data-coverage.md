@@ -97,3 +97,32 @@ Operational targets to track after the move:
   to compare against)
 
 This file is updated whenever a new backfill runs.
+
+---
+
+## Source pipeline audit (2026-06-29)
+
+Runtime truth for the map/globe pipeline after issue #238. "Frontend" means the
+source has a map/globe filter and its rows can render from `/events`.
+
+| Source | Runtime fetcher | Auth/env | Cadence watchdog | Frontend | Notes |
+|---|---:|---|---:|---:|---|
+| yfinance | yes | none | yes, 5 min | map | Country ETF drawdown signal. |
+| FRED | yes | `FRED_API_KEY`; no-op when unset | yes, daily | map | Macro indicator rows; separate frontend source from yfinance. |
+| GDELT | yes | none | yes, 15 min | map | CAMEO 14-20 conflict/event signal from GDELT v2 export. |
+| ACLED | no | external account/licence required | no | no | Currently methodology/ground-truth only; no registered fetcher. |
+| EM-DAT | no | external access/citation workflow required | no | no | Currently validation/ground-truth only; no registered fetcher. |
+| USGS | yes | none | yes, 15 min | map | 4.5+ earthquake GeoJSON feed. |
+| NASA FIRMS | yes | `FIRMS_MAP_KEY`; no-op when unset | yes, hourly | globe | VIIRS active-fire area API. |
+| GDACS | yes | none | yes, 15 min | map | Multi-hazard alerts and footprint enrichment. |
+| EONET | yes | none | yes, 30 min | map | NASA natural events. |
+| RSS news | yes | none | yes, per feed | map | JSON registry drives fetchers, beat schedule, and watchdog. |
+| Polymarket | yes | none | yes, 30 min | map | Prediction-market signal. |
+| abuse.ch | yes | none | yes, 15 min | map | Cyber threat feeds. |
+| OpenSky ADS-B | yes | none for anonymous public API | yes, 2 min | no | Excluded from frontend event buffer because volume starves visible map sources. |
+
+ACLED and EM-DAT are intentionally not claimed as live dashboard feeds until
+dedicated fetchers, credentials handling, licence-safe storage, and frontend
+contracts land. They remain valid evaluation/ground-truth sources in the
+methodology docs, but they are not authenticated, scheduled, or visible in the
+operator UI today.

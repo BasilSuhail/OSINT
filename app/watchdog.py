@@ -26,13 +26,14 @@ from sqlalchemy.orm import Session
 
 from app.db_models import IngestHealthRow, NotificationRow
 from app.settings import settings
+from app.sources.rss_registry import feed_cadence_map
 
 logger = logging.getLogger(__name__)
 
 
 #: Polling cadence in minutes per source. Mirrors the beat schedule in
 #: ``app/tasks.py``. Editing one without the other is a bug.
-SOURCE_CADENCE_MIN: dict[str, int] = {
+CORE_SOURCE_CADENCE_MIN: dict[str, int] = {
     "yfinance": 5,
     "fred": 1440,  # daily
     "gdelt": 15,
@@ -40,13 +41,16 @@ SOURCE_CADENCE_MIN: dict[str, int] = {
     "gdacs": 15,
     "nasa-firms": 60,
     "eonet": 30,
-    "rss-bbc-world": 60,
-    "rss-bbc-uk": 60,
-    "rss-reuters-world": 60,
-    "rss-dawn": 60,
-    "rss-guardian-world": 60,
-    "rss-geo-english": 60,
     "uk-police": 1440,
+    "opensky-adsb": 2,
+    "abuse-ch-urlhaus": 15,
+    "abuse-ch-feodo": 15,
+    "polymarket": 30,
+}
+
+SOURCE_CADENCE_MIN: dict[str, int] = {
+    **CORE_SOURCE_CADENCE_MIN,
+    **feed_cadence_map(),
 }
 
 #: A source is "stale" once last_success is older than this many cadence

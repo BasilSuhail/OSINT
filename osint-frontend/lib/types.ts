@@ -15,6 +15,7 @@ export type SourceKey =
   | "GDACS"
   | "FIRMS"
   | "yfinance"
+  | "FRED"
   | "EONET"
   | "NEWS"
   | "CYBER"
@@ -135,7 +136,8 @@ export interface SourceFilterDef {
 
 export const SOURCE_FILTERS: SourceFilterDef[] = [
   { key: "GDELT", label: "Geopolitical events", category: "geopolitical", color: "rgb(163,163,163)", hex: "#a3a3a3", pane: "map" },
-  { key: "yfinance", label: "Markets", category: "market", color: "rgb(34,197,94)", hex: "#22c55e", pane: "map" },
+  { key: "yfinance", label: "Market drawdowns", category: "market", color: "rgb(34,197,94)", hex: "#22c55e", pane: "map" },
+  { key: "FRED", label: "Macro indicators", category: "market", color: "rgb(59,130,246)", hex: "#3b82f6", pane: "map" },
   { key: "USGS", label: "Earthquakes", category: "hazard", color: "rgb(239,68,68)", hex: "#ef4444", pane: "map" },
   { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316", pane: "map" },
   { key: "FIRMS", label: "Active fires (satellite)", category: "weather", color: "rgb(234,179,8)", hex: "#eab308", pane: "globe" },
@@ -193,6 +195,7 @@ export function colorForEvent(ev: EventRow): string {
   if (src.includes("GDACS")) return "#f97316"
   if (src === "EONET" || src.includes("EONET")) return "#d946ef"
   if (src.includes("FIRMS")) return "#eab308"
+  if (src === "FRED") return "#3b82f6"
   if (src.includes("YF") || src.includes("YFINANCE") || ev.category === "market") return "#22c55e"
   if (src.includes("GDELT") || ev.category === "geopolitical") return "#a3a3a3"
   if (src.includes("OPENSKY") || src.includes("ADSB") || ev.category === "tracking") {
@@ -226,6 +229,7 @@ export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
   if (src === "EONET") return "EONET"
   if (src.includes("FIRMS")) return "FIRMS"
   if (src.includes("YF") || src.includes("YFINANCE")) return "yfinance"
+  if (src === "FRED") return "FRED"
   if (src.startsWith("ABUSE-CH-")) return "CYBER"
   if (src === "POLYMARKET") return "POLYMARKET"
   if (src.includes("GDELT")) return "GDELT"
