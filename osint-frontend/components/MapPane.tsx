@@ -23,6 +23,11 @@ import {
   type HazardIcon,
 } from "@/lib/hazardSymbols"
 import { hazardFootprintCollections } from "@/lib/mapFootprints"
+import {
+  isWorldScopeNews,
+  worldNewsAggregates,
+  type WorldNewsAggregate,
+} from "@/lib/worldNewsAggregates"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { FilterRail } from "./FilterRail"
@@ -221,6 +226,51 @@ function ClusterChip({
   )
 }
 
+function WorldAggregateChip({
+  aggregate,
+  onClick,
+}: {
+  aggregate: WorldNewsAggregate
+  onClick: (aggregate: WorldNewsAggregate) => void
+}) {
+  const n = aggregate.events.length
+  const size = Math.min(34, 18 + Math.log10(Math.max(2, n)) * 6)
+  const fontSize = Math.min(12, Math.max(9, size * 0.42))
+  return (
+    <Marker longitude={aggregate.lon} latitude={aggregate.lat} anchor="center">
+      <motion.button
+        type="button"
+        initial={{ scale: 0.6, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.6, opacity: 0 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onClick(aggregate)
+        }}
+        className="rounded-md font-mono font-semibold tabular-nums text-neutral-100"
+        style={{
+          width: size,
+          height: size,
+          backgroundColor: "rgba(51,65,85,0.9)",
+          boxShadow: "0 0 7px rgba(148,163,184,0.65)",
+          border: "1px solid rgba(203,213,225,0.55)",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          lineHeight: 1,
+          padding: 0,
+          fontSize: `${fontSize}px`,
+        }}
+        aria-label={`${n} world news events in ${aggregate.country}`}
+      >
+        {n < 100 ? n : "99+"}
+      </motion.button>
+    </Marker>
+  )
+}
+
 export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount, onSelectEvent, selectedEventId }: MapPaneProps) {
   const { events, windowEnd, total } = useEventsInWindow(useStore, "map")
   const { byCountry } = useLatestScores()
@@ -231,6 +281,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const [openCluster, setOpenCluster] = useState<ClusterMarker | null>(null)
+  const [openWorldAggregate, setOpenWorldAggregate] = useState<WorldNewsAggregate | null>(null)
 
   useEffect(() => onCount(total), [total, onCount])
 
@@ -280,6 +331,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     const priority: Positioned[] = []
     const fill: Positioned[] = []
     for (const ev of events) {
+      if (isWorldScopeNews(ev)) continue
       let lat = ev.lat
       let lon = ev.lon
       if (lat == null || lon == null) {
@@ -308,6 +360,11 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     // All priority rows, then clusterable until the total budget is spent.
     return priority.concat(fill.slice(0, Math.max(0, MAX_MARKERS - priority.length)))
   }, [events, centroids])
+
+  const worldAggregates = useMemo(
+    () => worldNewsAggregates(events, centroids),
+    [events, centroids],
+  )
 
   /** Footprints for all hazards. Non-selected ones are revealed on zoom-in
    *  (opacity ramps 4→6); the SELECTED event's footprint is tagged `selected`
@@ -518,6 +575,13 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           {clusters.map((c) => (
             <ClusterChip key={c.key} cluster={c} onClick={handleClusterClick} />
           ))}
+          {worldAggregates.map((aggregate) => (
+            <WorldAggregateChip
+              key={aggregate.country}
+              aggregate={aggregate}
+              onClick={setOpenWorldAggregate}
+            />
+          ))}
         </AnimatePresence>
 
 
@@ -576,6 +640,67 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
               {openCluster.events.length > 12 && (
                 <p className="mt-1 px-2 font-mono text-[10px] text-neutral-600">
                   +{openCluster.events.length - 12} more · zoom in to separate
+                </p>
+              )}
+            </div>
+          </Popup>
+        )}
+
+        {openWorldAggregate && (
+          <Popup
+            longitude={openWorldAggregate.lon}
+            latitude={openWorldAggregate.lat}
+            anchor="bottom"
+            closeButton={false}
+            closeOnClick={false}
+            onClose={() => setOpenWorldAggregate(null)}
+            offset={16}
+            maxWidth="320px"
+            className="osint-popup"
+          >
+            <div className="w-72 rounded-md border border-slate-700 bg-neutral-950/95 p-2 backdrop-blur-md">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-slate-300">
+                  {openWorldAggregate.events.length} world news · {openWorldAggregate.country}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setOpenWorldAggregate(null)}
+                  className="font-mono text-[10px] text-neutral-500 hover:text-neutral-200"
+                >
+                  close
+                </button>
+              </div>
+              <ul className="max-h-56 overflow-y-auto pr-1">
+                {openWorldAggregate.events.slice(0, 12).map((ev) => {
+                  const p = (ev.payload ?? {}) as Record<string, unknown>
+                  const title =
+                    (typeof p?.title === "string" && p.title) ||
+                    (typeof p?.headline === "string" && p.headline) ||
+                    ev.source
+                  return (
+                    <li key={ev.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenWorldAggregate(null)
+                          handleSelectMarker(ev)
+                        }}
+                        className="block w-full truncate rounded px-2 py-1 text-left text-[11px] text-neutral-200 hover:bg-neutral-900"
+                      >
+                        <span className="mr-1 font-mono text-[10px] text-neutral-500">
+                          {ev.source.replace(/^rss-/, "")}
+                        </span>
+                        {title as string}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+              {openWorldAggregate.events.length > 12 && (
+                <p className="mt-1 px-2 font-mono text-[10px] text-neutral-600">
+                  +{openWorldAggregate.events.length - 12} more
                 </p>
               )}
             </div>
