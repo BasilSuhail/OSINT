@@ -37,6 +37,8 @@ CORE_SOURCE_CADENCE_MIN: dict[str, int] = {
     "yfinance": 5,
     "fred": 1440,  # daily
     "gdelt": 15,
+    "acled": 60,
+    "emdat": 1440,
     "usgs-quake": 15,
     "gdacs": 15,
     "nasa-firms": 60,

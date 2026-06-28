@@ -215,6 +215,16 @@ app.conf.beat_schedule = {
         "args": ["gdelt"],
         "schedule": crontab(minute="0,15,30,45"),
     },
+    "acled-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["acled"],
+        "schedule": crontab(hour="*/1", minute=5),
+    },
+    "emdat-daily-7-30am-utc": {
+        "task": "app.tasks.run_fetcher",
+        "args": ["emdat"],
+        "schedule": crontab(hour=7, minute=30),
+    },
     "usgs-quake-15min": {
         "task": "app.tasks.run_fetcher",
         "args": ["usgs-quake"],

@@ -11,6 +11,8 @@ export type Category =
 
 export type SourceKey =
   | "GDELT"
+  | "ACLED"
+  | "EMDAT"
   | "USGS"
   | "GDACS"
   | "FIRMS"
@@ -136,10 +138,12 @@ export interface SourceFilterDef {
 
 export const SOURCE_FILTERS: SourceFilterDef[] = [
   { key: "GDELT", label: "Geopolitical events", category: "geopolitical", color: "rgb(163,163,163)", hex: "#a3a3a3", pane: "map" },
+  { key: "ACLED", label: "Conflict events", category: "geopolitical", color: "rgb(244,63,94)", hex: "#f43f5e", pane: "map" },
   { key: "yfinance", label: "Market drawdowns", category: "market", color: "rgb(34,197,94)", hex: "#22c55e", pane: "map" },
   { key: "FRED", label: "Macro indicators", category: "market", color: "rgb(59,130,246)", hex: "#3b82f6", pane: "map" },
   { key: "USGS", label: "Earthquakes", category: "hazard", color: "rgb(239,68,68)", hex: "#ef4444", pane: "map" },
   { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316", pane: "map" },
+  { key: "EMDAT", label: "Disaster records", category: "hazard", color: "rgb(14,165,233)", hex: "#0ea5e9", pane: "map" },
   { key: "FIRMS", label: "Active fires (satellite)", category: "weather", color: "rgb(234,179,8)", hex: "#eab308", pane: "globe" },
   { key: "EONET", label: "Natural events (NASA)", category: "hazard", color: "rgb(217,70,239)", hex: "#d946ef", pane: "map" },
   { key: "NEWS", label: "News (RSS)", category: "news", color: "rgb(56,189,248)", hex: "#38bdf8", pane: "map" },
@@ -156,7 +160,7 @@ export function sourceFiltersForPane(pane: Pane): SourceFilterDef[] {
  *  disasters together. These are the source keys whose events are filtered by
  *  disaster TYPE instead of by source, so the rail can offer "hide volcanoes"
  *  rather than one giant "multi-hazard" switch. */
-export const HAZARD_SOURCE_KEYS: SourceKey[] = ["USGS", "GDACS", "EONET"]
+export const HAZARD_SOURCE_KEYS: SourceKey[] = ["USGS", "GDACS", "EMDAT", "EONET"]
 
 /** Disaster-type filter keys (mirror HazardKind, minus "other"). */
 export type HazardTypeKey = "EQ" | "TC" | "FL" | "VO" | "DR" | "WF" | "ICE"
@@ -193,10 +197,12 @@ export function colorForEvent(ev: EventRow): string {
   if (src.startsWith("RSS-") || ev.category === "news") return "#38bdf8"
   if (src.includes("USGS")) return "#ef4444"
   if (src.includes("GDACS")) return "#f97316"
+  if (src === "EMDAT") return "#0ea5e9"
   if (src === "EONET" || src.includes("EONET")) return "#d946ef"
   if (src.includes("FIRMS")) return "#eab308"
   if (src === "FRED") return "#3b82f6"
   if (src.includes("YF") || src.includes("YFINANCE") || ev.category === "market") return "#22c55e"
+  if (src === "ACLED") return "#f43f5e"
   if (src.includes("GDELT") || ev.category === "geopolitical") return "#a3a3a3"
   if (src.includes("OPENSKY") || src.includes("ADSB") || ev.category === "tracking") {
     return "#06b6d4" // cyan-500 — distinct from news (#38bdf8 sky-400)
@@ -224,6 +230,8 @@ export function colorForEvent(ev: EventRow): string {
 export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
   const src = (ev.source || "").toUpperCase()
   if (src.startsWith("RSS-")) return "NEWS"
+  if (src === "ACLED") return "ACLED"
+  if (src === "EMDAT") return "EMDAT"
   if (src.includes("USGS")) return "USGS"
   if (src.includes("GDACS")) return "GDACS"
   if (src === "EONET") return "EONET"

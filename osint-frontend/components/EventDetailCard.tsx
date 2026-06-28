@@ -33,6 +33,15 @@ function bestTitle(ev: EventRow): string {
     if (cameo) return `${cameo} event`
   }
 
+  if (source === "acled") {
+    const type = typeof p?.event_type === "string" ? p.event_type : null
+    const subType = typeof p?.sub_event_type === "string" ? p.sub_event_type : null
+    const place = typeof p?.location === "string" ? p.location : null
+    if (subType && place) return `${subType} · ${place}`
+    if (type && place) return `${type} · ${place}`
+    if (type) return type
+  }
+
   // USGS: payload.place already reads "Off the east coast of Honshu, Japan".
   // Prefix the magnitude so the title is informative at a glance.
   if (source === "usgs-quake") {
@@ -63,6 +72,29 @@ function bestTitle(ev: EventRow): string {
     // Storms carry a name (e.g. HALONG) — surface it: "Tropical Cyclone HALONG · Japan".
     if (type && name && place) return `${type} ${name} · ${place}`
     if (type && place) return `${type} · ${place}`
+  }
+
+  if (source === "emdat") {
+    const type = typeof p?.disaster_type === "string" ? p.disaster_type : null
+    const subtype = typeof p?.disaster_subtype === "string" ? p.disaster_subtype : null
+    const place = typeof p?.country_name === "string" ? p.country_name : null
+    const name = typeof p?.event_name === "string" ? p.event_name : null
+    if (name && place) return `${name} · ${place}`
+    if (subtype && place) return `${subtype} · ${place}`
+    if (type && place) return `${type} · ${place}`
+    if (type) return type
+  }
+
+  if (source.startsWith("abuse-ch-")) {
+    const malware = typeof p?.malware === "string" ? p.malware : null
+    const threat = typeof p?.threat === "string" ? p.threat : null
+    const city = typeof p?.geo_city === "string" ? p.geo_city : null
+    const country = typeof p?.geo_country === "string" ? p.geo_country : null
+    const where = city && country ? `${city}, ${country}` : country
+    if (malware && where) return `${malware} C2 · ${where}`
+    if (threat && where) return `${threat} · ${where}`
+    if (malware) return `${malware} C2`
+    if (threat) return threat
   }
 
   // yfinance: ticker + drawdown gives an at-a-glance reading.

@@ -8,7 +8,9 @@ shipping fetchers.
 from __future__ import annotations
 
 from app.sources.abuse_ch_fetchers import FeodoFetcher, UrlhausFetcher
+from app.sources.acled_fetcher import AcledFetcher
 from app.sources.base import Fetcher
+from app.sources.emdat_fetcher import EmdatFetcher
 from app.sources.eonet_fetcher import EonetFetcher
 from app.sources.fred_fetcher import FredFetcher
 from app.sources.gdacs_fetcher import GdacsFetcher
@@ -25,6 +27,8 @@ _REGISTRY: dict[str, Fetcher] = {
     "yfinance": YFinanceFetcher(),
     "fred": FredFetcher(),
     "gdelt": GdeltFetcher(),
+    "acled": AcledFetcher(),
+    "emdat": EmdatFetcher(),
     "usgs-quake": UsgsQuakeFetcher(),
     "gdacs": GdacsFetcher(),
     "nasa-firms": NasaFirmsFetcher(),

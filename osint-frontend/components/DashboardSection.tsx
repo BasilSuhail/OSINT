@@ -278,6 +278,8 @@ const SOURCE_CADENCE_MIN: Record<string, number> = {
   "rss-arab-news": 60,
   "rss-kyiv-independent": 60,
   "uk-police": 24 * 60,
+  acled: 60,
+  emdat: 24 * 60,
   // Source-expansion batch.
   "opensky-adsb": 2,
   "abuse-ch-urlhaus": 15,

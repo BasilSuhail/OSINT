@@ -85,6 +85,16 @@ export function SourceSignals({ ev }: { ev: EventRow }) {
       },
       { label: "cameo", value: asString(p.event_root_code) },
     ]
+  } else if (source === "acled") {
+    rows = [
+      { label: "event", value: asString(p.event_type) },
+      { label: "subtype", value: asString(p.sub_event_type) },
+      { label: "location", value: asString(p.location) },
+      { label: "actor 1", value: asString(p.actor1) },
+      { label: "actor 2", value: asString(p.actor2) },
+      { label: "fatalities", value: asNumber(p.fatalities) },
+      { label: "source", value: asString(p.source) },
+    ]
   } else if (source === "usgs-quake") {
     const mag = asNumber(p.magnitude)
     const depth = asNumber(p.depth_km)
@@ -107,6 +117,15 @@ export function SourceSignals({ ev }: { ev: EventRow }) {
       { label: "alert level", value: asString(p.alert_level) },
       { label: "magnitude", value: mag !== null ? `M${mag.toFixed(1)}` : null },
       { label: "depth", value: depth !== null ? `${depth.toFixed(1)} km` : null },
+    ]
+  } else if (source === "emdat") {
+    rows = [
+      { label: "type", value: asString(p.disaster_type) },
+      { label: "subtype", value: asString(p.disaster_subtype) },
+      { label: "name", value: asString(p.event_name) },
+      { label: "deaths", value: asNumber(p.total_deaths) },
+      { label: "affected", value: asNumber(p.total_affected) },
+      { label: "damages", value: asNumber(p.total_damages_000_usd) },
     ]
   } else if (source === "yfinance" || source === "yf") {
     const close = asNumber(p.close)
@@ -156,6 +175,18 @@ export function SourceSignals({ ev }: { ev: EventRow }) {
       { label: "satellite", value: asString(p.satellite) },
       { label: "confidence", value: asString(p.confidence_raw) },
       { label: "day/night", value: asString(p.daynight) },
+    ]
+  } else if (source.startsWith("abuse-ch-")) {
+    const tags = Array.isArray(p.tags) ? (p.tags as string[]).join(", ") : null
+    rows = [
+      { label: "malware", value: asString(p.malware) },
+      { label: "threat", value: asString(p.threat) },
+      { label: "status", value: asString(p.status) ?? asString(p.c2_status) },
+      { label: "ip", value: asString(p.dst_ip) },
+      { label: "port", value: asNumber(p.dst_port) },
+      { label: "city", value: asString(p.geo_city) },
+      { label: "country", value: asString(p.geo_country) },
+      { label: "tags", value: tags },
     ]
   } else {
     return null

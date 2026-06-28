@@ -82,6 +82,12 @@ function eventListTitle(ev: EventRow): string {
     const cameo = cameoLabel(p?.event_root_code as string | number | undefined)
     if (cameo) return cameo
   }
+  if (src === "acled") {
+    const type = typeof p?.event_type === "string" ? p.event_type : null
+    const loc = typeof p?.location === "string" ? p.location : null
+    if (type && loc) return `${type} · ${loc}`
+    if (type) return type
+  }
   if (src === "usgs-quake") {
     const mag = typeof p?.magnitude === "number" ? p.magnitude : null
     if (mag !== null) return `M${mag.toFixed(1)} quake`
@@ -89,6 +95,12 @@ function eventListTitle(ev: EventRow): string {
   if (src === "gdacs") {
     const t = typeof p?.event_type === "string" ? p.event_type : null
     if (t) return t.toUpperCase()
+  }
+  if (src === "emdat") {
+    const t = typeof p?.disaster_type === "string" ? p.disaster_type : null
+    const loc = typeof p?.country_name === "string" ? p.country_name : null
+    if (t && loc) return `${t} · ${loc}`
+    if (t) return t
   }
   if (src === "nasa-firms") return "Active fire"
   if (src === "eonet") {
@@ -121,6 +133,8 @@ function countryFlagEmoji(iso: string): string {
 const SOURCE_ICONS: Record<SourceKey, LucideIcon> = {
   NEWS: Newspaper,
   GDELT: Landmark,
+  ACLED: ShieldAlert,
+  EMDAT: AlertTriangle,
   USGS: Activity,
   GDACS: AlertTriangle,
   FIRMS: Flame,

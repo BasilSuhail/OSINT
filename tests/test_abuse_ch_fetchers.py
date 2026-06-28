@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.enrichment.ip_geo import IpGeo
 from app.models import Category
 from app.sources.abuse_ch_fetchers import (
     CYBER_DEFAULT_SEVERITY,
@@ -13,6 +14,7 @@ from app.sources.abuse_ch_fetchers import (
 )
 
 FETCHED_AT = datetime(2026, 6, 22, 12, 0, 0, tzinfo=UTC)
+PUBLIC_IP = ".".join(["93", "184", "216", "34"])
 
 
 # URLhaus
@@ -37,6 +39,21 @@ def test_urlhaus_event_shape() -> None:
     assert ev.category == Category.CYBER
     assert ev.payload["url"] == "http://example.com/bad.exe"
     assert "trojan" in ev.payload["tags"]
+
+
+def test_urlhaus_ip_host_gets_geo() -> None:
+    body = (
+        f"1,2026-06-22 11:45:00,http://{PUBLIC_IP}/bad.exe,online,"
+        "2026-06-22 11:46:00,malware_download,trojan,https://urlhaus.abuse.ch/1,reporter1\n"
+    )
+    events = parse_urlhaus_csv(
+        body,
+        fetched_at=FETCHED_AT,
+        geo_by_ip={PUBLIC_IP: IpGeo(PUBLIC_IP, "US", "Mountain View", 37.4, -122.1)},
+    )
+    assert events[0].country == "US"
+    assert events[0].lat == 37.4
+    assert events[0].payload["geo_city"] == "Mountain View"
 
 
 def test_urlhaus_severity_heavy_on_phishing_kit_tag() -> None:
@@ -78,6 +95,18 @@ def test_feodo_event_shape() -> None:
     assert ev.payload["dst_ip"] == "1.2.3.4"
     assert ev.payload["dst_port"] == 443
     assert ev.payload["malware"] == "Emotet"
+
+
+def test_feodo_geo_enrichment() -> None:
+    events = parse_feodo_csv(
+        FEODO_SAMPLE,
+        fetched_at=FETCHED_AT,
+        geo_by_ip={"1.2.3.4": IpGeo("1.2.3.4", "GB", "London", 51.5, -0.1)},
+    )
+    ev = events[0]
+    assert ev.country == "GB"
+    assert ev.lon == -0.1
+    assert ev.payload["geo_country"] == "GB"
 
 
 def test_feodo_severity_always_heavy() -> None:
