@@ -17,13 +17,12 @@ import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/que
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
 import {
-  footprintFeatures,
   hazardColor,
   hazardIcon,
   hazardKind,
-  type HazardFeature,
   type HazardIcon,
 } from "@/lib/hazardSymbols"
+import { hazardFootprintCollections } from "@/lib/mapFootprints"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { FilterRail } from "./FilterRail"
@@ -315,45 +314,9 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
    *  so the paint keeps it full-opacity at every zoom — it must not fade away
    *  while its detail card is open, even fully zoomed out (#218). Cyclones also
    *  expand from track line to full cones when selected. */
-  const hazardFootprints = useMemo<{
-    type: "FeatureCollection"
-    features: Array<{
-      type: "Feature"
-      properties: { color: string; fillOpacity: number; selected: boolean }
-      geometry: HazardFeature["geometry"]
-    }>
-  }>(() => {
-    const features: {
-      type: "Feature"
-      properties: { color: string; fillOpacity: number; selected: boolean }
-      geometry: HazardFeature["geometry"]
-    }[] = []
-    for (const { ev } of positioned) {
-      if (ev.category !== "hazard" && ev.category !== "weather") continue
-      const isSelected = ev.id === selectedEventId
-      for (const f of footprintFeatures(ev, isSelected)) {
-        features.push({
-          type: "Feature",
-          properties: { ...f.properties, selected: isSelected },
-          geometry: f.geometry,
-        })
-      }
-    }
-    return { type: "FeatureCollection", features }
-  }, [positioned, selectedEventId])
-  const ambientHazardFootprints = useMemo(
-    () => ({
-      type: "FeatureCollection" as const,
-      features: hazardFootprints.features.filter((f) => !f.properties.selected),
-    }),
-    [hazardFootprints],
-  )
-  const selectedHazardFootprints = useMemo(
-    () => ({
-      type: "FeatureCollection" as const,
-      features: hazardFootprints.features.filter((f) => f.properties.selected),
-    }),
-    [hazardFootprints],
+  const { ambient: ambientHazardFootprints, selected: selectedHazardFootprints } = useMemo(
+    () => hazardFootprintCollections(positioned, selectedEventId),
+    [positioned, selectedEventId],
   )
 
   /** Split into:
