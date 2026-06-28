@@ -66,7 +66,7 @@ One command starts everything: Docker stores, worker, beat, API, and frontend.
 It waits for both the API and dashboard to answer before saying the app is up.
 
 ```bash
-cd /Users/basilsuhail/folders/OSINT
+cd osint
 make start
 ```
 
@@ -115,7 +115,7 @@ the API process to that origin, or the browser is CORS-blocked.
 ### ALL OFF
 
 ```bash
-cd /Users/basilsuhail/folders/OSINT
+cd osint
 make stop
 ```
 
@@ -125,7 +125,7 @@ keeps your data in `$OSINT_DATA_DIR`.
 Full shutdown, including Docker Desktop:
 
 ```bash
-cd /Users/basilsuhail/folders/OSINT
+cd osint
 make off
 ```
 
@@ -139,19 +139,31 @@ make off
 | Fully off, Docker quit | `make off` |
 | Wipe data too | `make data-reset` (then quit Docker) |
 
+Aliases:
+
+| Alias | Same as | Use |
+|-------|---------|-----|
+| `make up` | `make start` | Start the full app |
+| `make down` | `make stop` | Stop the full app, keep data |
+
 ### RESTART
 
 Use this when the app is stale, a branch changed, or backend/frontend code needs
 to reload.
 
 ```bash
-cd /Users/basilsuhail/folders/OSINT
+cd osint
 make stop
 make start
 ```
 
-Old aliases still work: `make up` means `make start`, and `make down` means
-`make stop`.
+Alias version:
+
+```bash
+cd osint
+make down
+make up
+```
 
 ### Managing the data folder
 
