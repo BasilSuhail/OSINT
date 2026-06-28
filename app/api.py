@@ -175,9 +175,18 @@ def events(
 @app.get("/scores")
 def scores(
     session: Session = Depends(get_session),
+    score_name: str | None = Query(default=None),
+    since: datetime | None = Query(default=None),
+    country: str | None = Query(default=None),
     limit: int = Query(default=5000, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
     stmt = select(ScoreRow).order_by(ScoreRow.bucket_start.desc()).limit(limit)
+    if score_name is not None:
+        stmt = stmt.where(ScoreRow.score_name == score_name)
+    if since is not None:
+        stmt = stmt.where(ScoreRow.bucket_start >= since)
+    if country is not None:
+        stmt = stmt.where(ScoreRow.country == country)
     return [_score_dict(r) for r in session.execute(stmt).scalars()]
 
 

@@ -316,10 +316,8 @@ function useScoreSeries(scoreName: string, days: number = COMPOSITE_BUCKETS): { 
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
     const since = subDays(new Date(), days).toISOString()
-    fetchScores(5000)
-      .then((rows) => {
-        setData(rows.filter((r) => r.score_name === scoreName && (r.bucket_start ?? "") >= since))
-      })
+    fetchScores({ scoreName, since, limit: 5000 })
+      .then(setData)
       .catch(() => {/* ignore fetch errors */})
   }, [scoreName, days])
 
@@ -491,10 +489,8 @@ function useLatestCiiByCountry(): Map<string, { iso: string; score: number }> {
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
     const since = subDays(new Date(), 2).toISOString()
-    fetchScores(2000)
-      .then((rows) => {
-        setData(rows.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
-      })
+    fetchScores({ scoreName: "cii_v1", since, limit: 2000 })
+      .then(setData)
       .catch(() => {/* ignore fetch errors */})
   }, [])
 
@@ -560,10 +556,8 @@ function useHindsightCorrelation(): HindsightStats {
   const [quakeRows, setQuakeRows] = useState<EventRow[]>([])
   useEffect(() => {
     const since = subDays(new Date(), 90).toISOString()
-    void fetchScores(20000)
-      .then((rows) => {
-        setCiiRows(rows.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
-      })
+    void fetchScores({ scoreName: "cii_v1", since, limit: 20000 })
+      .then(setCiiRows)
       .catch(() => {/* ignore fetch errors */})
     void fetchEvents({ sources: ["usgs-quake"], since, limit: 20000 })
       .then((rows) => { setQuakeRows(rows) })
@@ -621,10 +615,8 @@ function useCiiByCountry(): CiiCountryRow[] {
   const [rows, setRows] = useState<ScoreRow[]>([])
   useEffect(() => {
     const since = subDays(new Date(), 30).toISOString()
-    fetchScores(20000)
-      .then((result) => {
-        setRows(result.filter((r) => r.score_name === "cii_v1" && (r.bucket_start ?? "") >= since))
-      })
+    fetchScores({ scoreName: "cii_v1", since, limit: 20000 })
+      .then(setRows)
       .catch(() => {/* ignore fetch errors */})
   }, [])
 

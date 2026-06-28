@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { fetchEvents, fetchIngestHealth, streamUrl } from "./apiClient"
+import { fetchEvents, fetchIngestHealth, fetchScores, streamUrl } from "./apiClient"
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -37,5 +37,23 @@ describe("apiClient", () => {
     const url = spy.mock.calls[0][0] as string
     expect(url).toContain("/ingest-health?")
     expect(url).toContain("days=7")
+  })
+
+  it("builds score filter query params", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([]), { status: 200 }),
+    )
+    await fetchScores({
+      scoreName: "cii_v1",
+      since: "2026-06-01T00:00:00Z",
+      country: "US",
+      limit: 200,
+    })
+    const url = spy.mock.calls[0][0] as string
+    expect(url).toContain("/scores?")
+    expect(url).toContain("score_name=cii_v1")
+    expect(url).toContain("since=")
+    expect(url).toContain("country=US")
+    expect(url).toContain("limit=200")
   })
 })

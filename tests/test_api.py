@@ -73,6 +73,91 @@ def test_scores_rejects_limits_above_contract(db_session):
     assert resp.status_code == 422
 
 
+def test_scores_filters_by_score_name_before_limit(db_session):
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            ScoreRow(
+                country="US",
+                bucket_start=now,
+                bucket_length=timedelta(hours=1),
+                score_name="other",
+                score_value=0.1,
+                components={},
+                method_version="v1",
+            ),
+            ScoreRow(
+                country="GB",
+                bucket_start=now - timedelta(hours=1),
+                bucket_length=timedelta(hours=1),
+                score_name="cii_v1",
+                score_value=0.9,
+                components={},
+                method_version="v1",
+            ),
+        ]
+    )
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    rows = client.get("/scores?score_name=cii_v1&limit=1").json()
+    assert len(rows) == 1
+    assert rows[0]["score_name"] == "cii_v1"
+    assert rows[0]["country"] == "GB"
+
+
+def test_scores_filters_by_since_and_country(db_session):
+    now = datetime.now(UTC)
+    old = now - timedelta(days=3)
+    db_session.add_all(
+        [
+            ScoreRow(
+                country="US",
+                bucket_start=now,
+                bucket_length=timedelta(hours=1),
+                score_name="cii_v1",
+                score_value=0.7,
+                components={},
+                method_version="v1",
+            ),
+            ScoreRow(
+                country="GB",
+                bucket_start=now,
+                bucket_length=timedelta(hours=1),
+                score_name="cii_v1",
+                score_value=0.8,
+                components={},
+                method_version="v1",
+            ),
+            ScoreRow(
+                country="US",
+                bucket_start=old,
+                bucket_length=timedelta(hours=1),
+                score_name="cii_v1",
+                score_value=0.2,
+                components={},
+                method_version="v1",
+            ),
+        ]
+    )
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    rows = client.get(
+        "/scores",
+        params={
+            "score_name": "cii_v1",
+            "country": "US",
+            "since": (now - timedelta(days=1)).isoformat(),
+        },
+    ).json()
+    assert len(rows) == 1
+    assert rows[0]["country"] == "US"
+    assert rows[0]["score_value"] == 0.7
+
+
 def test_events_exclude_filter(db_session):
     client = _client(db_session)
     rows = client.get("/events?exclude=opensky-adsb").json()
