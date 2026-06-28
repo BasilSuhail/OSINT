@@ -22,6 +22,7 @@ from app.settings import settings
 
 app = FastAPI(title="OSINT local API", version="1.0")
 app.state.event_source = subscribe_new_events
+API_MAX_LIMIT = 20_000
 
 app.add_middleware(
     CORSMiddleware,
@@ -108,7 +109,7 @@ def events(
     sources: str | None = Query(default=None),
     exclude: str | None = Query(default=None),
     country: str | None = Query(default=None),
-    limit: int = Query(default=5000, ge=1, le=10000),
+    limit: int = Query(default=5000, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
     stmt = select(EventRow).order_by(EventRow.occurred_at.desc()).limit(limit)
     if since is not None:
@@ -127,7 +128,7 @@ def events(
 @app.get("/scores")
 def scores(
     session: Session = Depends(get_session),
-    limit: int = Query(default=5000, ge=1, le=10000),
+    limit: int = Query(default=5000, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
     stmt = select(ScoreRow).order_by(ScoreRow.bucket_start.desc()).limit(limit)
     return [_score_dict(r) for r in session.execute(stmt).scalars()]
@@ -140,6 +141,9 @@ def stream() -> StreamingResponse:
     def gen():
         yield ": connected\n\n"  # prelude so EventSource fires onopen
         for count in source():
+            if count is None:
+                yield ": keepalive\n\n"
+                continue
             yield f"data: {count}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")

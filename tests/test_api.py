@@ -55,6 +55,24 @@ def test_events_returns_rows(db_session):
     assert {r["source"] for r in rows} == {"gdelt", "opensky-adsb"}
 
 
+def test_events_accepts_dashboard_analytics_limit(db_session):
+    client = _client(db_session)
+    resp = client.get("/events?limit=20000")
+    assert resp.status_code == 200
+
+
+def test_scores_accepts_dashboard_analytics_limit(db_session):
+    client = _client(db_session)
+    resp = client.get("/scores?limit=20000")
+    assert resp.status_code == 200
+
+
+def test_scores_rejects_limits_above_contract(db_session):
+    client = _client(db_session)
+    resp = client.get("/scores?limit=20001")
+    assert resp.status_code == 422
+
+
 def test_events_exclude_filter(db_session):
     client = _client(db_session)
     rows = client.get("/events?exclude=opensky-adsb").json()
@@ -221,3 +239,19 @@ def test_stream_emits_ticks():
             if "data: 5" in body:
                 break
     assert "data: 3" in body and "data: 5" in body
+
+
+def test_stream_emits_keepalive_ticks():
+    from app.api import app
+
+    app.state.event_source = lambda: iter([None, "3"])
+    client = TestClient(app)
+    with client.stream("GET", "/stream") as resp:
+        assert resp.status_code == 200
+        body = ""
+        for chunk in resp.iter_text():
+            body += chunk
+            if "data: 3" in body:
+                break
+    assert ": keepalive" in body
+    assert "data: 3" in body
