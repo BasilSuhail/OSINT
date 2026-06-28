@@ -110,6 +110,28 @@ describe("footprintFeatures", () => {
     expect(types).toContain("LineString")
     expect(types).toContain("Polygon")
   })
+  it("uses a modest wind circle for collapsed cyclone tracks instead of real cones", () => {
+    const fc = {
+      type: "FeatureCollection",
+      features: [
+        { geometry: { type: "Polygon", coordinates: [[[0, 0], [3, 0], [3, 3], [0, 0]]] }, properties: { color: "#22c55e", fillOpacity: 0.25 } },
+        { geometry: { type: "LineString", coordinates: [[0, 0], [1, 1], [2, 2]] }, properties: { color: "#22c55e", fillOpacity: 0 } },
+      ],
+    }
+    const f = footprintFeatures(
+      row({
+        source: "gdacs",
+        lat: 10,
+        lon: 20,
+        payload: { event_type: "TC", magnitude: 40, alert_level: "Green", footprint_geojson: fc },
+      }),
+    )
+
+    expect(f).toHaveLength(2)
+    expect(f.map((x) => x.geometry.type)).toEqual(["LineString", "Polygon"])
+    const windCircle = f.find((x) => x.geometry.type === "Polygon")
+    expect(windCircle?.properties.fillOpacity).toBe(0.12)
+  })
   it("expanded cyclone shows real cones + track, NOT a synthesized circle on top", () => {
     const fc = {
       type: "FeatureCollection",
