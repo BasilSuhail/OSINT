@@ -11,7 +11,7 @@ import MapGL, {
   type MapRef,
 } from "react-map-gl/maplibre"
 import { AnimatePresence, motion } from "framer-motion"
-import { Activity, Droplets, Flame, Sun, Triangle, Wind } from "lucide-react"
+import { Activity, Droplets, Flame, Snowflake, Sun, Triangle, Wind } from "lucide-react"
 import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
@@ -37,6 +37,7 @@ const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
   droplets: Droplets,
   triangle: Triangle,
   sun: Sun,
+  snowflake: Snowflake,
 }
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"

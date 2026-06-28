@@ -1,4 +1,4 @@
-import type { EventRow, IngestHealthRow, ScoreRow } from "./types"
+import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "./types"
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
@@ -39,6 +39,12 @@ export async function fetchIngestHealth(days = 7): Promise<IngestHealthRow[]> {
   const res = await fetch(`${API_BASE}/ingest-health?days=${days}`)
   if (!res.ok) throw new Error(`GET /ingest-health ${res.status}`)
   return (await res.json()) as IngestHealthRow[]
+}
+
+export async function fetchSourceCoverage(days = 30): Promise<SourceCoverageRow[]> {
+  const res = await fetch(`${API_BASE}/events/coverage?days=${days}`)
+  if (!res.ok) throw new Error(`GET /events/coverage ${res.status}`)
+  return (await res.json()) as SourceCoverageRow[]
 }
 
 export function streamUrl(): string {

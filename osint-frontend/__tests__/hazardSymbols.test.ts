@@ -24,6 +24,12 @@ describe("hazardKind", () => {
     expect(hazardKind(row({ source: "eonet", payload: { title: "Tropical Storm Higos" } }))).toBe("TC")
     expect(hazardKind(row({ source: "eonet", payload: { title: "Kilauea Volcano" } }))).toBe("VO")
   })
+  it("promotes EONET ice and snow categories to first-class hazards", () => {
+    expect(hazardKind(row({ source: "eonet", payload: { categories: ["seaLakeIce"], title: "Sea Ice" } }))).toBe("ICE")
+    expect(hazardKind(row({ source: "eonet", payload: { categories: ["snow"], title: "Heavy Snow" } }))).toBe("ICE")
+    expect(hazardIcon("ICE")).toBe("snowflake")
+    expect(hazardColor(row({ source: "eonet", payload: { categories: ["seaLakeIce"] } }))).toBe("#67e8f9")
+  })
   it("falls back to other", () => expect(hazardKind(row({ source: "gdelt", payload: {} }))).toBe("other"))
 })
 

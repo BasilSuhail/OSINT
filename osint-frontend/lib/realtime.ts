@@ -17,7 +17,7 @@ export interface ConnectionDiagnostics {
   lastSeenAt: Date | null
 }
 
-const MAX_EVENTS = 5000
+const MAX_EVENTS = 20_000
 
 const POLL_INTERVAL_MS = 30_000
 const MAX_RECONNECT_BEFORE_POLL = 3
@@ -161,7 +161,7 @@ export class EventBuffer {
       ? this.lastEventAt.toISOString()
       : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     try {
-      const rows = await fetchEvents({ fetchedSince: watermark, exclude: ["opensky-adsb"], limit: 500 })
+      const rows = await fetchEvents({ fetchedSince: watermark, exclude: ["opensky-adsb"], limit: 2000 })
       if (rows.length) this.ingest(rows)
     } catch {
       // Network blip; next SSE message or poll tick retries.

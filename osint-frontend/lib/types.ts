@@ -9,7 +9,16 @@ export type Category =
   | "cyber"
   | "mesh"
 
-export type SourceKey = "GDELT" | "USGS" | "GDACS" | "FIRMS" | "yfinance" | "EONET" | "NEWS"
+export type SourceKey =
+  | "GDELT"
+  | "USGS"
+  | "GDACS"
+  | "FIRMS"
+  | "yfinance"
+  | "EONET"
+  | "NEWS"
+  | "CYBER"
+  | "POLYMARKET"
 
 export interface GdeltPayload {
   goldstein?: number
@@ -97,6 +106,15 @@ export interface IngestHealthRow {
   last_failure: string | null
 }
 
+export interface SourceCoverageRow {
+  source: string
+  total: number
+  recent: number
+  geocoded: number
+  latest_occurred_at: string | null
+  latest_fetched_at: string | null
+}
+
 /** Which pane a source renders on. NASA / satellite-derived feeds belong on
  *  the globe; everything else (geopolitical, markets, ground-sensor hazards,
  *  news) belongs on the flat map. Keeps the two panes from duplicating. */
@@ -123,6 +141,8 @@ export const SOURCE_FILTERS: SourceFilterDef[] = [
   { key: "FIRMS", label: "Active fires (satellite)", category: "weather", color: "rgb(234,179,8)", hex: "#eab308", pane: "globe" },
   { key: "EONET", label: "Natural events (NASA)", category: "hazard", color: "rgb(217,70,239)", hex: "#d946ef", pane: "map" },
   { key: "NEWS", label: "News (RSS)", category: "news", color: "rgb(56,189,248)", hex: "#38bdf8", pane: "map" },
+  { key: "CYBER", label: "Cyber threats", category: "cyber", color: "rgb(168,85,247)", hex: "#a855f7", pane: "map" },
+  { key: "POLYMARKET", label: "Prediction markets", category: "market", color: "rgb(16,185,129)", hex: "#10b981", pane: "map" },
 ]
 
 /** Source filters scoped to a single pane. */
@@ -137,7 +157,7 @@ export function sourceFiltersForPane(pane: Pane): SourceFilterDef[] {
 export const HAZARD_SOURCE_KEYS: SourceKey[] = ["USGS", "GDACS", "EONET"]
 
 /** Disaster-type filter keys (mirror HazardKind, minus "other"). */
-export type HazardTypeKey = "EQ" | "TC" | "FL" | "VO" | "DR" | "WF"
+export type HazardTypeKey = "EQ" | "TC" | "FL" | "VO" | "DR" | "WF" | "ICE"
 
 export interface HazardTypeDef {
   key: HazardTypeKey
@@ -152,6 +172,7 @@ export const HAZARD_TYPE_FILTERS: HazardTypeDef[] = [
   { key: "TC", label: "Cyclones", hex: "#f97316" },
   { key: "FL", label: "Floods", hex: "#38bdf8" },
   { key: "WF", label: "Wildfires", hex: "#eab308" },
+  { key: "ICE", label: "Ice & snow", hex: "#67e8f9" },
   { key: "VO", label: "Volcanoes", hex: "#d946ef" },
   { key: "DR", label: "Droughts", hex: "#a16207" },
 ]
@@ -205,6 +226,8 @@ export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
   if (src === "EONET") return "EONET"
   if (src.includes("FIRMS")) return "FIRMS"
   if (src.includes("YF") || src.includes("YFINANCE")) return "yfinance"
+  if (src.startsWith("ABUSE-CH-")) return "CYBER"
+  if (src === "POLYMARKET") return "POLYMARKET"
   if (src.includes("GDELT")) return "GDELT"
   // fall back on category
   switch (ev.category) {
@@ -212,6 +235,8 @@ export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
       return "NEWS"
     case "market":
       return "yfinance"
+    case "cyber":
+      return "CYBER"
     case "geopolitical":
       return "GDELT"
     case "weather":

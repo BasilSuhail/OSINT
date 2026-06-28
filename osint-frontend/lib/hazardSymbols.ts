@@ -13,12 +13,13 @@ export interface HazardFeature {
   geometry: { type: string; coordinates: unknown }
 }
 
-export type HazardKind = "EQ" | "WF" | "TC" | "FL" | "VO" | "DR" | "other"
-export type HazardIcon = "activity" | "flame" | "wind" | "droplets" | "triangle" | "sun" | "dot"
+export type HazardKind = "EQ" | "WF" | "TC" | "FL" | "VO" | "DR" | "ICE" | "other"
+export type HazardIcon = "activity" | "flame" | "wind" | "droplets" | "triangle" | "sun" | "snowflake" | "dot"
 
 const GREEN = "#22c55e"
 const ORANGE = "#f97316"
 const RED = "#ef4444"
+const ICE = "#67e8f9"
 
 function payload(ev: EventRow): Record<string, unknown> {
   return (ev.payload ?? {}) as Record<string, unknown>
@@ -29,7 +30,11 @@ export function hazardKind(ev: EventRow): HazardKind {
   if (src.includes("usgs")) return "EQ"
   if (src.includes("firms")) return "WF"
   const t = String(payload(ev).event_type ?? "").toUpperCase()
-  if (t === "EQ" || t === "WF" || t === "TC" || t === "FL" || t === "VO" || t === "DR") return t
+  if (t === "EQ" || t === "WF" || t === "TC" || t === "FL" || t === "VO" || t === "DR" || t === "ICE") return t
+  const categories = Array.isArray(payload(ev).categories)
+    ? (payload(ev).categories as unknown[]).map((c) => String(c).toLowerCase())
+    : []
+  if (categories.some((c) => /ice|snow/.test(c))) return "ICE"
   // EONET has no event_type code — infer the kind from the title so its
   // storms / volcanoes get the right symbol instead of a plain dot.
   const title = String(payload(ev).title ?? "").toLowerCase()
@@ -38,10 +43,12 @@ export function hazardKind(ev: EventRow): HazardKind {
   if (title.includes("flood")) return "FL"
   if (title.includes("drought")) return "DR"
   if (title.includes("wildfire") || title.includes("fire")) return "WF"
+  if (/ice|iceberg|snow|glacier/.test(title)) return "ICE"
   return "other"
 }
 
 export function hazardColor(ev: EventRow): string {
+  if (hazardKind(ev) === "ICE") return ICE
   // Earthquakes are coloured by magnitude across BOTH sources (USGS + GDACS) so
   // the same quake never reads orange from one feed and red from another — the
   // colour was inconsistent because USGS used magnitude while GDACS used its
@@ -68,6 +75,7 @@ export function hazardIcon(kind: HazardKind): HazardIcon {
     case "FL": return "droplets"
     case "VO": return "triangle"
     case "DR": return "sun"
+    case "ICE": return "snowflake"
     default: return "dot"
   }
 }

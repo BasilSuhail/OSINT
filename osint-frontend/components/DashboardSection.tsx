@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ReactElement } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react"
 import { format, subDays } from "date-fns"
 import {
   Bar,
@@ -18,16 +18,38 @@ import {
   ZAxis,
 } from "recharts"
 import { useEvents } from "@/app/providers"
-import { fetchEvents, fetchIngestHealth, fetchScores } from "@/lib/apiClient"
-import type { EventRow, IngestHealthRow, ScoreRow } from "@/lib/types"
+import { fetchEvents, fetchIngestHealth, fetchScores, fetchSourceCoverage } from "@/lib/apiClient"
+import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
 
 function StableResponsiveContainer({ children }: { children: ReactElement }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    const update = () => {
+      const rect = node.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        setSize({ width: rect.width, height: rect.height })
+      }
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-      {children}
-    </ResponsiveContainer>
+    <div ref={ref} className="h-full min-h-0 w-full min-w-0">
+      {size ? (
+        <ResponsiveContainer width={size.width} height={size.height} minWidth={1} minHeight={1}>
+          {children}
+        </ResponsiveContainer>
+      ) : null}
+    </div>
   )
 }
 
@@ -439,6 +461,20 @@ function useSourceLatency(): SourceLatencyRow[] {
   }, [rows])
 }
 
+function useSourceCoverage(windowDays: number): SourceCoverageRow[] {
+  const [rows, setRows] = useState<SourceCoverageRow[]>([])
+
+  useEffect(() => {
+    let alive = true
+    fetchSourceCoverage(windowDays)
+      .then((data) => { if (alive) setRows(data) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [windowDays])
+
+  return rows
+}
+
 function ageLabel(min: number | null): string {
   if (min == null) return "—"
   if (min < 1) return "<1 m"
@@ -761,7 +797,18 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
   const ciiByCountry = useLatestCiiByCountry()
   const ciiCountries = useCiiByCountry()
   const sourceLatency = useSourceLatency()
+  const sourceCoverage = useSourceCoverage(windowDays)
   const hindsight = useHindsightCorrelation()
+  const bufferBySource = useMemo(() => {
+    const m = new Map<string, { total: number; geocoded: number }>()
+    for (const ev of events) {
+      const existing = m.get(ev.source) ?? { total: 0, geocoded: 0 }
+      existing.total += 1
+      if (ev.lat != null && ev.lon != null) existing.geocoded += 1
+      m.set(ev.source, existing)
+    }
+    return m
+  }, [events])
 
   /** Hero KPIs — pure reduces over the in-memory buffer + latest scores
    *  read. See #139 for the spec. */
@@ -1889,6 +1936,76 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
 
         <SectionHeader label="Health & Validation" color="emerald" />
 
+
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-7">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Source coverage · DB/API vs buffer
+            </h3>
+            <span className="font-mono text-[10px] text-neutral-600">window {windowLabel}</span>
+          </div>
+          {sourceCoverage.length === 0 ? (
+            <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
+              No coverage rows yet. The API reports per-source counts from the
+              events table.
+            </p>
+          ) : (
+            <div className="max-h-72 overflow-y-auto pr-1">
+              <table className="w-full border-collapse font-mono text-[10px]">
+                <thead className="sticky top-0 bg-neutral-950 text-neutral-500">
+                  <tr className="border-b border-neutral-800">
+                    <th className="py-1.5 pr-2 text-left font-normal">source</th>
+                    <th className="px-2 text-right font-normal">DB</th>
+                    <th className="px-2 text-right font-normal">recent</th>
+                    <th className="px-2 text-right font-normal">buffer</th>
+                    <th className="px-2 text-right font-normal">geo</th>
+                    <th className="py-1.5 pl-2 text-right font-normal">latest</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sourceCoverage.slice(0, 40).map((r) => {
+                    const buf = bufferBySource.get(r.source)
+                    const latestMs = r.latest_fetched_at ? new Date(r.latest_fetched_at).getTime() : NaN
+                    const ageMin = Number.isFinite(latestMs) ? (Date.now() - latestMs) / 60_000 : null
+                    const missingInBuffer = r.recent > 0 && !buf
+                    return (
+                      <tr key={r.source} className="border-b border-neutral-900 text-neutral-300">
+                        <td className="max-w-40 truncate py-1.5 pr-2" title={r.source}>
+                          <span
+                            className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: missingInBuffer ? "#f59e0b" : "#22c55e" }}
+                            aria-hidden="true"
+                          />
+                          {r.source}
+                        </td>
+                        <td className="px-2 text-right tabular-nums">{r.total.toLocaleString()}</td>
+                        <td className="px-2 text-right tabular-nums">{r.recent.toLocaleString()}</td>
+                        <td
+                          className={
+                            "px-2 text-right tabular-nums " +
+                            (missingInBuffer ? "text-amber-300" : "text-neutral-300")
+                          }
+                        >
+                          {(buf?.total ?? 0).toLocaleString()}
+                        </td>
+                        <td className="px-2 text-right tabular-nums">
+                          {(buf?.geocoded ?? 0).toLocaleString()} / {r.geocoded.toLocaleString()}
+                        </td>
+                        <td className="py-1.5 pl-2 text-right tabular-nums text-neutral-500">
+                          {ageLabel(ageMin)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-2 font-mono text-[10px] text-neutral-600">
+            Amber dot = source has recent DB rows but none in the frontend buffer.
+            Geo shows buffer geocoded rows vs DB geocoded rows.
+          </p>
+        </div>
 
         {/* Source latency (#144). Replaces the old buffer-bar source-health
          *  panel with a real read against the ingest_health table. Each
