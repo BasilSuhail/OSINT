@@ -45,6 +45,9 @@ dev = [
     "ruff==0.15.18",
     "mypy>=1.13",
 ]
+browser = [
+    "playwright>=1.49",
+]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
