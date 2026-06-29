@@ -18,11 +18,12 @@ for label in frontend worker beat api; do
 done
 
 # Also catch any strays started by hand.
-for pid in $(lsof -ti tcp:3000 2>/dev/null); do
+for pid in $(lsof -ti tcp:3000 2>/dev/null; lsof -ti tcp:3001 2>/dev/null); do
   if kill "$pid" 2>/dev/null; then
-    echo "stopped frontend on :3000 (pid $pid)"
+    echo "stopped frontend listener (pid $pid)"
   fi
 done
+pkill -f "next dev" 2>/dev/null || true
 pkill -f "celery -A app.celery_app" 2>/dev/null || true
 pkill -f "uvicorn app.api:app" 2>/dev/null || true
 
