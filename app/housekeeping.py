@@ -46,6 +46,8 @@ def retention_days() -> dict[str, int | None]:
         "gdacs": hazard,
         "eonet": hazard,
         "gdelt": settings.retention_gdelt_days,
+        "acled": settings.retention_gdelt_days,
+        "emdat": None,
         "opensky-adsb": hazard,
         "abuse-ch-urlhaus": hazard,
         "abuse-ch-feodo": hazard,

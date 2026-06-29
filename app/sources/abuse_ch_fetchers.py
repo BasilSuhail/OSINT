@@ -20,10 +20,13 @@ import hashlib
 import io
 from datetime import UTC, datetime
 from typing import Final
+from urllib.parse import urlparse
 
 import httpx
 
+from app.enrichment.ip_geo import IpGeo, lookup_ip, public_ip_or_none
 from app.models import Category, Event
+from app.settings import settings
 from app.sources.base import Fetcher
 
 URLHAUS_URL: Final[str] = "https://urlhaus.abuse.ch/downloads/csv_recent/"
@@ -60,7 +63,31 @@ def _severity_for_tags(tags: str) -> float:
     return CYBER_DEFAULT_SEVERITY
 
 
-def parse_urlhaus_csv(body: str, *, fetched_at: datetime) -> list[Event]:
+def _geo_payload(geo: IpGeo | None) -> dict[str, object]:
+    if geo is None:
+        return {}
+    return {
+        "geo_city": geo.city,
+        "geo_country": geo.country,
+        "geo_lat": geo.lat,
+        "geo_lon": geo.lon,
+    }
+
+
+def _geo_for_host(url: str, geo_by_ip: dict[str, IpGeo] | None) -> IpGeo | None:
+    if not geo_by_ip:
+        return None
+    host = urlparse(url).hostname
+    ip = public_ip_or_none(host)
+    return geo_by_ip.get(ip) if ip else None
+
+
+def parse_urlhaus_csv(
+    body: str,
+    *,
+    fetched_at: datetime,
+    geo_by_ip: dict[str, IpGeo] | None = None,
+) -> list[Event]:
     """URLhaus CSV columns: id, dateadded, url, url_status, last_online,
     threat, tags, urlhaus_link, reporter."""
     cleaned = _strip_csv_comments(body)
@@ -76,6 +103,7 @@ def parse_urlhaus_csv(body: str, *, fetched_at: datetime) -> list[Event]:
         url = url.strip()
         if not url:
             continue
+        geo = _geo_for_host(url, geo_by_ip)
         try:
             occurred_at = datetime.strptime(date_added.strip(), "%Y-%m-%d %H:%M:%S").replace(
                 tzinfo=UTC
@@ -93,9 +121,9 @@ def parse_urlhaus_csv(body: str, *, fetched_at: datetime) -> list[Event]:
                 severity=_severity_for_tags(tags),
                 confidence=None,
                 keywords=["cyber", "urlhaus", "malware-url"],
-                country=None,
-                lat=None,
-                lon=None,
+                country=geo.country if geo else None,
+                lat=geo.lat if geo else None,
+                lon=geo.lon if geo else None,
                 payload={
                     "url": url,
                     "status": status.strip() or None,
@@ -103,13 +131,19 @@ def parse_urlhaus_csv(body: str, *, fetched_at: datetime) -> list[Event]:
                     "tags": [t for t in tags.split(",") if t.strip()],
                     "reporter": reporter.strip() or None,
                     "urlhaus_link": link.strip() or None,
+                    **_geo_payload(geo),
                 },
             )
         )
     return out
 
 
-def parse_feodo_csv(body: str, *, fetched_at: datetime) -> list[Event]:
+def parse_feodo_csv(
+    body: str,
+    *,
+    fetched_at: datetime,
+    geo_by_ip: dict[str, IpGeo] | None = None,
+) -> list[Event]:
     """Feodo Tracker CSV columns: first_seen_utc, dst_ip, dst_port,
     c2_status, last_online, malware."""
     cleaned = _strip_csv_comments(body)
@@ -125,6 +159,7 @@ def parse_feodo_csv(body: str, *, fetched_at: datetime) -> list[Event]:
         dst_ip = dst_ip.strip()
         if not dst_ip:
             continue
+        geo = geo_by_ip.get(dst_ip) if geo_by_ip else None
         try:
             occurred_at = datetime.strptime(first_seen.strip(), "%Y-%m-%d %H:%M:%S").replace(
                 tzinfo=UTC
@@ -143,14 +178,15 @@ def parse_feodo_csv(body: str, *, fetched_at: datetime) -> list[Event]:
                 severity=CYBER_HEAVY_SEVERITY,
                 confidence=None,
                 keywords=["cyber", "feodo", "botnet", "c2", malware.strip().lower() or "unknown"],
-                country=None,
-                lat=None,
-                lon=None,
+                country=geo.country if geo else None,
+                lat=geo.lat if geo else None,
+                lon=geo.lon if geo else None,
                 payload={
                     "dst_ip": dst_ip,
                     "dst_port": int(dst_port.strip()) if dst_port.strip().isdigit() else None,
                     "c2_status": c2_status.strip() or None,
                     "malware": malware.strip() or None,
+                    **_geo_payload(geo),
                 },
             )
         )
@@ -177,6 +213,24 @@ class _AbuseChFetcher(Fetcher):
             response.raise_for_status()
             return response.text
 
+    def _geo_by_ip(self, ips: list[str]) -> dict[str, IpGeo]:
+        if not settings.cyber_geo_enabled or settings.cyber_geo_max_lookups <= 0:
+            return {}
+        out: dict[str, IpGeo] = {}
+        seen: set[str] = set()
+        with httpx.Client(timeout=10.0) as client:
+            for raw in ips:
+                ip = public_ip_or_none(raw)
+                if ip is None or ip in seen:
+                    continue
+                seen.add(ip)
+                if len(out) >= settings.cyber_geo_max_lookups:
+                    break
+                geo = lookup_ip(ip, client=client)
+                if geo is not None:
+                    out[ip] = geo
+        return out
+
 
 class UrlhausFetcher(_AbuseChFetcher):
     name = "abuse-ch-urlhaus"
@@ -184,7 +238,15 @@ class UrlhausFetcher(_AbuseChFetcher):
 
     def fetch(self) -> list[Event]:
         fetched_at = datetime.now(UTC)
-        return parse_urlhaus_csv(self._fetch_body(), fetched_at=fetched_at)
+        body = self._fetch_body()
+        ips: list[str] = []
+        for line in _strip_csv_comments(body).splitlines():
+            parts = line.split(",")
+            if len(parts) >= 3:
+                host = urlparse(parts[2].strip()).hostname
+                if host:
+                    ips.append(host)
+        return parse_urlhaus_csv(body, fetched_at=fetched_at, geo_by_ip=self._geo_by_ip(ips))
 
     def archive_path(self) -> str:
         now = datetime.now(UTC)
@@ -200,7 +262,13 @@ class FeodoFetcher(_AbuseChFetcher):
 
     def fetch(self) -> list[Event]:
         fetched_at = datetime.now(UTC)
-        return parse_feodo_csv(self._fetch_body(), fetched_at=fetched_at)
+        body = self._fetch_body()
+        ips = [
+            row.split(",")[1].strip()
+            for row in _strip_csv_comments(body).splitlines()
+            if "," in row
+        ]
+        return parse_feodo_csv(body, fetched_at=fetched_at, geo_by_ip=self._geo_by_ip(ips))
 
     def archive_path(self) -> str:
         now = datetime.now(UTC)

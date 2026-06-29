@@ -30,4 +30,9 @@ describe("sourceKeyForEvent", () => {
     expect(sourceKeyForEvent(row({ source: "fred", category: "market" }))).toBe("FRED")
     expect(sourceKeyForEvent(row({ source: "yfinance", category: "market" }))).toBe("yfinance")
   })
+
+  it("keeps ACLED and EM-DAT as first-class source filters", () => {
+    expect(sourceKeyForEvent(row({ source: "acled", category: "geopolitical" }))).toBe("ACLED")
+    expect(sourceKeyForEvent(row({ source: "emdat", category: "hazard" }))).toBe("EMDAT")
+  })
 })

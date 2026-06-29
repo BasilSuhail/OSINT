@@ -130,6 +130,8 @@ _THESIS_CORE_FETCHERS = {
     "yfinance",
     "fred",
     "gdelt",
+    "acled",
+    "emdat",
     "usgs-quake",
     "gdacs",
     "nasa-firms",

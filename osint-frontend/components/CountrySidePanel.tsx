@@ -57,6 +57,7 @@ function EventRowItem({ ev }: { ev: EventRow }) {
   const url =
     (ev.payload as { source_url?: string; link?: string })?.source_url ??
     (ev.payload as { link?: string })?.link
+  const title = eventTitle(ev)
   const Wrapper = url ? "a" : "div"
   return (
     <Wrapper
@@ -73,13 +74,48 @@ function EventRowItem({ ev }: { ev: EventRow }) {
       <span className="w-16 shrink-0 font-mono text-[10px] text-neutral-500">
         {formatDistanceToNowStrict(new Date(ev.occurred_at), { addSuffix: false })}
       </span>
-      <span className="flex-1 truncate text-neutral-300">{ev.source}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-neutral-300">{title}</span>
+        <span className="block truncate font-mono text-[9px] uppercase tracking-wider text-neutral-600">
+          {ev.source}
+        </span>
+      </span>
       <span className="font-mono text-[10px] text-neutral-500">
         {typeof ev.severity === "number" ? ev.severity.toFixed(2) : "—"}
       </span>
       {url && <ExternalLink className="h-3 w-3 shrink-0 text-neutral-600" />}
     </Wrapper>
   )
+}
+
+function eventTitle(ev: EventRow): string {
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  const source = (ev.source || "").toLowerCase()
+  if (source === "acled") {
+    const sub = typeof p.sub_event_type === "string" ? p.sub_event_type : null
+    const type = typeof p.event_type === "string" ? p.event_type : null
+    const loc = typeof p.location === "string" ? p.location : null
+    if (sub && loc) return `${sub} · ${loc}`
+    if (type && loc) return `${type} · ${loc}`
+    if (type) return type
+  }
+  if (source === "emdat") {
+    const type = typeof p.disaster_type === "string" ? p.disaster_type : null
+    const subtype = typeof p.disaster_subtype === "string" ? p.disaster_subtype : null
+    if (subtype) return subtype
+    if (type) return type
+  }
+  if (source.startsWith("abuse-ch-")) {
+    const malware = typeof p.malware === "string" ? p.malware : null
+    const threat = typeof p.threat === "string" ? p.threat : null
+    const city = typeof p.geo_city === "string" ? p.geo_city : null
+    if (malware && city) return `${malware} C2 · ${city}`
+    if (threat && city) return `${threat} · ${city}`
+    if (malware) return `${malware} C2`
+    if (threat) return threat
+  }
+  const title = typeof p.title === "string" ? p.title : null
+  return title ?? ev.source
 }
 
 interface CountrySidePanelProps {
