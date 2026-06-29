@@ -89,7 +89,7 @@ pnpm dev        # or: pnpm build && pnpm start
 
 ### 5. Done
 
-The dashboard reads live data from the local API, refreshes via SSE (`/stream`) and periodic polling, shows country shading by composite score, hazard markers, and a recent-events feed.
+The dashboard reads live data from the local API, refreshes via SSE (`/stream`) and periodic polling, shows country shading by composite score, hazard markers, a recent-events feed, and a fixed top status strip with realtime/API/source-health indicators.
 
 ## Data management
 

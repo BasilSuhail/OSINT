@@ -1,13 +1,6 @@
 import type { Metadata, Viewport } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { RealtimeProvider } from "./providers"
-
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] })
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-})
 
 export const metadata: Metadata = {
   title: "OSINT World Monitor · LIVE",
@@ -29,11 +22,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body className="bg-neutral-950 font-sans text-neutral-100 antialiased">
         <RealtimeProvider>{children}</RealtimeProvider>
       </body>

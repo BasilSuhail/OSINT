@@ -97,8 +97,20 @@ def _parse_int(raw: Any) -> int | None:
 
 
 def _parse_date(raw: Any) -> datetime | None:
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo is not None else raw.replace(tzinfo=UTC)
+    if hasattr(raw, "to_pydatetime"):
+        value = raw.to_pydatetime()
+        if isinstance(value, datetime):
+            return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     if not isinstance(raw, str) or not raw.strip():
         return None
+    try:
+        parsed = datetime.fromisoformat(raw.strip())
+    except ValueError:
+        parsed = None
+    if parsed is not None:
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
     for fmt in ("%Y-%m-%d", "%d %B %Y", "%d %b %Y"):
         try:
             return datetime.strptime(raw.strip(), fmt).replace(tzinfo=UTC)
@@ -107,8 +119,27 @@ def _parse_date(raw: Any) -> datetime | None:
     return None
 
 
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    if hasattr(value, "item") and not isinstance(value, (str, bytes)):
+        try:
+            return _json_safe_value(value.item())
+        except Exception:
+            pass
+    if isinstance(value, dict):
+        return {str(key): _json_safe_value(raw) for key, raw in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_value(item) for item in value]
+    return value
+
+
 def _parse_aggregate_date(record: dict[str, Any]) -> datetime | None:
-    raw_date = _first(record, "event_date", "date", "month_year", "period")
+    raw_date = _first(record, "event_date", "date", "week", "month_year", "period")
     parsed = _parse_date(raw_date)
     if parsed is not None:
         return parsed
@@ -250,6 +281,11 @@ def aggregate_record_to_event(
     lat = lon = None
     if centroid is not None:
         lat, lon = centroid
+    explicit_lat = _parse_float(_first(record, "centroid_latitude", "latitude", "lat"))
+    explicit_lon = _parse_float(_first(record, "centroid_longitude", "longitude", "lon", "lng"))
+    if explicit_lat is not None and explicit_lon is not None:
+        lat = explicit_lat
+        lon = explicit_lon
 
     stable = "|".join(
         [source_name, country, occurred_at.date().isoformat(), metric_name, str(metric_value)]
@@ -277,7 +313,7 @@ def aggregate_record_to_event(
             "metric_value": metric_value,
             "year": _first(record, "year"),
             "month": _first(record, "month"),
-            "raw": dict(record),
+            "raw": _json_safe_value(dict(record)),
         },
     )
 
@@ -296,11 +332,68 @@ def parse_acled_response(body: dict[str, Any], *, fetched_at: datetime) -> list[
     return events
 
 
+def parse_acled_csv(
+    body: str, *, fetched_at: datetime, source_name: str = "acled-csv"
+) -> list[Event]:
+    return _records_to_events(
+        csv.DictReader(body.splitlines()),
+        fetched_at=fetched_at,
+        source_name=source_name,
+    )
+
+
+def parse_acled_excel(
+    path: Path, *, fetched_at: datetime, source_name: str = "acled-excel"
+) -> list[Event]:
+    sheets = pd.read_excel(path, sheet_name=None, engine="openpyxl")
+    events: list[Event] = []
+    for sheet_name, frame in sheets.items():
+        frame = frame.dropna(how="all")
+        if frame.empty:
+            continue
+        frame = frame.where(pd.notna(frame), None)
+        records = frame.to_dict(orient="records")
+        events.extend(
+            _records_to_events(
+                records,
+                fetched_at=fetched_at,
+                source_name=f"{source_name}:{sheet_name}",
+            )
+        )
+    return events
+
+
+def parse_acled_file(path: Path, *, fetched_at: datetime) -> list[Event]:
+    if path.suffix.lower() == ".csv":
+        return parse_acled_csv(
+            path.read_text(encoding="utf-8-sig"),
+            fetched_at=fetched_at,
+            source_name=path.name,
+        )
+    if path.suffix.lower() == ".xlsx":
+        return parse_acled_excel(path, fetched_at=fetched_at, source_name=path.name)
+    return []
+
+
+def _local_paths() -> list[Path]:
+    paths: list[Path] = []
+    if settings.acled_csv_path:
+        paths.append(Path(settings.acled_csv_path).expanduser())
+    if settings.acled_csv_dir:
+        root = Path(settings.acled_csv_dir).expanduser()
+        for extension in _LOCAL_EXTENSIONS:
+            pattern = str(root / f"*{extension}")
+            paths.extend(Path(p) for p in glob.glob(pattern))
+    return sorted(set(paths))
+
+
 def _records_to_events(
     records: Iterable[dict[str, Any]], *, fetched_at: datetime, source_name: str
 ) -> list[Event]:
     events: list[Event] = []
     for record in records:
+        if not isinstance(record, dict):
+            continue
         event = record_to_event(record, fetched_at=fetched_at)
         if event is None:
             event = aggregate_record_to_event(
@@ -323,7 +416,9 @@ def parse_acled_csv(
     )
 
 
-def parse_acled_excel(path: Path, *, fetched_at: datetime) -> list[Event]:
+def parse_acled_excel(
+    path: Path, *, fetched_at: datetime, source_name: str = "acled-excel"
+) -> list[Event]:
     sheets = pd.read_excel(path, sheet_name=None, engine="openpyxl")
     events: list[Event] = []
     for sheet_name, frame in sheets.items():
@@ -336,22 +431,21 @@ def parse_acled_excel(path: Path, *, fetched_at: datetime) -> list[Event]:
             _records_to_events(
                 records,
                 fetched_at=fetched_at,
-                source_name=f"{path.name}:{sheet_name}",
+                source_name=f"{source_name}:{sheet_name}",
             )
         )
     return events
 
 
 def parse_acled_file(path: Path, *, fetched_at: datetime) -> list[Event]:
-    suffix = path.suffix.lower()
-    if suffix == ".csv":
+    if path.suffix.lower() == ".csv":
         return parse_acled_csv(
             path.read_text(encoding="utf-8-sig"),
             fetched_at=fetched_at,
             source_name=path.name,
         )
-    if suffix == ".xlsx":
-        return parse_acled_excel(path, fetched_at=fetched_at)
+    if path.suffix.lower() == ".xlsx":
+        return parse_acled_excel(path, fetched_at=fetched_at, source_name=path.name)
     return []
 
 
@@ -377,7 +471,7 @@ class AcledFetcher(Fetcher):
     name = "acled"
     queue = "slow"
 
-    def __init__(self, *, lookback_days: int = 7, limit: int = 500, timeout_seconds: float = 30.0):
+    def __init__(self, *, lookback_days: int = 30, limit: int = 500, timeout_seconds: float = 30.0):
         if lookback_days <= 0:
             raise ValueError("lookback_days must be positive")
         if limit <= 0:

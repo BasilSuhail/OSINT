@@ -110,7 +110,7 @@ source has a map/globe filter and its rows can render from `/events`.
 | yfinance | yes | none | yes, 5 min | map | Country ETF drawdown signal. |
 | FRED | yes | `FRED_API_KEY`; no-op when unset | yes, daily | map | Macro indicator rows; separate frontend source from yfinance. |
 | GDELT | yes | none | yes, 15 min | map | CAMEO 14-20 conflict/event signal from GDELT v2 export. |
-| ACLED | yes | `ACLED_CSV_DIR` / `ACLED_CSV_PATH`; optional API only with `ACLED_API_ENABLED=true` | yes, hourly | map | Conflict/protest event import from manually downloaded ACLED CSVs. |
+| ACLED | yes | `ACLED_CSV_DIR` / `ACLED_CSV_PATH`; optional API only with `ACLED_API_ENABLED=true` | yes, hourly | map | Conflict/protest event import from manually downloaded ACLED CSV/XLSX files. |
 | EM-DAT | yes | `EMDAT_CSV_PATH`; no-op when unset/missing | yes, daily | map | Local CSV import for disaster ground-truth/backfill records. |
 | USGS | yes | none | yes, 15 min | map | 4.5+ earthquake GeoJSON feed. |
 | NASA FIRMS | yes | `FIRMS_MAP_KEY`; no-op when unset | yes, hourly | globe | VIIRS active-fire area API. |
