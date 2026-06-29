@@ -1,7 +1,7 @@
 "use client"
 
 import "maplibre-gl/dist/maplibre-gl.css"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import MapGL, {
   Layer,
   Marker,
@@ -47,6 +47,7 @@ const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
 const MAX_MARKERS = 700
 const INITIAL_ZOOM = 1.4
+const MIN_SCROLL_ZOOM = INITIAL_ZOOM
 
 interface MapPaneProps {
   useStore: FilterStore
@@ -282,6 +283,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const [openCluster, setOpenCluster] = useState<ClusterMarker | null>(null)
   const [openWorldAggregate, setOpenWorldAggregate] = useState<WorldNewsAggregate | null>(null)
+  const consumedMinWheelRef = useRef(false)
 
   useEffect(() => onCount(total), [total, onCount])
 
@@ -320,6 +322,23 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     if (map.isStyleLoaded()) brightenBorders()
     else map.once("load", brightenBorders)
   }, [mapRef])
+
+  useEffect(() => {
+    if (zoom > MIN_SCROLL_ZOOM + 0.01) {
+      consumedMinWheelRef.current = false
+    }
+  }, [zoom])
+
+  useEffect(() => {
+    if (!openCluster && !openWorldAggregate) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      if (openCluster) setOpenCluster(null)
+      if (openWorldAggregate) setOpenWorldAggregate(null)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [openCluster, openWorldAggregate])
 
   const positioned = useMemo<Positioned[]>(() => {
     // Two buckets so the MAX_MARKERS budget never drops sparse-but-important
@@ -458,7 +477,20 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   )
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-neutral-950">
+    <div
+      className="relative h-full w-full overflow-hidden bg-neutral-950"
+      onWheelCapture={(e) => {
+        if (e.deltaY < 0 && zoom <= MIN_SCROLL_ZOOM + 0.01) {
+          if (!consumedMinWheelRef.current) {
+            consumedMinWheelRef.current = true
+            e.preventDefault()
+            e.stopPropagation()
+          }
+        } else if (e.deltaY > 0) {
+          consumedMinWheelRef.current = false
+        }
+      }}
+    >
       <MapGL
         ref={setMapRef}
         mapStyle={MAP_STYLE}

@@ -46,8 +46,8 @@ export function SplitLayout() {
   // Separator position as a % of the viewport, so detail overlays can centre on
   // the divider and follow it as it is dragged (#207). 50 until the first layout.
   const [separatorPct, setSeparatorPct] = useState(70)
-  const [leftCount, setLeftCount] = useState(0)
-  const [rightCount, setRightCount] = useState(0)
+  const [, setLeftCount] = useState(0)
+  const [, setRightCount] = useState(0)
   const overlayPct = isNarrow ? 50 : separatorPct
 
   // Keyboard shortcuts.
@@ -73,8 +73,8 @@ export function SplitLayout() {
 
   return (
     <main className="relative min-h-dvh w-screen bg-neutral-950 text-neutral-100">
-      <SystemStatusBar mapCount={leftCount} globeCount={rightCount} />
-      <div className="relative h-[calc(100dvh-5rem)] w-full overflow-hidden">
+      <SystemStatusBar />
+      <div className="relative h-[calc(100dvh-2rem)] w-full overflow-hidden">
         {!configured && (
           <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
             Local API unreachable - start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)
@@ -203,8 +203,10 @@ export function SplitLayout() {
         </DetailOverlay>
       </div>
 
-      {/* Scroll-down dashboard section */}
-      <DashboardSection configured={configured} />
+      <div className="mt-10">
+        {/* Scroll-down dashboard section */}
+        <DashboardSection configured={configured} />
+      </div>
     </main>
   )
 }

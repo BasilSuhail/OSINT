@@ -2,7 +2,6 @@
 
 import { formatDistanceToNowStrict } from "date-fns"
 import { useConnectionDiagnostics } from "@/app/providers"
-import { cn } from "@/lib/utils"
 
 const META: Record<
   string,
@@ -56,24 +55,8 @@ export function ConnectionIndicator() {
     .join("\n")
 
   return (
-    <div
-      title={tooltip}
-      className="flex items-center gap-2 rounded-md border border-neutral-800 bg-neutral-950/70 px-2.5 py-1.5 backdrop-blur-sm"
-    >
-      <span className="relative flex h-2 w-2">
-        {meta.pulse && (
-          <span
-            className={cn(
-              "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
-              meta.color,
-            )}
-          />
-        )}
-        <span className={cn("relative inline-flex h-2 w-2 rounded-full", meta.color)} />
-      </span>
-      <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-400">
-        {meta.label}
-      </span>
-    </div>
+    <span title={tooltip} className="font-mono text-[9px] uppercase tracking-widest text-neutral-400">
+      realtime <span className={meta.color.replace("bg-", "text-")}>{meta.label}</span>
+    </span>
   )
 }
