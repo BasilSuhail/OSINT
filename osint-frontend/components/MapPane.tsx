@@ -459,6 +459,8 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     [positioned, selectedEventId],
   )
 
+  const hillshadeBeforeId = mapStyleError ? "osm-tiles" : "waterway"
+
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
    *    news/GDELT singleton in its own cell)
@@ -584,7 +586,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           <Layer
             id="hillshade"
             type="hillshade"
-            beforeId="waterway"
+            beforeId={hillshadeBeforeId}
             paint={{
               // Punchy enough to read as real terrain on the near-black theme —
               // ridgelines/coast catch a warm-grey highlight, valleys go black.
