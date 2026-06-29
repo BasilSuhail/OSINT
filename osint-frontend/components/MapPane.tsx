@@ -45,7 +45,8 @@ const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
 }
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
-const FALLBACK_MAP_STYLE = {
+const FALLBACK_MAP_STYLE = "https://demotiles.maplibre.org/style.json"
+const MINIMAL_FALLBACK_STYLE = {
   version: 8,
   name: "Fallback OSM",
   sources: {},
@@ -294,8 +295,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const configured = useConfigured()
   const allEvents = useEvents()
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
-  const [mapStyle, setMapStyle] = useState<string | (typeof FALLBACK_MAP_STYLE)>(MAP_STYLE)
-  const [mapStyleError, setMapStyleError] = useState(false)
+  const [mapStyleMode, setMapStyleMode] = useState<"primary" | "fallback" | "minimal">("primary")
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const [openCluster, setOpenCluster] = useState<ClusterMarker | null>(null)
   const [openWorldAggregate, setOpenWorldAggregate] = useState<WorldNewsAggregate | null>(null)
@@ -345,6 +345,12 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     }
   }, [zoom])
 
+  const mapStyle = useMemo(() => {
+    if (mapStyleMode === "fallback") return FALLBACK_MAP_STYLE
+    if (mapStyleMode === "minimal") return MINIMAL_FALLBACK_STYLE
+    return MAP_STYLE
+  }, [mapStyleMode])
+
   const handleMapError = useCallback((event: unknown) => {
     const e = event as { error?: { message?: string }; message?: string } | undefined
     const msg = (e?.error?.message || e?.message || "").toLowerCase()
@@ -354,11 +360,13 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       msg.includes("circle-11") ||
       msg.includes("wood-pattern")
 
-    if (!mapStyleError && mapStyle === MAP_STYLE && shouldFallback) {
-      setMapStyleError(true)
-      setMapStyle(FALLBACK_MAP_STYLE)
+    if (mapStyleMode === "primary") {
+      if (!shouldFallback) return
+      setMapStyleMode("fallback")
+      return
     }
-  }, [mapStyle, mapStyleError])
+    if (mapStyleMode === "fallback") setMapStyleMode("minimal")
+  }, [mapStyleMode])
 
   useEffect(() => {
     if (!mapRef) return
@@ -366,10 +374,9 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
 
     const onStyleImageMissing = (evt: { id?: string }) => {
       const id = evt?.id ?? ""
-      if (mapStyleError) return
+      if (mapStyleMode !== "primary") return
       if (id === "circle-11" || id === "wood-pattern") {
-        setMapStyleError(true)
-        setMapStyle(FALLBACK_MAP_STYLE)
+        setMapStyleMode("fallback")
       }
     }
 
@@ -377,7 +384,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     return () => {
       map.off("styleimagemissing", onStyleImageMissing)
     }
-  }, [mapRef, mapStyleError])
+  }, [mapRef, mapStyleMode])
 
   useEffect(() => {
     if (!openCluster && !openWorldAggregate) return
@@ -445,7 +452,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     [positioned, selectedEventId],
   )
 
-  const hillshadeBeforeId = mapStyleError ? "fallback-background" : "waterway"
+  const hillshadeBeforeId = mapStyleMode === "minimal" ? "fallback-background" : "waterway"
 
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
@@ -561,7 +568,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             mountains, coastlines, relief — like the GDACS shakemap. Free AWS
             Terrarium DEM (no API key). Inserted before `waterway` (the first
             line layer) so borders + labels stay on top of the relief. */}
-        {!mapStyleError && (
+        {mapStyleMode === "primary" && (
           <Source
             id="terrain-dem"
             type="raster-dem"
