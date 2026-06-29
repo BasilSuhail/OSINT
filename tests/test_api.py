@@ -49,6 +49,12 @@ def test_health():
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_api_allows_dev_frontend_origin(db_session):
+    client = _client(db_session)
+    resp = client.get("/health", headers={"Origin": "http://localhost:3001"})
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3001"
+
+
 def test_events_returns_rows(db_session):
     client = _client(db_session)
     rows = client.get("/events").json()

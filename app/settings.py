@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     retention_news_days: int = Field(default=3)
     retention_hazard_days: int = Field(default=2)
 
-    api_cors_origins: str = Field(default="http://localhost:3000")
+    api_cors_origins: str = Field(default="http://localhost:3000,http://localhost:3001")
 
     @property
     def postgres_url(self) -> str:
