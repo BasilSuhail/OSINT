@@ -48,28 +48,14 @@ const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
 const FALLBACK_MAP_STYLE = {
   version: 8,
   name: "Fallback OSM",
-  sources: {
-    osm: {
-      type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
-    },
-  },
+  sources: {},
   layers: [
     {
-      id: "background",
+      id: "fallback-background",
       type: "background",
       paint: {
         "background-color": "#0b1120",
       },
-    },
-    {
-      id: "osm-tiles",
-      type: "raster",
-      source: "osm",
     },
   ],
 }
@@ -459,7 +445,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     [positioned, selectedEventId],
   )
 
-  const hillshadeBeforeId = mapStyleError ? "osm-tiles" : "waterway"
+  const hillshadeBeforeId = mapStyleError ? "fallback-background" : "waterway"
 
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
@@ -575,29 +561,31 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             mountains, coastlines, relief — like the GDACS shakemap. Free AWS
             Terrarium DEM (no API key). Inserted before `waterway` (the first
             line layer) so borders + labels stay on top of the relief. */}
-        <Source
-          id="terrain-dem"
-          type="raster-dem"
-          tiles={["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"]}
-          encoding="terrarium"
-          tileSize={256}
-          maxzoom={13}
-        >
-          <Layer
-            id="hillshade"
-            type="hillshade"
-            beforeId={hillshadeBeforeId}
-            paint={{
-              // Punchy enough to read as real terrain on the near-black theme —
-              // ridgelines/coast catch a warm-grey highlight, valleys go black.
-              "hillshade-exaggeration": 0.95,
-              "hillshade-shadow-color": "#000000",
-              "hillshade-highlight-color": "#7a766b",
-              "hillshade-accent-color": "#3a3a3a",
-              "hillshade-illumination-direction": 315,
-            }}
-          />
-        </Source>
+        {!mapStyleError && (
+          <Source
+            id="terrain-dem"
+            type="raster-dem"
+            tiles={["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"]}
+            encoding="terrarium"
+            tileSize={256}
+            maxzoom={13}
+          >
+            <Layer
+              id="hillshade"
+              type="hillshade"
+              beforeId={hillshadeBeforeId}
+              paint={{
+                // Punchy enough to read as real terrain on the near-black theme —
+                // ridgelines/coast catch a warm-grey highlight, valleys go black.
+                "hillshade-exaggeration": 0.95,
+                "hillshade-shadow-color": "#000000",
+                "hillshade-highlight-color": "#7a766b",
+                "hillshade-accent-color": "#3a3a3a",
+                "hillshade-illumination-direction": 315,
+              }}
+            />
+          </Source>
+        )}
         {/* Hazard footprints — revealed on zoom-in (opacity 0 at zoom 4 → full
             at zoom 6) so the world view stays clean pins. Burn scars / flood
             extent / shake rings / volcano zones; cyclones show only their track
