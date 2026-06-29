@@ -406,61 +406,6 @@ def _records_to_events(
     return events
 
 
-def parse_acled_csv(
-    body: str, *, fetched_at: datetime, source_name: str = "acled-csv"
-) -> list[Event]:
-    return _records_to_events(
-        csv.DictReader(body.splitlines()),
-        fetched_at=fetched_at,
-        source_name=source_name,
-    )
-
-
-def parse_acled_excel(
-    path: Path, *, fetched_at: datetime, source_name: str = "acled-excel"
-) -> list[Event]:
-    sheets = pd.read_excel(path, sheet_name=None, engine="openpyxl")
-    events: list[Event] = []
-    for sheet_name, frame in sheets.items():
-        frame = frame.dropna(how="all")
-        if frame.empty:
-            continue
-        frame = frame.where(pd.notna(frame), None)
-        records = frame.to_dict(orient="records")
-        events.extend(
-            _records_to_events(
-                records,
-                fetched_at=fetched_at,
-                source_name=f"{source_name}:{sheet_name}",
-            )
-        )
-    return events
-
-
-def parse_acled_file(path: Path, *, fetched_at: datetime) -> list[Event]:
-    if path.suffix.lower() == ".csv":
-        return parse_acled_csv(
-            path.read_text(encoding="utf-8-sig"),
-            fetched_at=fetched_at,
-            source_name=path.name,
-        )
-    if path.suffix.lower() == ".xlsx":
-        return parse_acled_excel(path, fetched_at=fetched_at, source_name=path.name)
-    return []
-
-
-def _local_paths() -> list[Path]:
-    paths: list[Path] = []
-    if settings.acled_csv_path:
-        paths.append(Path(settings.acled_csv_path).expanduser())
-    if settings.acled_csv_dir:
-        root = Path(settings.acled_csv_dir).expanduser()
-        for extension in _LOCAL_EXTENSIONS:
-            pattern = str(root / f"*{extension}")
-            paths.extend(Path(p) for p in glob.glob(pattern))
-    return sorted(set(paths))
-
-
 def _recent(events: Iterable[Event], *, since: datetime, limit: int) -> list[Event]:
     filtered = [event for event in events if event.occurred_at >= since]
     filtered.sort(key=lambda event: event.occurred_at, reverse=True)

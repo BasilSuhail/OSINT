@@ -142,6 +142,7 @@ def test_parse_acled_csv_accepts_aggregate_rows() -> None:
     assert len(events) == 1
     assert events[0].country == "UA"
 
+
 def test_parse_acled_file_accepts_excel_aggregate_rows(tmp_path) -> None:
     pd = pytest.importorskip("pandas")
 
@@ -163,6 +164,7 @@ def test_parse_acled_file_accepts_excel_aggregate_rows(tmp_path) -> None:
     assert events[0].country == "UA"
     assert events[0].occurred_at == datetime(2026, 6, 1, tzinfo=UTC)
     assert events[0].payload["metric_value"] == 42
+
 
 def test_fetch_noops_without_csv_or_enabled_api(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import settings as settings_module
