@@ -19,16 +19,16 @@ ACLED_CSV_DIR=./data/private/acled
 ACLED_API_ENABLED=false
 ```
 
-The fetcher reads every `*.csv` in that folder, imports recent rows, and relies
-on normal event retention to keep the local DB small.
+The fetcher reads every `*.csv` and `*.xlsx` in that folder, imports recent
+rows, and relies on normal event retention to keep the local DB small.
 
 The importer accepts mixed CSV shapes:
 
-- event-level ACLED exports with IDs, dates, coordinates, event types, actors,
-  and fatalities;
-- country aggregate files with country/year or country/month/year values, which
-  become country-level conflict markers using bundled Natural Earth label
-  coordinates.
+- event-level ACLED CSV/XLSX exports with IDs, dates, coordinates, event
+  types, actors, and fatalities;
+- country aggregate CSV/XLSX files with country/year or country/month/year
+  values, which become country-level conflict markers using bundled Natural
+  Earth label coordinates.
 
 ## Source Links
 
@@ -56,7 +56,8 @@ coarse scoring and trend validation, but they are not event-level map markers.
 ### Regional Aggregated Data
 
 These are the first practical candidates for file-based collection. Download
-CSV files from these pages into `data/private/acled/`, then run the fetcher.
+CSV/XLSX files from these pages into `data/private/acled/`, then run the
+fetcher.
 
 - Africa: https://acleddata.com/aggregated/aggregated-data-africa
 - Asia-Pacific: https://acleddata.com/aggregated/aggregated-data-asia-pacific
@@ -133,8 +134,8 @@ data/private/acled/
 
 The script looks for visible download/export/CSV/Excel controls on the known
 ACLED pages. If ACLED changes labels or hides exports behind embedded apps, use
-the opened browser manually; any CSV saved into `data/private/acled/` is still
-picked up by the importer.
+the opened browser manually; any CSV/XLSX saved into `data/private/acled/` is
+still picked up by the importer.
 
 Headless browser probing on 2026-06-29 produced the same practical result as
 the HTTP probe: platform pages loaded, aggregate pages mostly returned 403
