@@ -194,9 +194,7 @@ def test_fetch_reads_configured_csv(tmp_path, monkeypatch: pytest.MonkeyPatch) -
     assert events[0].source == "acled"
 
 
-def test_fetch_reads_mixed_spreadsheet_directory(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_fetch_reads_mixed_spreadsheet_directory(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import settings as settings_module
 
     (tmp_path / "events.csv").write_text(
