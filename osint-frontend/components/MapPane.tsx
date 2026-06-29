@@ -45,21 +45,7 @@ const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
 }
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
-const FALLBACK_MAP_STYLE = "https://demotiles.maplibre.org/style.json"
-const MINIMAL_FALLBACK_STYLE = {
-  version: 8,
-  name: "Fallback OSM",
-  sources: {},
-  layers: [
-    {
-      id: "fallback-background",
-      type: "background",
-      paint: {
-        "background-color": "#0b1120",
-      },
-    },
-  ],
-}
+const MAP_STYLE_RETRY_MS = 1500
 const MAX_MARKERS = 700
 const INITIAL_ZOOM = 1.4
 const MIN_SCROLL_ZOOM = INITIAL_ZOOM
@@ -295,7 +281,8 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const configured = useConfigured()
   const allEvents = useEvents()
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
-  const [mapStyleMode, setMapStyleMode] = useState<"primary" | "fallback" | "minimal">("primary")
+  const [styleReloadToken, setStyleReloadToken] = useState(0)
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const [openCluster, setOpenCluster] = useState<ClusterMarker | null>(null)
   const [openWorldAggregate, setOpenWorldAggregate] = useState<WorldNewsAggregate | null>(null)
@@ -345,11 +332,20 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     }
   }, [zoom])
 
-  const mapStyle = useMemo(() => {
-    if (mapStyleMode === "fallback") return FALLBACK_MAP_STYLE
-    if (mapStyleMode === "minimal") return MINIMAL_FALLBACK_STYLE
-    return MAP_STYLE
-  }, [mapStyleMode])
+  const mapStyle = useMemo(
+    () => `${MAP_STYLE}${styleReloadToken > 0 ? `?v=${styleReloadToken}` : ""}`,
+    [styleReloadToken],
+  )
+
+  const scheduleStyleRetry = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current)
+    }
+
+    retryTimeoutRef.current = setTimeout(() => {
+      setStyleReloadToken((token) => token + 1)
+    }, MAP_STYLE_RETRY_MS)
+  }, [])
 
   const handleMapError = useCallback((event: unknown) => {
     const e = event as { error?: { message?: string }; message?: string } | undefined
@@ -360,13 +356,9 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       msg.includes("circle-11") ||
       msg.includes("wood-pattern")
 
-    if (mapStyleMode === "primary") {
-      if (!shouldFallback) return
-      setMapStyleMode("fallback")
-      return
-    }
-    if (mapStyleMode === "fallback") setMapStyleMode("minimal")
-  }, [mapStyleMode])
+    if (!shouldFallback) return
+    scheduleStyleRetry()
+  }, [scheduleStyleRetry])
 
   useEffect(() => {
     if (!mapRef) return
@@ -374,9 +366,8 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
 
     const onStyleImageMissing = (evt: { id?: string }) => {
       const id = evt?.id ?? ""
-      if (mapStyleMode !== "primary") return
       if (id === "circle-11" || id === "wood-pattern") {
-        setMapStyleMode("fallback")
+        scheduleStyleRetry()
       }
     }
 
@@ -384,7 +375,20 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     return () => {
       map.off("styleimagemissing", onStyleImageMissing)
     }
-  }, [mapRef, mapStyleMode])
+  }, [mapRef, scheduleStyleRetry])
+
+  const handleStyleLoad = () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current)
+      retryTimeoutRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!openCluster && !openWorldAggregate) return
@@ -452,7 +456,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     [positioned, selectedEventId],
   )
 
-  const hillshadeBeforeId = mapStyleMode === "minimal" ? "fallback-background" : "waterway"
+  const hillshadeBeforeId = "waterway"
 
   /** Split into:
    *  - singles: rendered as individual EventMarker (hazards, market, plus any
@@ -558,6 +562,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         initialViewState={{ longitude: 10, latitude: 25, zoom: INITIAL_ZOOM }}
         interactiveLayerIds={scoredGeo ? ["country-fill"] : []}
         onClick={handleClick}
+        onLoad={handleStyleLoad}
         onMoveEnd={(e) => setZoom(e.viewState.zoom)}
         onError={handleMapError}
         attributionControl={false}
@@ -568,31 +573,29 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             mountains, coastlines, relief — like the GDACS shakemap. Free AWS
             Terrarium DEM (no API key). Inserted before `waterway` (the first
             line layer) so borders + labels stay on top of the relief. */}
-        {mapStyleMode === "primary" && (
-          <Source
-            id="terrain-dem"
-            type="raster-dem"
-            tiles={["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"]}
-            encoding="terrarium"
-            tileSize={256}
-            maxzoom={13}
-          >
-            <Layer
-              id="hillshade"
-              type="hillshade"
-              beforeId={hillshadeBeforeId}
-              paint={{
-                // Punchy enough to read as real terrain on the near-black theme —
-                // ridgelines/coast catch a warm-grey highlight, valleys go black.
-                "hillshade-exaggeration": 0.95,
-                "hillshade-shadow-color": "#000000",
-                "hillshade-highlight-color": "#7a766b",
-                "hillshade-accent-color": "#3a3a3a",
-                "hillshade-illumination-direction": 315,
-              }}
-            />
-          </Source>
-        )}
+        <Source
+          id="terrain-dem"
+          type="raster-dem"
+          tiles={["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"]}
+          encoding="terrarium"
+          tileSize={256}
+          maxzoom={13}
+        >
+          <Layer
+            id="hillshade"
+            type="hillshade"
+            beforeId={hillshadeBeforeId}
+            paint={{
+              // Punchy enough to read as real terrain on the near-black theme —
+              // ridgelines/coast catch a warm-grey highlight, valleys go black.
+              "hillshade-exaggeration": 0.95,
+              "hillshade-shadow-color": "#000000",
+              "hillshade-highlight-color": "#7a766b",
+              "hillshade-accent-color": "#3a3a3a",
+              "hillshade-illumination-direction": 315,
+            }}
+          />
+        </Source>
         {/* Hazard footprints — revealed on zoom-in (opacity 0 at zoom 4 → full
             at zoom 6) so the world view stays clean pins. Burn scars / flood
             extent / shake rings / volcano zones; cyclones show only their track
