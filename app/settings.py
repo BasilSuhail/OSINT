@@ -18,8 +18,11 @@ class Settings(BaseSettings):
 
     fred_api_key: str = Field(default="")
     firms_map_key: str = Field(default="")
-    acled_email: str = Field(default="")
-    acled_api_key: str = Field(default="")
+    acled_username: str = Field(default="")
+    acled_password: str = Field(default="")
+    acled_api_enabled: bool = Field(default=False)
+    acled_csv_path: str = Field(default="")
+    acled_csv_dir: str = Field(default="")
     emdat_csv_path: str = Field(default="")
     cyber_geo_enabled: bool = Field(default=True)
     cyber_geo_max_lookups: int = Field(default=25)
