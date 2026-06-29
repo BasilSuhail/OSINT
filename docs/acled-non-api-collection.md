@@ -100,6 +100,48 @@ If downloads require a logged-in myACLED browser session, use a local browser
 automation script that reuses local cookies and saves CSVs into
 `data/private/acled/`. Do not store ACLED passwords in code.
 
+Install the optional browser dependency:
+
+```bash
+pip install -e ".[browser]"
+python -m playwright install chromium
+```
+
+First run, with manual login:
+
+```bash
+.venv/bin/python scripts/acled_browser_sync.py --login
+```
+
+The script opens Chromium with a persistent profile under:
+
+```text
+data/private/acled/browser-profile/
+```
+
+After logging in once, repeat without `--login`:
+
+```bash
+.venv/bin/python scripts/acled_browser_sync.py
+```
+
+Downloads and the local sync manifest stay under:
+
+```text
+data/private/acled/
+```
+
+The script looks for visible download/export/CSV/Excel controls on the known
+ACLED pages. If ACLED changes labels or hides exports behind embedded apps, use
+the opened browser manually; any CSV saved into `data/private/acled/` is still
+picked up by the importer.
+
+Headless browser probing on 2026-06-29 produced the same practical result as
+the HTTP probe: platform pages loaded, aggregate pages mostly returned 403
+without login, and no direct downloads were saved. The Conflict Exposure
+Calculator exposed one visible download-like control, but it did not produce a
+browser download in an unauthenticated headless run.
+
 ### Manual Fallback
 
 When pages are dynamic or download links are unstable, manually download the
