@@ -45,6 +45,34 @@ const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
 }
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
+const FALLBACK_MAP_STYLE = {
+  version: 8,
+  name: "Fallback OSM",
+  sources: {
+    osm: {
+      type: "raster",
+      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+    },
+  },
+  layers: [
+    {
+      id: "background",
+      type: "background",
+      paint: {
+        "background-color": "#0b1120",
+      },
+    },
+    {
+      id: "osm-tiles",
+      type: "raster",
+      source: "osm",
+    },
+  ],
+}
 const MAX_MARKERS = 700
 const INITIAL_ZOOM = 1.4
 const MIN_SCROLL_ZOOM = INITIAL_ZOOM
@@ -280,6 +308,8 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const configured = useConfigured()
   const allEvents = useEvents()
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
+  const [mapStyle, setMapStyle] = useState<string | (typeof FALLBACK_MAP_STYLE)>(MAP_STYLE)
+  const [mapStyleError, setMapStyleError] = useState(false)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const [openCluster, setOpenCluster] = useState<ClusterMarker | null>(null)
   const [openWorldAggregate, setOpenWorldAggregate] = useState<WorldNewsAggregate | null>(null)
@@ -328,6 +358,40 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       consumedMinWheelRef.current = false
     }
   }, [zoom])
+
+  const handleMapError = useCallback((event: unknown) => {
+    const e = event as { error?: { message?: string }; message?: string } | undefined
+    const msg = (e?.error?.message || e?.message || "").toLowerCase()
+    const shouldFallback =
+      msg.includes("tiles.openfreemap.org") ||
+      msg.includes("planet/") ||
+      msg.includes("circle-11") ||
+      msg.includes("wood-pattern")
+
+    if (!mapStyleError && mapStyle === MAP_STYLE && shouldFallback) {
+      setMapStyleError(true)
+      setMapStyle(FALLBACK_MAP_STYLE)
+    }
+  }, [mapStyle, mapStyleError])
+
+  useEffect(() => {
+    if (!mapRef) return
+    const map = mapRef.getMap()
+
+    const onStyleImageMissing = (evt: { id?: string }) => {
+      const id = evt?.id ?? ""
+      if (mapStyleError) return
+      if (id === "circle-11" || id === "wood-pattern") {
+        setMapStyleError(true)
+        setMapStyle(FALLBACK_MAP_STYLE)
+      }
+    }
+
+    map.on("styleimagemissing", onStyleImageMissing)
+    return () => {
+      map.off("styleimagemissing", onStyleImageMissing)
+    }
+  }, [mapRef, mapStyleError])
 
   useEffect(() => {
     if (!openCluster && !openWorldAggregate) return
@@ -478,26 +542,29 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden bg-neutral-950"
-      onWheelCapture={(e) => {
-        if (e.deltaY < 0 && zoom <= MIN_SCROLL_ZOOM + 0.01) {
-          if (!consumedMinWheelRef.current) {
-            consumedMinWheelRef.current = true
-            e.preventDefault()
-            e.stopPropagation()
+        className="relative h-full w-full overflow-hidden bg-neutral-950"
+        onWheelCapture={(e) => {
+          const native = e.nativeEvent as WheelEvent
+          if (native.cancelable === false) return
+          if (e.deltaY < 0 && zoom <= MIN_SCROLL_ZOOM + 0.01) {
+            if (!consumedMinWheelRef.current) {
+              consumedMinWheelRef.current = true
+              native.preventDefault()
+              e.stopPropagation()
+            }
+          } else if (e.deltaY > 0) {
+            consumedMinWheelRef.current = false
           }
-        } else if (e.deltaY > 0) {
-          consumedMinWheelRef.current = false
-        }
       }}
     >
       <MapGL
         ref={setMapRef}
-        mapStyle={MAP_STYLE}
+        mapStyle={mapStyle}
         initialViewState={{ longitude: 10, latitude: 25, zoom: INITIAL_ZOOM }}
         interactiveLayerIds={scoredGeo ? ["country-fill"] : []}
         onClick={handleClick}
         onMoveEnd={(e) => setZoom(e.viewState.zoom)}
+        onError={handleMapError}
         attributionControl={false}
         dragRotate={false}
         style={{ position: "absolute", inset: 0 }}
