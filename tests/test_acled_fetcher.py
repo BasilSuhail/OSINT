@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pandas as pd
 import pytest
 
 from app.models import Category
@@ -193,7 +194,7 @@ def test_fetch_reads_configured_csv(tmp_path, monkeypatch: pytest.MonkeyPatch) -
     assert events[0].source == "acled"
 
 
-def test_fetch_reads_mixed_csv_directory(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_reads_mixed_spreadsheet_directory(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import settings as settings_module
 
     (tmp_path / "events.csv").write_text(
@@ -205,13 +206,27 @@ def test_fetch_reads_mixed_csv_directory(tmp_path, monkeypatch: pytest.MonkeyPat
         "Country,Year,Month,Events targeting civilians\nUkraine,2026,6,9\n",
         encoding="utf-8",
     )
+    with pd.ExcelWriter(tmp_path / "events.xlsx", engine="openpyxl") as writer:
+        pd.DataFrame(
+            [
+                {
+                    "event_id_cnty": "UKR124",
+                    "event_date": "2026-06-27",
+                    "event_type": "Protests",
+                    "fatalities": 0,
+                    "latitude": 50.45,
+                    "longitude": 30.52,
+                    "iso3": "UKR",
+                }
+            ]
+        ).to_excel(writer, sheet_name="Events", index=False)
     monkeypatch.setattr(settings_module.settings, "acled_csv_path", "")
     monkeypatch.setattr(settings_module.settings, "acled_csv_dir", str(tmp_path))
     monkeypatch.setattr(settings_module.settings, "acled_api_enabled", False)
 
     events = AcledFetcher(lookback_days=30).fetch()
 
-    assert len(events) == 2
+    assert len(events) == 3
     assert {event.payload.get("aggregate", False) for event in events} == {False, True}
 
 

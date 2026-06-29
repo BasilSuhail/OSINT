@@ -10,7 +10,7 @@ const META: Record<
 > = {
   connected: {
     color: "bg-emerald-500",
-    label: "realtime",
+    label: "online",
     longLabel: "Realtime channel connected",
     pulse: false,
   },
@@ -22,7 +22,7 @@ const META: Record<
   },
   reconnecting: {
     color: "bg-amber-500",
-    label: "reconnecting",
+    label: "retrying",
     longLabel: "Realtime channel stalled — backing off and retrying",
     pulse: true,
   },
