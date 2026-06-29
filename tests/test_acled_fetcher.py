@@ -11,6 +11,7 @@ from app.sources.acled_fetcher import (
     AcledFetcher,
     aggregate_record_to_event,
     parse_acled_csv,
+    parse_acled_file,
     parse_acled_response,
     record_to_event,
 )
@@ -141,6 +142,29 @@ def test_parse_acled_csv_accepts_aggregate_rows() -> None:
     assert events[0].country == "UA"
 
 
+def test_parse_acled_file_accepts_excel_aggregate_rows(tmp_path) -> None:
+    pd = pytest.importorskip("pandas")
+
+    path = tmp_path / "aggregate.xlsx"
+    pd.DataFrame(
+        [
+            {
+                "Country": "Ukraine",
+                "Year": 2026,
+                "Month": 6,
+                "Number of political violence events": 42,
+            }
+        ]
+    ).to_excel(path, index=False)
+
+    events = parse_acled_file(path, fetched_at=FETCHED_AT)
+
+    assert len(events) == 1
+    assert events[0].country == "UA"
+    assert events[0].occurred_at == datetime(2026, 6, 1, tzinfo=UTC)
+    assert events[0].payload["metric_value"] == 42
+
+
 def test_fetch_noops_without_csv_or_enabled_api(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import settings as settings_module
 
@@ -181,6 +205,37 @@ def test_fetch_reads_mixed_csv_directory(tmp_path, monkeypatch: pytest.MonkeyPat
         "Country,Year,Month,Events targeting civilians\nUkraine,2026,6,9\n",
         encoding="utf-8",
     )
+    monkeypatch.setattr(settings_module.settings, "acled_csv_path", "")
+    monkeypatch.setattr(settings_module.settings, "acled_csv_dir", str(tmp_path))
+    monkeypatch.setattr(settings_module.settings, "acled_api_enabled", False)
+
+    events = AcledFetcher(lookback_days=30).fetch()
+
+    assert len(events) == 2
+    assert {event.payload.get("aggregate", False) for event in events} == {False, True}
+
+
+def test_fetch_reads_mixed_csv_and_excel_directory(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pd = pytest.importorskip("pandas")
+    from app import settings as settings_module
+
+    (tmp_path / "events.csv").write_text(
+        "event_id_cnty,event_date,event_type,fatalities,latitude,longitude,iso3\n"
+        "UKR123,2026-06-28,Battles,3,50.45,30.52,UKR\n",
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {
+                "Country": "Ukraine",
+                "Year": 2026,
+                "Month": 6,
+                "Events targeting civilians": 9,
+            }
+        ]
+    ).to_excel(tmp_path / "aggregate.xlsx", index=False)
     monkeypatch.setattr(settings_module.settings, "acled_csv_path", "")
     monkeypatch.setattr(settings_module.settings, "acled_csv_dir", str(tmp_path))
     monkeypatch.setattr(settings_module.settings, "acled_api_enabled", False)

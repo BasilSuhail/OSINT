@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Final
 
 import httpx
+import pandas as pd
 
 from app.enrichment.country import country_for
 from app.enrichment.country_codes import country_centroid, country_name_to_iso2, iso3_to_iso2
@@ -28,6 +29,7 @@ from app.sources.base import Fetcher
 ACLED_API_URL: Final[str] = "https://acleddata.com/api/acled/read"
 ACLED_TOKEN_URL: Final[str] = "https://acleddata.com/oauth/token"
 ACLED_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+_LOCAL_EXTENSIONS: Final[tuple[str, ...]] = (".csv", ".xlsx")
 
 _EVENT_TYPE_SEVERITY: Final[dict[str, float]] = {
     "battles": 0.9,
@@ -294,12 +296,11 @@ def parse_acled_response(body: dict[str, Any], *, fetched_at: datetime) -> list[
     return events
 
 
-def parse_acled_csv(
-    body: str, *, fetched_at: datetime, source_name: str = "acled-csv"
+def _records_to_events(
+    records: Iterable[dict[str, Any]], *, fetched_at: datetime, source_name: str
 ) -> list[Event]:
-    reader = csv.DictReader(body.splitlines())
     events: list[Event] = []
-    for record in reader:
+    for record in records:
         event = record_to_event(record, fetched_at=fetched_at)
         if event is None:
             event = aggregate_record_to_event(
@@ -312,13 +313,57 @@ def parse_acled_csv(
     return events
 
 
-def _csv_paths() -> list[Path]:
+def parse_acled_csv(
+    body: str, *, fetched_at: datetime, source_name: str = "acled-csv"
+) -> list[Event]:
+    return _records_to_events(
+        csv.DictReader(body.splitlines()),
+        fetched_at=fetched_at,
+        source_name=source_name,
+    )
+
+
+def parse_acled_excel(path: Path, *, fetched_at: datetime) -> list[Event]:
+    sheets = pd.read_excel(path, sheet_name=None, engine="openpyxl")
+    events: list[Event] = []
+    for sheet_name, frame in sheets.items():
+        frame = frame.dropna(how="all")
+        if frame.empty:
+            continue
+        frame = frame.where(pd.notna(frame), None)
+        records = frame.to_dict(orient="records")
+        events.extend(
+            _records_to_events(
+                records,
+                fetched_at=fetched_at,
+                source_name=f"{path.name}:{sheet_name}",
+            )
+        )
+    return events
+
+
+def parse_acled_file(path: Path, *, fetched_at: datetime) -> list[Event]:
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return parse_acled_csv(
+            path.read_text(encoding="utf-8-sig"),
+            fetched_at=fetched_at,
+            source_name=path.name,
+        )
+    if suffix == ".xlsx":
+        return parse_acled_excel(path, fetched_at=fetched_at)
+    return []
+
+
+def _local_paths() -> list[Path]:
     paths: list[Path] = []
     if settings.acled_csv_path:
         paths.append(Path(settings.acled_csv_path).expanduser())
     if settings.acled_csv_dir:
-        pattern = str(Path(settings.acled_csv_dir).expanduser() / "*.csv")
-        paths.extend(Path(p) for p in glob.glob(pattern))
+        root = Path(settings.acled_csv_dir).expanduser()
+        for extension in _LOCAL_EXTENSIONS:
+            pattern = str(root / f"*{extension}")
+            paths.extend(Path(p) for p in glob.glob(pattern))
     return sorted(set(paths))
 
 
@@ -355,18 +400,12 @@ class AcledFetcher(Fetcher):
         return self._fetch_api(fetched_at=fetched_at)
 
     def _fetch_csv(self, *, fetched_at: datetime) -> list[Event]:
-        paths = [path for path in _csv_paths() if path.exists()]
+        paths = [path for path in _local_paths() if path.exists()]
         if not paths:
             return []
         all_events: list[Event] = []
         for path in paths:
-            all_events.extend(
-                parse_acled_csv(
-                    path.read_text(encoding="utf-8-sig"),
-                    fetched_at=fetched_at,
-                    source_name=path.name,
-                )
-            )
+            all_events.extend(parse_acled_file(path, fetched_at=fetched_at))
         since = fetched_at - timedelta(days=self.lookback_days)
         return _recent(all_events, since=since, limit=self.limit)
 
