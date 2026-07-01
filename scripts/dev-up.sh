@@ -24,6 +24,7 @@ docker_process_running() {
   if command -v pgrep >/dev/null 2>&1; then
     pgrep -x "Docker" >/dev/null 2>&1 && return 0
     pgrep -x "com.docker.backend" >/dev/null 2>&1 && return 0
+    pgrep -f "com\\.docker" >/dev/null 2>&1 && return 0
     pgrep -f "Docker Desktop" >/dev/null 2>&1 && return 0
   fi
   return 1
