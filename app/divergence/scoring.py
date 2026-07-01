@@ -97,7 +97,11 @@ def detect_lead(series: DivergenceSeries) -> LeadResult:
     """Find the first narrative spike and nearest prior physical spike."""
     n_idx = next((i for i, z in enumerate(series.narrative_z) if z >= TAU_N), None)
     if n_idx is None:
-        return LeadResult(physical_spike_day=None, narrative_spike_day=None, lead_days=None)
+        return LeadResult(
+            physical_spike_day=None,
+            narrative_spike_day=None,
+            lead_days=None,
+        )
     narrative_day = series.days[n_idx]
     p_idx = next(
         (
@@ -110,7 +114,11 @@ def detect_lead(series: DivergenceSeries) -> LeadResult:
         None,
     )
     if p_idx is None:
-        return LeadResult(physical_spike_day=None, narrative_spike_day=narrative_day, lead_days=None)
+        return LeadResult(
+            physical_spike_day=None,
+            narrative_spike_day=narrative_day,
+            lead_days=None,
+        )
     physical_day = series.days[p_idx]
     return LeadResult(
         physical_spike_day=physical_day,
