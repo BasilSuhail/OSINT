@@ -21,7 +21,10 @@ Please include:
 - **Security checks in CI**:
   - Backend: `pip-audit` against `requirements.txt` in `backend` workflow.
   - Frontend: `pnpm audit --audit-level high` in `frontend` workflow.
+  - PR dependency review (`actions/dependency-review-action`) blocks high-severity dependency regressions.
 - **GitHub secret scanning**: enabled at repository level.
+  - Push protection: enabled.
+  - Non-provider pattern scans and validity checks were attempted via API but remain manual in this repo UI context.
 
 ## GitHub repo baseline for security
 
