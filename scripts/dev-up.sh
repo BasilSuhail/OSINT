@@ -10,29 +10,37 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 mkdir -p logs
 
+DOCKER_WAIT_SECONDS="${DOCKER_WAIT_SECONDS:-30}"
+DOCKER_WAIT_STEP="${DOCKER_WAIT_STEP:-2}"
+API_WAIT_SECONDS="${API_WAIT_SECONDS:-20}"
+FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-30}"
+
 ensure_docker() {
   if docker info >/dev/null 2>&1; then
     return
   fi
 
-  if command -v open >/dev/null 2>&1; then
+  if [ "${DOCKER_AUTOSTART:-1}" = "1" ] && command -v open >/dev/null 2>&1; then
     echo "→ Docker is not running; opening Docker Desktop"
     open -a Docker >/dev/null 2>&1 || true
+    echo "  waiting up to ${DOCKER_WAIT_SECONDS}s for Docker to become available"
   else
     echo "Docker is not running. Start Docker, then run make start again." >&2
     exit 1
   fi
 
   printf "→ waiting for Docker"
-  for _ in $(seq 1 60); do
+  max_tries=$(( (DOCKER_WAIT_SECONDS + DOCKER_WAIT_STEP - 1) / DOCKER_WAIT_STEP ))
+  for _ in $(seq 1 "$max_tries"); do
     if docker info >/dev/null 2>&1; then
       printf " ✓ ready\n"
       return
     fi
     printf "."
-    sleep 2
+    sleep "$DOCKER_WAIT_STEP"
   done
-  printf "\nDocker did not become ready. Open Docker Desktop, then run make start again.\n" >&2
+  printf "\nDocker did not become ready in ${DOCKER_WAIT_SECONDS}s.\n" >&2
+  echo "Start/activate Docker Desktop, then run make start again." >&2
   exit 1
 }
 
@@ -80,13 +88,14 @@ spawn_frontend
 # Wait briefly for the API to answer.
 printf "→ waiting for API"
 api_ok=0
-for _ in $(seq 1 15); do
+for _ in $(seq 1 "$((API_WAIT_SECONDS))"); do
   if curl -s -m1 http://localhost:8000/health >/dev/null 2>&1; then
     printf " ✓ healthy\n"
     api_ok=1
     break
   fi
-  printf "."; sleep 1
+  printf "."
+  sleep 1
 done
 if [ "$api_ok" -ne 1 ]; then
   printf "\nAPI did not become healthy. Last API log lines:\n" >&2
@@ -96,7 +105,7 @@ fi
 
 printf "→ waiting for dashboard"
 frontend_ok=0
-for _ in $(seq 1 20); do
+for _ in $(seq 1 "$((FRONTEND_WAIT_SECONDS))"); do
   if curl -s -m1 -I http://localhost:3000 >/dev/null 2>&1; then
     printf " ✓ ready\n"
     frontend_ok=1

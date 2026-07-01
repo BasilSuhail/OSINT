@@ -22,7 +22,7 @@ up: start  ## Alias for make start
 down:  ## Fully stop and teardown docker runtime (data preserved in $OSINT_DATA_DIR)
 	@bash scripts/dev-down.sh
 	@if docker info >/dev/null 2>&1; then \
-		docker compose down >/dev/null; \
+		docker compose down --timeout 5 >/dev/null; \
 	else \
 		echo "Docker is not reachable; store containers are already stopped." ; \
 	fi
