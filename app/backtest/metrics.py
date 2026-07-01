@@ -64,9 +64,7 @@ def summarize(leads: list[EventLead], fp_rate: float) -> GateMetrics:
     pct_events_leading = len(leading) / n_events if n_events else 0.0
     median_lead = statistics.median(valid_leads) if valid_leads else None
     passes = (
-        median_lead is not None
-        and median_lead >= _MIN_LEAD_DAYS
-        and pct_events_leading > _MAJORITY
+        median_lead is not None and median_lead >= _MIN_LEAD_DAYS and pct_events_leading > _MAJORITY
     )
     return GateMetrics(
         median_lead=median_lead,

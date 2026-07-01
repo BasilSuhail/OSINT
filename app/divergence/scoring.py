@@ -106,9 +106,7 @@ def detect_lead(series: DivergenceSeries) -> LeadResult:
     p_idx = next(
         (
             i
-            for i in range(
-                n_idx - 1, max(-1, n_idx - MAX_LEAD_LOOKBACK_DAYS) - 1, -1
-            )
+            for i in range(n_idx - 1, max(-1, n_idx - MAX_LEAD_LOOKBACK_DAYS) - 1, -1)
             if series.physical_z[i] >= TAU_P
         ),
         None,

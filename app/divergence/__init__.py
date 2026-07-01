@@ -1,2 +1,1 @@
 """Divergence gate modules."""
-

@@ -15,9 +15,7 @@ def test_report_states_verdict_and_events() -> None:
         verdict="PASS",
     )
     leads = [EventLead("nato-quake", 3), EventLead("x", None)]
-    md = render_report(
-        metrics, leads, registry_hash="abc123def456", method_version="div.v1"
-    )
+    md = render_report(metrics, leads, registry_hash="abc123def456", method_version="div.v1")
     assert "PASS" in md
     assert "nato-quake" in md
     assert "div.v1" in md

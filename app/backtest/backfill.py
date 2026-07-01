@@ -21,8 +21,7 @@ class BackfillSource(Protocol):
 
     name: str
 
-    def fetch_range(self, country: str, start: date, end: date) -> list[Event]:
-        ...
+    def fetch_range(self, country: str, start: date, end: date) -> list[Event]: ...
 
 
 class UsgsBackfill:
