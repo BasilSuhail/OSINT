@@ -14,33 +14,76 @@ DOCKER_WAIT_SECONDS="${DOCKER_WAIT_SECONDS:-30}"
 DOCKER_WAIT_STEP="${DOCKER_WAIT_STEP:-2}"
 API_WAIT_SECONDS="${API_WAIT_SECONDS:-20}"
 FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-30}"
+DOCKER_WAIT_MESSAGE_EVERY="${DOCKER_WAIT_MESSAGE_EVERY:-10}"
+
+docker_ready() {
+  docker info >/dev/null 2>&1
+}
+
+docker_process_running() {
+  if command -v pgrep >/dev/null 2>&1; then
+    pgrep -x "Docker" >/dev/null 2>&1 && return 0
+    pgrep -x "com.docker.backend" >/dev/null 2>&1 && return 0
+    pgrep -f "Docker Desktop" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
 
 ensure_docker() {
-  if docker info >/dev/null 2>&1; then
+  if docker_ready; then
     return
   fi
 
   if [ "${DOCKER_AUTOSTART:-1}" = "1" ] && command -v open >/dev/null 2>&1; then
-    echo "→ Docker is not running; opening Docker Desktop"
-    open -a Docker >/dev/null 2>&1 || true
-    echo "  waiting up to ${DOCKER_WAIT_SECONDS}s for Docker to become available"
+    if docker_process_running; then
+      echo "→ Docker app detected, waiting for engine socket"
+    else
+      echo "→ Docker is not running; opening Docker Desktop"
+      open -a Docker >/dev/null 2>&1 || true
+      echo "  waiting up to ${DOCKER_WAIT_SECONDS}s for Docker to become available"
+    fi
   else
-    echo "Docker is not running. Start Docker, then run make start again." >&2
-    exit 1
+    if docker_process_running; then
+      echo "→ Docker app detected, waiting for engine socket"
+      echo "  waiting up to ${DOCKER_WAIT_SECONDS}s for Docker to become available"
+    else
+      echo "Docker is not reachable. Start Docker Desktop, then run make start again." >&2
+      exit 1
+    fi
   fi
 
   printf "→ waiting for Docker"
   max_tries=$(( (DOCKER_WAIT_SECONDS + DOCKER_WAIT_STEP - 1) / DOCKER_WAIT_STEP ))
-  for _ in $(seq 1 "$max_tries"); do
-    if docker info >/dev/null 2>&1; then
+  message_interval=$((DOCKER_WAIT_MESSAGE_EVERY / DOCKER_WAIT_STEP))
+  [ "$message_interval" -lt 1 ] && message_interval=1
+  for i in $(seq 1 "$max_tries"); do
+    if docker_ready; then
       printf " ✓ ready\n"
       return
     fi
     printf "."
+    if [ $((i % message_interval)) -eq 0 ]; then
+      if docker_process_running; then
+        echo
+        echo "  Docker process is running; waiting for API socket."
+      else
+        echo
+        echo "  Docker process not detected yet; if app is not running, start Docker Desktop."
+      fi
+      if [ -n "${DOCKER_HOST:-}" ]; then
+        echo "  DOCKER_HOST is set to ${DOCKER_HOST}"
+      fi
+      printf "→ waiting for Docker"
+    fi
     sleep "$DOCKER_WAIT_STEP"
   done
   printf "\nDocker did not become ready in ${DOCKER_WAIT_SECONDS}s.\n" >&2
-  echo "Start/activate Docker Desktop, then run make start again." >&2
+  if docker_process_running; then
+    echo "Docker Desktop is running, but daemon/socket is not available yet." >&2
+    echo "Restart Docker Desktop, then run make up again." >&2
+  else
+    echo "Start/activate Docker Desktop, then run make up again." >&2
+  fi
   exit 1
 }
 

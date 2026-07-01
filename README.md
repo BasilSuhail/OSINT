@@ -92,6 +92,29 @@ Expected:
 services already running, and starts whatever is down. Logs are in `logs/`.
 Watch them with `make logs`.
 
+If Docker is already open but `make up` still waits on startup, run:
+
+```bash
+DOCKER_AUTOSTART=0 DOCKER_WAIT_SECONDS=10 make up
+```
+
+and check:
+
+```bash
+docker info
+```
+
+If `docker info` works, then restart `make down` + `make up` usually clears stale
+processes. If `docker info` fails but Docker Desktop is visibly running, restart
+Docker Desktop and rerun.
+
+You can also tune these env vars:
+- `DOCKER_WAIT_SECONDS` (default: 30)
+- `DOCKER_WAIT_STEP` (default: 2)
+- `API_WAIT_SECONDS` (default: 20)
+- `FRONTEND_WAIT_SECONDS` (default: 30)
+- `DOCKER_WAIT_MESSAGE_EVERY` (default: 10)
+
 <details><summary>Manual — one process per terminal (if you'd rather not background them)</summary>
 
 > ⚠️ Each command below **runs forever in the foreground** — it does not return
