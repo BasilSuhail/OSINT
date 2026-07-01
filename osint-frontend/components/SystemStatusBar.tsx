@@ -63,11 +63,7 @@ export function SystemStatusBar() {
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
           {datasets.map((dataset) => (
             <span key={dataset.key} title={dataset.detail ?? `${dataset.label}: ${statusLabel(dataset.status)}`} className="font-mono text-[9px] uppercase tracking-widest text-neutral-400">
-              <span className="text-neutral-200/80">{dataset.label}</span>{" "}
-              <span className={statusTextClass(dataset.status)}>{statusLabel(dataset.status)}</span>{" "}
-              <span className="text-neutral-500">
-                {dataset.healthy}/{dataset.total}
-              </span>
+              <span className="text-neutral-200/80">{dataset.label}</span> <span className={statusTextClass(dataset.status)}>{statusLabel(dataset.status)}</span> <span className="text-neutral-500">{dataset.healthy}/{dataset.total}</span>
             </span>
           ))}
           <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500">

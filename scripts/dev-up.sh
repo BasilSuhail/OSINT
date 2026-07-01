@@ -10,29 +10,96 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 mkdir -p logs
 
+DOCKER_WAIT_SECONDS="${DOCKER_WAIT_SECONDS:-30}"
+DOCKER_WAIT_STEP="${DOCKER_WAIT_STEP:-2}"
+API_WAIT_SECONDS="${API_WAIT_SECONDS:-20}"
+FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-30}"
+DOCKER_WAIT_MESSAGE_EVERY="${DOCKER_WAIT_MESSAGE_EVERY:-10}"
+
+docker_ready() {
+  if [ -n "${DOCKER_HOST:-}" ]; then
+    if docker info >/dev/null 2>&1; then
+      return 0
+    fi
+
+    local configured_host
+    configured_host="$DOCKER_HOST"
+    if DOCKER_HOST= docker info >/dev/null 2>&1; then
+      echo "  DOCKER_HOST=${configured_host} is unreachable; falling back to local socket."
+      export DOCKER_HOST=
+      return 0
+    fi
+    return 1
+  fi
+
+  docker info >/dev/null 2>&1
+}
+
+docker_process_running() {
+  if command -v pgrep >/dev/null 2>&1; then
+    pgrep -x "Docker" >/dev/null 2>&1 && return 0
+    pgrep -x "com.docker.backend" >/dev/null 2>&1 && return 0
+    pgrep -f "com\\.docker" >/dev/null 2>&1 && return 0
+    pgrep -f "Docker Desktop" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
 ensure_docker() {
-  if docker info >/dev/null 2>&1; then
+  if docker_ready; then
     return
   fi
 
-  if command -v open >/dev/null 2>&1; then
-    echo "→ Docker is not running; opening Docker Desktop"
-    open -a Docker >/dev/null 2>&1 || true
+  if [ "${DOCKER_AUTOSTART:-1}" = "1" ] && command -v open >/dev/null 2>&1; then
+    if docker_process_running; then
+      echo "→ Docker app detected, waiting for engine socket"
+    else
+      echo "→ Docker is not running; opening Docker Desktop"
+      open -a Docker >/dev/null 2>&1 || true
+      echo "  waiting up to ${DOCKER_WAIT_SECONDS}s for Docker to become available"
+    fi
   else
-    echo "Docker is not running. Start Docker, then run make start again." >&2
-    exit 1
+    if docker_process_running; then
+      echo "→ Docker app detected, waiting for engine socket"
+      echo "  waiting up to ${DOCKER_WAIT_SECONDS}s for Docker to become available"
+    else
+      echo "Docker is not reachable. Start Docker Desktop, then run make start again." >&2
+      exit 1
+    fi
   fi
 
   printf "→ waiting for Docker"
-  for _ in $(seq 1 60); do
-    if docker info >/dev/null 2>&1; then
+  max_tries=$(( (DOCKER_WAIT_SECONDS + DOCKER_WAIT_STEP - 1) / DOCKER_WAIT_STEP ))
+  message_interval=$((DOCKER_WAIT_MESSAGE_EVERY / DOCKER_WAIT_STEP))
+  [ "$message_interval" -lt 1 ] && message_interval=1
+  for i in $(seq 1 "$max_tries"); do
+    if docker_ready; then
       printf " ✓ ready\n"
       return
     fi
     printf "."
-    sleep 2
+    if [ $((i % message_interval)) -eq 0 ]; then
+      if docker_process_running; then
+        echo
+        echo "  Docker process is running; waiting for API socket."
+      else
+        echo
+        echo "  Docker process not detected yet; if app is not running, start Docker Desktop."
+      fi
+      if [ -n "${DOCKER_HOST:-}" ]; then
+        echo "  DOCKER_HOST is set to ${DOCKER_HOST}"
+      fi
+      printf "→ waiting for Docker"
+    fi
+    sleep "$DOCKER_WAIT_STEP"
   done
-  printf "\nDocker did not become ready. Open Docker Desktop, then run make start again.\n" >&2
+  printf "\nDocker did not become ready in ${DOCKER_WAIT_SECONDS}s.\n" >&2
+  if docker_process_running; then
+    echo "Docker Desktop is running, but daemon/socket is not available yet." >&2
+    echo "Restart Docker Desktop, then run make up again." >&2
+  else
+    echo "Start/activate Docker Desktop, then run make up again." >&2
+  fi
   exit 1
 }
 
@@ -112,13 +179,14 @@ spawn_frontend
 # Wait briefly for the API to answer.
 printf "→ waiting for API"
 api_ok=0
-for _ in $(seq 1 15); do
+for _ in $(seq 1 "$((API_WAIT_SECONDS))"); do
   if curl -s -m1 http://localhost:8000/health >/dev/null 2>&1; then
     printf " ✓ healthy\n"
     api_ok=1
     break
   fi
-  printf "."; sleep 1
+  printf "."
+  sleep 1
 done
 if [ "$api_ok" -ne 1 ]; then
   printf "\nAPI did not become healthy. Last API log lines:\n" >&2
@@ -132,7 +200,7 @@ frontend_port="$(frontend_listener_port "$(frontend_pid || true)")"
 if [ -z "$frontend_port" ]; then
   frontend_port="$FRONTEND_PORT_DEFAULT"
 fi
-for _ in $(seq 1 20); do
+for _ in $(seq 1 "$((FRONTEND_WAIT_SECONDS))"); do
   if curl -s -m1 -I "http://localhost:${frontend_port}" >/dev/null 2>&1; then
     printf " ✓ ready\n"
     frontend_ok=1

@@ -17,6 +17,11 @@ defaults:
 
 jobs:
   build:
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+      id-token: write
     runs-on: ubuntu-latest
     env:
       # Build-time default for the local read-API base (overridden at runtime).
@@ -54,6 +59,9 @@ jobs:
 
       - name: Lint (eslint)
         run: pnpm lint
+
+      - name: Dependency security scan (npm audit)
+        run: pnpm audit --audit-level high
 
       - name: Ephemeris unit tests (node --test)
         run: node --test --experimental-strip-types lib/ephemeris.test.mts

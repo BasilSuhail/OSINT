@@ -305,6 +305,18 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onCount, onSel
     globe.pointOfView({ lat: iss.lat, lng: iss.lon, altitude: 1.6 }, 800)
   }, [followIss, satsCapped])
 
+  useEffect(() => {
+    if (!selectedSat && !selectedCelestial && !selectedNeo) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      if (selectedSat) setSelectedSat(null)
+      if (selectedCelestial) setSelectedCelestial(null)
+      if (selectedNeo) setSelectedNeo(null)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [selectedSat, selectedCelestial, selectedNeo])
+
   useEffect(() => onCount(total), [total, onCount])
 
   // Size to container.

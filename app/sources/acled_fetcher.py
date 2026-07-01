@@ -445,7 +445,8 @@ class AcledFetcher(Fetcher):
         all_events: list[Event] = []
         for path in paths:
             all_events.extend(parse_acled_file(path, fetched_at=fetched_at))
-        since = fetched_at - timedelta(days=self.lookback_days)
+        since_date = (fetched_at - timedelta(days=self.lookback_days)).date()
+        since = datetime.combine(since_date, datetime.min.time(), tzinfo=UTC)
         return _recent(all_events, since=since, limit=self.limit)
 
     def _fetch_api(self, *, fetched_at: datetime) -> list[Event]:
