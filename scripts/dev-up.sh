@@ -17,6 +17,21 @@ FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-30}"
 DOCKER_WAIT_MESSAGE_EVERY="${DOCKER_WAIT_MESSAGE_EVERY:-10}"
 
 docker_ready() {
+  if [ -n "${DOCKER_HOST:-}" ]; then
+    if docker info >/dev/null 2>&1; then
+      return 0
+    fi
+
+    local configured_host
+    configured_host="$DOCKER_HOST"
+    if DOCKER_HOST= docker info >/dev/null 2>&1; then
+      echo "  DOCKER_HOST=${configured_host} is unreachable; falling back to local socket."
+      export DOCKER_HOST=
+      return 0
+    fi
+    return 1
+  fi
+
   docker info >/dev/null 2>&1
 }
 

@@ -115,6 +115,14 @@ You can also tune these env vars:
 - `FRONTEND_WAIT_SECONDS` (default: 30)
 - `DOCKER_WAIT_MESSAGE_EVERY` (default: 10)
 
+If `make up` keeps waiting because `docker` points to a stale remote socket, unset
+`DOCKER_HOST` and retry:
+
+```bash
+unset DOCKER_HOST
+make up
+```
+
 <details><summary>Manual — one process per terminal (if you'd rather not background them)</summary>
 
 > ⚠️ Each command below **runs forever in the foreground** — it does not return
