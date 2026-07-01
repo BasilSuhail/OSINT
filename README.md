@@ -131,6 +131,9 @@ make off
 
 `make off` runs `make stop`, then asks macOS to quit Docker Desktop.
 
+`make down` also runs `docker compose down` after shutdown so container/runtime
+state is fully torn down while `$OSINT_DATA_DIR` remains intact.
+
 `.venv` is just a Python folder, not a VM. There is nothing to shut down there.
 
 | How far off | Commands |
@@ -144,7 +147,7 @@ Aliases:
 | Alias | Same as | Use |
 |-------|---------|-----|
 | `make up` | `make start` | Start the full app |
-| `make down` | `make stop` | Stop the full app, keep data |
+| `make down` | `make stop` + `docker compose down` | Stop app + teardown runtime, keep data |
 
 ### RESTART
 
