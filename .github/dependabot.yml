@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "02:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - security
+    assignees:
+      - BasilSuhail
+    target-branch: "main"
+
+  - package-ecosystem: "npm"
+    directory: "/osint-frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - security
+    assignees:
+      - BasilSuhail
+    target-branch: "main"
