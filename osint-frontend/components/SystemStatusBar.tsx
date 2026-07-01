@@ -55,22 +55,35 @@ export function SystemStatusBar() {
   const ingestRows = useIngestHealthRows()
   const coverageRows = useCoverageRows()
   const datasets = summarizeSystemHealth(ingestRows, coverageRows)
+  const statusTokens = datasets.map((dataset) => ({
+    ...dataset,
+    compactStatus: {
+      ok: "on",
+      warn: "degraded",
+      stale: "stale",
+      offline: "off",
+    }[dataset.status],
+  }))
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50 border-b border-neutral-800 bg-neutral-950/96 backdrop-blur-xl">
-      <div className="mx-auto flex min-h-9 w-full max-w-[2400px] flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 sm:px-4">
+    <div className="sticky top-0 z-50 h-7 border-b border-neutral-800 bg-neutral-950/96 backdrop-blur-xl">
+      <div className="mx-auto flex min-h-7 w-full max-w-[1800px] flex-nowrap items-center gap-x-2 px-2 py-0.5">
         <ConnectionIndicator />
-        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
-          {datasets.map((dataset) => (
-            <span key={dataset.key} title={dataset.detail ?? `${dataset.label}: ${statusLabel(dataset.status)}`} className="font-mono text-[9px] uppercase tracking-widest text-neutral-400">
-              <span className="text-neutral-200/80">{dataset.label}</span>{" "}
-              <span className={statusTextClass(dataset.status)}>{statusLabel(dataset.status)}</span>{" "}
+        <div className="ml-auto flex min-w-0 flex-nowrap items-center gap-x-2 overflow-hidden">
+          {statusTokens.map((dataset) => (
+            <span
+              key={dataset.key}
+              title={dataset.detail ?? `${dataset.label}: ${statusLabel(dataset.status)}`}
+              className="shrink-0 whitespace-nowrap font-mono text-[8px] uppercase tracking-widest text-neutral-500"
+            >
+              <span className="text-neutral-100/80">{dataset.label}</span>{" "}
+              <span className={statusTextClass(dataset.status)}>{dataset.compactStatus}</span>{" "}
               <span className="text-neutral-500">
                 {dataset.healthy}/{dataset.total}
               </span>
             </span>
           ))}
-          <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500">
+          <span className="shrink-0 whitespace-nowrap font-mono text-[8px] uppercase tracking-widest text-neutral-500">
             {datasets.filter((d) => d.status !== "ok").length} attention
           </span>
         </div>

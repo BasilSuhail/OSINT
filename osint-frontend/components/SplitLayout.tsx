@@ -63,6 +63,9 @@ export function SplitLayout() {
         e.preventDefault()
         const store = focused === "left" ? useLeftPaneStore : useRightPaneStore
         store.getState().togglePlaying()
+      } else if (e.key === "Escape") {
+        setSelectedCountry(null)
+        setSelectedEvent(null)
       }
     }
     window.addEventListener("keydown", onKey)
@@ -72,9 +75,9 @@ export function SplitLayout() {
   const onSelectCountry = useCallback((iso: string) => setSelectedCountry(iso), [])
 
   return (
-    <main className="relative min-h-dvh w-screen bg-neutral-950 text-neutral-100">
+    <main className="relative min-h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-100">
       <SystemStatusBar />
-      <div className="relative h-[calc(100dvh-2rem)] w-full overflow-hidden">
+      <div className="relative h-[calc(100dvh-1.75rem)] w-full overflow-hidden">
         {!configured && (
           <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
             Local API unreachable - start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)
@@ -203,7 +206,7 @@ export function SplitLayout() {
         </DetailOverlay>
       </div>
 
-      <div className="mt-10">
+      <div>
         {/* Scroll-down dashboard section */}
         <DashboardSection configured={configured} />
       </div>
