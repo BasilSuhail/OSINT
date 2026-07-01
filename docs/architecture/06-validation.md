@@ -110,6 +110,21 @@ verdict=PASS|FAIL report=docs/backtest/<registry_hash>-report.md
 
 This is a manual verification path only; the real gate decision uses the canonical frozen registry and a frozen `events.yaml` hash.
 
+### Issue #250 closeout log
+
+- Branch used: `feat/phase-1-gate-task10-11`
+- Current latest commit: `cb9afd5`
+- Scope completed in branch:
+  - lead-time gate engine + backtest taskset through Task 11
+  - Docker startup/diagnostic hardening for local `make up`
+  - issue logging + docs updates for runtime validation path
+- Validation and status captured:
+  - backend: full pytest suite passing in this environment
+  - frontend: `pnpm test` passing
+  - backtest smoke path: `python -m app.backtest.run` requires Postgres at `127.0.0.1:5432` to write report artifact (environmental dependency)
+- Next action:
+  - once DB is accessible, run backtest smoke and attach `docs/backtest/<registry_hash>-report.md` as proof artifact.
+
 ### Dashboard snapshot tests
 
 Frontend has [Playwright](https://playwright.dev/) snapshot tests for:
