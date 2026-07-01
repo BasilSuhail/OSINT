@@ -31,6 +31,6 @@ Please include:
 Expected defaults for this project:
 
 - Security alerts enabled (`Code scanning`, `Dependabot alerts`, `Dependabot updates`)
-- Protected `main` branch with pull-request checks and review workflow
+- Protected `main` branch with required pull-request checks
 - No secrets in source control (`.env` values are local only)
 - CI status required before merge

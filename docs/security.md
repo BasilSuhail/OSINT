@@ -13,7 +13,7 @@
   - Frontend dependency audit using `pnpm audit --audit-level high`
 - GitGuardian security checks (existing in repo settings)
 - Main branch protection (API-applied):
-  - PR reviews required (1)
+  - No reviewer minimums (solo dev workflow)
   - Required status checks: `test`, `build`, `analyze (python)`, `analyze (javascript)`
   - Required conversation resolution
   - No force pushes/deletions
