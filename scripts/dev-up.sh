@@ -103,6 +103,38 @@ ensure_docker() {
   exit 1
 }
 
+FRONTEND_PORT_DEFAULT=3000
+
+frontend_listener_port() {
+  local pid="${1:-}"
+  if [ -z "$pid" ]; then
+    return
+  fi
+
+  lsof -Pan -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null | tail -n 1 | sed -n 's/.*TCP .*:\([0-9][0-9]*\) (LISTEN).*/\1/p'
+}
+
+frontend_pid() {
+  local pidfile="logs/frontend.pid"
+  if [ -f "$pidfile" ]; then
+    local pid
+    pid="$(cat "$pidfile")"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -n "$(frontend_listener_port "$pid")" ]; then
+      echo "$pid"
+      return
+    fi
+  fi
+
+  local pid
+  for pid in $(pgrep -af "next-server|next dev" | awk '{print $1}' | sort -u || true); do
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -n "$(frontend_listener_port "$pid")" ]; then
+      echo "$pid"
+      return
+    fi
+  done
+
+}
+
 echo "→ stores (postgres + redis)"
 ensure_docker
 docker compose up -d >/dev/null
@@ -121,16 +153,16 @@ spawn() { # label  cmd...
 
 spawn_frontend() {
   local pidfile="logs/frontend.pid"
-  if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-    echo "  frontend already running (pid $(cat "$pidfile"))"
-    return
-  fi
-
-  local port_pid
-  port_pid="$(lsof -ti tcp:3000 2>/dev/null | head -n 1 || true)"
-  if [ -n "$port_pid" ]; then
-    echo "  frontend already listening on :3000 (pid $port_pid)"
-    echo "$port_pid" >"$pidfile"
+  local pid
+  pid="$(frontend_pid || true)"
+  if [ -n "$pid" ]; then
+    local port
+    port="$(frontend_listener_port "$pid")"
+    if [ -z "$port" ]; then
+      port="$FRONTEND_PORT_DEFAULT"
+    fi
+    echo "  frontend already running (pid $pid on :$port)"
+    echo "$pid" >"$pidfile"
     return
   fi
 
@@ -164,8 +196,12 @@ fi
 
 printf "→ waiting for dashboard"
 frontend_ok=0
+frontend_port="$(frontend_listener_port "$(frontend_pid || true)")"
+if [ -z "$frontend_port" ]; then
+  frontend_port="$FRONTEND_PORT_DEFAULT"
+fi
 for _ in $(seq 1 "$((FRONTEND_WAIT_SECONDS))"); do
-  if curl -s -m1 -I http://localhost:3000 >/dev/null 2>&1; then
+  if curl -s -m1 -I "http://localhost:${frontend_port}" >/dev/null 2>&1; then
     printf " ✓ ready\n"
     frontend_ok=1
     break
@@ -179,14 +215,4 @@ if [ "$frontend_ok" -ne 1 ]; then
   exit 1
 fi
 
-cat <<'MSG'
-
-App is up.
-
-Dashboard: http://localhost:3000
-API health: http://localhost:8000/health
-Logs: make logs
-
-Stop later with: make stop
-Fully off later with: make off
-MSG
+printf "\nApp is up.\n\nDashboard: http://localhost:%s\nAPI health: http://localhost:8000/health\nLogs: make logs\n\nStop later with: make stop\nFully off later with: make off\n" "$frontend_port"
