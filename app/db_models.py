@@ -119,7 +119,16 @@ class LabelRow(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (Index("labels_country_bucket_idx", "country", "bucket_start"),)
+    __table_args__ = (
+        Index("labels_country_bucket_idx", "country", "bucket_start"),
+        UniqueConstraint(
+            "country",
+            "bucket_start",
+            "label_code",
+            "label_source",
+            name="labels_country_bucket_code_source_key",
+        ),
+    )
 
 
 class IngestHealthRow(Base):
