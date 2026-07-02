@@ -1,0 +1,7 @@
+events:
+  - id: jp-quake-2024
+    country: JP
+    date: 2024-01-01
+    domain: hazard
+    source_url: https://earthquake.usgs.gov/fdsnws/event/1/
+    notes: "Frozen starter event for divergence gate backtest smoke run."

@@ -63,6 +63,9 @@ export function SplitLayout() {
         e.preventDefault()
         const store = focused === "left" ? useLeftPaneStore : useRightPaneStore
         store.getState().togglePlaying()
+      } else if (e.key === "Escape") {
+        setSelectedCountry(null)
+        setSelectedEvent(null)
       }
     }
     window.addEventListener("keydown", onKey)

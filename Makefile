@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: start stop off up down logs data-size data-prune data-reset
+.PHONY: start stop off up down down-soft logs data-size data-prune data-reset
 
 start:  ## Start the full local app (Docker stores + backend + frontend)
 	@bash scripts/dev-up.sh
@@ -11,12 +11,21 @@ start:  ## Start the full local app (Docker stores + backend + frontend)
 stop:  ## Stop the full local app (frontend + backend + Docker stores; keeps data)
 	@bash scripts/dev-down.sh
 
+down-soft: stop  ## Alias for a no-teardown stop
+	@:
+
 off: stop  ## Stop the app, then quit Docker Desktop on macOS
 	@bash scripts/dev-off.sh
 
 up: start  ## Alias for make start
 
-down: stop  ## Alias for make stop
+down:  ## Fully stop and teardown docker runtime (data preserved in $OSINT_DATA_DIR)
+	@bash scripts/dev-down.sh
+	@if docker info >/dev/null 2>&1; then \
+		docker compose down --timeout 5 >/dev/null; \
+	else \
+		echo "Docker is not reachable; store containers are already stopped." ; \
+	fi
 
 logs:  ## Tail background app logs (Ctrl-C to stop tailing; stack keeps running)
 	@tail -n 40 -F logs/*.log

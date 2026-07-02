@@ -7,6 +7,7 @@ Two senses of "validation":
 
 - [Methodological validation hooks](#methodological-validation-hooks)
 - [Runtime validation](#runtime-validation)
+- [Lead-time gate dry-run](#lead-time-gate-dry-run)
 - [Replayability](#replayability)
 - [Pre-evaluation checklist](#pre-evaluation-checklist)
 
@@ -86,6 +87,43 @@ Per-domain examples:
 - `worker-labels`: warn if ACLED daily delta is empty across all countries (their API rolled back); warn if a NBER recession declaration appears in the future
 
 Warnings are logged, not raised. They surface on `/admin/health` and Flower. The intent is to catch upstream schema drift (a column dropped, a unit changed) before it pollutes scores or labels.
+
+### Lead-time gate dry-run
+
+Issue #250 defines a phase-1 gate for the sensor-first narrative lead claim.
+
+Run the smoke test from repo root:
+
+```bash
+python -m app.backtest.run
+```
+
+The command writes one markdown artifact under `docs/backtest/`:
+
+- `docs/backtest/<registry_hash>-report.md`
+
+and prints:
+
+```text
+verdict=PASS|FAIL report=docs/backtest/<registry_hash>-report.md
+```
+
+This is a manual verification path only; the real gate decision uses the canonical frozen registry and a frozen `events.yaml` hash.
+
+### Issue #250 closeout log
+
+- Branch used: `feat/phase-1-gate-task10-11`
+- Current latest commit: `cb9afd5`
+- Scope completed in branch:
+  - lead-time gate engine + backtest taskset through Task 11
+  - Docker startup/diagnostic hardening for local `make up`
+  - issue logging + docs updates for runtime validation path
+- Validation and status captured:
+  - backend: full pytest suite passing in this environment
+  - frontend: `pnpm test` passing
+  - backtest smoke path: `python -m app.backtest.run` requires Postgres at `127.0.0.1:5432` to write report artifact (environmental dependency)
+- Next action:
+  - once DB is accessible, run backtest smoke and attach `docs/backtest/<registry_hash>-report.md` as proof artifact.
 
 ### Dashboard snapshot tests
 

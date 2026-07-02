@@ -23,6 +23,11 @@ on:
 
 jobs:
   test:
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+      id-token: write
     runs-on: ubuntu-latest
 
     # Real Postgres so Alembic runs against the same dialect that prod uses,
@@ -75,6 +80,11 @@ jobs:
 
       - name: Format check (ruff format)
         run: ruff format --check app/ tests/
+
+      - name: Dependency security scan (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
 
       - name: Alembic migrate against Postgres
         run: alembic upgrade head
