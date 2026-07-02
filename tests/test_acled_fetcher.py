@@ -208,7 +208,10 @@ def test_fetch_reads_mixed_spreadsheet_directory(tmp_path, monkeypatch: pytest.M
         encoding="utf-8",
     )
     (tmp_path / "aggregate.csv").write_text(
-        f"Country,Year,Month,Events targeting civilians\nUkraine,{aggregate_year},{aggregate_month},9\n",
+        (
+            "Country,Year,Month,Events targeting civilians\n"
+            f"Ukraine,{aggregate_year},{aggregate_month},9\n"
+        ),
         encoding="utf-8",
     )
     with pd.ExcelWriter(tmp_path / "events.xlsx", engine="openpyxl") as writer:
