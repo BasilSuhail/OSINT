@@ -93,7 +93,7 @@ def test_run_fetcher_idempotent_on_rerun(global_sqlite_db: Engine) -> None:
     finally:
         fetcher_registry.deregister("stub")
 
-    assert second == {"fetched": 3, "inserted": 0}
+    assert second == {"fetched": 3, "inserted": 3}  # re-run refreshes, no duplicate rows
     with _session_for(global_sqlite_db) as session:
         rows = session.execute(select(EventRow)).scalars().all()
         assert len(rows) == 3

@@ -65,34 +65,46 @@ class TestUpsertEvents:
         rows = db_session.execute(select(EventRow)).scalars().all()
         assert len(rows) == 5
 
-    def test_duplicate_inserts_are_dropped(self, db_session: Session) -> None:
+    def test_reupsert_refreshes_existing(self, db_session: Session) -> None:
         events = [_make_event(f"SPY:{i}") for i in range(3)]
-
         first = upsert_events(events, db_session)
         db_session.commit()
 
-        # Re-run the same payload — every row should be a conflict.
-        second = upsert_events(events, db_session)
+        # Re-run the same keys with a changed mutable field — every row is a
+        # conflict and must be REFRESHED (snapshot feeds re-publish active events).
+        updated = [_make_event(f"SPY:{i}", severity=0.9) for i in range(3)]
+        second = upsert_events(updated, db_session)
         db_session.commit()
 
         rows = db_session.execute(select(EventRow)).scalars().all()
         assert first == 3
-        assert second == 0
-        assert len(rows) == 3
+        assert second == 3  # refreshed, not skipped
+        assert len(rows) == 3  # no duplicate rows created
+        assert all(r.severity == 0.9 for r in rows)  # mutable field updated
 
-    def test_mixed_new_and_duplicate_inserts_only_the_new(self, db_session: Session) -> None:
+    def test_mixed_new_and_existing_all_affected(self, db_session: Session) -> None:
         original = [_make_event(f"SPY:{i}") for i in range(3)]
         upsert_events(original, db_session)
         db_session.commit()
 
-        # Two of the three already exist; one is new.
+        # Two of the three exist (refreshed); one is new (inserted) → 3 affected.
         mixed = [_make_event("SPY:1"), _make_event("SPY:2"), _make_event("SPY:new")]
-        added = upsert_events(mixed, db_session)
+        affected = upsert_events(mixed, db_session)
         db_session.commit()
 
         rows = db_session.execute(select(EventRow)).scalars().all()
-        assert added == 1
+        assert affected == 3
         assert len(rows) == 4
+
+    def test_intra_batch_duplicate_keeps_last(self, db_session: Session) -> None:
+        # ON CONFLICT DO UPDATE cannot touch the same key twice in one statement,
+        # so a duplicate id within a single batch collapses to the last value.
+        batch = [_make_event("SPY:dup", severity=0.1), _make_event("SPY:dup", severity=0.8)]
+        upsert_events(batch, db_session)
+        db_session.commit()
+        rows = db_session.execute(select(EventRow)).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].severity == 0.8
 
     def test_different_sources_same_id_coexist(self, db_session: Session) -> None:
         # The dedup key is (source, source_event_id) — same id under different
