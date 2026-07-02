@@ -149,6 +149,15 @@ def feature_to_event(event_record: dict[str, Any], *, fetched_at: datetime) -> E
     if occurred_at is None:
         return None
 
+    # Open (ongoing) events — icebergs, volcanoes, long-lived storms — refresh
+    # their geometry only every few days. Their latest-geometry date is often
+    # older than the short hazard-retention window, so housekeeping would prune
+    # them (and the dashboard's time window would hide them) between updates.
+    # They are still active *now*, so stamp them at fetch time; closed events
+    # keep their real geometry date. (#252 follow-up.)
+    if not event_record.get("closed"):
+        occurred_at = fetched_at
+
     coords = _point_coords(latest)
     if coords is None:
         return None

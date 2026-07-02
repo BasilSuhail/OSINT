@@ -95,13 +95,14 @@ export function useNeos(enabled: boolean): NeoAsteroid[] {
   return data ?? []
 }
 
-/** Convenience: gentle drift each tick so they read as moving. */
-export function useDriftedNeos(neos: NeoAsteroid[], tickMs: number = 1000): NeoAsteroid[] {
+/** Convenience: very gentle drift each tick so they read as alive without
+ *  being a fast-moving, unclickable target (#252 follow-up). */
+export function useDriftedNeos(neos: NeoAsteroid[], tickMs: number = 2000): NeoAsteroid[] {
   const [t, setT] = useState(0)
   useEffect(() => {
     const id = window.setInterval(() => setT((x) => (x + 1) % 1_000_000), tickMs)
     return () => window.clearInterval(id)
   }, [tickMs])
-  // Tiny lon drift per tick — purely cosmetic.
-  return neos.map((n) => ({ ...n, lon: ((n.lon + t * 0.4 + 180) % 360) - 180 }))
+  // Tiny lon drift per tick — slow enough to stay clickable.
+  return neos.map((n) => ({ ...n, lon: ((n.lon + t * 0.05 + 180) % 360) - 180 }))
 }
