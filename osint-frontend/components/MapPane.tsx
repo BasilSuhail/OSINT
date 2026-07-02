@@ -9,7 +9,6 @@ import MapGL, {
   type MapLayerMouseEvent,
   type MapRef,
 } from "react-map-gl/maplibre"
-import { AnimatePresence, motion } from "framer-motion"
 import { Activity, Droplets, Flame, Snowflake, Sun, Triangle, Wind } from "lucide-react"
 import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
@@ -136,12 +135,8 @@ function EventMarker({
         onSelect(ev)
       }}
     >
-      <motion.div
-        initial={{ scale: 0.6, opacity: 0 }}
-        animate={{ scale: 1, opacity: ev.opacity }}
-        exit={{ scale: 0.6, opacity: 0 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
-        style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer" }}
+      <div
+        style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer", opacity: ev.opacity }}
         className="relative grid place-items-center"
       >
         {(() => {
@@ -183,7 +178,7 @@ function EventMarker({
             />
           )
         })()}
-      </motion.div>
+      </div>
     </Marker>
   )
 }
@@ -202,12 +197,8 @@ function ClusterChip({
   const size = circleSizeForCount(n)
   return (
     <Marker longitude={cluster.lon} latitude={cluster.lat} anchor="center">
-      <motion.button
+      <button
         type="button"
-        initial={{ scale: 0.6, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.6, opacity: 0 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
         onClick={(e) => {
           e.stopPropagation()
           onClick(cluster)
@@ -240,12 +231,8 @@ function WorldAggregateChip({
   const size = circleSizeForCount(n)
   return (
     <Marker longitude={aggregate.lon} latitude={aggregate.lat} anchor="center">
-      <motion.button
+      <button
         type="button"
-        initial={{ scale: 0.6, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.6, opacity: 0 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
         onClick={(e) => {
           e.stopPropagation()
           onClick(aggregate)
@@ -655,21 +642,19 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           />
         </Source>
 
-        <AnimatePresence>
-          {singles.map(({ ev, lat, lon }) => (
-            <EventMarker key={ev.id} ev={ev} lat={lat} lon={lon} onSelect={handleSelectMarker} />
-          ))}
-          {clusters.map((c) => (
-            <ClusterChip key={c.key} cluster={c} onClick={handleClusterClick} />
-          ))}
-          {worldAggregates.map((aggregate) => (
-            <WorldAggregateChip
-              key={aggregate.country}
-              aggregate={aggregate}
-              onClick={handleWorldAggregateClick}
-            />
-          ))}
-        </AnimatePresence>
+        {singles.map(({ ev, lat, lon }) => (
+          <EventMarker key={ev.id} ev={ev} lat={lat} lon={lon} onSelect={handleSelectMarker} />
+        ))}
+        {clusters.map((c) => (
+          <ClusterChip key={c.key} cluster={c} onClick={handleClusterClick} />
+        ))}
+        {worldAggregates.map((aggregate) => (
+          <WorldAggregateChip
+            key={aggregate.country}
+            aggregate={aggregate}
+            onClick={handleWorldAggregateClick}
+          />
+        ))}
       </MapGL>
 
       {!configured && (
