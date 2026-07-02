@@ -73,6 +73,7 @@ export function RightPane({
             onRailOpenChange={onRailOpenChange}
             onCount={onCount}
             onSelectEvent={onSelectEvent}
+            active={mode === "globe"}
           />
         </div>
       )}

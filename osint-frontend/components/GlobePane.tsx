@@ -165,9 +165,13 @@ interface GlobePaneProps {
   onCount: (n: number) => void
   /** Bubble a clicked event up to the shared centred detail overlay (#207). */
   onSelectEvent: (ev: VisibleEvent) => void
+  /** False when the globe is mounted-but-hidden behind another right-pane mode.
+   *  We keep it mounted (warm) but pause its three.js render loop so it stops
+   *  burning GPU/CPU while off-screen. Defaults to true. */
+  active?: boolean
 }
 
-export function GlobePane({ useStore, railOpen, onRailOpenChange, onCount, onSelectEvent }: GlobePaneProps) {
+export function GlobePane({ useStore, railOpen, onRailOpenChange, onCount, onSelectEvent, active = true }: GlobePaneProps) {
   const { events, windowEnd, total } = useEventsInWindow(useStore, "globe")
   const configured = useConfigured()
   const allEvents = useEvents()
@@ -364,6 +368,15 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onCount, onSel
     controls.addEventListener("start", handleStart)
     return () => controls.removeEventListener("start", handleStart)
   }, [size.width])
+
+  // Pause the three.js render loop while the globe is hidden behind another
+  // right-pane mode (kept mounted for instant swap, but not burning frames).
+  useEffect(() => {
+    const globe = globeRef.current
+    if (!globe) return
+    if (active) globe.resumeAnimation()
+    else globe.pauseAnimation()
+  }, [active, size.width])
 
   const points = useMemo(() => {
     const out: VisibleEvent[] = []
