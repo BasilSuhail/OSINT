@@ -199,8 +199,8 @@ def test_fetch_reads_mixed_spreadsheet_directory(tmp_path, monkeypatch: pytest.M
 
     today = datetime.now(UTC).date()
     event_date = (today - timedelta(days=2)).isoformat()
-    aggregate_month = today.month
     aggregate_year = today.year
+    aggregate_month = today.month
 
     (tmp_path / "events.csv").write_text(
         "event_id_cnty,event_date,event_type,fatalities,latitude,longitude,iso3\n"
@@ -208,10 +208,8 @@ def test_fetch_reads_mixed_spreadsheet_directory(tmp_path, monkeypatch: pytest.M
         encoding="utf-8",
     )
     (tmp_path / "aggregate.csv").write_text(
-        (
-            "Country,Year,Month,Events targeting civilians\n"
-            f"Ukraine,{aggregate_year},{aggregate_month},9\n"
-        ),
+        "Country,Year,Month,Events targeting civilians\n"
+        f"Ukraine,{aggregate_year},{aggregate_month},9\n",
         encoding="utf-8",
     )
     with pd.ExcelWriter(tmp_path / "events.xlsx", engine="openpyxl") as writer:
@@ -246,8 +244,8 @@ def test_fetch_reads_mixed_csv_and_excel_directory(
 
     today = datetime.now(UTC).date()
     event_date = (today - timedelta(days=3)).isoformat()
-    aggregate_month = today.month
     aggregate_year = today.year
+    aggregate_month = today.month
 
     (tmp_path / "events.csv").write_text(
         "event_id_cnty,event_date,event_type,fatalities,latitude,longitude,iso3\n"

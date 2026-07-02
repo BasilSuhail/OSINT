@@ -201,7 +201,9 @@ if [ -z "$frontend_port" ]; then
   frontend_port="$FRONTEND_PORT_DEFAULT"
 fi
 for _ in $(seq 1 "$((FRONTEND_WAIT_SECONDS))"); do
-  # Use GET (not HEAD) with a 3s timeout to avoid Next false negatives.
+  # Use GET (not HEAD) with a longer timeout because Next dev can take >1s to
+  # compile the first request and its HEAD handling may return before the page is
+  # actually ready.
   if curl -s -m3 -o /dev/null "http://localhost:${frontend_port}" >/dev/null 2>&1; then
     printf " ✓ ready\n"
     frontend_ok=1
