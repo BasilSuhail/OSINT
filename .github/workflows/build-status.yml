@@ -1,0 +1,15 @@
+name: build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  compatibility:
+    name: build compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build compatibility check
+        run: |
+          echo "Compatibility check placeholder"
