@@ -2,8 +2,14 @@ name: frontend
 
 on:
   pull_request:
+    paths:
+      - "osint-frontend/**"
+      - ".github/workflows/frontend.yml"
   push:
     branches: [main]
+    paths:
+      - "osint-frontend/**"
+      - ".github/workflows/frontend.yml"
 
 defaults:
   run:
