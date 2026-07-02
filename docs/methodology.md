@@ -56,6 +56,16 @@ This is the difference between "I built something" and "I evaluated something."
 | `P4` | Market | Country-level market crisis | One of: NBER recession onset (US only); IMF currency-crisis dataset entry; sovereign 10y-yield month-over-month spike > 200bps; equity index drawdown > 20% from rolling 12-month peak; VIX > 30 sustained 5 trading days (global, mapped to country exposure) |
 | `P5` | Hazard | Hazard-induced societal disruption | EM-DAT disaster declaration with ≥100 deaths OR ≥100,000 affected, OR GDACS red-alert level, with composite stress sustained in following 30 days (the "induced disruption" filter, not raw hazard occurrence) |
 
+> **Amendment 2026-07-02 (labels-v1.0, decided before any evaluation ran)**: the P1–P3
+> rules above assume event-level ACLED rows. The data available locally is ACLED's public
+> weekly country aggregates (`WEEK × COUNTRY × ADMIN1 × EVENT_TYPE`), so the implemented
+> labeler (`app/labels/`, issue #284) operationalises them at aggregate granularity:
+> **P1** = any week in the month with ≥ 10 Battles fatalities; **P2** = any week with
+> ≥ 5 demonstration events (Protests + Riots) and ≥ 1 Riots event; **P3** = country-month
+> political-violence fatalities ≥ 2× the previous month with a ≥ 25-fatality floor.
+> Thresholds are frozen as `labels-v1.0`; any change produces a new version, never an
+> in-place edit. P4/P5 labels are pending separate workstreams.
+
 **Multi-label handling**: a single country-month can carry multiple positive labels (e.g. P1 + P4 in a war + market-crash month). The primary classification target is **any-positive** (`P1 ∪ P2 ∪ P3 ∪ P4 ∪ P5`); per-domain breakdowns are reported in Step 9 sensitivity.
 
 **Access**: ACLED is free for academic use with registered account. Pull historical data via [ACLED API][acled-api]. NBER + IMF + FRED + EM-DAT are all freely accessible with academic-use registration. Mirror locally under `/mnt/data/parquet/labels/` for reproducibility.
