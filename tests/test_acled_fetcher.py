@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import pytest
@@ -197,13 +197,18 @@ def test_fetch_reads_configured_csv(tmp_path, monkeypatch: pytest.MonkeyPatch) -
 def test_fetch_reads_mixed_spreadsheet_directory(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import settings as settings_module
 
+    today = datetime.now(UTC).date()
+    event_date = (today - timedelta(days=2)).isoformat()
+    aggregate_month = today.month
+    aggregate_year = today.year
+
     (tmp_path / "events.csv").write_text(
         "event_id_cnty,event_date,event_type,fatalities,latitude,longitude,iso3\n"
-        "UKR123,2026-06-28,Battles,3,50.45,30.52,UKR\n",
+        f"UKR123,{event_date},Battles,3,50.45,30.52,UKR\n",
         encoding="utf-8",
     )
     (tmp_path / "aggregate.csv").write_text(
-        "Country,Year,Month,Events targeting civilians\nUkraine,2026,6,9\n",
+        f"Country,Year,Month,Events targeting civilians\nUkraine,{aggregate_year},{aggregate_month},9\n",
         encoding="utf-8",
     )
     with pd.ExcelWriter(tmp_path / "events.xlsx", engine="openpyxl") as writer:
@@ -211,7 +216,7 @@ def test_fetch_reads_mixed_spreadsheet_directory(tmp_path, monkeypatch: pytest.M
             [
                 {
                     "event_id_cnty": "UKR124",
-                    "event_date": "2026-06-27",
+                    "event_date": event_date,
                     "event_type": "Protests",
                     "fatalities": 0,
                     "latitude": 50.45,
@@ -236,17 +241,22 @@ def test_fetch_reads_mixed_csv_and_excel_directory(
     pd = pytest.importorskip("pandas")
     from app import settings as settings_module
 
+    today = datetime.now(UTC).date()
+    event_date = (today - timedelta(days=3)).isoformat()
+    aggregate_month = today.month
+    aggregate_year = today.year
+
     (tmp_path / "events.csv").write_text(
         "event_id_cnty,event_date,event_type,fatalities,latitude,longitude,iso3\n"
-        "UKR123,2026-06-28,Battles,3,50.45,30.52,UKR\n",
+        f"UKR123,{event_date},Battles,3,50.45,30.52,UKR\n",
         encoding="utf-8",
     )
     pd.DataFrame(
         [
             {
                 "Country": "Ukraine",
-                "Year": 2026,
-                "Month": 6,
+                "Year": aggregate_year,
+                "Month": aggregate_month,
                 "Events targeting civilians": 9,
             }
         ]
