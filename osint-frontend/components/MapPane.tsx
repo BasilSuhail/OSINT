@@ -76,15 +76,17 @@ interface ClusterMarker {
   color: string
 }
 
-/** News + GDELT pile up at the same city centroid / city pinpoint. Those are
- *  the only sources we cluster. Earthquakes / fires / hazards / market stay
- *  individual — they're sparse enough that one dot per event reads fine. */
+/** Sources dense enough that a single dot per event would flood the map, so we
+ *  cluster them into proportional circles: news + GDELT pile up at city
+ *  centroids, and NASA FIRMS active-fire pixels arrive in the thousands. Sparse
+ *  hazards (quakes, GDACS, EONET) stay individual. */
 function isClusterable(ev: VisibleEvent): boolean {
   const source = (ev.source ?? "").toLowerCase()
   if (ev.category === "news") return true
   if (source.startsWith("rss-")) return true
   if (source === "uk-police") return true
   if (source === "gdelt") return true
+  if (source === "nasa-firms") return true
   return false
 }
 

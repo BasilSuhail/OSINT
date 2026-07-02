@@ -126,8 +126,9 @@ const ASTEROID_MAT_HAZARD = new THREE.MeshBasicMaterial({
 function makeAsteroidMesh(n: NeoAsteroid): THREE.Object3D {
   const mat = n.hazardous ? ASTEROID_MAT_HAZARD : ASTEROID_MAT_SAFE
   const mesh = new THREE.Mesh(ASTEROID_GEOM, mat)
-  // Scale by diameter — clamp so very small or very large NEOs still read.
-  const s = Math.max(0.6, Math.min(2.4, n.diameterKm * 4))
+  // Scale by diameter — clamp so very small or very large NEOs still read AND
+  // stay a big-enough click target on the globe (#252 follow-up).
+  const s = Math.max(1.6, Math.min(4, n.diameterKm * 6))
   mesh.scale.set(s, s, s)
   return mesh
 }
@@ -188,7 +189,7 @@ export function GlobePane({ useStore, railOpen, onRailOpenChange, onCount, onSel
   const [followIss, setFollowIss] = useState(false)
 
   const neosRaw = useNeos(showAsteroids)
-  const neos = useDriftedNeos(neosRaw, 1000)
+  const neos = useDriftedNeos(neosRaw)
 
   /** Custom ShaderMaterial that samples day + night textures and blends
    *  them by the cosine between surface normal and sun direction. See
