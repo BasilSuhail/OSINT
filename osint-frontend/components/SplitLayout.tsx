@@ -9,7 +9,6 @@ import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneStore } from "@/stores/rightPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
-import { DashboardSection } from "./DashboardSection"
 import { SystemStatusBar } from "./SystemStatusBar"
 
 const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
@@ -86,7 +85,7 @@ export function SplitLayout() {
   )
 
   return (
-    <main className="relative min-h-dvh w-full bg-neutral-950 text-neutral-100">
+    <main className="relative h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-100">
       <SystemStatusBar />
       <div className="relative h-[calc(100dvh-2rem)] w-full overflow-hidden">
         {!configured && (
@@ -189,11 +188,6 @@ export function SplitLayout() {
             </Panel>
           </PanelGroup>
         )}
-      </div>
-
-      <div className="mt-10">
-        {/* Scroll-down dashboard section */}
-        <DashboardSection configured={configured} />
       </div>
     </main>
   )
