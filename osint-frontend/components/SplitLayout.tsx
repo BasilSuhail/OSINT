@@ -86,7 +86,7 @@ export function SplitLayout() {
   )
 
   return (
-    <main className="relative min-h-dvh w-screen bg-neutral-950 text-neutral-100">
+    <main className="relative min-h-dvh w-full bg-neutral-950 text-neutral-100">
       <SystemStatusBar />
       <div className="relative h-[calc(100dvh-2rem)] w-full overflow-hidden">
         {!configured && (
