@@ -128,12 +128,12 @@ export function CountrySidePanel({ country, onClose }: CountrySidePanelProps) {
   const { events, isLoading } = useCountryEvents(country)
   const score = country ? byCountry.get(country) : undefined
 
-  // Rendered inside the shared centred DetailOverlay (#207), which owns
-  // positioning + animation — this is just the bounded, scrollable card.
+  // Rendered inside the right pane (#252), which owns the mode switch. This
+  // fills the pane width/height and scrolls internally.
   if (!country) return null
 
   return (
-    <aside className="flex max-h-[82vh] w-[340px] max-w-[88vw] flex-col gap-4 overflow-y-auto rounded-md border border-neutral-800 bg-neutral-950/95 p-4 shadow-2xl backdrop-blur-md">
+    <aside className="flex h-full w-full flex-col gap-4 overflow-y-auto rounded-md border border-neutral-800 bg-neutral-950/95 p-4 backdrop-blur-md">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}

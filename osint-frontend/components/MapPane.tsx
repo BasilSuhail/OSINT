@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import MapGL, {
   Layer,
   Marker,
-  Popup,
   Source,
   type MapLayerMouseEvent,
   type MapRef,
@@ -30,6 +29,7 @@ import {
 } from "@/lib/worldNewsAggregates"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
+import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { FilterRail } from "./FilterRail"
 import { PaneStatus } from "./PaneStatus"
 import { TimeScrubber } from "./TimeScrubber"
@@ -112,10 +112,10 @@ function EventMarker({
   onSelect: (ev: VisibleEvent) => void
 }) {
   const style = markerStyle(ev)
-  // Force news / GDELT singletons to a small dot — they should never read as
-  // "this place is on fire" when they're just one BBC headline.
+  // News / GDELT singletons render as a soft, semi-transparent dot — never a
+  // glowing "this place is on fire" mark for one BBC headline (#252).
   const clusterable = isClusterable(ev)
-  const size = clusterable ? 4 : style.size
+  const size = clusterable ? 7 : style.size
   const HIT_SIZE = 28
 
   return (
@@ -157,17 +157,20 @@ function EventMarker({
               </span>
             )
           }
-          // non-hazard: keep the simple dot/diamond
+          // non-hazard: simple dot/diamond. Clusterable singletons get a soft
+          // semi-transparent fill + thin ring (no glow) to match the cluster
+          // circles; everything else keeps its crisp glowing mark.
           return (
             <span
               className="block"
               style={{
                 width: size,
                 height: size,
-                backgroundColor: style.color,
+                backgroundColor: clusterable ? `${style.color}b3` : style.color,
                 borderRadius: style.shape === "diamond" ? 2 : "9999px",
                 transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
-                boxShadow: `0 0 3px ${style.color}`,
+                border: clusterable ? `1px solid ${style.color}` : undefined,
+                boxShadow: clusterable ? "none" : `0 0 3px ${style.color}`,
               }}
             />
           )
@@ -185,12 +188,10 @@ function ClusterChip({
   onClick: (c: ClusterMarker) => void
 }) {
   const n = cluster.events.length
-  // log10 scaling — 2 events → ~18 px, 10 → 22 px, 100 → 28 px. Min 18
-  // so a 2-digit value never gets clipped. See #135.
-  const size = Math.min(30, 18 + Math.log10(Math.max(2, n)) * 5)
-  // Font sized off the chip size so the digit is always optically
-  // centred. Cap at 12 px so 3-digit "99+" still fits.
-  const fontSize = Math.min(12, Math.max(9, size * 0.45))
+  // ACLED-style proportional symbol: area ∝ count → radius ∝ √count. No digit
+  // — the count/list lives in the right pane (#252). Semi-transparent fill so
+  // overlapping piles read as density; clamp so mega-piles don't swallow the map.
+  const size = Math.min(58, 9 + Math.sqrt(n) * 5)
   return (
     <Marker longitude={cluster.lon} latitude={cluster.lat} anchor="center">
       <motion.button
@@ -203,27 +204,17 @@ function ClusterChip({
           e.stopPropagation()
           onClick(cluster)
         }}
-        className="rounded-full font-mono font-semibold tabular-nums text-neutral-950"
+        className="rounded-full"
         style={{
           width: size,
           height: size,
-          backgroundColor: cluster.color,
-          boxShadow: `0 0 6px ${cluster.color}`,
-          border: "1px solid rgba(255,255,255,0.4)",
+          backgroundColor: `${cluster.color}59`, // ~35% alpha fill
+          border: `1px solid ${cluster.color}cc`,
           cursor: "pointer",
-          // Explicit flex centre + line-height 1 so the digit is dead-centre
-          // regardless of font-rendering quirks across browsers.
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          lineHeight: 1,
           padding: 0,
-          fontSize: `${fontSize}px`,
         }}
-        aria-label={`${n} events clustered`}
-      >
-        {n < 100 ? n : "99+"}
-      </motion.button>
+        aria-label={`${n} events — open list`}
+      />
     </Marker>
   )
 }
@@ -236,8 +227,9 @@ function WorldAggregateChip({
   onClick: (aggregate: WorldNewsAggregate) => void
 }) {
   const n = aggregate.events.length
-  const size = Math.min(34, 18 + Math.log10(Math.max(2, n)) * 6)
-  const fontSize = Math.min(12, Math.max(9, size * 0.42))
+  // Proportional symbol, no digit (count in the right pane). Slate fill marks
+  // it as world-scope news, distinct from the source-coloured local clusters.
+  const size = Math.min(58, 9 + Math.sqrt(n) * 5)
   return (
     <Marker longitude={aggregate.lon} latitude={aggregate.lat} anchor="center">
       <motion.button
@@ -250,25 +242,17 @@ function WorldAggregateChip({
           e.stopPropagation()
           onClick(aggregate)
         }}
-        className="rounded-md font-mono font-semibold tabular-nums text-neutral-100"
+        className="rounded-full"
         style={{
           width: size,
           height: size,
-          backgroundColor: "rgba(51,65,85,0.9)",
-          boxShadow: "0 0 7px rgba(148,163,184,0.65)",
-          border: "1px solid rgba(203,213,225,0.55)",
+          backgroundColor: "rgba(148,163,184,0.28)",
+          border: "1px solid rgba(203,213,225,0.7)",
           cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          lineHeight: 1,
           padding: 0,
-          fontSize: `${fontSize}px`,
         }}
-        aria-label={`${n} world news events in ${aggregate.country}`}
-      >
-        {n < 100 ? n : "99+"}
-      </motion.button>
+        aria-label={`${n} world news in ${aggregate.country} — open list`}
+      />
     </Marker>
   )
 }
@@ -284,8 +268,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const [styleReloadToken, setStyleReloadToken] = useState(0)
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
-  const [openCluster, setOpenCluster] = useState<ClusterMarker | null>(null)
-  const [openWorldAggregate, setOpenWorldAggregate] = useState<WorldNewsAggregate | null>(null)
+  const openClusterInPane = useRightPaneModeStore((s) => s.openCluster)
   const consumedMinWheelRef = useRef(false)
 
   useEffect(() => onCount(total), [total, onCount])
@@ -389,17 +372,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
     }
   }, [])
-
-  useEffect(() => {
-    if (!openCluster && !openWorldAggregate) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return
-      if (openCluster) setOpenCluster(null)
-      if (openWorldAggregate) setOpenWorldAggregate(null)
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [openCluster, openWorldAggregate])
 
   const positioned = useMemo<Positioned[]>(() => {
     // Two buckets so the MAX_MARKERS budget never drops sparse-but-important
@@ -522,21 +494,29 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     [onSelectEvent],
   )
 
-  /** Cluster click: zoom in two levels at the centroid. The cell precision
-   *  tightens (cellPrecision halves twice) so most clusters break apart
-   *  into individual dots — which is the behaviour the user asked for.
-   *  Also open a popup listing the first few events so the click feels
-   *  like it did something even before the camera arrives. */
+  /** Cluster click: open its event list in the right pane (#252) AND zoom in
+   *  two levels at the centroid. The cell precision tightens (cellPrecision
+   *  halves twice) so most clusters break apart into individual dots — while
+   *  the right pane holds the full list for the ones that stay dense. */
   const handleClusterClick = useCallback(
     (c: ClusterMarker) => {
-      setOpenCluster(c)
+      openClusterInPane(
+        c.events[0]?.ev.country ?? "cluster",
+        c.events.map((p) => p.ev),
+      )
       if (mapRef) {
         const map = mapRef.getMap()
         const target = Math.min(8, map.getZoom() + 2)
         map.flyTo({ center: [c.lon, c.lat], zoom: target, duration: 600 })
       }
     },
-    [mapRef],
+    [mapRef, openClusterInPane],
+  )
+
+  /** Country news pile ("world" scope RSS) → its list in the right pane. */
+  const handleWorldAggregateClick = useCallback(
+    (a: WorldNewsAggregate) => openClusterInPane(a.country, a.events),
+    [openClusterInPane],
   )
 
   return (
@@ -678,133 +658,10 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             <WorldAggregateChip
               key={aggregate.country}
               aggregate={aggregate}
-              onClick={setOpenWorldAggregate}
+              onClick={handleWorldAggregateClick}
             />
           ))}
         </AnimatePresence>
-
-
-        {openCluster && (
-          <Popup
-            longitude={openCluster.lon}
-            latitude={openCluster.lat}
-            anchor="bottom"
-            closeButton={false}
-            closeOnClick={false}
-            onClose={() => setOpenCluster(null)}
-            offset={16}
-            maxWidth="320px"
-            className="osint-popup"
-          >
-            <div className="w-72 rounded-md border border-neutral-700 bg-neutral-950/95 p-2 backdrop-blur-md">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-400">
-                  {openCluster.events.length} events here
-                </span>
-                <button
-                  type="button"
-                  aria-label="Close"
-                  onClick={() => setOpenCluster(null)}
-                  className="font-mono text-[10px] text-neutral-500 hover:text-neutral-200"
-                >
-                  close
-                </button>
-              </div>
-              <ul className="max-h-56 overflow-y-auto pr-1">
-                {openCluster.events.slice(0, 12).map(({ ev }) => {
-                  const p = (ev.payload ?? {}) as Record<string, unknown>
-                  const title =
-                    (typeof p?.title === "string" && p.title) ||
-                    (typeof p?.headline === "string" && p.headline) ||
-                    ev.source
-                  return (
-                    <li key={ev.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpenCluster(null)
-                          handleSelectMarker(ev)
-                        }}
-                        className="block w-full truncate rounded px-2 py-1 text-left text-[11px] text-neutral-200 hover:bg-neutral-900"
-                      >
-                        <span className="mr-1 font-mono text-[10px] text-neutral-500">
-                          {ev.source.replace(/^rss-/, "")}
-                        </span>
-                        {title as string}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-              {openCluster.events.length > 12 && (
-                <p className="mt-1 px-2 font-mono text-[10px] text-neutral-600">
-                  +{openCluster.events.length - 12} more · zoom in to separate
-                </p>
-              )}
-            </div>
-          </Popup>
-        )}
-
-        {openWorldAggregate && (
-          <Popup
-            longitude={openWorldAggregate.lon}
-            latitude={openWorldAggregate.lat}
-            anchor="bottom"
-            closeButton={false}
-            closeOnClick={false}
-            onClose={() => setOpenWorldAggregate(null)}
-            offset={16}
-            maxWidth="320px"
-            className="osint-popup"
-          >
-            <div className="w-72 rounded-md border border-slate-700 bg-neutral-950/95 p-2 backdrop-blur-md">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-slate-300">
-                  {openWorldAggregate.events.length} world news · {openWorldAggregate.country}
-                </span>
-                <button
-                  type="button"
-                  aria-label="Close"
-                  onClick={() => setOpenWorldAggregate(null)}
-                  className="font-mono text-[10px] text-neutral-500 hover:text-neutral-200"
-                >
-                  close
-                </button>
-              </div>
-              <ul className="max-h-56 overflow-y-auto pr-1">
-                {openWorldAggregate.events.slice(0, 12).map((ev) => {
-                  const p = (ev.payload ?? {}) as Record<string, unknown>
-                  const title =
-                    (typeof p?.title === "string" && p.title) ||
-                    (typeof p?.headline === "string" && p.headline) ||
-                    ev.source
-                  return (
-                    <li key={ev.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpenWorldAggregate(null)
-                          handleSelectMarker(ev)
-                        }}
-                        className="block w-full truncate rounded px-2 py-1 text-left text-[11px] text-neutral-200 hover:bg-neutral-900"
-                      >
-                        <span className="mr-1 font-mono text-[10px] text-neutral-500">
-                          {ev.source.replace(/^rss-/, "")}
-                        </span>
-                        {title as string}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-              {openWorldAggregate.events.length > 12 && (
-                <p className="mt-1 px-2 font-mono text-[10px] text-neutral-600">
-                  +{openWorldAggregate.events.length - 12} more
-                </p>
-              )}
-            </div>
-          </Popup>
-        )}
       </MapGL>
 
       {!configured && (
