@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels panel baselines
+.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels panel baselines coverage
 
 start:  ## Start the full local app (Docker stores + backend + frontend)
 	@bash scripts/dev-up.sh
@@ -44,6 +44,9 @@ panel:  ## Export the country-month panel dataset (parquet + csv + meta)
 
 baselines:  ## Score B0/B1/B2 baselines on the panel and write the report
 	.venv/bin/python -m app.baselines.run
+
+coverage:  ## Compute the WS-D coverage-bias table from ACLED aggregates
+	.venv/bin/python -m app.coverage.run
 
 data-reset:  ## Stop stack and wipe all local data (DESTRUCTIVE)
 	@test -n "$(strip $(OSINT_DATA_DIR))" || { echo "OSINT_DATA_DIR is empty — refusing to delete"; exit 1; }
