@@ -78,15 +78,15 @@ interface ClusterMarker {
 
 /** Sources dense enough that a single dot per event would flood the map, so we
  *  cluster them into proportional circles: news + GDELT pile up at city
- *  centroids, and NASA FIRMS active-fire pixels arrive in the thousands. Sparse
- *  hazards (quakes, GDACS, EONET) stay individual. */
+ *  centroids. Sparse hazards (quakes, GDACS, EONET) stay individual with their
+ *  own icon + footprint. NASA FIRMS (100k+ thermal pixels, no footprint) lives
+ *  on the globe, not here — the map's fires are the GDACS/EONET wildfire events. */
 function isClusterable(ev: VisibleEvent): boolean {
   const source = (ev.source ?? "").toLowerCase()
   if (ev.category === "news") return true
   if (source.startsWith("rss-")) return true
   if (source === "uk-police") return true
   if (source === "gdelt") return true
-  if (source === "nasa-firms") return true
   return false
 }
 
@@ -154,14 +154,14 @@ function EventMarker({
               <span
                 className="grid place-items-center rounded-sm"
                 style={{
-                  width: 15,
-                  height: 15,
+                  width: 13,
+                  height: 13,
                   backgroundColor: color,
                   boxShadow: `0 0 3px ${color}aa`,
                   border: "1px solid rgba(255,255,255,0.5)",
                 }}
               >
-                <Icon size={10} color="#0a0a0a" strokeWidth={2.5} aria-hidden />
+                <Icon size={9} color="#0a0a0a" strokeWidth={2.5} aria-hidden />
               </span>
             )
           }
