@@ -55,7 +55,7 @@ export function ConnectionIndicator() {
     .join("\n")
 
   return (
-    <span title={tooltip} className="font-mono text-[9px] uppercase tracking-widest text-neutral-400">
+    <span title={tooltip} className="shrink-0 font-mono text-[8px] uppercase tracking-wide text-neutral-400">
       realtime <span className={meta.color.replace("bg-", "text-")}>{meta.label}</span>
     </span>
   )
