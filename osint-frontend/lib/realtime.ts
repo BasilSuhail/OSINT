@@ -21,6 +21,10 @@ const MAX_EVENTS = 20_000
 
 const POLL_INTERVAL_MS = 30_000
 const MAX_RECONNECT_BEFORE_POLL = 3
+/** Coalesce a burst of ingests into one re-render. The snapshot updates
+ *  synchronously; only subscriber notifications are throttled, so the map
+ *  doesn't re-filter/-cluster on every fetch tick. */
+const NOTIFY_THROTTLE_MS = 200
 
 /** High-volume feeds kept OUT of the main firehose so they can't saturate the
  *  buffer and starve the sparse displayable sources (gdelt / news / gdacs).
@@ -61,6 +65,7 @@ export class EventBuffer {
   private lastSeenAt: Date | null = null
 
   private pollTimer: ReturnType<typeof setInterval> | null = null
+  private notifyTimer: ReturnType<typeof setTimeout> | null = null
   private stopped = false
 
   /** Seed/merge a batch of events (e.g. from the initial query or SWR refetch). */
@@ -88,8 +93,14 @@ export class EventBuffer {
   }
 
   private commit(): void {
+    // Snapshot updates synchronously so getSnapshot() is always current; the
+    // subscriber notification (which drives React re-renders) is throttled.
     this.snapshot = this.events.slice()
-    for (const l of this.listeners) l()
+    if (this.notifyTimer) return
+    this.notifyTimer = setTimeout(() => {
+      this.notifyTimer = null
+      for (const l of this.listeners) l()
+    }, NOTIFY_THROTTLE_MS)
   }
 
   getSnapshot = (): EventRow[] => this.snapshot
@@ -183,6 +194,10 @@ export class EventBuffer {
   disconnect(): void {
     this.stopped = true
     this.stopPolling()
+    if (this.notifyTimer) {
+      clearTimeout(this.notifyTimer)
+      this.notifyTimer = null
+    }
     if (this.source) {
       this.source.close()
       this.source = null
