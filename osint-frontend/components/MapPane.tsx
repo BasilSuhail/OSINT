@@ -106,40 +106,6 @@ function circleSizeForCount(n: number): number {
   return Math.min(58, 9 + Math.sqrt(Math.max(1, n)) * 5)
 }
 
-const LEGEND_SAMPLES = [5, 50, 500] as const
-
-/** ACLED-style bottom-left reference circles (#252). */
-function SizeLegend() {
-  return (
-    <div className="pointer-events-none absolute bottom-24 left-3 z-30 rounded-md border border-neutral-800 bg-neutral-950/80 px-3 py-2 backdrop-blur-sm">
-      <div className="mb-2 font-mono text-[9px] uppercase tracking-widest text-neutral-500">
-        Events
-      </div>
-      <div className="flex items-end gap-3">
-        {LEGEND_SAMPLES.map((n) => {
-          const d = circleSizeForCount(n)
-          return (
-            <div key={n} className="flex flex-col items-center gap-1">
-              <span
-                className="rounded-full"
-                style={{
-                  width: d,
-                  height: d,
-                  backgroundColor: "rgba(148,163,184,0.28)",
-                  border: "1px solid rgba(203,213,225,0.6)",
-                }}
-              />
-              <span className="font-mono text-[9px] tabular-nums text-neutral-400">
-                {n >= 1000 ? `${n / 1000}k` : n}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 function EventMarker({
   ev,
   lat,
@@ -744,10 +710,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
-      {/* Source icons/toggles live in the left filter rail; this is the ACLED
-          bottom-left proportional-circle size key (#252). */}
-      <SizeLegend />
-
+      {/* Source icons/toggles live in the left filter rail. */}
       <FilterRail pane="map" side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
     </div>
