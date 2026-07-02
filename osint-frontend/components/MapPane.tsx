@@ -112,10 +112,10 @@ function EventMarker({
   onSelect: (ev: VisibleEvent) => void
 }) {
   const style = markerStyle(ev)
-  // Force news / GDELT singletons to a small dot — they should never read as
-  // "this place is on fire" when they're just one BBC headline.
+  // News / GDELT singletons render as a soft, semi-transparent dot — never a
+  // glowing "this place is on fire" mark for one BBC headline (#252).
   const clusterable = isClusterable(ev)
-  const size = clusterable ? 4 : style.size
+  const size = clusterable ? 7 : style.size
   const HIT_SIZE = 28
 
   return (
@@ -157,17 +157,20 @@ function EventMarker({
               </span>
             )
           }
-          // non-hazard: keep the simple dot/diamond
+          // non-hazard: simple dot/diamond. Clusterable singletons get a soft
+          // semi-transparent fill + thin ring (no glow) to match the cluster
+          // circles; everything else keeps its crisp glowing mark.
           return (
             <span
               className="block"
               style={{
                 width: size,
                 height: size,
-                backgroundColor: style.color,
+                backgroundColor: clusterable ? `${style.color}b3` : style.color,
                 borderRadius: style.shape === "diamond" ? 2 : "9999px",
                 transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
-                boxShadow: `0 0 3px ${style.color}`,
+                border: clusterable ? `1px solid ${style.color}` : undefined,
+                boxShadow: clusterable ? "none" : `0 0 3px ${style.color}`,
               }}
             />
           )
