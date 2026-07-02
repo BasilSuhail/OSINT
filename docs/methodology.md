@@ -65,6 +65,14 @@ This is the difference between "I built something" and "I evaluated something."
 > political-violence fatalities ≥ 2× the previous month with a ≥ 25-fatality floor.
 > Thresholds are frozen as `labels-v1.0`; any change produces a new version, never an
 > in-place edit. P4/P5 labels are pending separate workstreams.
+>
+> **Amendment 2026-07-03 (labels-v1.1, issue #294)**: the v1.0 P2 threshold fired on 33%
+> of country-months — ordinary politics in any large country, not *mass* protest
+> escalation. v1.1 raises P2 to **≥ 20 demonstration events AND ≥ 5 Riots events** in a
+> week (9.9% of country-months, between P1 at 18.8% and P3 at 3.9%). The threshold was
+> selected from the marginal label-rate distribution only, with no model output
+> examined — composite evaluation had not yet run, so this remains a pre-evaluation
+> label definition, not tuning. P1 and P3 unchanged.
 
 **Multi-label handling**: a single country-month can carry multiple positive labels (e.g. P1 + P4 in a war + market-crash month). The primary classification target is **any-positive** (`P1 ∪ P2 ∪ P3 ∪ P4 ∪ P5`); per-domain breakdowns are reported in Step 9 sensitivity.
 
