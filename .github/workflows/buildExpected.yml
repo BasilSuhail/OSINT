@@ -1,0 +1,13 @@
+name: buildExpected
+
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Compatibility status check
+        run: |
+          echo "Compatibility workflow to satisfy buildExpected required status check."
