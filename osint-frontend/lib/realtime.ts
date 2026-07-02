@@ -26,6 +26,18 @@ const MAX_RECONNECT_BEFORE_POLL = 3
  *  doesn't re-filter/-cluster on every fetch tick. */
 const NOTIFY_THROTTLE_MS = 200
 
+/** High-volume feeds kept OUT of the main firehose so they can't saturate the
+ *  buffer and starve the sparse displayable sources (gdelt / news / gdacs).
+ *  opensky-adsb (~190k/day) is never shown; NASA FIRMS (100k+) is globe-only
+ *  and abuse.ch cyber (~20k) is dense — both are pulled separately, capped, by
+ *  dedicated polls in the provider. */
+export const FIREHOSE_EXCLUDE = [
+  "opensky-adsb",
+  "nasa-firms",
+  "abuse-ch-urlhaus",
+  "abuse-ch-feodo",
+]
+
 /**
  * In-memory ring buffer of the most recent events plus an SSE EventSource
  * subscription with polling fallback. Both panes read from the same buffer.
@@ -172,7 +184,7 @@ export class EventBuffer {
       ? this.lastEventAt.toISOString()
       : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     try {
-      const rows = await fetchEvents({ fetchedSince: watermark, exclude: ["opensky-adsb"], limit: 2000 })
+      const rows = await fetchEvents({ fetchedSince: watermark, exclude: FIREHOSE_EXCLUDE, limit: 2000 })
       if (rows.length) this.ingest(rows)
     } catch {
       // Network blip; next SSE message or poll tick retries.
