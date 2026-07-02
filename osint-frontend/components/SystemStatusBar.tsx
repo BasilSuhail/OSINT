@@ -57,19 +57,23 @@ export function SystemStatusBar() {
   const datasets = summarizeSystemHealth(ingestRows, coverageRows)
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50 border-b border-neutral-800 bg-neutral-950/96 backdrop-blur-xl">
-      <div className="mx-auto flex min-h-9 w-full max-w-[2400px] flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 sm:px-4">
+    <div className="sticky top-0 z-50 h-8 border-b border-neutral-800 bg-neutral-950/96 backdrop-blur-xl">
+      <div className="mx-auto flex h-full w-full max-w-[2400px] items-center gap-x-3 overflow-x-auto whitespace-nowrap px-3 sm:px-4">
         <ConnectionIndicator />
-        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
-          {datasets.map((dataset) => (
-            <span key={dataset.key} title={dataset.detail ?? `${dataset.label}: ${statusLabel(dataset.status)}`} className="font-mono text-[9px] uppercase tracking-widest text-neutral-400">
-              <span className="text-neutral-200/80">{dataset.label}</span> <span className={statusTextClass(dataset.status)}>{statusLabel(dataset.status)}</span> <span className="text-neutral-500">{dataset.healthy}/{dataset.total}</span>
-            </span>
-          ))}
-          <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500">
-            {datasets.filter((d) => d.status !== "ok").length} attention
+        {datasets.map((dataset) => (
+          <span
+            key={dataset.key}
+            title={dataset.detail ?? `${dataset.label}: ${statusLabel(dataset.status)}`}
+            className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-neutral-400"
+          >
+            <span className="text-neutral-200/80">{dataset.label}</span>{" "}
+            <span className={statusTextClass(dataset.status)}>{statusLabel(dataset.status)}</span>{" "}
+            <span className="text-neutral-500">{dataset.healthy}/{dataset.total}</span>
           </span>
-        </div>
+        ))}
+        <span className="ml-auto shrink-0 pl-3 font-mono text-[9px] uppercase tracking-widest text-neutral-500">
+          {datasets.filter((d) => d.status !== "ok").length} attention
+        </span>
       </div>
     </div>
   )

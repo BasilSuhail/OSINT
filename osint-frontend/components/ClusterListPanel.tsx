@@ -61,7 +61,7 @@ export function ClusterListPanel({
                 className="h-2 w-2 shrink-0 rounded-full"
                 style={{ backgroundColor: colorForEvent(ev) }}
               />
-              <span className="w-14 shrink-0 font-mono text-[10px] text-neutral-500">
+              <span className="w-16 shrink-0 whitespace-nowrap font-mono text-[10px] text-neutral-500">
                 {formatDistanceToNowStrict(new Date(ev.occurred_at), { addSuffix: false })}
               </span>
               <span className="min-w-0 flex-1">

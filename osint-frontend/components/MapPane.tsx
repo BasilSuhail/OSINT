@@ -185,12 +185,10 @@ function ClusterChip({
   onClick: (c: ClusterMarker) => void
 }) {
   const n = cluster.events.length
-  // log10 scaling — 2 events → ~18 px, 10 → 22 px, 100 → 28 px. Min 18
-  // so a 2-digit value never gets clipped. See #135.
-  const size = Math.min(30, 18 + Math.log10(Math.max(2, n)) * 5)
-  // Font sized off the chip size so the digit is always optically
-  // centred. Cap at 12 px so 3-digit "99+" still fits.
-  const fontSize = Math.min(12, Math.max(9, size * 0.45))
+  // ACLED-style proportional symbol: area ∝ count → radius ∝ √count. No digit
+  // — the count/list lives in the right pane (#252). Semi-transparent fill so
+  // overlapping piles read as density; clamp so mega-piles don't swallow the map.
+  const size = Math.min(58, 9 + Math.sqrt(n) * 5)
   return (
     <Marker longitude={cluster.lon} latitude={cluster.lat} anchor="center">
       <motion.button
@@ -203,27 +201,17 @@ function ClusterChip({
           e.stopPropagation()
           onClick(cluster)
         }}
-        className="rounded-full font-mono font-semibold tabular-nums text-neutral-950"
+        className="rounded-full"
         style={{
           width: size,
           height: size,
-          backgroundColor: cluster.color,
-          boxShadow: `0 0 6px ${cluster.color}`,
-          border: "1px solid rgba(255,255,255,0.4)",
+          backgroundColor: `${cluster.color}59`, // ~35% alpha fill
+          border: `1px solid ${cluster.color}cc`,
           cursor: "pointer",
-          // Explicit flex centre + line-height 1 so the digit is dead-centre
-          // regardless of font-rendering quirks across browsers.
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          lineHeight: 1,
           padding: 0,
-          fontSize: `${fontSize}px`,
         }}
-        aria-label={`${n} events clustered`}
-      >
-        {n < 100 ? n : "99+"}
-      </motion.button>
+        aria-label={`${n} events — open list`}
+      />
     </Marker>
   )
 }
@@ -236,8 +224,9 @@ function WorldAggregateChip({
   onClick: (aggregate: WorldNewsAggregate) => void
 }) {
   const n = aggregate.events.length
-  const size = Math.min(34, 18 + Math.log10(Math.max(2, n)) * 6)
-  const fontSize = Math.min(12, Math.max(9, size * 0.42))
+  // Proportional symbol, no digit (count in the right pane). Slate fill marks
+  // it as world-scope news, distinct from the source-coloured local clusters.
+  const size = Math.min(58, 9 + Math.sqrt(n) * 5)
   return (
     <Marker longitude={aggregate.lon} latitude={aggregate.lat} anchor="center">
       <motion.button
@@ -250,25 +239,17 @@ function WorldAggregateChip({
           e.stopPropagation()
           onClick(aggregate)
         }}
-        className="rounded-md font-mono font-semibold tabular-nums text-neutral-100"
+        className="rounded-full"
         style={{
           width: size,
           height: size,
-          backgroundColor: "rgba(51,65,85,0.9)",
-          boxShadow: "0 0 7px rgba(148,163,184,0.65)",
-          border: "1px solid rgba(203,213,225,0.55)",
+          backgroundColor: "rgba(148,163,184,0.28)",
+          border: "1px solid rgba(203,213,225,0.7)",
           cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          lineHeight: 1,
           padding: 0,
-          fontSize: `${fontSize}px`,
         }}
-        aria-label={`${n} world news events in ${aggregate.country}`}
-      >
-        {n < 100 ? n : "99+"}
-      </motion.button>
+        aria-label={`${n} world news in ${aggregate.country} — open list`}
+      />
     </Marker>
   )
 }
