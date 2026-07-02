@@ -231,3 +231,34 @@ class PredictionRow(Base):
         CheckConstraint("score BETWEEN 0 AND 1", name="predictions_score_range"),
         Index("predictions_ungraded_idx", "outcome", "bucket_start"),
     )
+
+
+class StoryRow(Base):
+    """WS-A story cluster — one row per real-world story (issue #296)."""
+
+    __tablename__ = "stories"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    member_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    outlet_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    __table_args__ = (Index("stories_last_seen_idx", "last_seen"),)
+
+
+class StoryMemberRow(Base):
+    """Membership link between a news event and its story. Append-only."""
+
+    __tablename__ = "story_members"
+
+    event_id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
+    story_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    similarity: Mapped[float] = mapped_column(Float, nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("story_members_story_idx", "story_id"),)
