@@ -2,24 +2,8 @@ name: backend
 
 on:
   pull_request:
-    paths:
-      - "app/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "requirements.txt"
-      - "alembic.ini"
-      - "migrations/**"
-      - ".github/workflows/backend.yml"
   push:
     branches: [main]
-    paths:
-      - "app/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "requirements.txt"
-      - "alembic.ini"
-      - "migrations/**"
-      - ".github/workflows/backend.yml"
 
 jobs:
   test:
