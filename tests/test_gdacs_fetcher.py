@@ -279,6 +279,18 @@ class TestApiParser:
             {"iso2": "GU", "iso3": "GUM", "countryname": "Guam"},
         ]
 
+    def test_active_event_stamped_at_fetch_time(self) -> None:
+        # GDACS only lists active events, but a long-running hazard keeps an old
+        # onset (fromdate). It must read as current so it stays in the dashboard's
+        # live window; the real onset is preserved in the payload (#252).
+        at = datetime(2026, 7, 2, tzinfo=UTC)
+        feature = _api_feature("WF", 42)
+        feature["properties"]["fromdate"] = "2026-06-16T00:00:00"
+        ev = feature_to_event_api(feature, fetched_at=at)
+        assert ev is not None
+        assert ev.occurred_at == at
+        assert ev.payload["from_date"] == "2026-06-16T00:00:00"
+
     def test_feature_to_event_api_parses_eq_magnitude_depth(self) -> None:
         at = datetime(2026, 6, 26, tzinfo=UTC)
         ev = feature_to_event_api(_api_feature("EQ", 555), fetched_at=at)

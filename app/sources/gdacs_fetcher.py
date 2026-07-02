@@ -371,7 +371,12 @@ def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Ev
         except (TypeError, ValueError):
             lon = lat = None
 
-    occurred_at = _parse_iso_datetime(props.get("fromdate")) or fetched_at
+    # GDACS only lists currently-active events (the iscurrent guard above), but a
+    # long-running hazard (wildfire / flood / drought) carries an old `fromdate`
+    # onset that falls outside the dashboard's live window and hides it even though
+    # it is active now. Stamp active events at fetch time so they read as current;
+    # the true onset / end / last-update stay in the payload below (#252 follow-up).
+    occurred_at = fetched_at
     iso3 = props.get("iso3")
     country = iso3_to_iso2(iso3)
     affected_countries = _parse_affected_countries(props.get("affectedcountries"))
