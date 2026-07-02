@@ -251,8 +251,8 @@ export function EventDetailCard({
   return (
     <div
       className={cn(
-        "w-80 max-w-[88vw] rounded-md border border-neutral-700 bg-neutral-950/95 p-3 text-neutral-200 backdrop-blur-md",
-        embedded ? "" : "shadow-2xl",
+        "rounded-md border border-neutral-700 bg-neutral-950/95 p-3 text-neutral-200 backdrop-blur-md",
+        embedded ? "w-full" : "w-80 max-w-[88vw] shadow-2xl",
         className,
       )}
     >

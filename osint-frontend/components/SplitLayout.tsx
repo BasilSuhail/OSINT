@@ -8,19 +8,17 @@ import type { VisibleEvent } from "@/lib/queries"
 import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneStore } from "@/stores/rightPaneStore"
-import { CountrySidePanel } from "./CountrySidePanel"
+import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { DashboardSection } from "./DashboardSection"
-import { DetailOverlay } from "./DetailOverlay"
-import { EventDetailCard } from "./EventDetailCard"
 import { SystemStatusBar } from "./SystemStatusBar"
 
 const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
   ssr: false,
   loading: () => <PaneSkeleton label="map" />,
 })
-const GlobePane = dynamic(() => import("./GlobePane").then((m) => m.GlobePane), {
+const RightPane = dynamic(() => import("./RightPane").then((m) => m.RightPane), {
   ssr: false,
-  loading: () => <PaneSkeleton label="globe" />,
+  loading: () => <PaneSkeleton label="status" />,
 })
 
 function PaneSkeleton({ label }: { label: string }) {
@@ -41,14 +39,15 @@ export function SplitLayout() {
   const [rightRailOpen, setRightRailOpen] = useState(false)
   const [focused, setFocused] = useState<"left" | "right">("left")
   const [activePane, setActivePane] = useState<"left" | "right">("left")
-  const [selectedCountry, setSelectedCountry] = useState<string | null>(null)
-  const [selectedEvent, setSelectedEvent] = useState<VisibleEvent | null>(null)
-  // Separator position as a % of the viewport, so detail overlays can centre on
-  // the divider and follow it as it is dragged (#207). 50 until the first layout.
-  const [separatorPct, setSeparatorPct] = useState(70)
   const [, setLeftCount] = useState(0)
   const [, setRightCount] = useState(0)
-  const overlayPct = isNarrow ? 50 : separatorPct
+
+  // Selections drive the right pane's entity-lock mode (#252). The clicked
+  // event id also expands its hazard footprint on the map.
+  const entity = useRightPaneModeStore((s) => s.entity)
+  const openCountry = useRightPaneModeStore((s) => s.openCountry)
+  const openEvent = useRightPaneModeStore((s) => s.openEvent)
+  const selectedEventId = entity?.kind === "event" ? entity.event.id : null
 
   // Keyboard shortcuts.
   useEffect(() => {
@@ -63,19 +62,31 @@ export function SplitLayout() {
         e.preventDefault()
         const store = focused === "left" ? useLeftPaneStore : useRightPaneStore
         store.getState().togglePlaying()
-      } else if (e.key === "Escape") {
-        setSelectedCountry(null)
-        setSelectedEvent(null)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [focused])
 
-  const onSelectCountry = useCallback((iso: string) => setSelectedCountry(iso), [])
+  // Selecting anything locks the right pane to that entity; on the narrow
+  // single-column layout, reveal the right pane so the detail is visible.
+  const onSelectCountry = useCallback(
+    (iso: string) => {
+      openCountry(iso)
+      if (isNarrow) setActivePane("right")
+    },
+    [openCountry, isNarrow],
+  )
+  const onSelectEvent = useCallback(
+    (ev: VisibleEvent) => {
+      openEvent(ev)
+      if (isNarrow) setActivePane("right")
+    },
+    [openEvent, isNarrow],
+  )
 
   return (
-    <main className="relative min-h-dvh w-screen bg-neutral-950 text-neutral-100">
+    <main className="relative min-h-dvh w-full bg-neutral-950 text-neutral-100">
       <SystemStatusBar />
       <div className="relative h-[calc(100dvh-2rem)] w-full overflow-hidden">
         {!configured && (
@@ -102,7 +113,7 @@ export function SplitLayout() {
                       : "text-neutral-500 hover:text-neutral-300")
                   }
                 >
-                  {p === "left" ? "map" : "globe"}
+                  {p === "left" ? "map" : "panel"}
                 </button>
               ))}
             </div>
@@ -118,8 +129,8 @@ export function SplitLayout() {
                 onRailOpenChange={setLeftRailOpen}
                 onSelectCountry={onSelectCountry}
                 onCount={setLeftCount}
-                onSelectEvent={setSelectedEvent}
-                selectedEventId={selectedEvent?.id ?? null}
+                onSelectEvent={onSelectEvent}
+                selectedEventId={selectedEventId}
               />
             </div>
             <div
@@ -127,24 +138,17 @@ export function SplitLayout() {
               style={{ display: activePane === "right" ? "block" : "none" }}
               onMouseEnter={() => setFocused("right")}
             >
-              <GlobePane
+              <RightPane
                 useStore={useRightPaneStore}
                 railOpen={rightRailOpen}
                 onRailOpenChange={setRightRailOpen}
                 onCount={setRightCount}
-                onSelectEvent={setSelectedEvent}
+                onSelectEvent={onSelectEvent}
               />
             </div>
           </div>
         ) : (
-          <PanelGroup
-            orientation="horizontal"
-            className="h-full w-full"
-            onLayoutChange={(layout: Record<string, number>) => {
-              const pct = layout["map"]
-              if (typeof pct === "number") setSeparatorPct(pct)
-            }}
-          >
+          <PanelGroup orientation="horizontal" className="h-full w-full">
             <Panel id="map" defaultSize={70} minSize={20}>
               <div
                 className="h-full w-full"
@@ -157,8 +161,8 @@ export function SplitLayout() {
                   onRailOpenChange={setLeftRailOpen}
                   onSelectCountry={onSelectCountry}
                   onCount={setLeftCount}
-                  onSelectEvent={setSelectedEvent}
-                  selectedEventId={selectedEvent?.id ?? null}
+                  onSelectEvent={onSelectEvent}
+                  selectedEventId={selectedEventId}
                 />
               </div>
             </Panel>
@@ -174,36 +178,17 @@ export function SplitLayout() {
                 onMouseEnter={() => setFocused("right")}
                 onFocusCapture={() => setFocused("right")}
               >
-                <GlobePane
+                <RightPane
                   useStore={useRightPaneStore}
                   railOpen={rightRailOpen}
                   onRailOpenChange={setRightRailOpen}
                   onCount={setRightCount}
-                  onSelectEvent={setSelectedEvent}
+                  onSelectEvent={onSelectEvent}
                 />
               </div>
             </Panel>
           </PanelGroup>
         )}
-
-        {/* Event detail — centred on the split separator, follows it as it drags.
-            Map + globe stay live behind it (#207). */}
-        <DetailOverlay open={!!selectedEvent} leftPct={overlayPct}>
-          {selectedEvent && (
-            <EventDetailCard
-              event={selectedEvent}
-              onSelectCountry={onSelectCountry}
-              onClose={() => setSelectedEvent(null)}
-              embedded
-            />
-          )}
-        </DetailOverlay>
-
-        {/* Country overview — same centred overlay, offset down so it can coexist
-            with an open event card. */}
-        <DetailOverlay open={!!selectedCountry} leftPct={overlayPct}>
-          <CountrySidePanel country={selectedCountry} onClose={() => setSelectedCountry(null)} />
-        </DetailOverlay>
       </div>
 
       <div className="mt-10">
