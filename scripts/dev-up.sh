@@ -201,7 +201,11 @@ if [ -z "$frontend_port" ]; then
   frontend_port="$FRONTEND_PORT_DEFAULT"
 fi
 for _ in $(seq 1 "$((FRONTEND_WAIT_SECONDS))"); do
-  if curl -s -m1 -I "http://localhost:${frontend_port}" >/dev/null 2>&1; then
+  # A plain GET (not HEAD) with a 3s budget: Next dev compiles the route on the
+  # first hit, which can exceed a 1s timeout, and its HEAD handling is flaky —
+  # both made this probe false-negative while the server was already serving
+  # `GET / 200`. Any HTTP response (curl exit 0) means the dashboard is up.
+  if curl -s -m3 -o /dev/null "http://localhost:${frontend_port}" >/dev/null 2>&1; then
     printf " ✓ ready\n"
     frontend_ok=1
     break
