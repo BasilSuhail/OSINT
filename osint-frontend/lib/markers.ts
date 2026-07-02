@@ -18,26 +18,27 @@ export function markerStyle(ev: EventRow): MarkerStyle {
   const sk = sourceKeyForEvent(ev)
   const payload = ev.payload as Record<string, unknown>
 
+  // Sizes trimmed ~15% for a lighter, less cluttered map (#252).
   switch (sk) {
     case "USGS": {
       const mag = Number(payload.magnitude ?? 0)
-      return { shape: "circle", size: clamp(mag * 2, 4, 16), color }
+      return { shape: "circle", size: clamp(mag * 1.7, 3, 13), color }
     }
     case "GDACS": {
       const level = String(payload.alert_level ?? "").toLowerCase()
-      const map: Record<string, number> = { green: 8, orange: 12, red: 16 }
-      return { shape: "diamond", size: map[level] ?? 10, color }
+      const map: Record<string, number> = { green: 7, orange: 10, red: 13 }
+      return { shape: "diamond", size: map[level] ?? 8, color }
     }
     case "FIRMS":
-      return { shape: "dot", size: 5, color }
+      return { shape: "dot", size: 4, color }
     case "EONET":
-      return { shape: "diamond", size: 9, color }
+      return { shape: "diamond", size: 8, color }
     case "GDELT": {
       const mentions = Number(payload.num_mentions ?? 0)
-      return { shape: "circle", size: clamp(mentions / 50, 3, 10), color }
+      return { shape: "circle", size: clamp(mentions / 50, 3, 8), color }
     }
     case "yfinance":
-      return { shape: "circle", size: 7, color }
+      return { shape: "circle", size: 6, color }
     default:
       // Category-based fallback for new sources (opensky-adsb, abuse-ch,
       // polymarket, etc.) that don't have a SourceKey yet.
@@ -45,12 +46,12 @@ export function markerStyle(ev: EventRow): MarkerStyle {
         return { shape: "diamond", size: 4, color }
       }
       if (ev.source.startsWith("abuse-ch-") || ev.category === "cyber") {
-        return { shape: "diamond", size: 6, color }
+        return { shape: "diamond", size: 5, color }
       }
       if (ev.source === "polymarket" || ev.category === "market") {
-        return { shape: "circle", size: 6, color }
+        return { shape: "circle", size: 5, color }
       }
-      return { shape: "circle", size: 6, color }
+      return { shape: "circle", size: 5, color }
   }
 }
 
