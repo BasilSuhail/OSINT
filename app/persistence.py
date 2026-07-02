@@ -13,7 +13,7 @@ parse cost low and to leave headroom if the row shape grows.
 from __future__ import annotations
 
 import contextlib
-from typing import Any
+from typing import Any, Final
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -46,29 +46,63 @@ def _event_to_row(event: Event) -> dict[str, Any]:
     }
 
 
+#: Columns refreshed when an event is re-reported. Snapshot feeds (GDACS
+#: geteventlist, EONET open events) re-publish the SAME `(source, source_event_id)`
+#: every fetch while a hazard is active; without refreshing these, an ongoing
+#: wildfire / flood / cyclone would freeze at its first-seen state and eventually
+#: fall out of the dashboard's live window. Identity columns (source,
+#: source_event_id, category) are never updated.
+_REFRESH_COLS: Final = (
+    "occurred_at",
+    "fetched_at",
+    "severity",
+    "confidence",
+    "keywords",
+    "country",
+    "lat",
+    "lon",
+    "payload",
+)
+
+
+def _dedup_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse duplicate `(source, source_event_id)` within one batch, keeping
+    the last occurrence — ON CONFLICT DO UPDATE cannot touch the same key twice
+    in a single statement. Rows with a null id never conflict, so they pass
+    through untouched.
+    """
+    keyed: dict[tuple[str, str], dict[str, Any]] = {}
+    passthrough: list[dict[str, Any]] = []
+    for row in rows:
+        sid = row["source_event_id"]
+        if sid is None:
+            passthrough.append(row)
+        else:
+            keyed[(row["source"], sid)] = row
+    return passthrough + list(keyed.values())
+
+
 def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) -> int:
-    """Run a single batch upsert and return the exact insert count via RETURNING."""
+    """Run a single batch upsert and return the number of rows affected
+    (inserted OR refreshed) via RETURNING."""
+    rows = _dedup_rows(rows)
     if dialect == "postgresql":
-        stmt = (
-            pg_insert(EventRow)
-            .values(rows)
-            .on_conflict_do_nothing(index_elements=["source", "source_event_id"])
-        )
+        base = pg_insert(EventRow).values(rows)
     elif dialect == "sqlite":
-        stmt = (
-            sqlite_insert(EventRow)
-            .values(rows)
-            .on_conflict_do_nothing(index_elements=["source", "source_event_id"])
-        )
+        base = sqlite_insert(EventRow).values(rows)
     else:
         raise NotImplementedError(
             f"upsert_events does not support dialect {dialect!r}; add a branch above"
         )
 
-    # RETURNING gives an exact count of *inserted* rows (skipped conflicts are
-    # not returned). Both Postgres and SQLite ≥ 3.35 support it, and this
-    # avoids the `rowcount = -1` quirk some drivers exhibit on multi-row
-    # ON CONFLICT statements.
+    stmt = base.on_conflict_do_update(
+        index_elements=["source", "source_event_id"],
+        set_={col: base.excluded[col] for col in _REFRESH_COLS},
+    )
+
+    # RETURNING yields every affected row (inserted + updated). Both Postgres and
+    # SQLite ≥ 3.35 support it, avoiding the `rowcount = -1` quirk some drivers
+    # exhibit on multi-row ON CONFLICT statements.
     stmt = stmt.returning(EventRow.id)
     result = session.execute(stmt)
     return len(result.fetchall())
@@ -80,11 +114,14 @@ def upsert_events(
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> int:
-    """Insert events, ignoring rows whose `(source, source_event_id)` already exists.
+    """Upsert events keyed on `(source, source_event_id)`.
 
-    Splits the input into chunks of `batch_size` to stay well under Postgres'
-    65 535-parameter statement cap. Returns the exact number of rows actually
-    inserted (duplicates skipped via ON CONFLICT do not count).
+    New rows are inserted; a row whose key already exists is REFRESHED (its
+    occurred_at / fetched_at / severity / geo / payload updated from the latest
+    fetch) so snapshot feeds like GDACS and EONET keep their ongoing hazards
+    current instead of freezing at first-seen. Splits the input into chunks of
+    `batch_size` to stay under Postgres' 65 535-parameter cap. Returns the number
+    of rows affected (inserted or refreshed).
     """
     if not events:
         return 0
@@ -94,11 +131,11 @@ def upsert_events(
     rows = [_event_to_row(e) for e in events]
     dialect = session.get_bind().dialect.name
 
-    inserted = 0
+    affected = 0
     for start in range(0, len(rows), batch_size):
-        inserted += _upsert_batch(rows[start : start + batch_size], session, dialect)
+        affected += _upsert_batch(rows[start : start + batch_size], session, dialect)
     # A dead Redis must never fail an ingest; the SSE clients fall back to
     # their 30s SWR poll. Swallow and continue.
     with contextlib.suppress(Exception):
-        publish_new_events(inserted)
-    return inserted
+        publish_new_events(affected)
+    return affected

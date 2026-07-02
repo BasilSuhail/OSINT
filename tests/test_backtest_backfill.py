@@ -46,7 +46,7 @@ def test_backfill_inserts_and_is_idempotent(db_session):
 
     second = backfill_event(db_session, event, [src], lookback_days=45, lookahead_days=15)
     db_session.commit()
-    assert second == 0
+    assert second == 2  # rows refreshed on re-run, not duplicated
     assert db_session.query(EventRow).count() == 2
 
 
