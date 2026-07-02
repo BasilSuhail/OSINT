@@ -102,6 +102,12 @@ function cellPrecision(zoom: number): number {
   return Math.max(0.04, 4 / Math.pow(2, zoom))
 }
 
+/** ACLED proportional-symbol sizing: area ∝ count → diameter ∝ √count, clamped.
+ *  Shared by the cluster/aggregate circles and the size legend so they match. */
+function circleSizeForCount(n: number): number {
+  return Math.min(58, 9 + Math.sqrt(Math.max(1, n)) * 5)
+}
+
 function EventMarker({
   ev,
   lat,
@@ -193,7 +199,7 @@ function ClusterChip({
   // ACLED-style proportional symbol: area ∝ count → radius ∝ √count. No digit
   // — the count/list lives in the right pane (#252). Semi-transparent fill so
   // overlapping piles read as density; clamp so mega-piles don't swallow the map.
-  const size = Math.min(58, 9 + Math.sqrt(n) * 5)
+  const size = circleSizeForCount(n)
   return (
     <Marker longitude={cluster.lon} latitude={cluster.lat} anchor="center">
       <motion.button
@@ -231,7 +237,7 @@ function WorldAggregateChip({
   const n = aggregate.events.length
   // Proportional symbol, no digit (count in the right pane). Slate fill marks
   // it as world-scope news, distinct from the source-coloured local clusters.
-  const size = Math.min(58, 9 + Math.sqrt(n) * 5)
+  const size = circleSizeForCount(n)
   return (
     <Marker longitude={aggregate.lon} latitude={aggregate.lat} anchor="center">
       <motion.button
@@ -706,9 +712,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
-      {/* The marker legend moved into the left filter rail (icons + colours +
-          toggles) so it is interactive, not a static key in the corner. */}
-
+      {/* Source icons/toggles live in the left filter rail. */}
       <FilterRail pane="map" side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
     </div>
