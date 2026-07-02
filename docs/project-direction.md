@@ -337,7 +337,27 @@ If the goal is long-term value, the next priorities should be:
 
 ---
 
-## 10. The one-sentence customer and product statement
+## 10. The analytical agenda
+
+The product direction above says who this is for. The analytical agenda says what we *do with
+the data* — the data-science north star, in three phrases:
+
+- **Predict, don't report.** Every live warning gets logged before the outcome is known and
+  graded after — a forecasting track record, not a retrospective dashboard.
+- **Disagreement is signal.** When outlets from different countries cover the same physical
+  event in sharply different tones, that divergence is itself a candidate early-warning
+  indicator — measurable, testable, original.
+- **Corroboration, not truth.** No system computes truth. We compute how many independent
+  sources agree and whether physical sensors confirm the claim, and we show the evidence trail.
+
+Each of the professor's critical questions — quantification, bias, true-vs-false, perspective
+variance, validation, prediction, "which number matters" — is mapped to a concrete statistical
+method in [`analytical-agenda.md`](analytical-agenda.md). The pinned "North star: analytical
+agenda" issue mirrors that document in plain language and tracks the workstreams.
+
+---
+
+## 11. The one-sentence customer and product statement
 
 If you need to answer quickly, use this:
 
@@ -353,7 +373,7 @@ If you need the founder version:
 
 ---
 
-## 11. References
+## 12. References
 
 - [Snyder et al. 2019](https://arxiv.org/abs/1909.07316) - situational awareness from social media analytics
 - [Karimzadeh et al. 2019](https://arxiv.org/abs/1910.05441) - geovisual analytics for situational awareness
