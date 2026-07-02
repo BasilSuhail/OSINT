@@ -116,7 +116,8 @@ class TestFeatureToEvent:
         assert ev.source == "eonet"
         assert ev.source_event_id == "EONET_20558"
         assert ev.category == Category.HAZARD
-        assert ev.occurred_at == datetime(2026, 6, 17, 13, 57, tzinfo=UTC)
+        # Open event → stamped at fetch time so it survives retention (#252).
+        assert ev.occurred_at == fetched_at
         assert ev.lat == pytest.approx(42.81)
         assert ev.lon == pytest.approx(-114.77)
         assert ev.severity == pytest.approx(0.01)  # 1000 / 100k
@@ -130,12 +131,22 @@ class TestFeatureToEvent:
         fetched_at = datetime(2026, 6, 18, 0, 0, tzinfo=UTC)
         ev = feature_to_event(_storm_record(), fetched_at=fetched_at)
         assert ev is not None
-        # Latest geometry = 2026-06-17, lat 22, lon -70, 935 hpa.
+        # Latest geometry drives POSITION: 2026-06-17, lat 22, lon -70, 935 hpa.
         assert ev.lat == pytest.approx(22.0)
         assert ev.lon == pytest.approx(-70.0)
-        assert ev.occurred_at == datetime(2026, 6, 17, 0, 0, tzinfo=UTC)
+        # Open storm → occurred_at is stamped at fetch time, not the geometry date.
+        assert ev.occurred_at == fetched_at
         # 935 hpa → severity (1015-935)/(1015-900) ≈ 0.696
         assert ev.severity == pytest.approx(0.6956, abs=1e-3)
+
+    def test_closed_event_keeps_geometry_date(self) -> None:
+        fetched_at = datetime(2026, 6, 18, 0, 0, tzinfo=UTC)
+        ev = feature_to_event(
+            _wildfire_record(closed="2026-06-17T20:00:00Z"), fetched_at=fetched_at
+        )
+        assert ev is not None
+        # Closed events are historical → keep their real geometry date.
+        assert ev.occurred_at == datetime(2026, 6, 17, 13, 57, tzinfo=UTC)
 
     def test_missing_id_drops(self) -> None:
         bad = _wildfire_record()
