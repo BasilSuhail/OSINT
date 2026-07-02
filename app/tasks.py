@@ -27,6 +27,7 @@ from app.db_models import EventRow, IngestFailureRow, IngestHealthRow
 from app.enrichment.footprint import USER_AGENT, footprint_for_event
 from app.fetcher_registry import get_fetcher
 from app.housekeeping import prune_events
+from app.journal.task import _journal_daily_body
 from app.persistence import upsert_events
 from app.sources.rss_registry import feed_cadence_map
 from app.watchdog import check_sources
@@ -104,6 +105,20 @@ def run_fetcher(name: str) -> dict[str, Any]:
 def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
     """Run the composite worker (read events, aggregate, normalise, score, upsert)."""
     return _compute_composite_body(method_version=method_version)
+
+
+@app.task(
+    name="app.tasks.journal_daily",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def journal_daily() -> dict[str, Any]:
+    """WS-E prediction journal: issue new forecasts from composite scores and
+    grade every prediction whose window has matured (issue #292)."""
+    return _journal_daily_body()
 
 
 @app.task(
@@ -309,6 +324,12 @@ app.conf.beat_schedule = {
     "ingest-watchdog-15min": {
         "task": "app.tasks.ingest_watchdog",
         "schedule": crontab(minute="*/15"),
+    },
+    # WS-E prediction journal (issue #292): after the last composite run of the
+    # day so the day's scores are journaled, before 03:00 housekeeping.
+    "journal-daily-2am-utc": {
+        "task": "app.tasks.journal_daily",
+        "schedule": crontab(hour=2, minute=15),
     },
     "housekeeping-daily-3am-utc": {
         "task": "app.tasks.run_housekeeping",

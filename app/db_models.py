@@ -197,3 +197,37 @@ class NotificationRow(Base):
     score_value: Mapped[float | None] = mapped_column(Float)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     dedup_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+
+
+class PredictionRow(Base):
+    """Forward prediction journal (WS-E). Rows are immutable once issued —
+    only `outcome` and `graded_at` are ever updated, exactly once."""
+
+    __tablename__ = "predictions"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    country: Mapped[str] = mapped_column(String(2), nullable=False)
+    bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    horizon_months: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    outcome: Mapped[int | None] = mapped_column(Integer)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payload: Mapped[dict[str, Any]] = mapped_column(JsonColumn, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source",
+            "method_version",
+            "country",
+            "bucket_start",
+            "horizon_months",
+            name="predictions_forecast_key",
+        ),
+        CheckConstraint("score BETWEEN 0 AND 1", name="predictions_score_range"),
+        Index("predictions_ungraded_idx", "outcome", "bucket_start"),
+    )
