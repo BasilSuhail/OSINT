@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels
+.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels panel
 
 start:  ## Start the full local app (Docker stores + backend + frontend)
 	@bash scripts/dev-up.sh
@@ -38,6 +38,9 @@ data-prune:  ## Run retention housekeeping now
 
 labels:  ## Compute P1-P3 ground-truth labels from ACLED aggregates (idempotent)
 	.venv/bin/python -m app.labels.run
+
+panel:  ## Export the country-month panel dataset (parquet + csv + meta)
+	.venv/bin/python -m app.panel.run
 
 data-reset:  ## Stop stack and wipe all local data (DESTRUCTIVE)
 	@test -n "$(strip $(OSINT_DATA_DIR))" || { echo "OSINT_DATA_DIR is empty — refusing to delete"; exit 1; }
