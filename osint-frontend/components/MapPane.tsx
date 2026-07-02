@@ -148,14 +148,14 @@ function EventMarker({
               <span
                 className="grid place-items-center rounded-sm"
                 style={{
-                  width: 18,
-                  height: 18,
+                  width: 15,
+                  height: 15,
                   backgroundColor: color,
-                  boxShadow: `0 0 4px ${color}aa`,
+                  boxShadow: `0 0 3px ${color}aa`,
                   border: "1px solid rgba(255,255,255,0.5)",
                 }}
               >
-                <Icon size={12} color="#0a0a0a" strokeWidth={2.5} aria-hidden />
+                <Icon size={10} color="#0a0a0a" strokeWidth={2.5} aria-hidden />
               </span>
             )
           }
