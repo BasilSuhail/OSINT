@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import useSWR from "swr"
-import { EventBuffer, type ConnectionDiagnostics, type ConnectionStatus } from "@/lib/realtime"
+import { EventBuffer, FIREHOSE_EXCLUDE, type ConnectionDiagnostics, type ConnectionStatus } from "@/lib/realtime"
 import { fetchEvents, isApiConfigured } from "@/lib/apiClient"
 import type { EventRow } from "@/lib/types"
 
@@ -33,7 +33,20 @@ const TARGET_ROWS = 20_000
  */
 async function fetchRecentEvents(): Promise<EventRow[]> {
   const since = new Date(Date.now() - WINDOW_MS).toISOString()
-  return fetchEvents({ since, exclude: ["opensky-adsb"], limit: TARGET_ROWS })
+  return fetchEvents({ since, exclude: FIREHOSE_EXCLUDE, limit: TARGET_ROWS })
+}
+
+/** abuse.ch cyber (~20k rows) is dense enough to saturate the firehose, so it
+ *  is excluded from the main pull and fetched here capped — enough to render
+ *  the recent C2 layer on the map without bloating the shared buffer. */
+async function fetchCyberEvents(): Promise<EventRow[]> {
+  return fetchEvents({ sources: ["abuse-ch-urlhaus", "abuse-ch-feodo"], limit: 2000 })
+}
+
+/** NASA FIRMS (100k+ rows) is globe-only; the globe caps at 1500 points, so a
+ *  small capped pull keeps the fire layer alive without flooding the buffer. */
+async function fetchFirmsEvents(): Promise<EventRow[]> {
+  return fetchEvents({ sources: ["nasa-firms"], limit: 1500 })
 }
 
 /** Sparse but high-value hazard sources. NASA FIRMS alone emits ~50k rows in
@@ -74,6 +87,18 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   // starved out of the firehose budget by NASA FIRMS volume (#206).
   useSWR(isApiConfigured ? "events-hazard" : null, fetchHazardEvents, {
     refreshInterval: 60_000,
+    revalidateOnFocus: false,
+    onSuccess: (rows) => buffer.ingest(rows),
+  })
+
+  // High-volume feeds pulled separately + capped so they can't flood the buffer.
+  useSWR(isApiConfigured ? "events-cyber" : null, fetchCyberEvents, {
+    refreshInterval: 120_000,
+    revalidateOnFocus: false,
+    onSuccess: (rows) => buffer.ingest(rows),
+  })
+  useSWR(isApiConfigured ? "events-firms" : null, fetchFirmsEvents, {
+    refreshInterval: 120_000,
     revalidateOnFocus: false,
     onSuccess: (rows) => buffer.ingest(rows),
   })
