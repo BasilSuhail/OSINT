@@ -30,6 +30,7 @@ from app.housekeeping import prune_events
 from app.journal.task import _journal_daily_body
 from app.persistence import upsert_events
 from app.sources.rss_registry import feed_cadence_map
+from app.stories.task import _cluster_stories_body
 from app.watchdog import check_sources
 
 #: Hazard sources whose real footprint geometry we enrich (issue #205).
@@ -119,6 +120,20 @@ def journal_daily() -> dict[str, Any]:
     """WS-E prediction journal: issue new forecasts from composite scores and
     grade every prediction whose window has matured (issue #292)."""
     return _journal_daily_body()
+
+
+@app.task(
+    name="app.tasks.cluster_stories",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def cluster_stories() -> dict[str, Any]:
+    """WS-A story clustering: group the rolling news window into stories
+    (issue #296)."""
+    return _cluster_stories_body()
 
 
 @app.task(
@@ -327,6 +342,11 @@ app.conf.beat_schedule = {
     },
     # WS-E prediction journal (issue #292): after the last composite run of the
     # day so the day's scores are journaled, before 03:00 housekeeping.
+    # WS-A story clustering (issue #296): every 30 min over the rolling news window.
+    "stories-cluster-30min": {
+        "task": "app.tasks.cluster_stories",
+        "schedule": crontab(minute="7,37"),
+    },
     "journal-daily-2am-utc": {
         "task": "app.tasks.journal_daily",
         "schedule": crontab(hour=2, minute=15),
