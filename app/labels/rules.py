@@ -15,15 +15,18 @@ from datetime import UTC, datetime
 from typing import Any
 
 #: Version stamp carried in every label payload.
-RULES_VERSION: str = "labels-v1.0"
+RULES_VERSION: str = "labels-v1.1"
 
 #: P1 — weekly Battles fatalities at or above this fire an armed-conflict-onset label.
 P1_BATTLE_FATALITIES_MIN: int = 10
 
 #: P2 — weekly demonstration events (Protests + Riots) at or above this ...
-P2_DEMO_EVENTS_MIN: int = 5
+#: v1.1: raised from 5/1 (fired on 33% of country-months — ordinary politics,
+#: not mass escalation) to 20/5 (9.9%), chosen from marginal label rates only,
+#: before any model evaluation (issue #294).
+P2_DEMO_EVENTS_MIN: int = 20
 #: ... with at least this many Riots events in the same week.
-P2_RIOT_EVENTS_MIN: int = 1
+P2_RIOT_EVENTS_MIN: int = 5
 
 #: P3 — month-over-month multiplier on political-violence fatalities ...
 P3_MULTIPLIER: float = 2.0
