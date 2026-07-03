@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 const TABS = [
   { href: "/", label: "console" },
   { href: "/stories", label: "stories" },
+  { href: "/scoreboard", label: "scoreboard" },
 ] as const
 
 /** Compact page tabs for the top status bar. */
