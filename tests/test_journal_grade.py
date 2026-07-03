@@ -63,7 +63,8 @@ class TestGradePending:
                         "components": {},
                         "method_version": "v1.0",
                     }
-                ]
+                ],
+                now=JAN,
             ),
             db_session,
         )
@@ -91,7 +92,8 @@ class TestGradePending:
                         "components": {},
                         "method_version": "v1.0",
                     }
-                ]
+                ],
+                now=JAN,
             ),
             db_session,
         )

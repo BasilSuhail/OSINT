@@ -25,6 +25,10 @@ track record. Value scales with runtime — starting late is unrecoverable.
    composite with revised data can never rewrite an already-issued prediction.
 3. **Grading only mutates** `outcome` + `graded_at`, exactly once
    (`WHERE outcome IS NULL` guard in the update).
+4. **No hindcasts** (added in #300): a score whose bucket month predates the
+   issuance month is never journaled — the full window [t+1, t+k] must lie in
+   the future when the forecast is stamped, otherwise grading would fake a
+   track record from already-known outcomes.
 
 ## Table (migration 0004 + `PredictionRow`)
 
