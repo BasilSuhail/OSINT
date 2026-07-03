@@ -8,6 +8,7 @@ data. That immutability is the journal's integrity claim.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -20,12 +21,29 @@ SOURCE: str = "composite"
 HORIZONS: tuple[int, ...] = (1, 3, 6)
 
 
+def _month_start(dt: datetime) -> datetime:
+    dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
+    return datetime(dt.year, dt.month, 1, tzinfo=UTC)
+
+
 def predictions_from_scores(
     scores: Iterable[Mapping[str, Any]],
+    *,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Expand each composite score into one prediction per horizon."""
+    """Expand each composite score into one prediction per horizon.
+
+    Hindcast guard: a score for a month earlier than the issuance month is
+    skipped — its forecast window [t+1, t+k] would overlap the known past,
+    and grading it would fake a track record. Only genuinely forward
+    forecasts enter the journal.
+    """
+    now = now or datetime.now(UTC)
+    current_month = _month_start(now)
     predictions: list[dict[str, Any]] = []
     for score in scores:
+        if _month_start(score["bucket_start"]) < current_month:
+            continue
         for horizon in HORIZONS:
             predictions.append(
                 {
