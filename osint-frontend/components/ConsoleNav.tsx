@@ -7,6 +7,7 @@ const TABS = [
   { href: "/", label: "console" },
   { href: "/stories", label: "stories" },
   { href: "/scoreboard", label: "scoreboard" },
+  { href: "/coverage", label: "coverage" },
 ] as const
 
 /** Compact page tabs for the top status bar. */
