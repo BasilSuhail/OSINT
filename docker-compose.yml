@@ -1,4 +1,9 @@
-name: osint
+# Project name. Bumped from "osint" after a Docker Desktop daemon-state
+# corruption left that project's containers as unremovable zombies ("No such
+# container" on every operation — issue #298). Data is unaffected by the name:
+# Postgres/Redis live on $OSINT_DATA_DIR bind mounts. If this ever happens
+# again, bump the name once more and `make up` recreates cleanly.
+name: osint-local
 
 services:
   postgres:

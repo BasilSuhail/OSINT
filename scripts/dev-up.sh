@@ -13,7 +13,7 @@ mkdir -p logs
 DOCKER_WAIT_SECONDS="${DOCKER_WAIT_SECONDS:-30}"
 DOCKER_WAIT_STEP="${DOCKER_WAIT_STEP:-2}"
 API_WAIT_SECONDS="${API_WAIT_SECONDS:-20}"
-FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-30}"
+FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-60}"
 DOCKER_WAIT_MESSAGE_EVERY="${DOCKER_WAIT_MESSAGE_EVERY:-10}"
 
 docker_ready() {
@@ -137,7 +137,20 @@ frontend_pid() {
 
 echo "→ stores (postgres + redis)"
 ensure_docker
-docker compose up -d >/dev/null
+# A Docker Desktop daemon restart can corrupt a compose project's container
+# metadata (containers listed but unaddressable: "No such container: <id>").
+# Self-heal: tear the project down (data lives on $OSINT_DATA_DIR bind mounts,
+# so this never touches data) and recreate from scratch before giving up.
+if ! docker compose up -d >/dev/null 2>logs/compose-up.err; then
+  echo "  compose up failed ($(tail -n1 logs/compose-up.err 2>/dev/null)); recreating stores"
+  docker compose down --remove-orphans >/dev/null 2>&1 || true
+  if ! docker compose up -d --force-recreate >/dev/null; then
+    echo "Stores did not start even after a clean recreate." >&2
+    echo "If the error names a container id, the Docker daemon state is corrupted:" >&2
+    echo "restart Docker Desktop, or set a fresh project name (docker-compose.yml 'name:')." >&2
+    exit 1
+  fi
+fi
 
 spawn() { # label  cmd...
   local label="$1"; shift
