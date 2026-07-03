@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db_models import LabelRow
-from app.labels.persistence import upsert_labels
+from app.labels.persistence import purge_label_source, upsert_labels
 
 
 def _label(
@@ -65,6 +65,23 @@ def test_duplicate_within_batch_collapsed(db_session: Session) -> None:
 
 def test_empty_input_is_noop(db_session: Session) -> None:
     assert upsert_labels([], db_session) == 0
+
+
+def test_purge_removes_only_this_labelers_rows(db_session: Session) -> None:
+    upsert_labels([_label(), _label(label_code="P2")], db_session)
+    other = LabelRow(
+        country="US",
+        bucket_start=datetime(2024, 1, 1, tzinfo=UTC),
+        bucket_length=timedelta(days=31),
+        label_code="P4",
+        label_source="market-crisis",
+        payload={},
+    )
+    db_session.add(other)
+    db_session.commit()
+    assert purge_label_source(db_session) == 2
+    rows = db_session.execute(select(LabelRow)).scalars().all()
+    assert [row.label_source for row in rows] == ["market-crisis"]
 
 
 def test_batching_splits_large_inputs(db_session: Session) -> None:

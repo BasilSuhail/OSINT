@@ -2,7 +2,9 @@
 
 Keyed on (country, bucket_start, label_code, label_source) so reruns refresh
 magnitude/payload instead of duplicating rows — same pattern as
-`app.persistence.upsert_events`.
+`app.persistence.upsert_events`. A rules-version bump changes which rows
+qualify, so the run first purges rows written under older versions — labels
+are fully derived data and regeneration is a full refresh per label_source.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import calendar
 from datetime import timedelta
 from typing import Any
 
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -40,6 +43,16 @@ def _dedup(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 #: 7 parameters per row; stays comfortably under Postgres' 65 535-parameter cap.
 DEFAULT_BATCH_SIZE: int = 5000
+
+
+def purge_label_source(session: Session) -> int:
+    """Delete every row this labeler owns; returns rows removed.
+
+    Called before a full re-labeling run so rows written under an older
+    rules version can never linger next to current ones.
+    """
+    result = session.execute(delete(LabelRow).where(LabelRow.label_source == LABEL_SOURCE))
+    return result.rowcount or 0
 
 
 def upsert_labels(

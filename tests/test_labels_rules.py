@@ -87,38 +87,47 @@ class TestP1BattleFatalities:
 
 
 class TestP2ProtestEscalation:
-    def test_five_demo_events_with_one_riot_fires(self) -> None:
+    # labels-v1.1 thresholds: >= 20 demonstration events AND >= 5 Riots (issue #294)
+
+    def test_twenty_demo_events_with_five_riots_fires(self) -> None:
         rows = [
-            _row(week=WEEK_JAN, event_type="Protests", events=4),
-            _row(week=WEEK_JAN, event_type="Riots", events=1),
+            _row(week=WEEK_JAN, event_type="Protests", events=15),
+            _row(week=WEEK_JAN, event_type="Riots", events=5),
         ]
         assert "P2" in _codes(compute_labels(rows))
 
-    def test_four_demo_events_does_not_fire(self) -> None:
+    def test_nineteen_demo_events_does_not_fire(self) -> None:
         rows = [
-            _row(week=WEEK_JAN, event_type="Protests", events=3),
-            _row(week=WEEK_JAN, event_type="Riots", events=1),
+            _row(week=WEEK_JAN, event_type="Protests", events=14),
+            _row(week=WEEK_JAN, event_type="Riots", events=5),
         ]
         assert "P2" not in _codes(compute_labels(rows))
 
-    def test_five_protests_without_riot_does_not_fire(self) -> None:
-        rows = [_row(week=WEEK_JAN, event_type="Protests", events=5)]
+    def test_four_riots_does_not_fire(self) -> None:
+        rows = [
+            _row(week=WEEK_JAN, event_type="Protests", events=30),
+            _row(week=WEEK_JAN, event_type="Riots", events=4),
+        ]
         assert "P2" not in _codes(compute_labels(rows))
 
-    def test_riot_in_different_week_does_not_fire(self) -> None:
+    def test_twenty_protests_without_riots_does_not_fire(self) -> None:
+        rows = [_row(week=WEEK_JAN, event_type="Protests", events=20)]
+        assert "P2" not in _codes(compute_labels(rows))
+
+    def test_riots_in_different_week_do_not_fire(self) -> None:
         rows = [
-            _row(week=WEEK_JAN, event_type="Protests", events=5),
-            _row(week=WEEK_JAN_2, event_type="Riots", events=1),
+            _row(week=WEEK_JAN, event_type="Protests", events=20),
+            _row(week=WEEK_JAN_2, event_type="Riots", events=5),
         ]
         assert "P2" not in _codes(compute_labels(rows))
 
     def test_magnitude_is_demo_event_count(self) -> None:
         rows = [
-            _row(week=WEEK_JAN, event_type="Protests", events=7),
-            _row(week=WEEK_JAN, event_type="Riots", events=2),
+            _row(week=WEEK_JAN, event_type="Protests", events=25),
+            _row(week=WEEK_JAN, event_type="Riots", events=6),
         ]
         labels = [label for label in compute_labels(rows) if label["label_code"] == "P2"]
-        assert labels[0]["magnitude"] == 9.0
+        assert labels[0]["magnitude"] == 31.0
 
 
 class TestP3Intensification:

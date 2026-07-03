@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_engine
 from app.labels.acled_loader import load_acled_weekly
-from app.labels.persistence import upsert_labels
+from app.labels.persistence import purge_label_source, upsert_labels
 from app.labels.rules import RULES_VERSION, compute_labels
 from app.settings import settings
 
@@ -35,13 +35,14 @@ def main() -> int:
 
     labels = compute_labels(loaded.rows)
     with Session(get_engine()) as session:
+        purged = purge_label_source(session)
         affected = upsert_labels(labels, session)
 
     per_code = Counter(label["label_code"] for label in labels)
     countries = {label["country"] for label in labels}
     months = sorted(label["bucket_start"] for label in labels)
 
-    print(f"labels {RULES_VERSION} — {affected} rows upserted")
+    print(f"labels {RULES_VERSION} — {affected} rows written ({purged} prior rows purged)")
     print(f"  files read      : {len(loaded.files_read)}")
     print(f"  tidy rows       : {len(loaded.rows)} (skipped {loaded.skipped_rows} malformed)")
     for code in sorted(per_code):
