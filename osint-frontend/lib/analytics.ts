@@ -57,3 +57,28 @@ export async function fetchBaselinesReport(): Promise<BaselinesReport> {
   if (!res.ok) throw new Error(`GET /analytics/baselines ${res.status}`)
   return (await res.json()) as BaselinesReport
 }
+
+export interface CoverageStat {
+  country: string
+  coverage_months: number
+  observed_months: number
+  total_events: number
+  events_per_month: number
+  global_share: number
+  fatalities_per_event: number
+  baseline_std: number
+}
+
+export interface CoverageReport {
+  generated_at: string
+  countries: number
+  global_events: number
+  top_share: Record<string, number>
+  stats: CoverageStat[]
+}
+
+export async function fetchCoverageReport(): Promise<CoverageReport> {
+  const res = await fetch(`${API_BASE}/analytics/coverage`)
+  if (!res.ok) throw new Error(`GET /analytics/coverage ${res.status}`)
+  return (await res.json()) as CoverageReport
+}
