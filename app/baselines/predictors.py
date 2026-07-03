@@ -44,3 +44,24 @@ def score_base_rate(
             running += label
             scores[(country, month)] = running / n
     return scores
+
+
+def score_composite(
+    panel: Iterable[Mapping[str, Any]],
+) -> dict[tuple[str, datetime], float]:
+    """B6 — the composite stress index itself, where it has a value.
+
+    Rows without a composite score (no signals collected/backfilled for that
+    month) are omitted; evaluation must restrict every contender to this
+    common support for a fair head-to-head.
+    """
+    scores: dict[tuple[str, datetime], float] = {}
+    for row in panel:
+        value = row.get("composite_score")
+        if value is None:
+            continue
+        value = float(value)
+        if value != value:  # NaN from pandas
+            continue
+        scores[(row["country"], row["month"])] = value
+    return scores
