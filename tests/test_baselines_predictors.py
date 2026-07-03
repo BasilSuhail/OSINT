@@ -6,7 +6,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.baselines.predictors import score_base_rate, score_persistence, score_random
+from app.baselines.predictors import (
+    score_base_rate,
+    score_composite,
+    score_persistence,
+    score_random,
+)
 
 
 def _cell(country: str, year: int, month: int, label: int) -> dict:
@@ -68,3 +73,19 @@ class TestBaseRate:
         # so the first US month is just its own label.
         scores = score_base_rate(PANEL)
         assert scores[("US", datetime(2020, 1, 1, tzinfo=UTC))] == 0.0
+
+
+class TestComposite:
+    def test_score_is_panel_composite_value(self) -> None:
+        panel = [
+            {**_cell("SY", 2020, 1, 0), "composite_score": 0.8},
+            {**_cell("SY", 2020, 2, 1), "composite_score": None},
+        ]
+        scores = score_composite(panel)
+        assert scores == {("SY", datetime(2020, 1, 1, tzinfo=UTC)): 0.8}
+
+    def test_nan_composite_skipped(self) -> None:
+        import math
+
+        panel = [{**_cell("SY", 2020, 1, 0), "composite_score": math.nan}]
+        assert score_composite(panel) == {}
