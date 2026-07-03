@@ -6,18 +6,22 @@ Read-only over the local Postgres. Serves recent events + latest scores, and
 
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session_factory
-from app.db_models import EventRow, IngestHealthRow, ScoreRow
+from app.db_models import EventRow, IngestHealthRow, PredictionRow, ScoreRow, StoryRow
 from app.events_bus import subscribe_new_events
+from app.journal.scoreboard import build_scoreboard
 from app.settings import settings
 
 app = FastAPI(title="OSINT local API", version="1.0")
@@ -188,6 +192,69 @@ def scores(
     if country is not None:
         stmt = stmt.where(ScoreRow.country == country)
     return [_score_dict(r) for r in session.execute(stmt).scalars()]
+
+
+@app.get("/stories/top")
+def stories_top(
+    session: Session = Depends(get_session),
+    hours: int = Query(default=24, ge=1, le=24 * 90),
+    limit: int = Query(default=50, ge=1, le=500),
+) -> list[dict]:
+    """Story clusters seen in the last `hours`, loudest (most outlets) first."""
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
+    stmt = (
+        select(StoryRow)
+        .where(StoryRow.last_seen >= cutoff)
+        .order_by(StoryRow.outlet_count.desc(), StoryRow.member_count.desc())
+        .limit(limit)
+    )
+    return [
+        {
+            "id": str(row.id),
+            "title": row.title,
+            "first_seen": row.first_seen.isoformat(),
+            "last_seen": row.last_seen.isoformat(),
+            "member_count": row.member_count,
+            "outlet_count": row.outlet_count,
+            "method_version": row.method_version,
+        }
+        for row in session.execute(stmt).scalars()
+    ]
+
+
+@app.get("/journal/scoreboard")
+def journal_scoreboard(session: Session = Depends(get_session)) -> list[dict]:
+    """Forward-prediction track record per source x horizon."""
+    rows = [
+        {
+            "source": row.source,
+            "method_version": row.method_version,
+            "horizon_months": row.horizon_months,
+            "score": row.score,
+            "outcome": row.outcome,
+        }
+        for row in session.execute(select(PredictionRow)).scalars()
+    ]
+    return build_scoreboard(rows)
+
+
+def _export_report(filename: str, hint: str) -> dict:
+    path = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports" / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"{filename} not found — run `{hint}` first")
+    return json.loads(path.read_text())
+
+
+@app.get("/analytics/baselines")
+def analytics_baselines() -> dict:
+    """Latest baselines report exactly as `make baselines` wrote it."""
+    return _export_report("baselines-report.json", "make baselines")
+
+
+@app.get("/analytics/coverage")
+def analytics_coverage() -> dict:
+    """Latest coverage-bias report exactly as `make coverage` wrote it."""
+    return _export_report("coverage-bias.json", "make coverage")
 
 
 @app.get("/stream")
