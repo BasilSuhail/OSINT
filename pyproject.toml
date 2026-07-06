@@ -25,7 +25,7 @@ dependencies = [
     "numpy>=2.2",
     "python-dateutil>=2.9",
     "shapely>=2.0",
-    "feedparser>=6.0",
+    "feedparser>=6.0.12",
     "vadersentiment>=3.3",
 ]
 
