@@ -45,7 +45,7 @@ dev = [
     "pytest-mock>=3.14",
     "respx>=0.22",
     "ruff==0.15.18",
-    "mypy>=1.13",
+    "mypy>=2.1.0",
 ]
 browser = [
     "playwright>=1.49",
