@@ -8,7 +8,7 @@ authors = [{ name = "Basil Suhail" }]
 
 dependencies = [
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
+    "uvicorn[standard]>=0.50.0",
     "celery>=5.4",
     "redis>=5.2",
     "sqlalchemy>=2.0",
