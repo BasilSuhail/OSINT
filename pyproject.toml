@@ -40,7 +40,7 @@ nlp = [
     "spacy>=3.7",
 ]
 dev = [
-    "pytest>=8.3",
+    "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-mock>=3.14",
     "respx>=0.22",
