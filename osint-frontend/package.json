@@ -25,7 +25,7 @@
     "react-dom": "^19",
     "react-globe.gl": "^2.38.0",
     "react-map-gl": "^8.1.1",
-    "react-resizable-panels": "^4.11.2",
+    "react-resizable-panels": "^4.12.1",
     "recharts": "^3.8.1",
     "satellite.js": "^7.0.1",
     "shadcn": "^4.8.0",
