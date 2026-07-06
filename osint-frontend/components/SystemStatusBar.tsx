@@ -5,8 +5,6 @@ import { fetchIngestHealth, fetchSourceCoverage, isApiConfigured } from "@/lib/a
 import { summarizeSystemHealth, type DatasetHealthSummary } from "@/lib/systemHealth"
 import type { IngestHealthRow, SourceCoverageRow } from "@/lib/types"
 import { ConnectionIndicator } from "./ConnectionIndicator"
-import { AnalyticsChips } from "./AnalyticsChips"
-import { ConsoleNav } from "./ConsoleNav"
 
 const API_REFRESH_MS = 30_000
 const COVERAGE_REFRESH_MS = 60_000
@@ -61,7 +59,6 @@ export function SystemStatusBar() {
   return (
     <div className="sticky top-0 z-50 h-8 border-b border-neutral-800 bg-neutral-950/96 backdrop-blur-xl">
       <div className="mx-auto flex h-full w-full max-w-[2400px] items-center gap-x-2 overflow-hidden whitespace-nowrap px-3 sm:px-4">
-        <ConsoleNav />
         <ConnectionIndicator />
         {datasets.map((dataset) => (
           <span
@@ -74,7 +71,6 @@ export function SystemStatusBar() {
             <span className="text-neutral-500">{dataset.healthy}/{dataset.total}</span>
           </span>
         ))}
-        <AnalyticsChips />
         <span className="ml-auto shrink-0 pl-2 font-mono text-[8px] uppercase tracking-wide text-neutral-500">
           {datasets.filter((d) => d.status !== "ok").length} attention
         </span>
