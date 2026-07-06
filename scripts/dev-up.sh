@@ -138,17 +138,50 @@ frontend_pid() {
 echo "→ stores (postgres + redis)"
 ensure_docker
 # A Docker Desktop daemon restart can corrupt a compose project's container
-# metadata (containers listed but unaddressable: "No such container: <id>").
-# Self-heal: tear the project down (data lives on $OSINT_DATA_DIR bind mounts,
-# so this never touches data) and recreate from scratch before giving up.
-if ! docker compose up -d >/dev/null 2>logs/compose-up.err; then
+# metadata (containers listed but unaddressable: "No such container: <id>",
+# issues #298 and #326). The corruption is sticky — it survives daemon
+# restarts and the poisoned ids cannot be removed — so retrying under the same
+# project name can never succeed. Self-heal in two stages:
+#   1. plain recreate (covers transient failures);
+#   2. on the corruption signature ("No such container"), bump
+#      COMPOSE_PROJECT_NAME in .env to a fresh timestamped name and start
+#      clean. Data lives on $OSINT_DATA_DIR bind mounts, so the new project
+#      reattaches to the same Postgres/Redis state; the ghost containers stay
+#      behind, inert and invisible to the new project name.
+compose_up() {
+  docker compose up -d "$@" >/dev/null 2>logs/compose-up.err
+}
+
+bump_project_name() {
+  local fresh
+  fresh="osint-$(date +%Y%m%d%H%M%S)"
+  echo "  daemon state for this compose project is corrupted; switching project name to ${fresh}"
+  if grep -q '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null; then
+    local tmp
+    tmp="$(mktemp)"
+    sed "s/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=${fresh}/" .env >"$tmp" && mv "$tmp" .env
+  else
+    printf '\nCOMPOSE_PROJECT_NAME=%s\n' "$fresh" >>.env
+  fi
+  export COMPOSE_PROJECT_NAME="$fresh"
+}
+
+if ! compose_up; then
   echo "  compose up failed ($(tail -n1 logs/compose-up.err 2>/dev/null)); recreating stores"
   docker compose down --remove-orphans >/dev/null 2>&1 || true
-  if ! docker compose up -d --force-recreate >/dev/null; then
-    echo "Stores did not start even after a clean recreate." >&2
-    echo "If the error names a container id, the Docker daemon state is corrupted:" >&2
-    echo "restart Docker Desktop, or set a fresh project name (docker-compose.yml 'name:')." >&2
-    exit 1
+  if ! compose_up --force-recreate; then
+    if grep -q "No such container" logs/compose-up.err 2>/dev/null; then
+      bump_project_name
+      if ! compose_up; then
+        echo "Stores did not start even under a fresh project name." >&2
+        echo "See logs/compose-up.err for the compose error." >&2
+        exit 1
+      fi
+    else
+      echo "Stores did not start even after a clean recreate." >&2
+      echo "See logs/compose-up.err for the compose error." >&2
+      exit 1
+    fi
   fi
 fi
 
