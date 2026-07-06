@@ -9,6 +9,10 @@ import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneStore } from "@/stores/rightPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
+import { CardDeck, type DeckCard } from "./CardDeck"
+import { CoveragePanel } from "./panels/CoveragePanel"
+import { ScoreboardPanel } from "./panels/ScoreboardPanel"
+import { StoriesPanel } from "./panels/StoriesPanel"
 import { SystemStatusBar } from "./SystemStatusBar"
 
 const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
@@ -18,6 +22,10 @@ const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
 const RightPane = dynamic(() => import("./RightPane").then((m) => m.RightPane), {
   ssr: false,
   loading: () => <PaneSkeleton label="status" />,
+})
+const GlobePane = dynamic(() => import("./GlobePane").then((m) => m.GlobePane), {
+  ssr: false,
+  loading: () => <PaneSkeleton label="globe" />,
 })
 
 function PaneSkeleton({ label }: { label: string }) {
@@ -84,6 +92,33 @@ export function SplitLayout() {
     [openEvent, isNarrow],
   )
 
+  // The right pane as a card deck (#328): console keeps its world-status /
+  // entity surface, the globe rides as its own lazy card (WebGL mounts on
+  // first visit, then stays warm and pauses while off-screen), and the
+  // analytical pages fill the rest.
+  const deckCards: DeckCard[] = [
+    { key: "console", title: "console", fill: true, content: <RightPane /> },
+    {
+      key: "globe",
+      title: "globe",
+      fill: true,
+      lazy: true,
+      content: (isActive: boolean) => (
+        <GlobePane
+          useStore={useRightPaneStore}
+          railOpen={rightRailOpen}
+          onRailOpenChange={setRightRailOpen}
+          onCount={setRightCount}
+          onSelectEvent={onSelectEvent}
+          active={isActive}
+        />
+      ),
+    },
+    { key: "stories", title: "stories", content: <StoriesPanel /> },
+    { key: "scoreboard", title: "scoreboard", content: <ScoreboardPanel /> },
+    { key: "coverage", title: "coverage", content: <CoveragePanel /> },
+  ]
+
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-100">
       <SystemStatusBar />
@@ -137,13 +172,7 @@ export function SplitLayout() {
               style={{ display: activePane === "right" ? "block" : "none" }}
               onMouseEnter={() => setFocused("right")}
             >
-              <RightPane
-                useStore={useRightPaneStore}
-                railOpen={rightRailOpen}
-                onRailOpenChange={setRightRailOpen}
-                onCount={setRightCount}
-                onSelectEvent={onSelectEvent}
-              />
+              <CardDeck cards={deckCards} />
             </div>
           </div>
         ) : (
@@ -177,13 +206,7 @@ export function SplitLayout() {
                 onMouseEnter={() => setFocused("right")}
                 onFocusCapture={() => setFocused("right")}
               >
-                <RightPane
-                  useStore={useRightPaneStore}
-                  railOpen={rightRailOpen}
-                  onRailOpenChange={setRightRailOpen}
-                  onCount={setRightCount}
-                  onSelectEvent={onSelectEvent}
-                />
+                <CardDeck cards={deckCards} />
               </div>
             </Panel>
           </PanelGroup>
