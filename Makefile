@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels panel baselines coverage journal stories backfill-signals
+.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals
 
 start:  ## Start the full local app (Docker stores + backend + frontend)
 	@bash scripts/dev-up.sh
@@ -53,6 +53,9 @@ journal:  ## Run the WS-E prediction journal once (emit + grade + scoreboard)
 
 stories:  ## Cluster the rolling news window into stories (WS-A)
 	.venv/bin/python -m app.stories.run
+
+stories-audit:  ## Emit the threshold hand-check sheet (WS-C step 1, #334)
+	.venv/bin/python -m app.stories.audit
 
 backfill-signals:  ## Backfill historical market+geopolitical+hazard composite scores (2015-2024); GDELT download resumes via $OSINT_DATA_DIR/gdelt/ checkpoints
 	.venv/bin/python -m app.composite.backfill
