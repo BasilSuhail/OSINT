@@ -54,7 +54,7 @@ journal:  ## Run the WS-E prediction journal once (emit + grade + scoreboard)
 stories:  ## Cluster the rolling news window into stories (WS-A)
 	.venv/bin/python -m app.stories.run
 
-backfill-signals:  ## Backfill historical market+hazard composite scores (2015-2024)
+backfill-signals:  ## Backfill historical market+geopolitical+hazard composite scores (2015-2024); GDELT download resumes via $OSINT_DATA_DIR/gdelt/ checkpoints
 	.venv/bin/python -m app.composite.backfill
 
 data-reset:  ## Stop stack and wipe all local data (DESTRUCTIVE)
