@@ -25,6 +25,11 @@ _CONFLICT_KEYS = (
     "method_version",
 )
 
+#: Postgres caps bind parameters at 65,535 per statement. A full three-domain
+#: backfill upserts ~24k score rows at 7 parameters each, so the upsert is
+#: chunked (same convention as the labels upsert).
+BATCH_SIZE = 5_000
+
 
 def _score_to_row(score: ComposedScore) -> dict[str, Any]:
     return {
@@ -39,36 +44,30 @@ def _score_to_row(score: ComposedScore) -> dict[str, Any]:
 
 
 def upsert_scores(scores: list[ComposedScore], session: Session) -> int:
-    """Bulk-upsert composite scores. Returns number of rows touched."""
+    """Bulk-upsert composite scores in batches. Returns number of rows touched."""
     if not scores:
         return 0
 
     rows = [_score_to_row(s) for s in scores]
-    bind = session.get_bind()
-    dialect = bind.dialect.name
-
+    dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
-        stmt = pg_insert(ScoreRow).values(rows)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=list(_CONFLICT_KEYS),
-            set_={
-                "score_value": stmt.excluded.score_value,
-                "components": stmt.excluded.components,
-            },
-        )
+        insert = pg_insert
     elif dialect == "sqlite":
-        stmt = sqlite_insert(ScoreRow).values(rows)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=list(_CONFLICT_KEYS),
-            set_={
-                "score_value": stmt.excluded.score_value,
-                "components": stmt.excluded.components,
-            },
-        )
+        insert = sqlite_insert
     else:
         raise NotImplementedError(
             f"upsert_scores does not support dialect {dialect!r}; add a branch above"
         )
 
-    result = session.execute(stmt)
-    return result.rowcount or 0
+    touched = 0
+    for start in range(0, len(rows), BATCH_SIZE):
+        stmt = insert(ScoreRow).values(rows[start : start + BATCH_SIZE])
+        stmt = stmt.on_conflict_do_update(
+            index_elements=list(_CONFLICT_KEYS),
+            set_={
+                "score_value": stmt.excluded.score_value,
+                "components": stmt.excluded.components,
+            },
+        )
+        touched += session.execute(stmt).rowcount or 0
+    return touched
