@@ -217,6 +217,14 @@ spawn_frontend() {
   echo "  frontend started (pid $!) → logs/frontend.log"
 }
 
+# macOS: Celery's prefork children segfault in CoreFoundation the first time
+# a forked child looks up system proxy settings (urllib → _scproxy →
+# CFPreferences is not fork-safe; "Python quit unexpectedly" popups, #332).
+# no_proxy="*" short-circuits the lookup (no local proxy is in use) and the
+# OBJC flag covers the Objective-C side. Both are harmless on Linux.
+export no_proxy="*"
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+
 spawn worker .venv/bin/celery -A app.celery_app worker -l info
 spawn beat   .venv/bin/celery -A app.celery_app beat   -l info
 spawn api    .venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
