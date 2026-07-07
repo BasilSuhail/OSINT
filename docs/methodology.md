@@ -128,6 +128,26 @@ The composite must **beat** these to be worth keeping. List finalised before eva
 
 **Required result for thesis credibility**: `B6` or `B7` (or `B8`) strictly dominate **each** of `B3`, `B4`, `B5` on AUROC AND AUPR for the primary multi-label target. If they don't, the multi-modal claim fails — that is itself a defensible thesis result (negative findings count), and the Discussion must report it honestly. Per-domain subtasks (Step 4) are reported separately and are not required to beat the single-domain baseline of that same domain.
 
+> **Amendment 2026-07-07 (geopolitical signal backfill, issue #330 — declared before the
+> head-to-head is re-run)**: the historical geopolitical input (2014-01 → 2024-12) is
+> realised exactly as B3 pre-registered it — GDELT Goldstein — with these concrete choices,
+> fixed before any evaluation on the completed composite:
+> **(1) Source**: GDELT 1.0 daily event files (`data.gdeltproject.org/events/`), the only
+> GDELT product covering the full window at daily grain. ACLED remains banned as an input
+> (ground-truth side; circular). **(2) Signal**: per (country, month), the *mean
+> GoldsteinScale* across all events geolocated to the country (ActionGeo, FIPS 10-4 → ISO2),
+> inverted and rescaled to severity = (10 − G)/20 ∈ [0, 1]. Plain mean — no mention
+> weighting, no event-type filter, no minimum-volume threshold: zero free parameters.
+> **(3) Timing**: events bucket by SQLDATE (event date) clipped to the window, accepting
+> GDELT's documented anniversary-mention artifact rather than introducing a tunable filter.
+> **(4) Plumbing**: one synthetic geopolitical event per (country, month) through the
+> unchanged live pipeline (monthly mean → rolling 12-month z per country-domain → equal-weight
+> sigmoid composite, method_version v1.0) — completing a domain's data, not changing method.
+> **(5) Known limitation**: live (2025+) geopolitical severities come from the live feeds,
+> not GDELT, so a source discontinuity exists at the backfill/live boundary; the eval
+> (2015-22) and test (2023-24) windows are entirely GDELT-consistent. GDELT gap-days (404)
+> are tolerated and recorded per month in `$OSINT_DATA_DIR/gdelt/` checkpoints.
+
 ---
 
 ## Step 6 — Metrics

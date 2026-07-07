@@ -67,6 +67,10 @@ def _fake_hazard(start: date, end: date) -> list[dict]:
     return [_event("SY", "hazard", 0.5, 2015, 6)]
 
 
+def _fake_geo(start: date, end: date) -> list[dict]:
+    return [_event("SY", "geopolitical", 0.8, 2015, 6)]
+
+
 class TestRunSignalBackfill:
     def test_writes_scores_only_inside_score_window(self, db_session: Session) -> None:
         result = run_signal_backfill(
@@ -74,6 +78,7 @@ class TestRunSignalBackfill:
             scores_start=date(2015, 1, 1),
             end=date(2015, 12, 31),
             market_fetch=_fake_market,
+            geopolitical_fetch=_fake_geo,
             hazard_fetch=_fake_hazard,
             session=db_session,
         )
@@ -89,6 +94,7 @@ class TestRunSignalBackfill:
             scores_start=date(2015, 1, 1),
             end=date(2015, 12, 31),
             market_fetch=_fake_market,
+            geopolitical_fetch=_fake_geo,
             hazard_fetch=_fake_hazard,
             session=db_session,
         )
@@ -107,6 +113,7 @@ class TestRunSignalBackfill:
             scores_start=date(2015, 1, 1),
             end=date(2015, 12, 31),
             market_fetch=_fake_market,
+            geopolitical_fetch=_fake_geo,
             hazard_fetch=_fake_hazard,
             session=db_session,
         )
@@ -119,6 +126,7 @@ class TestRunSignalBackfill:
             scores_start=date(2015, 1, 1),
             end=date(2015, 12, 31),
             market_fetch=_fake_market,
+            geopolitical_fetch=_fake_geo,
             hazard_fetch=_fake_hazard,
             session=db_session,
         )
@@ -134,6 +142,7 @@ class TestRunSignalBackfill:
             scores_start=date(2015, 1, 1),
             end=date(2015, 12, 31),
             market_fetch=lambda s, e: [],
+            geopolitical_fetch=lambda s, e: [],
             hazard_fetch=lambda s, e: [],
             session=db_session,
         )

@@ -1,4 +1,4 @@
-"""Historical signal backfill — market + hazard events → composite scores.
+"""Historical signal backfill — market + geopolitical + hazard → composite scores.
 
 Builds historical events IN MEMORY (they never touch the events table, so
 retention pruning cannot eat them) and feeds them through the exact live
@@ -6,9 +6,11 @@ composite pipeline: aggregate → rolling z-score → sigmoid score → scores
 upsert. Same functions, same method version — the methodology is identical
 to live by construction; components carry `backfill: true` for provenance.
 
-Geopolitical is deliberately absent in v1: GDELT bulk history is heavy and
-ACLED is the ground-truth source (same source on both sides = circular).
-A missing domain contributes z = 0, exactly like a live cold start.
+The geopolitical domain comes from GDELT (see app/composite/gdelt.py), the
+pre-registered B3 source — never ACLED, which is the ground-truth side of
+the evaluation (same source on both sides = circular). The GDELT download
+is checkpointed per month under $OSINT_DATA_DIR/gdelt/, so an interrupted
+first run resumes for free and later runs read from cache.
 
 Usage:
     python -m app.composite.backfill      # warmup 2014-01, scores 2015-01 → 2024-12
@@ -28,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.composite.aggregation import aggregate_events_to_domain_signals
 from app.composite.config import DEFAULT_METHOD_VERSION
+from app.composite.gdelt import fetch_gdelt_history
 from app.composite.normalization import normalize_domain_signals
 from app.composite.persistence import upsert_scores
 from app.composite.scoring import compute_scores
@@ -128,17 +131,27 @@ def fetch_hazard_history(start: date, end: date) -> list[dict[str, Any]]:
     return events
 
 
+def fetch_geopolitical_history(start: date, end: date) -> list[dict[str, Any]]:
+    """GDELT monthly mean-Goldstein events (checkpoint-cached, resumable)."""
+    return fetch_gdelt_history(start, end)
+
+
 def run_signal_backfill(
     *,
     warmup_start: date = WARMUP_START,
     scores_start: date = SCORES_START,
     end: date = END,
     market_fetch: FetchFn = fetch_market_history,
+    geopolitical_fetch: FetchFn = fetch_geopolitical_history,
     hazard_fetch: FetchFn = fetch_hazard_history,
     session: Session,
 ) -> dict[str, Any]:
-    """Fetch both domains, run the live pipeline, upsert scores in-window."""
-    events = market_fetch(warmup_start, end) + hazard_fetch(warmup_start, end)
+    """Fetch all three domains, run the live pipeline, upsert scores in-window."""
+    events = (
+        market_fetch(warmup_start, end)
+        + geopolitical_fetch(warmup_start, end)
+        + hazard_fetch(warmup_start, end)
+    )
 
     aggregated = aggregate_events_to_domain_signals(events)
     normalized = normalize_domain_signals(aggregated)
