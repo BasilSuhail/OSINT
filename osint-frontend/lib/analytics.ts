@@ -82,3 +82,20 @@ export async function fetchCoverageReport(): Promise<CoverageReport> {
   if (!res.ok) throw new Error(`GET /analytics/coverage ${res.status}`)
   return (await res.json()) as CoverageReport
 }
+
+export interface JobRun {
+  id: number
+  job: string
+  status: "running" | "done" | "failed"
+  started_at: string
+  heartbeat_at: string
+  finished_at: string | null
+  progress: string | null
+  detail: string | null
+}
+
+export async function fetchRecentJobs(hours = 48): Promise<JobRun[]> {
+  const res = await fetch(`${API_BASE}/jobs/recent?hours=${hours}`)
+  if (!res.ok) throw new Error(`GET /jobs/recent ${res.status}`)
+  return (await res.json()) as JobRun[]
+}

@@ -5,6 +5,7 @@ import { fetchIngestHealth, fetchSourceCoverage, isApiConfigured } from "@/lib/a
 import { summarizeSystemHealth, type DatasetHealthSummary } from "@/lib/systemHealth"
 import type { IngestHealthRow, SourceCoverageRow } from "@/lib/types"
 import { ConnectionIndicator } from "./ConnectionIndicator"
+import { JobChips } from "./JobChips"
 
 const API_REFRESH_MS = 30_000
 const COVERAGE_REFRESH_MS = 60_000
@@ -71,6 +72,7 @@ export function SystemStatusBar() {
             <span className="text-neutral-500">{dataset.healthy}/{dataset.total}</span>
           </span>
         ))}
+        <JobChips />
         <span className="ml-auto shrink-0 pl-2 font-mono text-[8px] uppercase tracking-wide text-neutral-500">
           {datasets.filter((d) => d.status !== "ok").length} attention
         </span>

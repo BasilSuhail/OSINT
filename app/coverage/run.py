@@ -20,7 +20,7 @@ from app.labels.acled_loader import load_acled_weekly
 from app.settings import settings
 
 
-def main() -> int:
+def _run() -> int:
     if not settings.acled_csv_dir:
         print("ACLED_CSV_DIR is not set — nothing to measure.", file=sys.stderr)
         return 1
@@ -89,6 +89,16 @@ def _render_markdown(stats: list[dict[str, Any]], tops: dict[int, float]) -> str
         "",
     ]
     return "\n".join(lines)
+
+
+def main() -> int:
+    from app.jobs.heartbeat import job_run
+
+    with job_run("coverage"):
+        rc = _run()
+        if rc != 0:
+            raise SystemExit(f"coverage: exited {rc} — see output above")
+    return 0
 
 
 if __name__ == "__main__":

@@ -176,17 +176,37 @@ def run_signal_backfill(
 
 
 def main() -> int:
-    with session_scope() as session:
-        result = run_signal_backfill(session=session)
-    print(
-        f"signal backfill {result['method_version']} — "
-        f"{result['scores_written']} scores written "
-        f"({result['events_fetched']} events fetched, "
-        f"{result['buckets_aggregated']} buckets)"
-    )
-    if result["scores_written"] == 0:
-        print("warning: nothing written — check network access to yfinance/USGS", file=sys.stderr)
-        return 1
+    from app.jobs.heartbeat import job_run
+
+    with job_run("backfill-signals") as progress:
+
+        def geopolitical_with_heartbeat(start: date, end: date) -> list[dict[str, Any]]:
+            # GDELT's per-month log lines double as live progress for the
+            # top-bar activity monitor (#341).
+            def log(line: str) -> None:
+                print(line)
+                progress(line.strip())
+
+            return fetch_gdelt_history(start, end, log=log)
+
+        progress("fetching market + geopolitical + hazard history")
+        with session_scope() as session:
+            result = run_signal_backfill(
+                session=session, geopolitical_fetch=geopolitical_with_heartbeat
+            )
+        progress(f"{result['scores_written']} scores written")
+        print(
+            f"signal backfill {result['method_version']} — "
+            f"{result['scores_written']} scores written "
+            f"({result['events_fetched']} events fetched, "
+            f"{result['buckets_aggregated']} buckets)"
+        )
+        if result["scores_written"] == 0:
+            print(
+                "warning: nothing written — check network access to yfinance/USGS",
+                file=sys.stderr,
+            )
+            raise SystemExit("backfill-signals: nothing written")
     return 0
 
 

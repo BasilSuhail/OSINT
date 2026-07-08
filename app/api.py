@@ -19,7 +19,14 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session_factory
-from app.db_models import EventRow, IngestHealthRow, PredictionRow, ScoreRow, StoryRow
+from app.db_models import (
+    EventRow,
+    IngestHealthRow,
+    JobRunRow,
+    PredictionRow,
+    ScoreRow,
+    StoryRow,
+)
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
 from app.settings import settings
@@ -217,6 +224,39 @@ def stories_top(
             "member_count": row.member_count,
             "outlet_count": row.outlet_count,
             "method_version": row.method_version,
+        }
+        for row in session.execute(stmt).scalars()
+    ]
+
+
+@app.get("/jobs/recent")
+def jobs_recent(
+    session: Session = Depends(get_session),
+    hours: int = Query(default=48, ge=1, le=24 * 14),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[dict]:
+    """Recent job runs, newest first — the top-bar activity monitor's feed.
+
+    Stalled detection is the reader's job: status == "running" with a
+    heartbeat older than ~10 minutes means the process died mid-run.
+    """
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
+    stmt = (
+        select(JobRunRow)
+        .where(JobRunRow.started_at >= cutoff)
+        .order_by(JobRunRow.started_at.desc())
+        .limit(limit)
+    )
+    return [
+        {
+            "id": row.id,
+            "job": row.job,
+            "status": row.status,
+            "started_at": row.started_at.isoformat(),
+            "heartbeat_at": row.heartbeat_at.isoformat(),
+            "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+            "progress": row.progress,
+            "detail": row.detail,
         }
         for row in session.execute(stmt).scalars()
     ]
