@@ -237,8 +237,9 @@ def fetch_gdelt_history(
         download = lambda url: download_day(url, client=client)  # noqa: E731
 
     totals: dict[tuple[str, str], tuple[float, int]] = {}
+    months = list(iter_months(start, end))
     try:
-        for month_start in iter_months(start, end):
+        for index, month_start in enumerate(months, start=1):
             checkpoint = load_or_build_month(
                 month_start,
                 cache_dir=cache_dir,
@@ -250,8 +251,10 @@ def fetch_gdelt_history(
                 iso2, month = key.split(":")
                 current_sum, current_n = totals.get((iso2, month), (0.0, 0))
                 totals[(iso2, month)] = (current_sum + goldstein_sum, current_n + n)
+            # index/total + percentage feed the activity monitor's chip (#343).
             log(
-                f"  gdelt {month_start.year:04d}-{month_start.month:02d}: "
+                f"  gdelt {month_start.year:04d}-{month_start.month:02d} "
+                f"({index}/{len(months)}, {100 * index // len(months)}%): "
                 f"{checkpoint['days_ok']} days"
                 + (
                     f", {len(checkpoint['days_missing'])} missing"

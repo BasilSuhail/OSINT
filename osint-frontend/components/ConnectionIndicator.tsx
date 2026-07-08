@@ -54,9 +54,13 @@ export function ConnectionIndicator() {
     .filter(Boolean)
     .join("\n")
 
+  // Compact by design (#343): a single colored dot — the job roster needs
+  // the horizontal space. Full diagnostics stay in the tooltip.
   return (
-    <span title={tooltip} className="shrink-0 font-mono text-[8px] uppercase tracking-wide text-neutral-400">
-      realtime <span className={meta.color.replace("bg-", "text-")}>{meta.label}</span>
+    <span title={tooltip} className="shrink-0 font-mono text-[8px]">
+      <span className={`${meta.color.replace("bg-", "text-")}${meta.pulse ? " animate-pulse" : ""}`}>
+        ◉
+      </span>
     </span>
   )
 }
