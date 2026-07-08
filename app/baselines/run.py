@@ -156,10 +156,18 @@ def _render_markdown(
         "",
         *_table(head_to_head),
         "",
-        "**Caveat**: this composite carries market + hazard signals only "
-        "(geopolitical backfill pending — GDELT bulk is heavy, ACLED is the label "
-        "source). A loss against the base rate is a finding about these two "
-        "domains, not the final verdict on the full three-domain composite.",
+        "**Reading**: the composite carries all three domains (market + "
+        "geopolitical + hazard; GDELT-backfilled, #331). A coin-flip AUROC "
+        "against a ~0.93 per-country base rate is a statement about "
+        "construction, not about signal absence: rolling within-country "
+        "z-scores deliberately remove the cross-sectional differences that "
+        "dominate P1-P3 *incidence* (chronically conflicted countries stay "
+        "positive month after month, and the base rate collects exactly "
+        "that). What the composite measures is deviation from a country's "
+        "own baseline — an *onset/escalation*-shaped signal. The natural "
+        "next evaluation, to be pre-registered before running, restricts "
+        "scoring to onset months (no positive in the preceding window), "
+        "where per-country base rates lose their advantage by construction.",
         "",
     ]
     return "\n".join(lines)
