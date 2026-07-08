@@ -21,7 +21,7 @@ from app.labels.rules import RULES_VERSION, compute_labels
 from app.settings import settings
 
 
-def main() -> int:
+def _run() -> int:
     directory = settings.acled_csv_dir
     if not directory:
         print("ACLED_CSV_DIR is not set — nothing to label.", file=sys.stderr)
@@ -53,6 +53,16 @@ def main() -> int:
     if loaded.unmapped_countries:
         names = ", ".join(f"{name} ({n})" for name, n in loaded.unmapped_countries.most_common())
         print(f"  unmapped names  : {names}")
+    return 0
+
+
+def main() -> int:
+    from app.jobs.heartbeat import job_run
+
+    with job_run("labels"):
+        rc = _run()
+        if rc != 0:
+            raise SystemExit(f"labels: exited {rc} — see output above")
     return 0
 
 

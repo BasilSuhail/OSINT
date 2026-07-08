@@ -21,7 +21,7 @@ from app.db_models import StoryRow
 from app.stories.task import _cluster_stories_body
 
 
-def main() -> int:
+def _run() -> int:
     counters = _cluster_stories_body()
 
     since = datetime.now(UTC) - timedelta(hours=24)
@@ -83,6 +83,16 @@ def _render_markdown(counters: dict[str, Any], top_rows: list[dict[str, Any]]) -
         "",
     ]
     return "\n".join(lines)
+
+
+def main() -> int:
+    from app.jobs.heartbeat import job_run
+
+    with job_run("stories"):
+        rc = _run()
+        if rc != 0:
+            raise SystemExit(f"stories: exited {rc} — see output above")
+    return 0
 
 
 if __name__ == "__main__":

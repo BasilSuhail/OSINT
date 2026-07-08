@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.composite.config import DEFAULT_METHOD_VERSION
 from app.db import get_engine
@@ -25,6 +25,14 @@ _SCORE_NAME = "composite"
 
 def _journal_daily_body() -> dict[str, Any]:
     """Emit + grade once; returns counters for logging/inspection."""
+    from app.jobs.heartbeat import job_run
+
+    factory = sessionmaker(bind=get_engine(), expire_on_commit=False, future=True)
+    with job_run("journal", session_factory=factory):
+        return _journal_daily_inner()
+
+
+def _journal_daily_inner() -> dict[str, Any]:
     engine = get_engine()
     with Session(engine) as session:
         scores = [

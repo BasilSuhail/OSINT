@@ -249,6 +249,31 @@ class StoryRow(Base):
     __table_args__ = (Index("stories_last_seen_idx", "last_seen"),)
 
 
+class JobRunRow(Base):
+    """One execution of a long-running job — the activity monitor's raw feed (#341).
+
+    A crashed job leaves status='running' with a stale heartbeat; readers
+    treat that as 'stalled' rather than trusting the status blindly.
+    """
+
+    __tablename__ = "job_runs"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    job: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="running")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    progress: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (Index("job_runs_started_idx", "started_at"),)
+
+
 class StoryMemberRow(Base):
     """Membership link between a news event and its story. Append-only."""
 

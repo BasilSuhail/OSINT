@@ -26,7 +26,7 @@ def _fmt(value: float | None) -> str:
     return f"{value:.3f}" if value is not None else "n/a"
 
 
-def main() -> int:
+def _run() -> int:
     counters = _journal_daily_body()
 
     with Session(get_engine()) as session:
@@ -87,6 +87,16 @@ def _render_markdown(lines: list[dict[str, Any]], counters: dict[str, Any]) -> s
         "",
     ]
     return "\n".join(out)
+
+
+def main() -> int:
+    from app.jobs.heartbeat import job_run
+
+    with job_run("journal"):
+        rc = _run()
+        if rc != 0:
+            raise SystemExit(f"journal: exited {rc} — see output above")
+    return 0
 
 
 if __name__ == "__main__":

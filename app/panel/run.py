@@ -26,7 +26,7 @@ from app.settings import settings
 _SCORE_NAME = "composite"
 
 
-def main() -> int:
+def _run() -> int:
     if not settings.acled_csv_dir:
         print("ACLED_CSV_DIR is not set — cannot derive coverage windows.", file=sys.stderr)
         return 1
@@ -78,6 +78,16 @@ def main() -> int:
         print("  warning     : labels table is empty — run `make labels` first")
     if meta["score_rows"] == 0:
         print("  note        : no composite scores yet (expected before backfill)")
+    return 0
+
+
+def main() -> int:
+    from app.jobs.heartbeat import job_run
+
+    with job_run("panel"):
+        rc = _run()
+        if rc != 0:
+            raise SystemExit(f"panel: exited {rc} — see output above")
     return 0
 
 

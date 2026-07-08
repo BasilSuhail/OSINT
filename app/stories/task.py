@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import get_engine
 from app.db_models import EventRow, StoryMemberRow, StoryRow
@@ -22,6 +22,14 @@ WINDOW_HOURS: int = 72
 
 
 def _cluster_stories_body(*, now: datetime | None = None) -> dict[str, Any]:
+    from app.jobs.heartbeat import job_run
+
+    factory = sessionmaker(bind=get_engine(), expire_on_commit=False, future=True)
+    with job_run("stories-cluster", session_factory=factory):
+        return _cluster_stories_inner(now=now)
+
+
+def _cluster_stories_inner(*, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     cutoff = now - timedelta(hours=WINDOW_HOURS)
 

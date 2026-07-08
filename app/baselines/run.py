@@ -38,7 +38,7 @@ def _fmt(value: float | None) -> str:
     return f"{value:.3f}" if value is not None else "n/a"
 
 
-def main() -> int:
+def _run() -> int:
     exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
     panel_path = exports / "panel.parquet"
     if not panel_path.exists():
@@ -163,6 +163,16 @@ def _render_markdown(
         "",
     ]
     return "\n".join(lines)
+
+
+def main() -> int:
+    from app.jobs.heartbeat import job_run
+
+    with job_run("baselines"):
+        rc = _run()
+        if rc != 0:
+            raise SystemExit(f"baselines: exited {rc} — see output above")
+    return 0
 
 
 if __name__ == "__main__":
