@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_engine
-from app.db_models import StoryDisagreementRow, StoryRow
+from app.db_models import DisagreementPairRow, StoryDisagreementRow, StoryRow
 from app.disagreement.task import _disagreement_body
 
 
@@ -43,7 +43,24 @@ def _run() -> int:
             for row, title in rows
         ]
 
-    report = _render_markdown(counters, contested)
+    with Session(get_engine()) as session:
+        pair_rows = session.execute(
+            select(DisagreementPairRow)
+            .where(DisagreementPairRow.n_stories >= 2)
+            .order_by(DisagreementPairRow.month.desc(), DisagreementPairRow.mean_divergence.desc())
+            .limit(15)
+        ).scalars()
+        pairs = [
+            {
+                "pair": f"{row.country_a}|{row.country_b}",
+                "month": row.month.isoformat(),
+                "n_stories": row.n_stories,
+                "mean_divergence": round(row.mean_divergence, 4),
+            }
+            for row in pair_rows
+        ]
+
+    report = _render_markdown(counters, contested, pairs)
     exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
     exports.mkdir(parents=True, exist_ok=True)
     (exports / "disagreement-report.md").write_text(report)
@@ -53,6 +70,7 @@ def _run() -> int:
                 "generated_at": datetime.now(UTC).isoformat(),
                 "run": counters,
                 "most_contested_24h": contested,
+                "pair_months": pairs,
             },
             indent=2,
         )
@@ -63,12 +81,15 @@ def _run() -> int:
     return 0
 
 
-def _render_markdown(counters: dict[str, Any], contested: list[dict[str, Any]]) -> str:
+def _render_markdown(
+    counters: dict[str, Any], contested: list[dict[str, Any]], pairs: list[dict[str, Any]]
+) -> str:
     lines = [
-        "# Telling divergence — who disagrees about what (WS-B step 2)",
+        "# Telling divergence — who disagrees about what (WS-B)",
         "",
         f"This run: {counters['stories']} stories in window, {counters['scored']} scored, "
-        f"{counters['single_group']} single-country (no cross-country telling).",
+        f"{counters['single_group']} single-country (no cross-country telling), "
+        f"{counters['pair_months']} (pair, month) roll-up rows.",
         "",
         "Most contested stories of the last 24 h:",
         "",
@@ -80,10 +101,23 @@ def _render_markdown(counters: dict[str, Any], contested: list[dict[str, Any]]) 
         lines.append(f"| {row['divergence']:.3f} | {groups} | {row['title']} |")
     lines += [
         "",
+        "Most divergent country pairs by month (≥ 2 co-told stories):",
+        "",
+        "| month | pair | stories | mean divergence |",
+        "|---|---|---|---|",
+    ]
+    for row in pairs:
+        lines.append(
+            f"| {row['month']} | {row['pair']} | {row['n_stories']} "
+            f"| {row['mean_divergence']:.3f} |"
+        )
+    lines += [
+        "",
         "`divergence` (disagreement-v1.0) = mean pairwise cosine distance between "
         "country-group TF-IDF centroids over the story's member titles. Groups are "
         "outlet *origin* countries (#368). High = the same event is being told in "
-        "very different words by different countries.",
+        "very different words by different countries. The (pair, month) table is "
+        "the time series the step-4 early-warning exam runs on.",
         "",
     ]
     return "\n".join(lines)

@@ -89,6 +89,34 @@ def test_rerun_overwrites_never_duplicates(db_session: Session) -> None:
     assert len(rows) == 1
 
 
+def test_pair_month_rollup_persisted(db_session: Session) -> None:
+    """WS-B step 3 (#372): (country-pair, month) rows rebuilt from story rows."""
+    from app.db_models import DisagreementPairRow
+
+    db_session.add_all(
+        [
+            _news(1, "Powerful earthquake strikes Tokyo, dozens injured", "rss-bbc-world"),
+            _news(2, "Dozens injured as powerful earthquake hits Tokyo", "rss-tass-en", 5),
+        ]
+    )
+    db_session.commit()
+    counters = _run_both(db_session)
+    assert counters["pair_months"] == 1
+
+    (row,) = db_session.execute(select(DisagreementPairRow)).scalars().all()
+    assert (row.country_a, row.country_b) == ("GB", "RU")
+    assert row.month.isoformat() == "2026-07-01"
+    assert row.n_stories == 1
+    assert 0.0 <= row.mean_divergence <= 1.0
+    assert row.method_version == "disagreement-v1.0"
+
+    # Rebuild is idempotent — rerun never duplicates.
+    engine = db_session.get_bind()
+    with patch.object(disagreement_task, "get_engine", return_value=engine):
+        disagreement_task._disagreement_body(now=NOW)
+    assert len(db_session.execute(select(DisagreementPairRow)).scalars().all()) == 1
+
+
 def test_beat_schedule_has_disagreement_entry() -> None:
     from app.tasks import app as celery_app
 

@@ -211,7 +211,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
-| WS-B disagreement index | cross-country telling divergence | 🔨 step 2 of 4 done — per-story divergence (#370) |
+| WS-B disagreement index | cross-country telling divergence | 🔨 step 3 of 4 done — (pair, month) index (#372) |
 | WS-F indicator ranking | which dashboard number predicts best | ⏳ unblocked |
 | WS-G local AI checker | Ollama claim extraction w/ measured error rate | 💡 planned |
 

@@ -371,3 +371,35 @@ class StoryDisagreementRow(Base):
         Index("story_disagreement_story_idx", "story_id"),
         CheckConstraint("divergence >= 0 AND divergence <= 1", name="story_disagreement_range"),
     )
+
+
+class DisagreementPairRow(Base):
+    """WS-B (country-pair, month) divergence roll-up — issue #372.
+
+    Rebuilt idempotently from persisted story_disagreement rows on every
+    disagreement beat; months accumulate because story rows outlive the
+    clustering window. country_a < country_b lexicographically.
+    """
+
+    __tablename__ = "disagreement_pairs"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    country_a: Mapped[str] = mapped_column(String(2), nullable=False)
+    country_b: Mapped[str] = mapped_column(String(2), nullable=False)
+    month: Mapped[Date] = mapped_column(Date, nullable=False)
+    n_stories: Mapped[int] = mapped_column(Integer, nullable=False)
+    mean_divergence: Mapped[float] = mapped_column(Float, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "country_a", "country_b", "month", "method_version", name="disagreement_pairs_unique"
+        ),
+        Index("disagreement_pairs_month_idx", "month"),
+        CheckConstraint(
+            "mean_divergence >= 0 AND mean_divergence <= 1", name="disagreement_pairs_range"
+        ),
+    )
