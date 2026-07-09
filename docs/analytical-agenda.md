@@ -38,7 +38,7 @@ the exact section that answers it, or to a new planned workstream.
 | Q3 | True vs false? | Corroboration score: independent sources × reliability prior × sensor confirmation | 🔨 WS-C step 2 of 5 (#356) |
 | Q4 | What's in the score; what biases? | ✅ [methodology.md Step 9](methodology.md#step-9--sensitivity--robustness) + coverage-bias table | ✅ + ✅ WS-D live (#291) |
 | Q5 | Validate? Predict, not post-process? | ✅ Pre-registered backtest ([Steps 3–6](methodology.md#step-3--time-period--data-split)) + forward prediction journal | ✅ + ✅ WS-E live (#293) |
-| Q6 | Which number matters most? | Per-indicator univariate AUROC / mutual information vs ground truth, ranked | ⏳ WS-F unblocked (signal backfill #303/#331 done) |
+| Q6 | Which number matters most? | Per-indicator univariate AUROC vs ground truth, ranked | ✅ WS-F ranked (#376, `make indicator-ranking`) |
 | Q7 | Predict crops/water/food/disease? | New domains, gated behind the Phase-1 #250 gate | 🔭 future |
 
 Legend: ✅ done/live · 🔨 in progress · ⏳ queued or unblocked, not started · 🔭 future, explicitly out of scope now.
@@ -254,7 +254,7 @@ numbers — the numeric "WS1…" series is already used by the console-theme eff
 | WS-C | Corroboration score | WS-A | Independent-owner count × reliability prior × sensor confirmation | 🔨 step 2 of 5 — audit #335, owner registry #356 |
 | WS-D | Coverage-bias table | — | Per-country volume vs own rolling baseline, published | ✅ live — #290/#291, `make coverage`, /coverage card |
 | WS-E | Prediction journal | — | Log live warnings, grade later, accumulate a Brier scorecard | ✅ live — #292/#293, daily beat, `make journal`, /scoreboard card |
-| WS-F | Indicator value ranking | — | Univariate AUROC per indicator vs ground truth, ranked | ⏳ unblocked by the signal backfill (#303, #331) |
+| WS-F | Indicator value ranking | — | Univariate AUROC per indicator vs ground truth, ranked | ✅ ranked — #376, `make indicator-ranking`; |hazard z| leads (~0.59), magnitude variants dominate raw |
 | WS-G | Local LLM validator | WS-A + WS-C substrate | Ollama claim extraction, contradiction detection, cluster QA — with a measured error rate | 💡 planned (plan on #282) |
 
 ```
