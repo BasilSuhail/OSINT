@@ -80,3 +80,24 @@ def test_three_groups_average_all_pairs() -> None:
     assert result["components"]["n_pairs"] == 3
     assert 0.0 <= result["divergence"] <= 1.0
     assert result["components"]["method_version"] == METHOD_VERSION == "disagreement-v1.0"
+
+
+def test_components_carry_per_pair_distances() -> None:
+    """WS-B step 3 (#372): the roll-up needs each pair's own distance."""
+    result = story_divergence(
+        [
+            _member("Summit ends with new trade agreement", "rss-a"),
+            _member("Summit ends with new trade agreement", "rss-c"),
+            _member("Summit collapses without any agreement signed", "rss-d"),
+        ],
+        country_map=COUNTRY_MAP,
+    )
+    assert result is not None
+    pairs = result["components"]["pairs"]
+    assert set(pairs) == {"FR|GB", "FR|RU", "GB|RU"}
+    assert pairs["GB|RU"] < 0.01  # identical wording
+    assert pairs["FR|GB"] > pairs["GB|RU"]  # different angle
+    for value in pairs.values():
+        assert 0.0 <= value <= 1.0
+    # Story divergence is exactly the mean of the pair values.
+    assert abs(result["divergence"] - sum(pairs.values()) / 3) < 1e-9

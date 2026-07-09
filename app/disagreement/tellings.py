@@ -58,16 +58,20 @@ def story_divergence(
                 centroid[token] = centroid.get(token, 0.0) + weight / len(docs)
         centroids[country] = centroid
 
-    pairs = list(combinations(sorted(centroids), 2))
-    divergence = sum(1.0 - cosine(centroids[g], centroids[h]) for g, h in pairs) / len(pairs)
-    # Identical centroids can give cosine 1 + ε in floats; the DB CHECK is [0, 1].
-    divergence = min(1.0, max(0.0, divergence))
+    # Identical centroids can give cosine 1 + ε in floats; clamp each pair to [0, 1].
+    pair_distances = {
+        f"{g}|{h}": min(1.0, max(0.0, 1.0 - cosine(centroids[g], centroids[h])))
+        for g, h in combinations(sorted(centroids), 2)
+    }
+    divergence = sum(pair_distances.values()) / len(pair_distances)
 
     return {
         "divergence": divergence,
         "components": {
             "groups": {country: len(docs) for country, docs in sorted(grouped.items())},
-            "n_pairs": len(pairs),
+            "n_pairs": len(pair_distances),
+            # Per-pair evidence — what the (country-pair, month) roll-up (#372) feeds on.
+            "pairs": pair_distances,
             "method_version": METHOD_VERSION,
         },
     }
