@@ -285,6 +285,38 @@ are recorded in the checkpoint, not papered over; transient download errors
 retry three times, then fail the whole month loudly rather than write a
 partial one.
 
+#### The exact links (verify it yourself)
+
+There are precisely **two** GDELT URLs in the codebase:
+
+| Path | URL | In code |
+|---|---|---|
+| live pointer | `http://data.gdeltproject.org/gdeltv2/lastupdate.txt` | `app/sources/gdelt_fetcher.py` |
+| history pattern | `http://data.gdeltproject.org/events/YYYYMMDD.export.CSV.zip` | `app/composite/gdelt.py` |
+
+The pointer file, fetched every 15 minutes, returns three lines — size, MD5
+hash, URL — for the newest batch:
+
+```text
+54849   e2077439...  http://data.gdeltproject.org/gdeltv2/20260709103000.export.CSV.zip
+71626   33a5f6da...  http://data.gdeltproject.org/gdeltv2/20260709103000.mentions.CSV.zip
+4517072 d04d0311...  http://data.gdeltproject.org/gdeltv2/20260709103000.gkg.csv.zip
+```
+
+We take the `export` line only. (GDELT publishes those MD5 hashes; we do not
+verify them yet — a cheap integrity upgrade on the list.)
+
+"Pulling" is a plain HTTP GET via `httpx` with an honest User-Agent
+(`OSINT-thesis-project (academic)`), a 120 s timeout, and 3 retries with
+backoff on the history path — no browser, no scraping, no auth. The zip is
+unzipped **in memory**, rows are split on tabs, three columns are kept, the
+rest is discarded.
+
+**Check it yourself**: paste
+`http://data.gdeltproject.org/events/20220301.export.CSV.zip` into a browser.
+That downloads the exact file the backfill parsed for 1 March 2022 — open it
+and you are looking at the same raw rows we aggregated.
+
 ### 3.3 ACLED — deliberately manual
 
 ACLED is registered-access and its data API rejects many valid academic
