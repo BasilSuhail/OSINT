@@ -34,6 +34,7 @@ from app.journal.task import _journal_daily_body
 from app.persistence import upsert_events
 from app.sources.rss_registry import feed_cadence_map
 from app.stories.task import _cluster_stories_body
+from app.validator.task import _validator_body
 from app.watchdog import check_sources
 
 logger = logging.getLogger(__name__)
@@ -167,6 +168,21 @@ def score_disagreement() -> dict[str, Any]:
     """WS-B disagreement: per-story cross-country telling divergence
     (issue #370)."""
     return _disagreement_body()
+
+
+@app.task(
+    name="app.tasks.extract_claims",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def extract_claims() -> dict[str, Any]:
+    """WS-G validator: nightly local-LLM claim extraction over window stories
+    (issue #378). Another noisy annotator — consumed by nothing until its
+    agreement rate is measured."""
+    return _validator_body()
 
 
 @app.task(
@@ -402,6 +418,12 @@ app.conf.beat_schedule = {
     "journal-daily-2am-utc": {
         "task": "app.tasks.journal_daily",
         "schedule": crontab(hour=2, minute=15),
+    },
+    # WS-G validator (issue #378): nightly, after the journal, before 03:00
+    # housekeeping — the model loads once, works the batch, unloads.
+    "validator-nightly": {
+        "task": "app.tasks.extract_claims",
+        "schedule": crontab(hour=2, minute=45),
     },
     "housekeeping-daily-3am-utc": {
         "task": "app.tasks.run_housekeeping",
