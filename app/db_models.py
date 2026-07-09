@@ -245,6 +245,8 @@ class StoryRow(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     member_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     outlet_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Distinct content owners (#355) — the WS-C independence input; ≤ outlet_count.
+    owner_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     __table_args__ = (Index("stories_last_seen_idx", "last_seen"),)
 

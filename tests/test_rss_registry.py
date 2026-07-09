@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from app.sources.rss_registry import (
     build_rss_fetchers,
+    content_owner_map,
     feed_cadence_map,
     load_feed_configs,
 )
+
+_FEEDS_PATH = Path("app/sources/rss_feeds.json")
 
 
 def test_load_feed_configs_returns_at_least_25_feeds() -> None:
@@ -40,6 +46,33 @@ def test_feed_cadence_map_returns_minutes_per_slug() -> None:
     for slug, min_per in cadences.items():
         assert slug.startswith("rss-")
         assert 5 <= min_per <= 24 * 60
+
+
+def test_every_feed_declares_an_owner() -> None:
+    """WS-C step 2 (#355): each feed names who controls its editorial output."""
+    for entry in json.loads(_FEEDS_PATH.read_text(encoding="utf-8")):
+        owner = entry.get("owner")
+        assert owner, f"{entry['source']} has no owner"
+        assert owner == owner.lower() and " " not in owner
+
+
+def test_content_owner_map_covers_every_feed() -> None:
+    owners = content_owner_map()
+    assert set(owners.keys()) == {c.source for c in load_feed_configs()}
+
+
+def test_content_owner_map_collapses_shared_owners() -> None:
+    """Two BBC feeds are one owner; RT + TASS are both Russian-state-controlled."""
+    owners = content_owner_map()
+    assert owners["rss-bbc-world"] == owners["rss-bbc-uk"]
+    assert owners["rss-rt-news"] == owners["rss-tass-en"]
+    assert owners["rss-dawn"] != owners["rss-guardian-world"]
+
+
+def test_content_owner_map_syndication_wins_over_feed_owner() -> None:
+    """The Yahoo-hosted feed carries Reuters wire — the words are Reuters'."""
+    owners = content_owner_map()
+    assert owners["rss-reuters-world"] == "reuters"
 
 
 def test_build_rss_fetchers_returns_one_instance_per_slug() -> None:
