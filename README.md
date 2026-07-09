@@ -63,6 +63,7 @@ green pulsing while working (with live progress), red while idle, red
 | `make stories` | cluster the rolling news window into stories |
 | `make stories-audit` | emit the cluster hand-check sheet (threshold audit) |
 | `make sensor-checks` | check story claims against physical sensors → verdict board |
+| `make disagreement` | score cross-country telling divergence → most contested stories |
 | `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
 
 ### The data folder
@@ -210,7 +211,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
-| WS-B disagreement index | cross-country telling divergence | 🔨 step 1 of 4 done — country map + 12 new voices (#368) |
+| WS-B disagreement index | cross-country telling divergence | 🔨 step 2 of 4 done — per-story divergence (#370) |
 | WS-F indicator ranking | which dashboard number predicts best | ⏳ unblocked |
 | WS-G local AI checker | Ollama claim extraction w/ measured error rate | 💡 planned |
 

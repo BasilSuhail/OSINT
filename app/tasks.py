@@ -26,6 +26,7 @@ from app.composite.task import _compute_composite_body
 from app.corroboration.task import _sensor_checks_body
 from app.db import session_scope
 from app.db_models import EventRow, IngestFailureRow, IngestHealthRow
+from app.disagreement.task import _disagreement_body
 from app.enrichment.footprint import USER_AGENT, footprint_for_event
 from app.fetcher_registry import get_fetcher
 from app.housekeeping import run_retention_and_cap, vacuum_events
@@ -152,6 +153,20 @@ def sensor_check_stories() -> dict[str, Any]:
     """WS-C sensor cross-checks: claim-vs-sensor verdicts for stories in the
     rolling window (issue #361)."""
     return _sensor_checks_body()
+
+
+@app.task(
+    name="app.tasks.score_disagreement",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def score_disagreement() -> dict[str, Any]:
+    """WS-B disagreement: per-story cross-country telling divergence
+    (issue #370)."""
+    return _disagreement_body()
 
 
 @app.task(
@@ -377,6 +392,12 @@ app.conf.beat_schedule = {
     "sensor-checks-30min": {
         "task": "app.tasks.sensor_check_stories",
         "schedule": crontab(minute="17,47"),
+    },
+    # WS-B disagreement (issue #370): after clustering, offset from the
+    # sensor checks so the two analytical beats don't contend.
+    "disagreement-30min": {
+        "task": "app.tasks.score_disagreement",
+        "schedule": crontab(minute="22,52"),
     },
     "journal-daily-2am-utc": {
         "task": "app.tasks.journal_daily",
