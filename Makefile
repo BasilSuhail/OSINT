@@ -60,6 +60,9 @@ stories-audit:  ## Emit the threshold hand-check sheet (WS-C step 1, #334)
 sensor-checks:  ## Run WS-C sensor cross-checks once — claim-vs-sensor verdicts (#361)
 	.venv/bin/python -m app.corroboration.run
 
+disagreement:  ## Run WS-B telling divergence once — most contested stories (#370)
+	.venv/bin/python -m app.disagreement.run
+
 backfill-signals:  ## Backfill historical market+geopolitical+hazard composite scores (2015-2024); GDELT download resumes via $OSINT_DATA_DIR/gdelt/ checkpoints
 	.venv/bin/python -m app.composite.backfill
 

@@ -344,3 +344,30 @@ class StoryCorroborationRow(Base):
         Index("story_corroboration_story_idx", "story_id"),
         CheckConstraint("score >= 0 AND score < 1", name="story_corroboration_score_range"),
     )
+
+
+class StoryDisagreementRow(Base):
+    """WS-B per-story telling divergence — issue #370.
+
+    One row per (story, method version), overwritten in place while the story
+    is inside the clustering window. Stories with fewer than two known-origin
+    country groups get no row. `components` carries the group sizes — the
+    number is never shown without who is diverging.
+    """
+
+    __tablename__ = "story_disagreement"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    story_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    divergence: Mapped[float] = mapped_column(Float, nullable=False)
+    components: Mapped[dict[str, Any]] = mapped_column(JsonColumn, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("story_id", "method_version", name="story_disagreement_unique"),
+        Index("story_disagreement_story_idx", "story_id"),
+        CheckConstraint("divergence >= 0 AND divergence <= 1", name="story_disagreement_range"),
+    )
