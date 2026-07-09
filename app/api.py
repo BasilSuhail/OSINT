@@ -223,6 +223,7 @@ def stories_top(
             "last_seen": row.last_seen.isoformat(),
             "member_count": row.member_count,
             "outlet_count": row.outlet_count,
+            "owner_count": row.owner_count,
             "method_version": row.method_version,
         }
         for row in session.execute(stmt).scalars()

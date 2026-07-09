@@ -35,6 +35,7 @@ def _run() -> int:
         top_rows = [
             {
                 "title": row.title,
+                "owners": row.owner_count,
                 "outlets": row.outlet_count,
                 "members": row.member_count,
             }
@@ -71,14 +72,15 @@ def _render_markdown(counters: dict[str, Any], top_rows: list[dict[str, Any]]) -
         "",
         "Top stories of the last 24 h by outlet count:",
         "",
-        "| outlets | members | story |",
-        "|---|---|---|",
+        "| owners | outlets | members | story |",
+        "|---|---|---|---|",
     ]
     for row in top_rows:
-        lines.append(f"| {row['outlets']} | {row['members']} | {row['title']} |")
+        lines.append(f"| {row['owners']} | {row['outlets']} | {row['members']} | {row['title']} |")
     lines += [
         "",
-        "`outlets` = distinct feeds telling the story — the WS-C corroboration input. "
+        "`owners` = distinct *independent* tellers (#355) — the WS-C corroboration input; "
+        "`outlets` = distinct feeds (wire copies and co-owned feeds collapse into one owner). "
         "Assignments are append-only; clusters build over the rolling 72 h window.",
         "",
     ]

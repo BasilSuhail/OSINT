@@ -57,6 +57,35 @@ def test_three_outlets_one_story() -> None:
     assert story["title"] == "Wildfire forces mass evacuation in southern France"
 
 
+def test_owner_count_collapses_same_owner_feeds() -> None:
+    """WS-C step 2 (#355): three feeds but two owners → owner_count 2."""
+    result = cluster_articles(
+        [
+            _article(1, "Wildfire forces mass evacuation in southern France", "rss-a"),
+            _article(2, "Mass evacuation as wildfire spreads in southern France", "rss-b", 3),
+            _article(3, "Southern France wildfire triggers mass evacuation", "rss-c", 7),
+        ],
+        existing=[],
+        owner_map={"rss-a": "owner-1", "rss-b": "owner-1", "rss-c": "owner-2"},
+    )
+    (story,) = result.new_stories
+    assert story["outlet_count"] == 3
+    assert story["owner_count"] == 2
+
+
+def test_owner_count_falls_back_to_feed_slug_without_map() -> None:
+    """Unmapped feeds count as their own owner — never inflates independence."""
+    result = cluster_articles(
+        [
+            _article(1, "Wildfire forces mass evacuation in southern France", "rss-a"),
+            _article(2, "Mass evacuation as wildfire spreads in southern France", "rss-b", 3),
+        ],
+        existing=[],
+    )
+    (story,) = result.new_stories
+    assert story["owner_count"] == story["outlet_count"] == 2
+
+
 def test_incremental_run_joins_existing_story() -> None:
     first = cluster_articles(
         [

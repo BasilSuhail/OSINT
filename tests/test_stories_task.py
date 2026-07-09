@@ -53,6 +53,7 @@ def test_round_trip_clusters_and_persists(db_session: Session) -> None:
     quake = next(s for s in stories if "earthquake" in s.title.lower())
     assert quake.member_count == 2
     assert quake.outlet_count == 2
+    assert quake.owner_count == 2  # rss-a / rss-b unmapped → own owners
 
 
 def test_rerun_is_noop(db_session: Session) -> None:
@@ -85,6 +86,30 @@ def test_new_article_joins_persisted_story(db_session: Session) -> None:
     assert story.outlet_count == 3
     members = db_session.execute(select(StoryMemberRow)).scalars().all()
     assert {m.story_id for m in members} == {story.id}
+
+
+def test_owner_count_uses_real_registry_on_both_paths(db_session: Session) -> None:
+    """WS-C step 2 (#355): BBC World + BBC UK are one owner on found *and* refreshed stories."""
+    db_session.add_all(
+        [
+            _news(1, "Powerful earthquake strikes Tokyo, dozens injured", "rss-bbc-world", 0),
+            _news(2, "Dozens injured as powerful earthquake hits Tokyo", "rss-bbc-uk", 5),
+        ]
+    )
+    db_session.commit()
+    _run(db_session)
+
+    (story,) = db_session.execute(select(StoryRow)).scalars().all()
+    assert story.outlet_count == 2
+    assert story.owner_count == 1  # both feeds are BBC
+
+    db_session.add(_news(3, "Tokyo earthquake: injured toll rises to dozens", "rss-dawn", 30))
+    db_session.commit()
+    _run(db_session)
+
+    db_session.refresh(story)
+    assert story.outlet_count == 3
+    assert story.owner_count == 2  # BBC + Dawn
 
 
 def test_beat_schedule_has_stories_entry() -> None:
