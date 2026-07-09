@@ -207,7 +207,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-D coverage bias | attention-bias table | ✅ live on /coverage |
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
-| WS-C corroboration | independent-owner counts + sensor cross-checks | 🔨 step 3 of 5 done — sensor cross-checks (#361) |
+| WS-C corroboration | independent-owner counts + sensor cross-checks | 🔨 step 4 of 5 done — corroboration-v1.0 score (#363) |
 | WS-B disagreement index | cross-country telling divergence | ⏳ queued after WS-C |
 | WS-F indicator ranking | which dashboard number predicts best | ⏳ unblocked |
 | WS-G local AI checker | Ollama claim extraction w/ measured error rate | 💡 planned |
