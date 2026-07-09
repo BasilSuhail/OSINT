@@ -289,3 +289,32 @@ class StoryMemberRow(Base):
     )
 
     __table_args__ = (Index("story_members_story_idx", "story_id"),)
+
+
+class StorySensorCheckRow(Base):
+    """WS-C sensor cross-check verdict per (story, claim type) — issue #361.
+
+    Overwrite-in-place per method version, except a 'confirmed' verdict is
+    never downgraded: hazard retention deletes the sensor row within days,
+    so the verdict keeps its evidence snapshot after the evidence is gone.
+    """
+
+    __tablename__ = "story_sensor_checks"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    story_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    claim_type: Mapped[str] = mapped_column(Text, nullable=False)
+    verdict: Mapped[str] = mapped_column(Text, nullable=False)
+    matched_event_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JsonColumn, nullable=True)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "story_id", "claim_type", "method_version", name="story_sensor_checks_unique"
+        ),
+        Index("story_sensor_checks_story_idx", "story_id"),
+    )
