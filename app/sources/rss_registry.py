@@ -41,6 +41,18 @@ def load_feed_configs() -> list[RssFeedConfig]:
     return out
 
 
+def content_owner_map() -> dict[str, str]:
+    """Source slug → owner of the *words* the feed carries (WS-C step 2, #355).
+
+    ``syndication`` wins over ``owner``: the Yahoo-hosted feed republishes
+    Reuters wire, so its content owner is ``reuters``. Consumers should fall
+    back to the source slug for slugs not in this map — an unmapped feed
+    counts as its own owner and can never inflate independence.
+    """
+    raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
+    return {entry["source"]: entry.get("syndication") or entry["owner"] for entry in raw}
+
+
 def feed_cadence_map() -> dict[str, int]:
     """Source slug → cadence in minutes. Drives ``app.tasks`` beat schedule."""
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
