@@ -30,9 +30,11 @@ def predictions_from_scores(
     scores: Iterable[Mapping[str, Any]],
     *,
     now: datetime | None = None,
+    source: str = SOURCE,
 ) -> list[dict[str, Any]]:
-    """Expand each composite score into one prediction per horizon.
+    """Expand each score row into one prediction per horizon.
 
+    Source-generic since #374 (composite and disagreement share the layer).
     Hindcast guard: a score for a month earlier than the issuance month is
     skipped — its forecast window [t+1, t+k] would overlap the known past,
     and grading it would fake a track record. Only genuinely forward
@@ -47,7 +49,7 @@ def predictions_from_scores(
         for horizon in HORIZONS:
             predictions.append(
                 {
-                    "source": SOURCE,
+                    "source": source,
                     "method_version": score["method_version"],
                     "country": score["country"],
                     "bucket_start": score["bucket_start"],

@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.composite.config import DEFAULT_METHOD_VERSION
 from app.db import get_engine
-from app.db_models import LabelRow, PredictionRow, ScoreRow
+from app.db_models import DisagreementPairRow, LabelRow, PredictionRow, ScoreRow
+from app.disagreement.exam import divergence_exposures
+from app.disagreement.tellings import METHOD_VERSION as DISAGREEMENT_VERSION
 from app.journal.emit import predictions_from_scores, upsert_predictions
 from app.journal.grade import grade_pending
 from app.labels.acled_loader import load_acled_weekly
@@ -52,6 +54,27 @@ def _journal_daily_inner() -> dict[str, Any]:
         ]
         issued = upsert_predictions(predictions_from_scores(scores), session)
 
+        # WS-B forward exam (#374, pre-registered in docs/disagreement-exam.md):
+        # divergence exposures ride the same journal — same hindcast guard,
+        # same immutability, same grader, own scoreboard line.
+        exposures = divergence_exposures(
+            {
+                "country_a": row.country_a,
+                "country_b": row.country_b,
+                "month": row.month,
+                "n_stories": row.n_stories,
+                "mean_divergence": row.mean_divergence,
+            }
+            for row in session.execute(
+                select(DisagreementPairRow).where(
+                    DisagreementPairRow.method_version == DISAGREEMENT_VERSION
+                )
+            ).scalars()
+        )
+        issued_disagreement = upsert_predictions(
+            predictions_from_scores(exposures, source="disagreement"), session
+        )
+
         graded = 0
         if settings.acled_csv_dir:
             try:
@@ -66,4 +89,9 @@ def _journal_daily_inner() -> dict[str, Any]:
                 graded = grade_pending(session, label_months, coverage)
 
         total = session.execute(select(PredictionRow.id)).fetchall()
-        return {"issued": issued, "graded_now": graded, "total_predictions": len(total)}
+        return {
+            "issued": issued,
+            "issued_disagreement": issued_disagreement,
+            "graded_now": graded,
+            "total_predictions": len(total),
+        }

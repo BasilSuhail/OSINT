@@ -169,9 +169,14 @@ We can't compute "truth", so we compute three honest proxies **per story**:
   shown with its full evidence trail on the /stories card (#365). The
   clustering threshold under all of this was hand-audited first —
   `docs/audits/stories-threshold-audit.md`.
-- **Disagreement (WS-B, next)** — same story, different countries' outlets:
-  how far apart are the tellings? That number is both a bias measure *and*
-  a candidate early-warning signal.
+- **Disagreement (WS-B, done)** — same story, different countries' outlets:
+  how far apart are the tellings? Every cross-country story carries a
+  `disagreement-v1.0` divergence (#370), rolled up per (country-pair, month)
+  (#372) — first live board: RU|US at 0.832 mean over 11 co-told stories.
+  Whether divergence *predicts* instability is under a pre-registered forward
+  exam (#374): divergence exposures enter the prediction journal daily and
+  get graded like every other forecast — protocol frozen in
+  `docs/disagreement-exam.md` before the first prediction was issued.
 - **Coverage bias (WS-D, done)** — the dashboard publishes its own blind
   spots instead of hiding them.
 - **Local AI checker (WS-G, planned)** — a local Ollama model extracts claims
@@ -211,7 +216,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
-| WS-B disagreement index | cross-country telling divergence | 🔨 step 3 of 4 done — (pair, month) index (#372) |
+| WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward exam (#374) |
 | WS-F indicator ranking | which dashboard number predicts best | ⏳ unblocked |
 | WS-G local AI checker | Ollama claim extraction w/ measured error rate | 💡 planned |
 
