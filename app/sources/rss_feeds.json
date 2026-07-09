@@ -5,7 +5,8 @@
     "default_country": null,
     "pretty_name": "BBC World",
     "cadence_min": 60,
-    "owner": "bbc"
+    "owner": "bbc",
+    "country": "GB"
   },
   {
     "source": "rss-bbc-uk",
@@ -13,7 +14,8 @@
     "default_country": "GB",
     "pretty_name": "BBC UK",
     "cadence_min": 60,
-    "owner": "bbc"
+    "owner": "bbc",
+    "country": "GB"
   },
   {
     "source": "rss-reuters-world",
@@ -22,7 +24,8 @@
     "pretty_name": "Reuters / Yahoo World",
     "cadence_min": 60,
     "owner": "yahoo",
-    "syndication": "reuters"
+    "syndication": "reuters",
+    "country": "GB"
   },
   {
     "source": "rss-dawn",
@@ -30,7 +33,8 @@
     "default_country": "PK",
     "pretty_name": "Dawn",
     "cadence_min": 60,
-    "owner": "dawn-media"
+    "owner": "dawn-media",
+    "country": "PK"
   },
   {
     "source": "rss-guardian-world",
@@ -38,7 +42,8 @@
     "default_country": null,
     "pretty_name": "Guardian World",
     "cadence_min": 60,
-    "owner": "guardian-media"
+    "owner": "guardian-media",
+    "country": "GB"
   },
   {
     "source": "rss-geo-english",
@@ -46,7 +51,8 @@
     "default_country": "PK",
     "pretty_name": "Geo English",
     "cadence_min": 60,
-    "owner": "jang-group"
+    "owner": "jang-group",
+    "country": "PK"
   },
   {
     "source": "rss-aljazeera",
@@ -54,7 +60,8 @@
     "default_country": "QA",
     "pretty_name": "Al Jazeera English",
     "cadence_min": 60,
-    "owner": "aljazeera"
+    "owner": "aljazeera",
+    "country": "QA"
   },
   {
     "source": "rss-cnn-world",
@@ -62,7 +69,8 @@
     "default_country": "US",
     "pretty_name": "CNN World",
     "cadence_min": 60,
-    "owner": "cnn"
+    "owner": "cnn",
+    "country": "US"
   },
   {
     "source": "rss-nyt-world",
@@ -70,7 +78,8 @@
     "default_country": "US",
     "pretty_name": "NYT World",
     "cadence_min": 60,
-    "owner": "nyt"
+    "owner": "nyt",
+    "country": "US"
   },
   {
     "source": "rss-france24-en",
@@ -78,7 +87,8 @@
     "default_country": "FR",
     "pretty_name": "France 24 English",
     "cadence_min": 60,
-    "owner": "france-medias-monde"
+    "owner": "france-medias-monde",
+    "country": "FR"
   },
   {
     "source": "rss-dw-world",
@@ -86,7 +96,8 @@
     "default_country": "DE",
     "pretty_name": "DW World",
     "cadence_min": 60,
-    "owner": "dw"
+    "owner": "dw",
+    "country": "DE"
   },
   {
     "source": "rss-nhk-world",
@@ -94,7 +105,8 @@
     "default_country": "JP",
     "pretty_name": "NHK World",
     "cadence_min": 60,
-    "owner": "nhk"
+    "owner": "nhk",
+    "country": "JP"
   },
   {
     "source": "rss-rt-news",
@@ -102,7 +114,8 @@
     "default_country": "RU",
     "pretty_name": "RT News",
     "cadence_min": 60,
-    "owner": "russian-state"
+    "owner": "russian-state",
+    "country": "RU"
   },
   {
     "source": "rss-tass-en",
@@ -110,7 +123,8 @@
     "default_country": "RU",
     "pretty_name": "TASS English",
     "cadence_min": 60,
-    "owner": "russian-state"
+    "owner": "russian-state",
+    "country": "RU"
   },
   {
     "source": "rss-times-of-india",
@@ -118,7 +132,8 @@
     "default_country": "IN",
     "pretty_name": "Times of India",
     "cadence_min": 60,
-    "owner": "times-group"
+    "owner": "times-group",
+    "country": "IN"
   },
   {
     "source": "rss-the-hindu",
@@ -126,7 +141,8 @@
     "default_country": "IN",
     "pretty_name": "The Hindu",
     "cadence_min": 60,
-    "owner": "kasturi-sons"
+    "owner": "kasturi-sons",
+    "country": "IN"
   },
   {
     "source": "rss-tribune-pk",
@@ -134,7 +150,8 @@
     "default_country": "PK",
     "pretty_name": "Express Tribune",
     "cadence_min": 60,
-    "owner": "lakson-group"
+    "owner": "lakson-group",
+    "country": "PK"
   },
   {
     "source": "rss-cbc-world",
@@ -142,7 +159,8 @@
     "default_country": "CA",
     "pretty_name": "CBC World",
     "cadence_min": 60,
-    "owner": "cbc"
+    "owner": "cbc",
+    "country": "CA"
   },
   {
     "source": "rss-abc-au-world",
@@ -150,7 +168,8 @@
     "default_country": "AU",
     "pretty_name": "ABC Australia World",
     "cadence_min": 60,
-    "owner": "abc-au"
+    "owner": "abc-au",
+    "country": "AU"
   },
   {
     "source": "rss-rnz-world",
@@ -158,7 +177,8 @@
     "default_country": "NZ",
     "pretty_name": "RNZ World",
     "cadence_min": 60,
-    "owner": "rnz"
+    "owner": "rnz",
+    "country": "NZ"
   },
   {
     "source": "rss-straits-times-world",
@@ -166,7 +186,8 @@
     "default_country": "SG",
     "pretty_name": "Straits Times World",
     "cadence_min": 60,
-    "owner": "sph-media"
+    "owner": "sph-media",
+    "country": "SG"
   },
   {
     "source": "rss-jpost-world",
@@ -174,7 +195,8 @@
     "default_country": "IL",
     "pretty_name": "Jerusalem Post",
     "cadence_min": 60,
-    "owner": "jpost"
+    "owner": "jpost",
+    "country": "IL"
   },
   {
     "source": "rss-haaretz-en",
@@ -182,7 +204,8 @@
     "default_country": "IL",
     "pretty_name": "Haaretz English",
     "cadence_min": 60,
-    "owner": "haaretz-group"
+    "owner": "haaretz-group",
+    "country": "IL"
   },
   {
     "source": "rss-arab-news",
@@ -190,7 +213,8 @@
     "default_country": "SA",
     "pretty_name": "Arab News",
     "cadence_min": 60,
-    "owner": "srmg"
+    "owner": "srmg",
+    "country": "SA"
   },
   {
     "source": "rss-kyiv-independent",
@@ -198,6 +222,115 @@
     "default_country": "UA",
     "pretty_name": "Kyiv Independent",
     "cadence_min": 60,
-    "owner": "kyiv-independent"
+    "owner": "kyiv-independent",
+    "country": "UA"
+  },
+  {
+    "source": "rss-sabc-news",
+    "url": "https://www.sabcnews.com/sabcnews/feed/",
+    "default_country": "ZA",
+    "pretty_name": "SABC News",
+    "cadence_min": 60,
+    "owner": "sabc",
+    "country": "ZA"
+  },
+  {
+    "source": "rss-nation-kenya",
+    "url": "https://nation.africa/kenya/rss.xml",
+    "default_country": "KE",
+    "pretty_name": "Nation Kenya",
+    "cadence_min": 60,
+    "owner": "nation-media-group",
+    "country": "KE"
+  },
+  {
+    "source": "rss-egypt-independent",
+    "url": "https://egyptindependent.com/feed/",
+    "default_country": "EG",
+    "pretty_name": "Egypt Independent",
+    "cadence_min": 60,
+    "owner": "al-masry-al-youm",
+    "country": "EG"
+  },
+  {
+    "source": "rss-mercopress",
+    "url": "https://en.mercopress.com/rss/",
+    "default_country": null,
+    "pretty_name": "MercoPress",
+    "cadence_min": 60,
+    "owner": "mercopress",
+    "country": "UY"
+  },
+  {
+    "source": "rss-mexico-news-daily",
+    "url": "https://mexiconewsdaily.com/feed/",
+    "default_country": "MX",
+    "pretty_name": "Mexico News Daily",
+    "cadence_min": 60,
+    "owner": "mexico-news-daily",
+    "country": "MX"
+  },
+  {
+    "source": "rss-agencia-brasil",
+    "url": "https://agenciabrasil.ebc.com.br/en/rss/ultimasnoticias/feed.xml",
+    "default_country": "BR",
+    "pretty_name": "Agencia Brasil English",
+    "cadence_min": 60,
+    "owner": "brazilian-state",
+    "country": "BR"
+  },
+  {
+    "source": "rss-yonhap-en",
+    "url": "https://en.yna.co.kr/RSS/news.xml",
+    "default_country": "KR",
+    "pretty_name": "Yonhap News English",
+    "cadence_min": 60,
+    "owner": "yonhap",
+    "country": "KR"
+  },
+  {
+    "source": "rss-scmp-china",
+    "url": "https://www.scmp.com/rss/91/feed",
+    "default_country": "CN",
+    "pretty_name": "SCMP China",
+    "cadence_min": 60,
+    "owner": "alibaba",
+    "country": "HK"
+  },
+  {
+    "source": "rss-antara-en",
+    "url": "https://en.antaranews.com/rss/news.xml",
+    "default_country": "ID",
+    "pretty_name": "Antara News English",
+    "cadence_min": 60,
+    "owner": "indonesian-state",
+    "country": "ID"
+  },
+  {
+    "source": "rss-vnexpress-intl",
+    "url": "https://e.vnexpress.net/rss/news.rss",
+    "default_country": "VN",
+    "pretty_name": "VnExpress International",
+    "cadence_min": 60,
+    "owner": "vnexpress",
+    "country": "VN"
+  },
+  {
+    "source": "rss-daily-sabah",
+    "url": "https://www.dailysabah.com/rss/homepage",
+    "default_country": "TR",
+    "pretty_name": "Daily Sabah",
+    "cadence_min": 60,
+    "owner": "turkuvaz",
+    "country": "TR"
+  },
+  {
+    "source": "rss-euronews",
+    "url": "https://www.euronews.com/rss",
+    "default_country": null,
+    "pretty_name": "Euronews",
+    "cadence_min": 60,
+    "owner": "euronews",
+    "country": "FR"
   }
 ]

@@ -110,7 +110,7 @@ publish all of them. That is this chapter.
 ```text
    sensors (don't lie)             text (can lie)
  ┌──────────────────────┐      ┌──────────────────────┐
- │ USGS quakes          │      │ ~25 news feeds (RSS) │
+ │ USGS quakes          │      │ ~37 news feeds (RSS) │
  │ NASA FIRMS fires     │      │ GDELT world events   │
  │ GDACS disasters      │      └──────────┬───────────┘
  │ market prices        │                 │
@@ -210,7 +210,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
-| WS-B disagreement index | cross-country telling divergence | ⏳ queued after WS-C |
+| WS-B disagreement index | cross-country telling divergence | 🔨 step 1 of 4 done — country map + 12 new voices (#368) |
 | WS-F indicator ranking | which dashboard number predicts best | ⏳ unblocked |
 | WS-G local AI checker | Ollama claim extraction w/ measured error rate | 💡 planned |
 
@@ -238,7 +238,7 @@ Once `make up` runs, the scheduler fires these forever:
 | GDACS | multi-hazard alerts | official geojson feed | 15 min |
 | NASA FIRMS | active fires | official CSV endpoint | hourly |
 | EONET | natural events | NASA API | 30 min |
-| ~25 news feeds | world/regional news | RSS (published by the outlets) | hourly, staggered |
+| ~37 news feeds | world/regional news | RSS (published by the outlets) | hourly, staggered |
 | EM-DAT / FRED | disasters / macro series | official APIs | daily |
 | ACLED | conflict events | manual drop-folder + opt-in API (see 3.3) | hourly check |
 | OpenSky | aircraft states | REST API | 2 min |
