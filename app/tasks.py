@@ -23,6 +23,7 @@ from app.celery_app import app
 from app.cii.scoring import CII_METHOD_VERSION
 from app.cii.task import _compute_cii_body
 from app.composite.task import _compute_composite_body
+from app.corroboration.task import _sensor_checks_body
 from app.db import session_scope
 from app.db_models import EventRow, IngestFailureRow, IngestHealthRow
 from app.enrichment.footprint import USER_AGENT, footprint_for_event
@@ -137,6 +138,20 @@ def cluster_stories() -> dict[str, Any]:
     """WS-A story clustering: group the rolling news window into stories
     (issue #296)."""
     return _cluster_stories_body()
+
+
+@app.task(
+    name="app.tasks.sensor_check_stories",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def sensor_check_stories() -> dict[str, Any]:
+    """WS-C sensor cross-checks: claim-vs-sensor verdicts for stories in the
+    rolling window (issue #361)."""
+    return _sensor_checks_body()
 
 
 @app.task(
@@ -356,6 +371,12 @@ app.conf.beat_schedule = {
     "stories-cluster-30min": {
         "task": "app.tasks.cluster_stories",
         "schedule": crontab(minute="7,37"),
+    },
+    # WS-C sensor cross-checks (issue #361): 10 min after each clustering run,
+    # while the hazard rows (≈2-day retention) still exist.
+    "sensor-checks-30min": {
+        "task": "app.tasks.sensor_check_stories",
+        "schedule": crontab(minute="17,47"),
     },
     "journal-daily-2am-utc": {
         "task": "app.tasks.journal_daily",
