@@ -120,6 +120,46 @@ def test_rerun_upserts_and_never_downgrades_confirmed(db_session: Session) -> No
     assert counters["kept_confirmed"] == 1
 
 
+def test_scores_persisted_for_window_stories(db_session: Session) -> None:
+    """WS-C step 4 (#363): every story in the window gets a corroboration row."""
+    from app.db_models import StoryCorroborationRow
+
+    db_session.add_all(
+        [
+            _news(1, "Powerful earthquake strikes Tokyo, dozens injured", "rss-bbc-world", "JP"),
+            _news(2, "Dozens injured as powerful earthquake hits Tokyo", "rss-dawn", "JP", 5),
+            _quake(50, "JP", hours_before=4),
+        ]
+    )
+    db_session.commit()
+    counters = _run_both(db_session)
+    assert counters["scored"] == 1
+
+    (row,) = db_session.execute(select(StoryCorroborationRow)).scalars().all()
+    assert row.method_version == "corroboration-v1.0"
+    # 2 independent owners (bbc, dawn-media) + a confirmed quake → 1 - 2^-2.
+    assert row.score == 0.75
+    assert row.components["owner_count"] == 2
+    assert row.components["confirmed_claims"] == 1
+
+    # Re-run overwrites in place, never duplicates.
+    _rerun(db_session)
+    rows = db_session.execute(select(StoryCorroborationRow)).scalars().all()
+    assert len(rows) == 1
+
+
+def test_claimless_story_scored_on_owners_alone(db_session: Session) -> None:
+    from app.db_models import StoryCorroborationRow
+
+    db_session.add(_news(1, "Central bank raises interest rates", "rss-a", "US"))
+    db_session.commit()
+    _run_both(db_session)
+
+    (row,) = db_session.execute(select(StoryCorroborationRow)).scalars().all()
+    assert row.score == 0.0
+    assert row.components["claims_checked"] == 0
+
+
 def test_beat_schedule_has_sensor_checks_entry() -> None:
     from app.tasks import app as celery_app
 
