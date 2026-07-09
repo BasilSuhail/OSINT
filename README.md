@@ -211,9 +211,119 @@ The living log of all of this is pinned issue
 
 ---
 
-# Chapter 3 — (reserved)
+# Chapter 3 — How the data gets collected
 
-*Intentionally empty — next major arc gets written here.*
+*Every source, how it is downloaded, and how the disk is managed. No scraping
+anywhere: official APIs, published bulk files and RSS only — if a future
+source needs real scraping, its terms of service get read first or it stays
+out.*
+
+### 3.1 The live collectors (celery beat, around the clock)
+
+Once `make up` runs, the scheduler fires these forever:
+
+| Source | What | How it is pulled | Cadence |
+|---|---|---|---|
+| yfinance | country-ETF prices → market severity | Yahoo Finance API | 5 min |
+| GDELT v2 | world geopolitical events | `lastupdate.txt` pointer → newest 15-min export zip | 15 min |
+| USGS | earthquakes | FDSN query API (geojson) | 15 min |
+| GDACS | multi-hazard alerts | official geojson feed | 15 min |
+| NASA FIRMS | active fires | official CSV endpoint | hourly |
+| EONET | natural events | NASA API | 30 min |
+| ~25 news feeds | world/regional news | RSS (published by the outlets) | hourly, staggered |
+| EM-DAT / FRED | disasters / macro series | official APIs | daily |
+| ACLED | conflict events | manual drop-folder + opt-in API (see 3.3) | hourly check |
+| OpenSky | aircraft states | REST API | 2 min |
+| abuse.ch / Polymarket / UK Police | cyber / prediction markets / crime | official APIs | 15 min – daily |
+
+Every fetched row gets a **fingerprint** `(source, source_event_id)` — the
+database rejects the same real-world record twice no matter how often it is
+re-fetched (Chapter 2.1). Per-source successes/failures land in
+`ingest_health`, which is what the dataset chips in the top bar read.
+
+### 3.2 GDELT — the two-path source
+
+GDELT publishes a whole family of data products (Event Database 1.0/2.0,
+Global Knowledge Graph, BigQuery mirrors, an Analysis Service, ngrams,
+quotation/entity/frontpage graphs...). We use exactly **two** of them, both
+plain static files off their CDN, and skip the rest deliberately:
+
+| GDELT product | Use it? | Why |
+|---|---|---|
+| **Event DB 2.0** (15-min zips) | ✅ live | freshest event stream; `lastupdate.txt` always points at the newest file — trivially pollable, no key |
+| **Event DB 1.0** (daily zips) | ✅ history | the only product covering our whole 2014-2024 window at daily grain with stable format |
+| Event DB 1.0 "reduced" | ❌ | ends Feb 2014 — misses the window; its one-event-per-day collapse also destroys volume information |
+| Global Knowledge Graph 1.0/2.0 | ❌ (for now) | themes/emotions/counts at ~2.5 TB per year — far beyond what the Goldstein signal needs; a *candidate* for the WS-B disagreement work later, as its own decision |
+| 2.0 "mentions" table | ❌ (for now) | per-article mention records — interesting for corroboration counts someday, unnecessary for a monthly country mean |
+| BigQuery mirror | ❌ | needs a Google Cloud account + billing; this project is local-first with zero cloud dependencies |
+| Analysis Service | ❌ | browser/email tool for humans, GDELT 1.0 only, not automatable |
+| Normalization files | ❌ | they correct for news-volume growth over time — our signal (mean Goldstein per country-month) is already volume-independent, and the rolling z-score handles drift |
+| Frontpage / quotation / entity graphs, ngrams, TV/visual datasets | ❌ | different research questions entirely |
+
+The two we use, side by side:
+
+```text
+LIVE (every 15 min)                 HISTORY (one-time, 2014-2024)
+GDELT v2                            GDELT v1 daily archives
+─────────────────                   ──────────────────────────
+lastupdate.txt  ── points to ──►    ~4,000 files, one per day:
+newest export.CSV.zip               YYYYMMDD.export.CSV.zip
+   │ unzip in memory                   │ download → unzip in memory
+   ▼                                   │ keep 3 columns only
+events table                           │ (date, GoldsteinScale, country)
+(retention ~2 days)                    ▼
+                                    per-country monthly sums
+                                    → one small JSON checkpoint per month
+                                      in data/gdelt/ — raw file DISCARDED
+```
+
+The history run downloads ~40 GB over its lifetime but **keeps under 1 MB**:
+only the monthly aggregates survive. Checkpoints are written atomically
+(temp file → rename), so a killed run resumes at the next month for free and
+a finished cache makes re-runs instant. Missing days (GDELT has known gaps)
+are recorded in the checkpoint, not papered over; transient download errors
+retry three times, then fail the whole month loudly rather than write a
+partial one.
+
+### 3.3 ACLED — deliberately manual
+
+ACLED is registered-access and its data API rejects many valid academic
+accounts, so the ground-truth labels are built from **manually downloaded
+aggregate xlsx files** dropped into the data directory; `make labels`
+rebuilds from whatever is there. A helper (`scripts/acled_browser_sync.py`)
+can capture downloads from your own logged-in myACLED browser session — it
+automates *your* clicks and bypasses nothing.
+
+Manual is a feature, not a gap: **ground truth must never silently drift
+under a running evaluation.** Label changes only happen as versioned,
+pre-registered amendments (labels-v1.0 → v1.1 lives in `docs/methodology.md`).
+
+### 3.4 The history backfills
+
+`make backfill-signals` rebuilds the composite's 2015-2024 history from three
+sources in one run — market (full ETF price history via yfinance), hazard
+(all M≥4.5 quakes via USGS, yearly chunks under their 20k-row cap) and
+geopolitical (the GDELT v1 path above). Everything flows through the *same
+code path as live data*, rows carry `backfill: true` for provenance, and the
+whole thing is idempotent — run it twice, get the same database.
+
+### 3.5 How the disk is managed
+
+```text
+data/                        (one folder, bind-mounted, survives anything)
+├── postgres/    ~2.6 GB     the database — events dominate (~2.2 GB)
+├── private/     ~100 MB     ACLED drop-folder (gitignored)
+├── redis/        ~20 MB     queue state, ephemeral
+├── exports/       ~2 MB     panel.parquet + all reports the dashboard serves
+└── gdelt/         <1 MB     132 monthly checkpoint JSONs (11 years of GDELT)
+```
+
+Retention (03:00 UTC daily + `make data-prune`): news ~3 days, hazard/GDELT
+raw events ~2 days — the events table stays small because **everything
+analytical is derived and kept forever** (scores, labels, stories, journal,
+job runs). Backups: `make data-size` to inspect, snapshot script in
+`scripts/`, and the whole folder is portable — point `OSINT_DATA_DIR` at an
+external disk and move it.
 
 ---
 
