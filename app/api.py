@@ -25,7 +25,9 @@ from app.db_models import (
     JobRunRow,
     PredictionRow,
     ScoreRow,
+    StoryCorroborationRow,
     StoryRow,
+    StorySensorCheckRow,
 )
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
@@ -207,26 +209,45 @@ def stories_top(
     hours: int = Query(default=24, ge=1, le=24 * 90),
     limit: int = Query(default=50, ge=1, le=500),
 ) -> list[dict]:
-    """Story clusters seen in the last `hours`, loudest (most outlets) first."""
+    """Story clusters seen in the last `hours`, loudest (most outlets) first.
+
+    Each story carries its corroboration-v1.0 score with the full evidence
+    trail (WS-C step 5, #365) — null until the corroboration beat has scored
+    it — plus the claim → verdict map from the sensor cross-checks.
+    """
     cutoff = datetime.now(UTC) - timedelta(hours=hours)
     stmt = (
-        select(StoryRow)
+        select(StoryRow, StoryCorroborationRow)
+        .outerjoin(StoryCorroborationRow, StoryCorroborationRow.story_id == StoryRow.id)
         .where(StoryRow.last_seen >= cutoff)
         .order_by(StoryRow.outlet_count.desc(), StoryRow.member_count.desc())
         .limit(limit)
     )
+    rows = session.execute(stmt).all()
+
+    checks: dict[int, dict[str, str]] = {}
+    story_ids = [story.id for story, _ in rows]
+    if story_ids:
+        for check in session.execute(
+            select(StorySensorCheckRow).where(StorySensorCheckRow.story_id.in_(story_ids))
+        ).scalars():
+            checks.setdefault(check.story_id, {})[check.claim_type] = check.verdict
+
     return [
         {
-            "id": str(row.id),
-            "title": row.title,
-            "first_seen": row.first_seen.isoformat(),
-            "last_seen": row.last_seen.isoformat(),
-            "member_count": row.member_count,
-            "outlet_count": row.outlet_count,
-            "owner_count": row.owner_count,
-            "method_version": row.method_version,
+            "id": str(story.id),
+            "title": story.title,
+            "first_seen": story.first_seen.isoformat(),
+            "last_seen": story.last_seen.isoformat(),
+            "member_count": story.member_count,
+            "outlet_count": story.outlet_count,
+            "owner_count": story.owner_count,
+            "corroboration": corro.score if corro else None,
+            "corroboration_components": corro.components if corro else None,
+            "sensor_checks": checks.get(story.id, {}),
+            "method_version": story.method_version,
         }
-        for row in session.execute(stmt).scalars()
+        for story, corro in rows
     ]
 
 
