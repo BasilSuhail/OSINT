@@ -156,16 +156,18 @@ We can't compute "truth", so we compute three honest proxies **per story**:
                            shown on /coverage.
 ```
 
-- **Corroboration (WS-C, in progress)** — every story cluster shows how many
+- **Corroboration (WS-C, done)** — every story cluster shows how many
   *independent owners* tell it, not just feeds: wire copies and co-owned
   outlets collapse into one teller (BBC's two feeds are one owner; RT + TASS
-  are one state controller — #356). Before that, we hand-checked 30 clusters
-  and confirmed the clustering threshold —
-  `docs/audits/stories-threshold-audit.md`. And claims are now checked against
-  sensors (#361): an earthquake story either has a matching USGS row or it
-  doesn't — wildfire→FIRMS, disaster→GDACS, market crash→drawdown; verdicts
-  keep their evidence snapshot after retention deletes the sensor row. Next:
-  fold owners + verdicts into one versioned corroboration score.
+  are one state controller — #356). Claims are checked against sensors
+  (#361): an earthquake story either has a matching USGS row or it doesn't —
+  wildfire→FIRMS, disaster→GDACS, market crash→drawdown; verdicts keep their
+  evidence snapshot after retention deletes the sensor row. Both fold into
+  one fixed, versioned number (`corroboration-v1.0`, #363): each extra owner
+  halves the remaining doubt, a sensor confirmation halves it once more —
+  shown with its full evidence trail on the /stories card (#365). The
+  clustering threshold under all of this was hand-audited first —
+  `docs/audits/stories-threshold-audit.md`.
 - **Disagreement (WS-B, next)** — same story, different countries' outlets:
   how far apart are the tellings? That number is both a bias measure *and*
   a candidate early-warning signal.
@@ -207,7 +209,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-D coverage bias | attention-bias table | ✅ live on /coverage |
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
-| WS-C corroboration | independent-owner counts + sensor cross-checks | 🔨 step 3 of 5 done — sensor cross-checks (#361) |
+| WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
 | WS-B disagreement index | cross-country telling divergence | ⏳ queued after WS-C |
 | WS-F indicator ranking | which dashboard number predicts best | ⏳ unblocked |
 | WS-G local AI checker | Ollama claim extraction w/ measured error rate | 💡 planned |

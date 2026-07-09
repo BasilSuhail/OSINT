@@ -7,7 +7,28 @@ export interface StoryRow {
   last_seen: string
   member_count: number
   outlet_count: number
+  owner_count: number
+  corroboration: number | null
+  corroboration_components: Record<string, unknown> | null
+  sensor_checks: Record<string, string>
   method_version: string
+}
+
+/** Badge tone for the corroboration-v1.0 score (null = not yet scored). */
+export function corroborationTone(score: number | null): string {
+  if (score !== null && score >= 0.75) return "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
+  if (score !== null && score >= 0.5)
+    return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+  if (score !== null && score > 0) return "border-neutral-600 bg-neutral-800/60 text-neutral-300"
+  return "border-neutral-800 bg-neutral-900 text-neutral-500"
+}
+
+/** Claim types the physical sensors confirmed — the ✓ chips on the story line. */
+export function confirmedClaims(checks: Record<string, string>): string[] {
+  return Object.entries(checks)
+    .filter(([, verdict]) => verdict === "confirmed")
+    .map(([claim]) => claim)
+    .sort()
 }
 
 export async function fetchTopStories(hours = 24, limit = 100): Promise<StoryRow[]> {

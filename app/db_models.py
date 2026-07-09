@@ -318,3 +318,29 @@ class StorySensorCheckRow(Base):
         ),
         Index("story_sensor_checks_story_idx", "story_id"),
     )
+
+
+class StoryCorroborationRow(Base):
+    """WS-C corroboration score per story — issue #363.
+
+    One row per (story, method version), overwritten in place while the story
+    is inside the clustering window. `components` is the evidence trail —
+    the score is never shown without its inputs.
+    """
+
+    __tablename__ = "story_corroboration"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    story_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    components: Mapped[dict[str, Any]] = mapped_column(JsonColumn, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("story_id", "method_version", name="story_corroboration_unique"),
+        Index("story_corroboration_story_idx", "story_id"),
+        CheckConstraint("score >= 0 AND score < 1", name="story_corroboration_score_range"),
+    )
