@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.corroboration.task import _sensor_checks_body
 from app.db import get_engine
-from app.db_models import StoryRow, StorySensorCheckRow
+from app.db_models import StoryCorroborationRow, StoryRow, StorySensorCheckRow
 
 
 def _run() -> int:
@@ -27,8 +27,17 @@ def _run() -> int:
     since = datetime.now(UTC) - timedelta(hours=24)
     with Session(get_engine()) as session:
         rows = session.execute(
-            select(StorySensorCheckRow, StoryRow.title, StoryRow.owner_count)
+            select(
+                StorySensorCheckRow,
+                StoryRow.title,
+                StoryRow.owner_count,
+                StoryCorroborationRow.score,
+            )
             .join(StoryRow, StoryRow.id == StorySensorCheckRow.story_id)
+            .outerjoin(
+                StoryCorroborationRow,
+                StoryCorroborationRow.story_id == StorySensorCheckRow.story_id,
+            )
             .where(StorySensorCheckRow.checked_at >= since)
             .order_by(StorySensorCheckRow.verdict, StorySensorCheckRow.claim_type)
         ).all()
@@ -38,10 +47,11 @@ def _run() -> int:
                 "claim": check.claim_type,
                 "verdict": check.verdict,
                 "owners": owner_count,
+                "score": score,
                 "evidence": check.evidence,
                 "title": title,
             }
-            for check, title, owner_count in rows
+            for check, title, owner_count, score in rows
         ]
 
     report = _render_markdown(counters, checks)
@@ -70,22 +80,27 @@ def _render_markdown(counters: dict[str, Any], checks: list[dict[str, Any]]) -> 
         "",
         f"This run: {counters['stories']} stories with claims, {counters['claims']} claims, "
         f"{counters['confirmed']} confirmed, {counters['unconfirmed']} unconfirmed, "
-        f"{counters['kept_confirmed']} previously confirmed kept.",
+        f"{counters['kept_confirmed']} previously confirmed kept, "
+        f"{counters['scored']} stories scored.",
         "",
         "Checks touched in the last 24 h:",
         "",
-        "| verdict | claim | owners | story |",
-        "|---|---|---|---|",
+        "| verdict | claim | owners | corroboration | story |",
+        "|---|---|---|---|---|",
     ]
     for check in checks:
+        score = "—" if check["score"] is None else f"{check['score']:.3f}"
         lines.append(
-            f"| {check['verdict']} | {check['claim']} | {check['owners']} | {check['title']} |"
+            f"| {check['verdict']} | {check['claim']} | {check['owners']} "
+            f"| {score} | {check['title']} |"
         )
     lines += [
         "",
         "Rules are declared constants (`sensor-rules-v1.0`): earthquake→USGS, "
         "wildfire→FIRMS, disaster→GDACS, market crash→market drawdown. "
-        "`confirmed` never downgrades — evidence snapshots outlive sensor retention.",
+        "`confirmed` never downgrades — evidence snapshots outlive sensor retention. "
+        "`corroboration` = corroboration-v1.0: each extra independent owner halves "
+        "the remaining doubt; a sensor confirmation halves it once more.",
         "",
     ]
     return "\n".join(lines)
