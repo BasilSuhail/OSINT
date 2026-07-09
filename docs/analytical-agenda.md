@@ -33,15 +33,15 @@ the exact section that answers it, or to a new planned workstream.
 
 | # | Question | Method (one line) | Status |
 |---|----------|-------------------|--------|
-| Q1 | Are two articles the same story? | Sentence-embedding similarity → story clusters | 🔨 WS-A |
-| Q2 | Outlets/countries disagree — use it? | Inter-source disagreement index per story; test as leading signal | 🔨 WS-B |
-| Q3 | True vs false? | Corroboration score: independent sources × reliability prior × sensor confirmation | 🔨 WS-C |
-| Q4 | What's in the score; what biases? | ✅ [methodology.md Step 9](methodology.md#step-9--sensitivity--robustness) + new coverage-bias table | ✅ + 🔨 WS-D |
-| Q5 | Validate? Predict, not post-process? | ✅ Pre-registered backtest ([Steps 3–6](methodology.md#step-3--time-period--data-split)) + new forward prediction journal | ✅ + 🔨 WS-E |
-| Q6 | Which number matters most? | Per-indicator univariate AUROC / mutual information vs ground truth, ranked | 🔨 WS-F |
+| Q1 | Are two articles the same story? | Sentence-embedding similarity → story clusters | ✅ WS-A live (#297; threshold audited #335) |
+| Q2 | Outlets/countries disagree — use it? | Inter-source disagreement index per story; test as leading signal | ⏳ WS-B queued after WS-C |
+| Q3 | True vs false? | Corroboration score: independent sources × reliability prior × sensor confirmation | 🔨 WS-C step 2 of 5 (#356) |
+| Q4 | What's in the score; what biases? | ✅ [methodology.md Step 9](methodology.md#step-9--sensitivity--robustness) + coverage-bias table | ✅ + ✅ WS-D live (#291) |
+| Q5 | Validate? Predict, not post-process? | ✅ Pre-registered backtest ([Steps 3–6](methodology.md#step-3--time-period--data-split)) + forward prediction journal | ✅ + ✅ WS-E live (#293) |
+| Q6 | Which number matters most? | Per-indicator univariate AUROC / mutual information vs ground truth, ranked | ⏳ WS-F unblocked (signal backfill #303/#331 done) |
 | Q7 | Predict crops/water/food/disease? | New domains, gated behind the Phase-1 #250 gate | 🔭 future |
 
-Legend: ✅ answered in `methodology.md` · 🔨 planned workstream · 🔭 future, explicitly out of scope now.
+Legend: ✅ done/live · 🔨 in progress · ⏳ queued or unblocked, not started · 🔭 future, explicitly out of scope now.
 
 ---
 
@@ -55,19 +55,20 @@ the foundation for Q2 and Q3.
 **What.** *Story clusters*: one row per real-world story, carrying the set of member articles
 and the count of independent outlets that told it.
 
-**Where.** New workstream **WS-A**. Current state (verified): deduplication exists only at the
-`(source, source_event_id)` level in `app/persistence.py` — exact-duplicate suppression per
-feed, no semantic clustering anywhere in `app/`. The `feat/news-story-dedup` branch is the
-natural home. Related paused work: #126 (BERT sentiment,
+**Where.** ✅ Delivered as workstream **WS-A** (#296/#297): `app/stories/` — pure clustering
+layer + 30-minute beat task + `make stories`; `stories` / `story_members` tables. Since
+#355/#356 each story also carries `owner_count` (distinct content owners, not feeds). Related
+paused work: #126 (BERT sentiment,
 [`architecture/CII-METHODOLOGY.md`](architecture/CII-METHODOLOGY.md)) and #155 (distilbert-ONNX
 swap, [`architecture/ENRICHMENT-METHODOLOGY.md`](architecture/ENRICHMENT-METHODOLOGY.md)).
 
-**How.** Sentence-embedding similarity with a small local model (sentence-transformers class,
-run via ONNX — same local-only pattern as the #155 sentiment swap, consistent with the off-grid
-constraint). Embed title + lede, cosine similarity, threshold-based online clustering into
-story clusters. Two articles with different words but the same meaning sit close in embedding
-space; that closeness *is* the statistic. Evaluation: hand-label a small sample of article
-pairs (same story / different story), report precision/recall of the clustering threshold.
+**How.** As built: TF-IDF vectors over headline tokens, cosine similarity, greedy leader
+clustering at a 0.35 join threshold — assignments append-only over a rolling 72 h window.
+(The original plan reached for sentence embeddings; TF-IDF proved sufficient at audit and
+stays cheap on the Pi. An embedding upgrade remains open as a new `stories-v2` method version
+if audit quality ever degrades.) Evaluation: the #334/#335 hand-audit of ~30 stratified
+clusters confirmed the threshold — verdicts committed in
+[`audits/stories-threshold-audit.md`](audits/stories-threshold-audit.md).
 
 **Thesis claim it supports.** "The system measures event salience by *independent corroboration
 count*, not raw article volume."
@@ -130,6 +131,22 @@ true/false verdict — always the score plus its three inputs, so an analyst can
 the weighting. Calibration check: does the score's implied probability match observed
 confirmation rates (reliability diagram, same toolkit as
 [methodology.md Step 6](methodology.md#step-6--metrics))?
+
+**Progress (the 5-step plan, sequenced on #282).**
+
+1. ✅ **Threshold audit** (#334/#335) — 30 clusters hand-checked against the 0.35 similarity
+   threshold before anything was built on top; verdicts in
+   [`audits/stories-threshold-audit.md`](audits/stories-threshold-audit.md); 0.35 confirmed.
+2. ✅ **Outlet independence registry** (#355/#356) — `owner` + `syndication` fields in
+   `rss_feeds.json`; `stories.owner_count` counts distinct content owners (BBC's two feeds are
+   one owner, RT + TASS one state controller, the Yahoo-hosted feed counts as Reuters wire).
+3. 🔨 **Sensor cross-check rules** — declared per claim type, mechanical, no tuning:
+   earthquake → USGS row in window/geography, wildfire → FIRMS, disaster → GDACS, market crash
+   → market drawdown; each rule returns confirmed / unconfirmed / not-applicable.
+4. ⏳ **The score** — `corroboration = f(independent_owners, sensor_confirmations)`, formula
+   fixed and versioned (`corroboration-v1.0`) *before* looking at how scores distribute.
+5. ⏳ **Surface it** — score on the /stories card + API; the `N src` badge becomes an honest
+   confidence signal.
 
 **Thesis claim it supports.** "Cross-checking narrative claims against physical-sensor data
 yields a corroboration signal unavailable to news-only systems."
@@ -230,21 +247,39 @@ and is evaluated under the same pre-registered protocol before any claim is made
 Each workstream becomes its own issue → branch → PR when it starts (1:1:1 flow). Letters, not
 numbers — the numeric "WS1…" series is already used by the console-theme effort.
 
-| WS | Name | Depends on | One-line scope |
-|----|------|------------|----------------|
-| WS-A | Story clustering | — | Embed title+lede locally, threshold-cluster articles into stories |
-| WS-B | Disagreement index | WS-A | Outlet-origin mapping + per-story tone dispersion + lead-time test |
-| WS-C | Corroboration score | WS-A | Independent-source count × reliability prior × sensor confirmation |
-| WS-D | Coverage-bias table | — | Per-country volume vs own rolling baseline, published |
-| WS-E | Prediction journal | — | Log live warnings, grade later, accumulate a Brier scorecard |
-| WS-F | Indicator value ranking | — | Univariate AUROC per indicator vs ground truth, ranked |
+| WS | Name | Depends on | One-line scope | Status |
+|----|------|------------|----------------|--------|
+| WS-A | Story clustering | — | TF-IDF + greedy leader clustering of articles into stories | ✅ live — #296/#297, threshold audit #334/#335, 30-min beat, `make stories` |
+| WS-B | Disagreement index | WS-A | Outlet-origin mapping + per-story tone dispersion + lead-time test | ⏳ queued after WS-C |
+| WS-C | Corroboration score | WS-A | Independent-owner count × reliability prior × sensor confirmation | 🔨 step 2 of 5 — audit #335, owner registry #356 |
+| WS-D | Coverage-bias table | — | Per-country volume vs own rolling baseline, published | ✅ live — #290/#291, `make coverage`, /coverage card |
+| WS-E | Prediction journal | — | Log live warnings, grade later, accumulate a Brier scorecard | ✅ live — #292/#293, daily beat, `make journal`, /scoreboard card |
+| WS-F | Indicator value ranking | — | Univariate AUROC per indicator vs ground truth, ranked | ⏳ unblocked by the signal backfill (#303, #331) |
+| WS-G | Local LLM validator | WS-A + WS-C substrate | Ollama claim extraction, contradiction detection, cluster QA — with a measured error rate | 💡 planned (plan on #282) |
 
 ```
-WS-A ──► WS-B
-  └────► WS-C          WS-D   WS-E   WS-F   (independent, can start anytime)
+WS-A ──► WS-B ──┐
+  └────► WS-C ──┴──► WS-G          WS-D   WS-E   WS-F   (independent)
 
 #250 gate report ──gates──► Q7 (food / water / disease domains)
 ```
 
-WS-E is the recommended first pick: no dependencies, one table + one job, and it immediately
-reframes the project from "dashboard" to "forecasting system with a track record".
+**WS-G guardrails (non-negotiable, from the #282 plan).** The local model (Ollama over
+localhost HTTP, nothing leaves the machine) is *another noisy annotator*, never ground truth:
+its output is stored with `model + prompt` as a method_version, its agreement with a
+human-checked sample (~50 items) is measured before anything downstream consumes it, and its
+disagreement rate is published like any other error rate. It assists WS-C (structured claims
+for the sensor rules) and WS-B (facts-vs-framing disagreement typing) *alongside* the
+mechanical rules, never instead of them.
+
+**The GDELT backfill and the fair test (the board's third ✅ row).** The composite's third
+domain landed via bulk-file backfill (#330/#331): 11 years of daily GDELT files → 30,974
+country-month Goldstein means through the unchanged v1.0 pipeline, composite coverage of the
+eval panel 18% → 99%. The pre-registered three-domain test then ran: AUROC ~0.502 vs a 0.929
+per-country base rate — a coin flip on the *incidence* target, published honestly. Reading: the
+composite z-scores each country against its own past, so it is an **onset/escalation**
+instrument being graded on an incidence exam; the next evaluation (pre-registered before
+running) restricts scoring to onset months. Full trail on #282.
+
+Delivery order now: WS-C steps 3–5 → WS-B → WS-G, with WS-F free to run whenever backtest
+bandwidth allows.
