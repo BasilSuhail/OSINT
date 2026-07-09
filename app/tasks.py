@@ -10,6 +10,7 @@ going through Celery's broker.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -26,12 +27,14 @@ from app.db import session_scope
 from app.db_models import EventRow, IngestFailureRow, IngestHealthRow
 from app.enrichment.footprint import USER_AGENT, footprint_for_event
 from app.fetcher_registry import get_fetcher
-from app.housekeeping import prune_events
+from app.housekeeping import run_retention_and_cap, vacuum_events
 from app.journal.task import _journal_daily_body
 from app.persistence import upsert_events
 from app.sources.rss_registry import feed_cadence_map
 from app.stories.task import _cluster_stories_body
 from app.watchdog import check_sources
+
+logger = logging.getLogger(__name__)
 
 #: Hazard sources whose real footprint geometry we enrich (issue #205).
 _FOOTPRINT_SOURCES: tuple[str, ...] = ("usgs-quake", "gdacs", "eonet")
@@ -217,14 +220,21 @@ def ingest_watchdog() -> dict[str, Any]:
 
 @app.task(name="app.tasks.run_housekeeping")
 def run_housekeeping() -> dict[str, int]:
-    """Apply per-source retention to the events table.
+    """Apply per-source retention plus the storage size cap to events.
 
-    NASA FIRMS ingests ~35 k rows/day; without this the table fills the
-    local disk within weeks without pruning. See ``app.housekeeping`` for the
-    per-source policy.
+    OpenSky ADS-B alone writes ~1 M rows/day; without this the table fills
+    the disk within weeks. See ``app.housekeeping`` for the per-source
+    windows and the ``STORAGE_CAP_GB`` rule. VACUUM runs after the deletes
+    commit so the freed space is actually reusable.
     """
     with session_scope() as session:
-        return prune_events(session)
+        result = run_retention_and_cap(session)
+        bind = session.get_bind()
+    try:
+        vacuum_events(bind)
+    except Exception:
+        logger.exception("post-housekeeping VACUUM failed (non-fatal)")
+    return result
 
 
 # Beat schedule — declarative cadence per source. Matches the table in

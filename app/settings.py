@@ -35,9 +35,13 @@ class Settings(BaseSettings):
 
     data_dir: str = Field(default="./data")
 
-    retention_gdelt_days: int = Field(default=2)
-    retention_news_days: int = Field(default=3)
-    retention_hazard_days: int = Field(default=2)
+    retention_gdelt_days: int = Field(default=30)
+    retention_news_days: int = Field(default=30)
+    retention_hazard_days: int = Field(default=30)
+    # Hard ceiling on DB disk use; oldest event-days are trimmed when exceeded.
+    storage_cap_gb: int = Field(default=30)
+    # Size-cap enforcement never deletes events newer than this many days.
+    storage_cap_floor_days: int = Field(default=7)
 
     api_cors_origins: str = Field(default="http://localhost:3000,http://localhost:3001")
 

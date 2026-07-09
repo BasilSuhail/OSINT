@@ -11,7 +11,7 @@ this doc is the **operational** reference.
 - **One variable** decides where data lives: `OSINT_DATA_DIR` (default `./data`).
 - **Live database** = `data/postgres/` + `data/redis/`. The app reads/writes this constantly.
 - **Backups** = `backups/<timestamp>/` — frozen CSV copies made on demand by `snapshot.py`.
-- **Retention** auto-trims the live DB to the last few days so it stays small.
+- **Retention** keeps ~30 days of events; a **30 GB size cap** trims oldest days if the DB outgrows it.
 
 ---
 
@@ -84,19 +84,36 @@ Check size:
 make data-size            # du -sh of each subfolder
 ```
 
-### Why it stays small — retention
+### Why it stays bounded — retention + size cap
 
-The pipeline keeps only the **latest few days** (the dashboard never shows more).
-Defined in `app/housekeeping.py`, run daily at **03:00 UTC** by Celery beat:
+Two rules, identical on laptop, server and Pi (issue #353). Both run in the
+daily **03:00 UTC** housekeeping job (`app/housekeeping.py`, Celery beat):
+
+**Rule 1 — time.** Keep ~30 days of events, delete older:
 
 | Data | Kept | Override (`.env`) |
 |---|---|---|
-| GDELT (largest) | 2 days | `RETENTION_GDELT_DAYS` |
-| News (RSS) | 3 days | `RETENTION_NEWS_DAYS` |
-| Hazard / cyber / aviation / markets-live | 2 days | `RETENTION_HAZARD_DAYS` |
-| UK police | 7 days | — |
+| GDELT | 30 days | `RETENTION_GDELT_DAYS` |
+| News (RSS) | 30 days | `RETENTION_NEWS_DAYS` |
+| Hazard / cyber / aviation / markets-live | 30 days | `RETENTION_HAZARD_DAYS` |
+| UK police | 30 days | — |
 | yfinance | 30 days | — |
-| FRED macro | forever (irreplaceable) | — |
+| FRED macro / EM-DAT | forever (irreplaceable) | — |
+
+**Rule 2 — size.** After the retention pass, if the database's disk footprint
+exceeds `STORAGE_CAP_GB` (default **30**), the oldest whole days of events are
+deleted until the overage is covered — oldest first, never rows newer than
+`STORAGE_CAP_FLOOR_DAYS` (default 7), FRED/EM-DAT exempt. Each enforcement is
+audited in `housekeeping_runs` (`job_name = 'size-cap'`).
+
+> **High-water behavior:** Postgres never returns disk space to the OS after
+> `DELETE` — files plateau at their peak and the freed space is reused
+> internally. The cap **stops growth**, it does not shrink files. To actually
+> reclaim disk, `make data-reset` (destructive) is the tool.
+
+Scale check: OpenSky ADS-B is ~94 % of all rows (~1 M rows ≈ 650 MB/day with
+indexes), so 30 days ≈ 20 GB steady state — the cap only fires on bursts. On a
+40 GB box, `STORAGE_CAP_GB=26` leaves headroom for OS + Docker + WAL/logs.
 
 Force a prune now (don't wait for 03:00):
 
@@ -105,7 +122,7 @@ make data-prune           # runs scripts/prune_now.py
 ```
 
 > Lesson from the Supabase era: retention was never actually running there, so
-> the DB grew to ~1.49 M events / 911 MB. Locally the 03:00 prune keeps it tiny.
+> the DB grew to ~1.49 M events / 911 MB. Locally the 03:00 job keeps it bounded.
 
 ---
 
