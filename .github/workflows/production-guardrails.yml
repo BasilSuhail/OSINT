@@ -1,0 +1,34 @@
+name: production-guardrails
+
+on:
+  pull_request:
+    branches:
+      - production
+      - main
+
+jobs:
+  production-source-check:
+    if: github.event.pull_request.base.ref == 'production'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require production PRs to come from main
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [ "$HEAD_REF" != "main" ]; then
+            echo "Production PRs must come from main. Current source: $HEAD_REF"
+            exit 1
+          fi
+
+  main-target-check:
+    if: github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warn on deploy branch backflow
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [ "$HEAD_REF" = "production" ]; then
+            echo "Do not use production as a development source branch."
+            exit 1
+          fi

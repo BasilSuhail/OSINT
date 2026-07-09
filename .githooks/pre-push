@@ -1,0 +1,12 @@
+#!/bin/sh
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+
+case "$branch" in
+  main|production)
+    printf '%s\n' "Direct pushes to $branch are blocked. Open a PR instead."
+    exit 1
+    ;;
+esac
+
+exit 0

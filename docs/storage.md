@@ -139,6 +139,63 @@ gunzip -c backups/<ts>/scores.csv.gz | \
 
 ---
 
+## Dokploy / long-running server deploys
+
+If OSINT is deployed to a server via Dokploy, treat **code** and **data** as
+separate lifecycles:
+
+- **Code** = a specific Git commit / tag / deploy branch. Safe to replace.
+- **Data** = `$OSINT_DATA_DIR`. Must persist across container rebuilds,
+  redeploys, and image changes.
+
+This means you can leave one stable OSINT version running for weeks or months
+to collect data while continuing to push new commits and PRs to GitHub. The
+running server only changes when Dokploy is told to deploy a newer revision.
+
+### Recommended pattern
+
+- Point Dokploy at a **fixed deploy branch**, **release tag**, or **exact
+  commit**. Do **not** auto-deploy every `main` change unless that is
+  intentional.
+- Mount a persistent host path such as `/srv/osint-data` or
+  `/mnt/data/osint` and set `OSINT_DATA_DIR` to that path.
+- Keep Postgres + Redis bind-mounted under that directory:
+  - `$OSINT_DATA_DIR/postgres`
+  - `$OSINT_DATA_DIR/redis`
+- Keep containers disposable. Recreate them freely; the bind-mounted files are
+  the real state.
+
+### What should persist on the server
+
+- `$OSINT_DATA_DIR/postgres` — live database
+- `$OSINT_DATA_DIR/redis` — broker / pub-sub persistence
+- `$OSINT_DATA_DIR/exports` — dashboard-served exports and reports
+- `$OSINT_DATA_DIR/private` — manual / licensed drop-folders if used
+- `backups/` or another backup path — preferably on a different disk/path from
+  the live data
+
+### What should NOT be treated as long-term server storage
+
+- the cloned Git repo itself
+- ephemeral app containers
+- local frontend dev caches such as `.next/dev/`
+- Python virtualenvs or package caches
+- log files without rotation / retention
+
+### Operational checks for a long-running box
+
+- Verify the Celery beat schedule is running so the daily **03:00 UTC**
+  housekeeping prune actually happens.
+- Run `make data-size` regularly and watch `postgres/` growth.
+- Snapshot before risky schema or ingestion changes.
+- If the server has other apps, keep OSINT on its own persistent path so a
+  rollback or cleanup in another project cannot touch it.
+
+**Rule of thumb:** redeploying OSINT should replace containers and code, not
+the data directory.
+
+---
+
 ## Common operations
 
 | Goal | Command |
@@ -165,4 +222,5 @@ gunzip -c backups/<ts>/scores.csv.gz | \
   data lives entirely in `OSINT_DATA_DIR` and survives regardless.
 
 See also: [run book in the README](../README.md#run-book--turn-it-on--off) ·
-[project map](../README.md#project-map--where-everything-lives).
+[project map](../README.md#project-map--where-everything-lives) ·
+[GitHub + Dokploy workflow](github-dokploy-workflow.md).
