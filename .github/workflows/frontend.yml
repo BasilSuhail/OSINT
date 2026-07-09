@@ -2,9 +2,7 @@ name: frontend
 
 on:
   pull_request:
-    paths:
-      - "osint-frontend/**"
-      - ".github/workflows/frontend.yml"
+    branches: [main]
   push:
     branches: [main]
     paths:
@@ -16,7 +14,27 @@ defaults:
     working-directory: osint-frontend
 
 jobs:
+  changes:
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - "osint-frontend/**"
+              - ".github/workflows/frontend.yml"
+
   build:
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.frontend == 'true'
     permissions:
       contents: read
       actions: read

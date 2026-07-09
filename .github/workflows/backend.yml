@@ -2,14 +2,7 @@ name: backend
 
 on:
   pull_request:
-    paths:
-      - "app/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "requirements.txt"
-      - "alembic.ini"
-      - "migrations/**"
-      - ".github/workflows/backend.yml"
+    branches: [main]
   push:
     branches: [main]
     paths:
@@ -22,7 +15,32 @@ on:
       - ".github/workflows/backend.yml"
 
 jobs:
+  changes:
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - "app/**"
+              - "tests/**"
+              - "pyproject.toml"
+              - "requirements.txt"
+              - "alembic.ini"
+              - "migrations/**"
+              - ".github/workflows/backend.yml"
+
   test:
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.backend == 'true'
     permissions:
       contents: read
       actions: read
