@@ -10,6 +10,9 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Docker's 64MB /dev/shm default starves parallel VACUUM/queries
+    # ("could not resize shared memory segment ... No space left on device").
+    shm_size: 256mb
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-osint}
       POSTGRES_USER: ${POSTGRES_USER:-osint}
