@@ -63,6 +63,9 @@ sensor-checks:  ## Run WS-C sensor cross-checks once — claim-vs-sensor verdict
 disagreement:  ## Run WS-B telling divergence once — most contested stories (#370)
 	.venv/bin/python -m app.disagreement.run
 
+indicator-ranking:  ## Rank every dashboard indicator by measured predictive value (WS-F, #376)
+	.venv/bin/python -m app.ranking.run
+
 backfill-signals:  ## Backfill historical market+geopolitical+hazard composite scores (2015-2024); GDELT download resumes via $OSINT_DATA_DIR/gdelt/ checkpoints
 	.venv/bin/python -m app.composite.backfill
 
