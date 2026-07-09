@@ -53,6 +53,19 @@ def content_owner_map() -> dict[str, str]:
     return {entry["source"]: entry.get("syndication") or entry["owner"] for entry in raw}
 
 
+def outlet_country_map() -> dict[str, str]:
+    """Source slug → the outlet's *origin* country, ISO2 (WS-B step 1, #368).
+
+    Origin = where the editorial voice sits, not what the feed covers
+    (``default_country`` is the coverage default used for geotagging). For the
+    syndicated Yahoo-hosted feed the origin follows the content owner
+    (Reuters → GB). WS-B groups a story's tellings by this to measure
+    cross-country narrative divergence.
+    """
+    raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
+    return {entry["source"]: entry["country"] for entry in raw}
+
+
 def feed_cadence_map() -> dict[str, int]:
     """Source slug → cadence in minutes. Drives ``app.tasks`` beat schedule."""
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
