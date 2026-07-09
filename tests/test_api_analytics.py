@@ -9,7 +9,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import app, get_session
-from app.db_models import PredictionRow, StoryMemberRow, StoryRow
+from app.db_models import (
+    PredictionRow,
+    StoryCorroborationRow,
+    StoryMemberRow,
+    StoryRow,
+    StorySensorCheckRow,
+)
 
 NOW = datetime.now(UTC)
 
@@ -69,6 +75,40 @@ class TestStoriesTop:
 
     def test_empty_table_returns_empty_list(self, db_session):
         assert _client(db_session).get("/stories/top").json() == []
+
+    def test_carries_corroboration_and_sensor_checks(self, db_session):
+        """WS-C step 5 (#365): score + evidence trail + verdict map per story."""
+        fresh = _seed_stories(db_session)
+        db_session.add_all(
+            [
+                StoryCorroborationRow(
+                    story_id=fresh.id,
+                    score=0.75,
+                    components={"owner_count": 2, "confirmed_claims": 1},
+                    method_version="corroboration-v1.0",
+                ),
+                StorySensorCheckRow(
+                    story_id=fresh.id,
+                    claim_type="earthquake",
+                    verdict="confirmed",
+                    matched_event_id=99,
+                    evidence={"source": "usgs-quake", "country": "JP"},
+                    method_version="sensor-rules-v1.0",
+                ),
+            ]
+        )
+        db_session.commit()
+
+        (row,) = _client(db_session).get("/stories/top").json()
+        assert row["corroboration"] == 0.75
+        assert row["corroboration_components"]["owner_count"] == 2
+        assert row["sensor_checks"] == {"earthquake": "confirmed"}
+
+    def test_unscored_story_has_null_corroboration(self, db_session):
+        _seed_stories(db_session)
+        (row,) = _client(db_session).get("/stories/top").json()
+        assert row["corroboration"] is None
+        assert row["sensor_checks"] == {}
 
 
 class TestJournalScoreboard:
