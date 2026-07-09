@@ -4,224 +4,228 @@
 
 The thesis is one specific claim: **a composite of three heterogeneous OSINT signal domains discriminates later instability events better than the best single-domain baseline.** The dashboard, the Pi, the maps — they are the system that lets that claim be measured.
 
-## Table of contents
+## Chapters
 
-- [Run book — turn it on / off](#run-book--turn-it-on--off)
-- [Project map — where everything lives](#project-map--where-everything-lives)
-- [The thing in one diagram](#the-thing-in-one-diagram)
-- [What we are building, in plain words](#what-we-are-building-in-plain-words)
-- [Three input domains](#three-input-domains)
-- [Pipeline end to end](#pipeline-end-to-end)
-- [Ground truth — how the system gets graded](#ground-truth--how-the-system-gets-graded)
-- [Thesis loop — how the claim gets proven](#thesis-loop--how-the-claim-gets-proven)
-- [Stack](#stack)
-- [Ten-week timeline](#ten-week-timeline)
-- [How we get started](#how-we-get-started)
-- [Layer 3 — dashboard breadth (not in thesis)](#layer-3--dashboard-breadth-not-in-thesis)
-- [Documentation index](#documentation-index)
-- [Inspirations and lineage](#inspirations-and-lineage)
-- [Status](#status)
-- [Group presentation note](#group-presentation-note)
+- [Chapter 1 — Switch it on](#chapter-1--switch-it-on)
+- [Chapter 2 — Can we trust the data?](#chapter-2--can-we-trust-the-data)
+- [Chapter 3 — (reserved)](#chapter-3--reserved)
+- [Chapter 4 — (reserved)](#chapter-4--reserved)
+- [Reference shelf](#reference-shelf) — deep architecture material
 
 ---
 
-## Run book — turn it on / off
+# Chapter 1 — Switch it on
 
-Everything runs locally and off-grid. No Supabase, no cloud. All persistent
-data lives in **one folder** — `OSINT_DATA_DIR` (default `./data`,
-gitignored). Set it to an external disk for a Pi/HDD home, e.g.
-`OSINT_DATA_DIR=/mnt/hdd/osint`.
+Everything runs locally. All persistent data lives in **one folder** —
+`$OSINT_DATA_DIR` (default `./data`, gitignored).
 
-Runtime pieces:
-
-| Part | What | Command |
-|------|------|---------|
-| **Stores** | Postgres + Redis | Docker |
-| **Workers** | Celery fetch/normalise/persist | background process |
-| **Scheduler** | Celery beat cadence + 03:00 prune | background process |
-| **Read-API** | FastAPI feeds the dashboard | background process on `:8000` |
-| **Dashboard** | Next.js frontend | background process on `:3000` |
-
-You normally do **not** start those one by one. Use the commands below.
-
-### First time only — from scratch (nothing installed yet)
+### First time only
 
 ```bash
-# 0. prerequisites: Docker Desktop, Python 3.14, Node + pnpm
-# 1. python env
+# prerequisites: Docker Desktop, Python 3.14, Node + pnpm
 python3 -m venv .venv && .venv/bin/pip install -e .
-# 2. config — copy the template, then set a local POSTGRES_PASSWORD
-cp env.example .env            # edit .env: POSTGRES_PASSWORD=... (and any API keys)
-# 3. start the stores (creates $OSINT_DATA_DIR/postgres + /redis)
-docker compose up -d
-# 4. create the schema
-.venv/bin/alembic upgrade head
-# 5. frontend deps
+cp env.example .env                      # set POSTGRES_PASSWORD (+ any API keys)
+docker compose up -d                     # stores: Postgres + Redis
+.venv/bin/alembic upgrade head           # create the schema
 cd osint-frontend && pnpm install && cd ..
 ```
 
-### ALL ON
+### Daily driving
 
-One command starts everything: Docker stores, worker, beat, API, and frontend.
-It waits for both the API and dashboard to answer before saying the app is up.
+| Want | Command |
+|------|---------|
+| Everything ON (stores, worker, beat, API, dashboard) | `make up` |
+| Everything OFF, keep data | `make stop` |
+| OFF + quit Docker Desktop | `make off` |
+| Restart after a code change | `make stop && make up` |
+| Watch the logs | `make logs` |
 
-```bash
-cd osint
-make start
-```
+Dashboard: **http://localhost:3000** · API health: `curl localhost:8000/health` → `{"status":"ok"}`.
 
-Open:
+`make up` is self-healing: it opens Docker if needed, skips what already runs,
+and if the Docker daemon has corrupted the compose project (the "No such
+container" disease) it automatically switches to a fresh project name — your
+data never moves, it lives on bind mounts.
 
-```text
-http://localhost:3000
-```
+### The analytical commands
 
-Health check:
+Each one records itself in the **top-bar activity monitor** — a chip per job,
+green pulsing while working (with live progress), red while idle, red
+`failed` with the error in the tooltip if something breaks.
 
-```bash
-curl http://localhost:8000/health
-```
+| Command | What it does |
+|---------|--------------|
+| `make labels` | rebuild ground-truth labels from the ACLED xlsx drop-folder |
+| `make panel` | build the country-month panel (labels + composite) → `data/exports/panel.parquet` |
+| `make baselines` | score the composite against the no-skill baselines → the head-to-head report |
+| `make coverage` | measure who gets covered and who gets ignored → the attention-bias report |
+| `make journal` | run the forward-prediction journal once (emit + grade + scoreboard) |
+| `make stories` | cluster the rolling news window into stories |
+| `make stories-audit` | emit the cluster hand-check sheet (threshold audit) |
+| `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
 
-Expected:
-
-```json
-{"status":"ok"}
-```
-
-`make start` is safe to re-run. It opens Docker Desktop if needed, skips
-services already running, and starts whatever is down. Logs are in `logs/`.
-Watch them with `make logs`.
-
-If Docker is already open but `make up` still waits on startup, run:
-
-```bash
-DOCKER_AUTOSTART=0 DOCKER_WAIT_SECONDS=10 make up
-```
-
-and check:
+### The data folder
 
 ```bash
-docker info
+make data-size    # what is using disk
+make data-prune   # run retention now
+make data-reset   # ⚠️ delete ALL local data
 ```
 
-If `docker info` works, then restart `make down` + `make up` usually clears stale
-processes. If `docker info` fails but Docker Desktop is visibly running, restart
-Docker Desktop and rerun.
+Retention keeps the events table small (news ~3 d, hazards ~2 d — see `.env`);
+markets/macro and everything analytical (scores, labels, stories, journal)
+are kept long-term.
 
-You can also tune these env vars:
-- `DOCKER_WAIT_SECONDS` (default: 30)
-- `DOCKER_WAIT_STEP` (default: 2)
-- `API_WAIT_SECONDS` (default: 20)
-- `FRONTEND_WAIT_SECONDS` (default: 30)
-- `DOCKER_WAIT_MESSAGE_EVERY` (default: 10)
-
-If `make up` keeps waiting because `docker` points to a stale remote socket, unset
-`DOCKER_HOST` and retry:
+<details><summary>Manual mode — one process per terminal</summary>
 
 ```bash
-unset DOCKER_HOST
-make up
-```
-
-<details><summary>Manual — one process per terminal (if you'd rather not background them)</summary>
-
-> ⚠️ Each command below **runs forever in the foreground** — it does not return
-> to a prompt, and `Ctrl-C` **stops that service**. Give each its own terminal
-> tab; don't run them one after another in the same one.
-
-```bash
-docker compose up -d                                       # stores (returns immediately)
-.venv/bin/celery -A app.celery_app worker -l info          # terminal A — stays running
-.venv/bin/celery -A app.celery_app beat   -l info          # terminal B — stays running
-.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000   # terminal C — stays running
-cd osint-frontend && pnpm dev                              # terminal D — stays running
+docker compose up -d
+.venv/bin/celery -A app.celery_app worker -l info
+.venv/bin/celery -A app.celery_app beat   -l info
+.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
+cd osint-frontend && pnpm dev
 ```
 </details>
 
-Open **http://localhost:3000**. The dashboard reads the API at
-`NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). Serving the dashboard
-from a non-localhost host (LAN/Tailscale/Pi)? Also set `API_CORS_ORIGINS` on
-the API process to that origin, or the browser is CORS-blocked.
+---
 
-### ALL OFF
+# Chapter 2 — Can we trust the data?
 
-```bash
-cd osint
-make stop
+*This is the project's main scientific problem, explained from zero.*
+
+The dashboard eats the world's open data all day: news feeds, earthquake
+sensors, satellites, market prices, conflict databases. The obvious question —
+the one a professor, an examiner or a customer asks first — is:
+
+> **"How do you know any of this is true, complete, and not just one loud
+> country's version of events?"**
+
+Honest answer: **you can never fully know.** Anyone who says their data is
+"unbiased" is selling something. What you *can* do is measure three things and
+publish all of them. That is this chapter.
+
+### 2.1 How data gets in (and how nothing sneaks in twice)
+
+```text
+   sensors (don't lie)             text (can lie)
+ ┌──────────────────────┐      ┌──────────────────────┐
+ │ USGS quakes          │      │ ~25 news feeds (RSS) │
+ │ NASA FIRMS fires     │      │ GDELT world events   │
+ │ GDACS disasters      │      └──────────┬───────────┘
+ │ market prices        │                 │
+ └──────────┬───────────┘                 │
+            └────────────┬────────────────┘
+                         ▼
+              ┌─────────────────────┐
+              │  events table       │  ← every row has a fingerprint
+              │  (Postgres)         │    (source, source_event_id):
+              └─────────┬───────────┘    the SAME quake fetched 100×
+                        │                is still ONE row. The DB
+                        ▼                enforces it, not good manners.
+        scores · labels · stories · journal
+        (all versioned, all append-only or
+         overwrite-in-place — never duplicated)
 ```
 
-`make stop` stops the frontend, worker, beat, API, Postgres, and Redis. It
-keeps your data in `$OSINT_DATA_DIR`.
+Corruption guards, in one breath: files are written atomically (a crash leaves
+no half-file), a failed download **raises** instead of silently writing a
+partial month, and every methodology change gets a new version stamp instead
+of editing history.
 
-Full shutdown, including Docker Desktop:
+### 2.2 The trust triangle
 
-```bash
-cd osint
-make off
+We can't compute "truth", so we compute three honest proxies **per story**:
+
+```text
+                 CORROBORATION  (WS-C)
+                "how many INDEPENDENT
+                 tellers + does machine
+                 data confirm it?"
+                    ▲
+                   ╱ ╲        10 copies of one Reuters wire = 1 source.
+                  ╱   ╲       Story says "earthquake" → is there a
+                 ╱     ╲      matching USGS row? Machines don't spin.
+                ╱ trust ╲
+               ╱─────────╲
+   DISAGREEMENT           COVERAGE BIAS  (WS-D ✅ live)
+   (WS-B)                 "who gets talked about
+   "how differently do     at all?" — top-5 countries
+    countries tell the     eat ~30% of all event
+    same story?"           volume. Measured monthly,
+                           shown on /coverage.
 ```
 
-`make off` runs `make stop`, then asks macOS to quit Docker Desktop.
+- **Corroboration (WS-C, in progress)** — every story cluster shows how many
+  distinct outlets tell it. Next: count *owners* not feeds, and cross-check
+  claims against sensors (an earthquake story either has a matching USGS row
+  or it doesn't). Step 1 is done: we hand-checked 30 clusters and confirmed
+  the clustering threshold — details in `docs/audits/stories-threshold-audit.md`.
+- **Disagreement (WS-B, next)** — same story, different countries' outlets:
+  how far apart are the tellings? That number is both a bias measure *and*
+  a candidate early-warning signal.
+- **Coverage bias (WS-D, done)** — the dashboard publishes its own blind
+  spots instead of hiding them.
+- **Local AI checker (WS-G, planned)** — a local Ollama model extracts claims
+  and flags contradictions, treated as *another fallible annotator* whose
+  error rate is measured — never as a judge.
 
-`make down` also runs `docker compose down` after shutdown so container/runtime
-state is fully torn down while `$OSINT_DATA_DIR` remains intact.
+### 2.3 The referee system (why our numbers can't cheat)
 
-`.venv` is just a Python folder, not a VM. There is nothing to shut down there.
+```text
+  pre-registered rules ──► evaluation runs ──► number published
+  (methodology.md,          (baselines vs        (win OR lose —
+   written BEFORE           composite on          the scoreboard
+   any result exists)       2015-2022 only)       shows it in red)
 
-| How far off | Commands |
-|-------------|----------|
-| App stopped, data kept | `make stop` |
-| Fully off, Docker quit | `make off` |
-| Wipe data too | `make data-reset` (then quit Docker) |
-
-Aliases:
-
-| Alias | Same as | Use |
-|-------|---------|-----|
-| `make up` | `make start` | Start the full app |
-| `make down` | `make stop` + `docker compose down` | Stop app + teardown runtime, keep data |
-
-### RESTART
-
-Use this when the app is stale, a branch changed, or backend/frontend code needs
-to reload.
-
-```bash
-cd osint
-make stop
-make start
+  2023-2024 = TEST WINDOW — locked, untouched, for the final exam.
 ```
 
-Alias version:
+- **Ground truth** comes from ACLED (human-validated conflict data),
+  versioned like code: labels-v1.0 → v1.1, never edited in place.
+- **Forecasts are server-stamped before outcomes are known**, graded once,
+  and can never be back-filled. The track record is earned or it is nothing.
+- The current headline: with all three domains live, the composite scores
+  **AUROC 0.502** against a per-country base rate of **0.929**. A coin flip —
+  published, not hidden. Why it loses is the interesting part: our index
+  measures *"is this country behaving unusually vs its own past?"* while the
+  exam asks *"which countries have conflict at all?"* — a register of known
+  troublemakers aces that exam without any signal. The next pre-registered
+  test restricts scoring to **onset months** (calm-before-the-storm cases),
+  which is the exam a deviation signal is actually built for.
 
-```bash
-cd osint
-make down
-make up
-```
+### 2.4 Status board
 
-### Managing the data folder
+| Workstream | What | State |
+|---|---|---|
+| WS-A story clustering | one row per real-world story | ✅ live, threshold audited |
+| WS-D coverage bias | attention-bias table | ✅ live on /coverage |
+| WS-E prediction journal | forward track record | ✅ live on /scoreboard |
+| GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
+| WS-C corroboration | independent-owner counts + sensor cross-checks | 🔨 step 1 of 5 done |
+| WS-B disagreement index | cross-country telling divergence | ⏳ queued after WS-C |
+| WS-F indicator ranking | which dashboard number predicts best | ⏳ unblocked |
+| WS-G local AI checker | Ollama claim extraction w/ measured error rate | 💡 planned |
 
-```bash
-make data-size     # how much disk each store is using
-make data-prune    # run retention now (don't wait for the 03:00 job)
-make data-reset    # ⚠️ stop stack + delete ALL local data ($OSINT_DATA_DIR)
-```
-
-Retention keeps only the latest few days so the folder stays small:
-GDELT **2 d**, news **3 d**, hazard **2 d** (override via `RETENTION_GDELT_DAYS`
-/ `RETENTION_NEWS_DAYS` / `RETENTION_HAZARD_DAYS` in `.env`). Beat prunes daily
-at 03:00 UTC; market/macro series are kept long.
-
-### Full wipe + rebuild from zero
-
-```bash
-make data-reset                 # removes containers + $OSINT_DATA_DIR
-docker compose up -d            # fresh empty stores
-.venv/bin/alembic upgrade head  # recreate schema
-# then "ALL ON" above
-```
+The living log of all of this is pinned issue
+[#282](https://github.com/BasilSuhail/OSINT/issues/282).
 
 ---
+
+# Chapter 3 — (reserved)
+
+*Intentionally empty — next major arc gets written here.*
+
+---
+
+# Chapter 4 — (reserved)
+
+*Intentionally empty.*
+
+---
+
+# Reference shelf
+
+*The deep material — architecture, domains, pipeline, thesis protocol.*
 
 ## Project map — where everything lives
 
@@ -502,80 +506,6 @@ Full reasoning: [`docs/architecture/`](docs/architecture/) sections 01-07.
 
 ---
 
-## Ten-week timeline
-
-```mermaid
-gantt
-    title 10-week thesis schedule (15 Jun → 28 Aug 2026)
-    dateFormat YYYY-MM-DD
-    axisFormat %d-%b
-
-    section Hardware + infra
-    Order Pi + RAID hardware           :h1, 2026-06-15, 3d
-    Pi setup + btrfs RAID1             :h2, after h1, 5d
-    Docker Compose stack live          :h3, after h2, 3d
-
-    section Ingestion
-    GDELT historical backfill (2015-)  :i1, 2026-06-15, 10d
-    Module A market worker             :i2, 2026-06-22, 7d
-    Module B GDELT live worker         :i3, 2026-06-22, 7d
-    Module C hazard worker             :i4, 2026-06-29, 7d
-    Label backfill (ACLED + NBER + ...) :i5, 2026-07-06, 5d
-
-    section Composite + Eval
-    Module D composite (JRC 1-5)       :d1, 2026-07-06, 7d
-    Composite v1.0 lock with Marco     :crit, d2, 2026-07-13, 3d
-    Module E eval harness              :d3, 2026-07-13, 7d
-    Run historical evaluation          :d4, 2026-07-20, 7d
-
-    section Presentation + Thesis
-    Group presentation slides          :crit, p1, 2026-06-18, 4d
-    Slides deadline                    :milestone, ps, 2026-06-22, 0d
-    Group presentation                 :crit, p2, 2026-06-23, 4d
-    Thesis: Intro + Lit + Data         :t1, 2026-07-20, 7d
-    Thesis: Methods + Results          :t2, 2026-07-27, 7d
-    Thesis: Discussion + Conclusion    :t3, 2026-08-03, 7d
-    First draft to Marco               :milestone, td, 2026-08-09, 0d
-    Feedback + revision                :t4, 2026-08-10, 7d
-    Final polish + supp material       :t5, 2026-08-17, 7d
-    Thesis submission                  :crit, milestone, ts, 2026-08-28, 0d
-    Viva                               :v1, 2026-09-07, 5d
-```
-
-Two **hard deadlines** in the gantt: presentation slides 22 June 5pm, thesis 28 August.
-
----
-
-## How we get started
-
-Today, three things run in parallel because the slow ones cannot wait:
-
-```mermaid
-flowchart LR
-    NOW[Today · 2026-06] --> T1[Track 1<br/>Order hardware<br/>3-7 day lead time]
-    NOW --> T2[Track 2<br/>Start GDELT backfill<br/>on dev mac<br/>~3 day download]
-    NOW --> T3[Track 3<br/>Group presentation slides<br/>due 22 Jun 5pm]
-
-    T1 --> P1[Pi arrives]
-    P1 --> P2[Flash OS, mount RAID1]
-    P2 --> P3[Docker Compose stack up]
-    T2 --> A1[GDELT 2015-2024 sat in Parquet]
-    T3 --> Q1[Slot in group presentation]
-
-    P3 --> CODE[Write Module A market worker]
-    A1 --> CODE
-    CODE --> ITER[Iterate Modules B, C, D, E]
-```
-
-Concrete next moves (this week):
-
-1. **Order**: Pi 5 8GB kit, 2x4TB USB3 HDD with UAS bridge (JMicron JMS583 or ASMedia ASM2362), self-powered enclosures, active cooler, A2 microSD or SSD boot.
-2. **Backfill on dev mac**: `pip install gdelt2` (or HTTP download script), pull GDELT v2 export ZIPs for 2015-2024, store as Parquet under `~/osint-backfill/parquet/gdelt/`. Move to Pi when ready.
-3. **Slides**: open a `docs/presentation/` folder, draft 5-6 markdown slides for the 2.5-min individual slot, convert to PPTX before 22 June 5pm.
-4. **Email Marco**: book first supervisory meeting in Weeks 2-3 with the locked-but-draft `docs/methodology.md` attached, three slot options.
-
----
-
 ## Layer 3 — dashboard breadth (not in thesis)
 
 Sits on the dashboard for situational awareness, **not** in the composite, **not** in the evaluation, **not** in the thesis Methods or Results chapters. Single Discussion paragraph + appendix table in the thesis. Grows freely after 28 August.
@@ -625,20 +555,3 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 
 - **Architectural inspiration only (not cited in thesis literature review)**: [Shadowbroker](https://github.com/BigBodyCobain/Shadowbroker), WorldMonitor
 - **Methodology lineage (cited)**: OECD/JRC Composite Indicator Handbook (Nardo et al., 2008), ViEWS (Hegre et al., 2019), CEWS field review (Davies et al., 2023), FSI methodology (Fund for Peace), GDELT validity critiques (Wang 2025, Wallace 2014, Öberg & Yilmaz 2025), FinBERT honesty (Yang et al., 2024). Full list with reading priority in [`docs/methodology.md`](docs/methodology.md#part-b--literature-baseline).
-
----
-
-## Status
-
-- Architecture spec — **complete** (7 sections drafted, merged to main)
-- Code — not started
-- Pi hardware — not yet purchased
-- GDELT backfill — not started
-- Methodology v1.0 lock with Marco — pending Week 2-3 meeting
-- Group presentation slides — pending (due 22 Jun 5pm)
-
----
-
-## Group presentation note
-
-Per PX5901/02 guidelines, the **thesis is individual work**; the group structure applies only to the oral presentation. The 2.5-minute individual slot frames the multi-modal composite — the same story the August thesis defends — so there is no scope expansion between June and August. Slide content lives under `docs/presentation/` when drafted.
