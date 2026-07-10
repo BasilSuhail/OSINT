@@ -9,7 +9,7 @@ import {
   fetchTopStories,
   type StoryRow,
 } from "@/lib/analytics"
-import { BarRow, Hint, StatTile } from "./viz"
+import { BarRow, Hint, StatTile, Tip } from "./viz"
 
 const REFRESH_MS = 60_000
 const WINDOWS = [
@@ -32,38 +32,47 @@ function StoryLine({ story }: { story: StoryRow }) {
   const score = story.corroboration
   return (
     <li className="flex items-center gap-3 border-b border-neutral-800/70 px-3 py-2 hover:bg-neutral-900/60">
-      <span className="group/hint relative shrink-0 cursor-help">
+      <Tip
+        className="shrink-0"
+        content={
+          <>
+            <b className="text-neutral-100">{story.owner_count} independent owners</b> told this
+            story across {story.outlet_count} feeds ({story.member_count} articles). Wire copies
+            and co-owned outlets collapse into one owner.
+            <br />
+            <b className="text-neutral-100">
+              Confidence {score === null ? "not scored yet" : score.toFixed(3)}
+            </b>{" "}
+            — each extra independent owner halves the remaining doubt; a physical-sensor
+            confirmation halves it once more. 0 = single unverified teller, 1 = near certainty.
+          </>
+        }
+      >
         <span
           className={`inline-flex w-20 items-center justify-center rounded border px-1.5 py-0.5 font-mono text-[10px] tabular-nums ${corroborationTone(score)}`}
         >
           {story.owner_count} owner{story.owner_count === 1 ? "" : "s"}
         </span>
-        <span className="pointer-events-none invisible absolute left-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 font-sans text-[11px] leading-relaxed text-neutral-300 opacity-0 shadow-xl group-hover/hint:visible group-hover/hint:opacity-100">
-          <b className="text-neutral-100">{story.owner_count} independent owners</b> told this
-          story across {story.outlet_count} feeds ({story.member_count} articles). Wire copies
-          and co-owned outlets collapse into one owner.
-          <br />
-          <b className="text-neutral-100">
-            Confidence {score === null ? "not scored yet" : score.toFixed(3)}
-          </b>{" "}
-          — each extra independent owner halves the remaining doubt; a physical-sensor
-          confirmation halves it once more. 0 = single unverified teller, 1 = near certainty.
-        </span>
-      </span>
+      </Tip>
       <span className="min-w-0 flex-1 truncate text-sm text-neutral-200" title={story.title}>
         {story.title}
       </span>
       {confirmed.map((claim) => (
-        <span key={claim} className="group/hint relative shrink-0 cursor-help">
+        <Tip
+          key={claim}
+          className="shrink-0"
+          content={
+            <>
+              A physical sensor (seismometer, fire satellite, disaster feed or market data)
+              confirmed a matching <b className="text-neutral-100">{claim.replace("_", " ")}</b>{" "}
+              at the story&apos;s place and time. Hardware cannot spin a narrative.
+            </>
+          }
+        >
           <span className="rounded border border-cyan-500/50 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-cyan-300">
             ✓ {claim.replace("_", " ")}
           </span>
-          <span className="pointer-events-none invisible absolute right-0 top-full z-50 mt-1.5 w-64 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 font-sans text-[11px] leading-relaxed text-neutral-300 opacity-0 shadow-xl group-hover/hint:visible group-hover/hint:opacity-100">
-            A physical sensor (seismometer, fire satellite, disaster feed or market data)
-            confirmed a matching <b className="text-neutral-100">{claim.replace("_", " ")}</b> at
-            the story&apos;s place and time. Hardware cannot spin a narrative.
-          </span>
-        </span>
+        </Tip>
       ))}
       <span className="shrink-0 font-mono text-[9px] tabular-nums uppercase tracking-wide text-neutral-500">
         {relativeTime(story.last_seen)}
@@ -159,7 +168,7 @@ export function StoriesPanel() {
 
       <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-3">
         <p className="mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-          <Hint term="confidence distribution — how much of today's news is corroborated?" wide>
+          <Hint term="confidence distribution — how much of today's news is corroborated?">
             Every story gets a confidence score from 0 to 1: each additional independent owner
             halves the remaining doubt, and a physical-sensor confirmation halves it once more.
             These bars show how the current window&apos;s stories spread across the four tiers —

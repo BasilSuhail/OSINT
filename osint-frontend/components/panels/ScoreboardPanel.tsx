@@ -56,7 +56,7 @@ function BaselineTable({ rows }: { rows: BaselineResultRow[] }) {
           <tr className="border-b border-neutral-800 text-left">
             {headers.map((h) => (
               <th key={h.key} className={`${HEAD} ${h.align ?? "text-right"}`}>
-                <Hint term={h.label} wide>
+                <Hint term={h.label}>
                   {COLUMN_HINTS[h.key]}
                 </Hint>
               </th>
@@ -146,41 +146,41 @@ export function ScoreboardPanel() {
               <thead>
                 <tr className="border-b border-neutral-800 text-left">
                   <th className={HEAD}>
-                    <Hint term="instrument" wide>
+                    <Hint term="instrument">
                       Which forecaster made the prediction: the composite stress index, or the
                       disagreement signal (do countries telling the same story very differently
                       predict trouble?). Each is graded separately.
                     </Hint>
                   </th>
                   <th className={`${HEAD} text-right`}>
-                    <Hint term="horizon (months)" wide>
+                    <Hint term="horizon (months)">
                       {COLUMN_HINTS["horizon (months)"]}
                     </Hint>
                   </th>
                   <th className={`${HEAD} text-right`}>
-                    <Hint term="issued" wide>
+                    <Hint term="issued">
                       Forecasts made so far — written down before the outcome was knowable.
                     </Hint>
                   </th>
                   <th className={`${HEAD} text-right`}>
-                    <Hint term="graded" wide>
+                    <Hint term="graded">
                       Forecasts whose window has fully passed, marked right or wrong against
                       ground-truth conflict data. Green because these are the earned record.
                     </Hint>
                   </th>
                   <th className={`${HEAD} text-right`}>
-                    <Hint term="awaiting grade" wide>
+                    <Hint term="awaiting grade">
                       Forecasts whose window has not closed yet. Amber = still on the clock;
                       this number falls as months mature.
                     </Hint>
                   </th>
                   <th className={`${HEAD} text-right`}>
-                    <Hint term="positive rate" wide>
+                    <Hint term="positive rate">
                       {COLUMN_HINTS["positive rate"]}
                     </Hint>
                   </th>
                   <th className={`${HEAD} text-right`}>
-                    <Hint term="Brier score" wide>
+                    <Hint term="Brier score">
                       {COLUMN_HINTS.Brier} This single number is the difference between a
                       forecasting system and a mood ring.
                     </Hint>
@@ -206,7 +206,7 @@ export function ScoreboardPanel() {
             </table>
 
             <p className="mt-3 mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-              <Hint term="the Brier scale — where each instrument lands once graded" wide>
+              <Hint term="the Brier scale — where each instrument lands once graded">
                 0 means clairvoyant, 0.25 is what a coin flip earns, 1 is perfectly wrong. An
                 instrument worth selling sinks below 0.25 and stays there. Markers appear as
                 soon as the first forecasts are graded.
@@ -252,7 +252,7 @@ export function ScoreboardPanel() {
             subtitle={`same rows for every contender · evaluation ${baselines.data.eval_window[0]} → ${baselines.data.eval_window[1]} · 2023–24 kept untouched for the final test`}
           >
             <p className="mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-              <Hint term="AUROC at the 1-month horizon — the vertical line is a coin flip" wide>
+              <Hint term="AUROC at the 1-month horizon — the vertical line is a coin flip">
                 Each bar is one contender&apos;s AUROC predicting next month. 0.5 = guessing.
                 The composite (cyan) must beat the gray bars before any predictive claim is
                 honest — right now it does not, and that is published on purpose.
