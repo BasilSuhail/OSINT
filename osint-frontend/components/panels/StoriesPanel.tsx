@@ -4,10 +4,12 @@ import { useMemo, useState } from "react"
 import useSWR from "swr"
 import {
   confirmedClaims,
+  corroborationTiers,
   corroborationTone,
   fetchTopStories,
   type StoryRow,
 } from "@/lib/analytics"
+import { BarRow, Hint, StatTile } from "./viz"
 
 const REFRESH_MS = 60_000
 const WINDOWS = [
@@ -28,33 +30,43 @@ function relativeTime(iso: string): string {
 function StoryLine({ story }: { story: StoryRow }) {
   const confirmed = confirmedClaims(story.sensor_checks)
   const score = story.corroboration
-  const badgeTitle =
-    `${story.owner_count} independent owners (${story.outlet_count} feeds) — ` +
-    (score === null
-      ? "corroboration not yet scored"
-      : `corroboration ${score.toFixed(3)} (corroboration-v1.0)`)
   return (
     <li className="flex items-center gap-3 border-b border-neutral-800/70 px-3 py-2 hover:bg-neutral-900/60">
-      <span
-        title={badgeTitle}
-        className={`inline-flex w-14 shrink-0 items-center justify-center rounded border px-1.5 py-0.5 font-mono text-[10px] tabular-nums ${corroborationTone(score)}`}
-      >
-        {story.owner_count} src
+      <span className="group/hint relative shrink-0 cursor-help">
+        <span
+          className={`inline-flex w-20 items-center justify-center rounded border px-1.5 py-0.5 font-mono text-[10px] tabular-nums ${corroborationTone(score)}`}
+        >
+          {story.owner_count} owner{story.owner_count === 1 ? "" : "s"}
+        </span>
+        <span className="pointer-events-none invisible absolute left-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 font-sans text-[11px] leading-relaxed text-neutral-300 opacity-0 shadow-xl group-hover/hint:visible group-hover/hint:opacity-100">
+          <b className="text-neutral-100">{story.owner_count} independent owners</b> told this
+          story across {story.outlet_count} feeds ({story.member_count} articles). Wire copies
+          and co-owned outlets collapse into one owner.
+          <br />
+          <b className="text-neutral-100">
+            Confidence {score === null ? "not scored yet" : score.toFixed(3)}
+          </b>{" "}
+          — each extra independent owner halves the remaining doubt; a physical-sensor
+          confirmation halves it once more. 0 = single unverified teller, 1 = near certainty.
+        </span>
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-neutral-200" title={story.title}>
         {story.title}
       </span>
       {confirmed.map((claim) => (
-        <span
-          key={claim}
-          title={`physical sensor confirmed: ${claim} (see sensor_checks)`}
-          className="shrink-0 rounded border border-cyan-500/50 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-cyan-300"
-        >
-          ✓ {claim.replace("_", " ")}
+        <span key={claim} className="group/hint relative shrink-0 cursor-help">
+          <span className="rounded border border-cyan-500/50 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-cyan-300">
+            ✓ {claim.replace("_", " ")}
+          </span>
+          <span className="pointer-events-none invisible absolute right-0 top-full z-50 mt-1.5 w-64 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 font-sans text-[11px] leading-relaxed text-neutral-300 opacity-0 shadow-xl group-hover/hint:visible group-hover/hint:opacity-100">
+            A physical sensor (seismometer, fire satellite, disaster feed or market data)
+            confirmed a matching <b className="text-neutral-100">{claim.replace("_", " ")}</b> at
+            the story&apos;s place and time. Hardware cannot spin a narrative.
+          </span>
         </span>
       ))}
       <span className="shrink-0 font-mono text-[9px] tabular-nums uppercase tracking-wide text-neutral-500">
-        {story.member_count} art · {relativeTime(story.last_seen)}
+        {relativeTime(story.last_seen)}
       </span>
     </li>
   )
@@ -75,6 +87,8 @@ export function StoriesPanel() {
     () => (data ?? []).filter((s) => s.owner_count >= minOwners),
     [data, minOwners],
   )
+  const tiers = useMemo(() => corroborationTiers(data ?? []), [data])
+  const maxTier = Math.max(1, ...tiers.map((t) => t.count))
   const multiOwner = (data ?? []).filter((s) => s.owner_count >= 2).length
   const sensorConfirmed = (data ?? []).filter(
     (s) => confirmedClaims(s.sensor_checks).length > 0,
@@ -82,11 +96,31 @@ export function StoriesPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-mono text-[10px] uppercase tracking-wide text-neutral-500">
-          {data?.length ?? 0} stories · {multiOwner} told by 2+ independent owners ·{" "}
-          {sensorConfirmed} sensor-confirmed
-        </p>
+      <p className="font-mono text-[10px] uppercase tracking-wide text-neutral-500">
+        one row = one real-world story, however many outlets wrote it up · badge = how much to
+        believe it
+      </p>
+
+      <section className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          <StatTile
+            value={data?.length ?? 0}
+            label="stories"
+            hint="Distinct real-world stories in the selected window. Similar headlines are grouped every 30 minutes, so twenty write-ups of one earthquake count as one story."
+          />
+          <StatTile
+            value={multiOwner}
+            label="independently corroborated"
+            tone="text-emerald-300"
+            hint="Stories told by 2 or more independent organisations. Wire copies and co-owned feeds do not count twice — this is the honest confirmation count."
+          />
+          <StatTile
+            value={sensorConfirmed}
+            label="sensor-confirmed"
+            tone="text-cyan-300"
+            hint="Stories whose physical claim (earthquake, wildfire, disaster, market crash) was confirmed by an actual sensor — seismometers, fire satellites, disaster feeds or market data."
+          />
+        </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
             {WINDOWS.map((w) => (
@@ -104,7 +138,10 @@ export function StoriesPanel() {
             ))}
           </div>
           <label className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide text-neutral-500">
-            min owners
+            <Hint term="minimum owners">
+              Hide stories told by fewer independent organisations than this. Set it to 2+ to
+              hide everything only one organisation has said.
+            </Hint>
             <select
               value={minOwners}
               onChange={(e) => setMinOwners(Number(e.target.value))}
@@ -118,7 +155,28 @@ export function StoriesPanel() {
             </select>
           </label>
         </div>
-      </header>
+      </section>
+
+      <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-3">
+        <p className="mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
+          <Hint term="confidence distribution — how much of today's news is corroborated?" wide>
+            Every story gets a confidence score from 0 to 1: each additional independent owner
+            halves the remaining doubt, and a physical-sensor confirmation halves it once more.
+            These bars show how the current window&apos;s stories spread across the four tiers —
+            most news is single-sourced, and seeing that is the point.
+          </Hint>
+        </p>
+        {tiers.map((tier) => (
+          <BarRow
+            key={tier.label}
+            label={tier.label}
+            value={String(tier.count)}
+            fraction={tier.count / maxTier}
+            barClass={tier.tone}
+            hint={tier.detail}
+          />
+        ))}
+      </section>
 
       <section className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/50">
         {error ? (
@@ -141,9 +199,8 @@ export function StoriesPanel() {
       </section>
 
       <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-600">
-        src = independent owners (wire copies + co-owned feeds collapse) · badge tone =
-        corroboration-v1.0 (each extra owner halves doubt, a sensor confirmation halves it
-        again) · ✓ = physical sensor confirmed the claim · rolling 72h window, append-only
+        hover anything dotted or badged for what it means · owners = independent organisations
+        (wire copies collapse) · ✓ = hardware confirmed the claim · rolling 72h window
       </p>
     </div>
   )

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { fetchCoverageReport, type CoverageStat } from "@/lib/analytics"
+import { BarRow, Hint, StatTile } from "./viz"
 
 const REFRESH_MS = 10 * 60_000
 
@@ -11,15 +12,55 @@ type SortKey = keyof Pick<
   "total_events" | "events_per_month" | "global_share" | "fatalities_per_event" | "coverage_months"
 >
 
-const COLUMNS: { key: SortKey; label: string; render: (s: CoverageStat) => string }[] = [
-  { key: "coverage_months", label: "months", render: (s) => String(s.coverage_months) },
-  { key: "total_events", label: "events", render: (s) => s.total_events.toLocaleString() },
-  { key: "events_per_month", label: "events/mo", render: (s) => s.events_per_month.toFixed(1) },
-  { key: "global_share", label: "share", render: (s) => `${(s.global_share * 100).toFixed(2)}%` },
+/** Fatalities/event severity: colour + symbol, never colour alone. */
+function fatalTone(v: number): { cls: string; mark: string; word: string } {
+  if (v >= 1) return { cls: "text-red-400", mark: "▲", word: "severe blind spot" }
+  if (v >= 0.1) return { cls: "text-amber-300", mark: "△", word: "under-covered" }
+  return { cls: "text-neutral-300", mark: "", word: "well covered" }
+}
+
+const COLUMNS: {
+  key: SortKey
+  label: string
+  hint: string
+  render: (s: CoverageStat) => React.ReactNode
+}[] = [
+  {
+    key: "coverage_months",
+    label: "months of history",
+    hint: "How long we have been recording this country. Short history means its baselines are shaky — treat its other numbers with extra caution.",
+    render: (s) => String(s.coverage_months),
+  },
+  {
+    key: "total_events",
+    label: "recorded events",
+    hint: "Everything the pipeline has ever recorded about this country. Raw attention, not importance.",
+    render: (s) => s.total_events.toLocaleString(),
+  },
+  {
+    key: "events_per_month",
+    label: "events per month",
+    hint: "Average recorded events per month — this doubles as the country's own baseline: spikes are judged against this number, not against other countries.",
+    render: (s) => s.events_per_month.toFixed(1),
+  },
+  {
+    key: "global_share",
+    label: "share of global attention",
+    hint: "This country's slice of ALL recorded events — the loudness ranking. High share = the world talks about it constantly; its spikes are often just volume.",
+    render: (s) => `${(s.global_share * 100).toFixed(2)}%`,
+  },
   {
     key: "fatalities_per_event",
-    label: "fatal/event",
-    render: (s) => s.fatalities_per_event.toFixed(2),
+    label: "fatalities per event",
+    hint: "Deaths per recorded event. Near zero (US ~0.01): everything gets reported, however minor. High (Afghanistan ~3): only catastrophe makes the record. High values mark the dashboard's blind spots — ▲ severe, △ notable.",
+    render: (s) => {
+      const t = fatalTone(s.fatalities_per_event)
+      return (
+        <span className={t.cls}>
+          {s.fatalities_per_event.toFixed(2)} {t.mark}
+        </span>
+      )
+    },
   },
 ]
 
@@ -41,10 +82,18 @@ export function CoveragePanel() {
     return stats.slice(0, limit)
   }, [data, sortKey, limit])
 
+  const topTen = useMemo(() => {
+    const stats = [...(data?.stats ?? [])]
+    stats.sort((a, b) => b.global_share - a.global_share)
+    return stats.slice(0, 10)
+  }, [data])
+  const maxShare = Math.max(0.001, ...topTen.map((s) => s.global_share))
+
   return (
     <div className="flex flex-col gap-3">
       <p className="font-mono text-[10px] uppercase tracking-wide text-neutral-500">
-        how unevenly countries are covered — measured, not assumed
+        the dashboard&apos;s own blind spots — who gets talked about, who only makes the record
+        when people die
       </p>
 
       {error ? (
@@ -61,26 +110,38 @@ export function CoveragePanel() {
         <>
           <section className="flex flex-wrap gap-2">
             {Object.entries(data.top_share).map(([n, share]) => (
-              <div
+              <StatTile
                 key={n}
-                className="rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-2"
-              >
-                <p className="font-mono text-lg tabular-nums text-cyan-300">
-                  {(share * 100).toFixed(1)}%
-                </p>
-                <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-                  of volume in top {n}
-                </p>
-              </div>
+                value={`${(share * 100).toFixed(1)}%`}
+                label={`of all attention goes to just ${n} countries`}
+                tone="text-cyan-300"
+                hint={`The ${n} loudest countries absorb ${(share * 100).toFixed(1)}% of every event this system records. Media attention is that concentrated — which is why countries are judged against their own history, never against each other's volume.`}
+              />
             ))}
-            <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-2">
-              <p className="font-mono text-lg tabular-nums text-neutral-200">
-                {data.countries}
-              </p>
-              <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-                countries · {data.global_events.toLocaleString()} events
-              </p>
-            </div>
+            <StatTile
+              value={data.countries}
+              label={`countries · ${data.global_events.toLocaleString()} recorded events`}
+              hint="How many countries appear in the record at all, and the total number of events ever recorded across them."
+            />
+          </section>
+
+          <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-3">
+            <p className="mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
+              <Hint term="the loudness top 10 — share of global attention" wide>
+                The ten countries the record talks about most. Longer bar = louder. A spike in a
+                loud country is often just volume; a small spike in a quiet country can matter
+                far more.
+              </Hint>
+            </p>
+            {topTen.map((s) => (
+              <BarRow
+                key={s.country}
+                label={s.country}
+                value={`${(s.global_share * 100).toFixed(1)}%`}
+                fraction={s.global_share / maxShare}
+                hint={`${s.country}: ${(s.global_share * 100).toFixed(2)}% of all recorded events · ${s.events_per_month.toFixed(1)} events/month · ${s.fatalities_per_event.toFixed(2)} fatalities per event (${fatalTone(s.fatalities_per_event).word}).`}
+              />
+            ))}
           </section>
 
           <section className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/50">
@@ -97,7 +158,9 @@ export function CoveragePanel() {
                             sortKey === col.key ? "text-cyan-300" : "hover:text-neutral-200"
                           }
                         >
-                          {col.label}
+                          <Hint term={col.label} wide>
+                            {col.hint} Click to sort by this column.
+                          </Hint>
                           {sortKey === col.key ? " ↓" : ""}
                         </button>
                       </th>
@@ -131,7 +194,8 @@ export function CoveragePanel() {
           </section>
 
           <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-600">
-            events/mo doubles as each country&apos;s own baseline mean · generated{" "}
+            ▲ = high fatalities per event: this country only makes the record when people die —
+            read its small spikes seriously · generated{" "}
             {new Date(data.generated_at).toLocaleString()} · regenerate with `make coverage`
           </p>
         </>
