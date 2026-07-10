@@ -22,11 +22,17 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import get_engine
-from app.db_models import EventRow, StoryClaimRow, StoryMemberRow, StoryRow
+from app.db_models import EventRow, StoryClaimRow, StoryMemberRow, StoryReviewRow, StoryRow
 from app.settings import settings
 from app.stories.task import WINDOW_HOURS
 from app.validator.claims import METHOD_VERSION, PROMPT_VERSION, build_prompt, parse_claims
 from app.validator.client import generate_json
+from app.validator.review import (
+    REVIEW_METHOD_VERSION,
+    REVIEW_PROMPT_VERSION,
+    build_review_prompt,
+    parse_review,
+)
 
 #: How many member titles the prompt carries — enough signal, bounded tokens.
 MAX_TITLES: int = 5
@@ -64,6 +70,7 @@ def _validator_inner(
     counters: dict[str, Any] = {
         "window_stories": 0,
         "extracted": 0,
+        "reviewed": 0,
         "failed": 0,
         "skipped_existing": 0,
         "budget_stopped": False,
@@ -129,6 +136,31 @@ def _validator_inner(
                 # INSERT (#382) — first writer wins, this is a skip.
                 counters["skipped_existing"] += 1
 
+            # Story review (#386): the other two annotator jobs — cluster QA
+            # + contradiction detection — for multi-member stories only (a
+            # single headline has nothing to agree or disagree with itself).
+            live_titles = [t for t in title_list if t]
+            if len(live_titles) >= 2:
+                existing_review = session.execute(
+                    select(StoryReviewRow.id).where(
+                        StoryReviewRow.story_id == story.id,
+                        StoryReviewRow.method_version == REVIEW_METHOD_VERSION,
+                    )
+                ).scalar_one_or_none()
+                if existing_review is None:
+                    try:
+                        raw_review = generate_json(build_review_prompt(live_titles))
+                    except Exception:
+                        counters["failed"] += 1
+                        continue
+                    if _insert_review_if_absent(
+                        session,
+                        story_id=story.id,
+                        review=parse_review(raw_review),
+                        now=now,
+                    ):
+                        counters["reviewed"] += 1
+
     return counters
 
 
@@ -155,6 +187,35 @@ def _insert_claim_if_absent(
         )
     stmt = base.on_conflict_do_nothing(index_elements=["story_id", "method_version"]).returning(
         StoryClaimRow.id
+    )
+    inserted = session.execute(stmt).scalar_one_or_none()
+    session.commit()
+    return inserted is not None
+
+
+def _insert_review_if_absent(
+    session: Session, *, story_id: int, review: dict[str, Any], now: datetime
+) -> bool:
+    """Same idempotent-insert pattern as claims (#382), for review rows."""
+    values = {
+        "story_id": story_id,
+        "review": review,
+        "model": settings.ollama_model,
+        "prompt_version": REVIEW_PROMPT_VERSION,
+        "method_version": REVIEW_METHOD_VERSION,
+        "reviewed_at": now,
+    }
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        base = pg_insert(StoryReviewRow).values(values)
+    elif dialect == "sqlite":
+        base = sqlite_insert(StoryReviewRow).values(values)
+    else:
+        raise NotImplementedError(
+            f"_insert_review_if_absent does not support dialect {dialect!r}; add a branch above"
+        )
+    stmt = base.on_conflict_do_nothing(index_elements=["story_id", "method_version"]).returning(
+        StoryReviewRow.id
     )
     inserted = session.execute(stmt).scalar_one_or_none()
     session.commit()
