@@ -75,6 +75,9 @@ validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
 validator-audit:  ## Emit the ~50-story human-check sheet for the validator (#378)
 	.venv/bin/python -m app.validator.audit
 
+validator-agreement:  ## Compute + publish the model-vs-human agreement rate from the filled sheet (#386)
+	.venv/bin/python -m app.validator.agreement
+
 backfill-signals:  ## Backfill historical market+geopolitical+hazard composite scores (2015-2024); GDELT download resumes via $OSINT_DATA_DIR/gdelt/ checkpoints
 	.venv/bin/python -m app.composite.backfill
 

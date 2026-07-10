@@ -68,6 +68,7 @@ green pulsing while working (with live progress), red while idle, red
 | `make onset-eval` | run the pre-registered onset evaluation (calm-window months only) |
 | `make validator` | local-LLM claim extraction over window stories (needs Ollama) |
 | `make validator-audit` | emit the human-check sheet that gates validator use |
+| `make validator-agreement` | publish the model-vs-human agreement rate from the filled sheet |
 | `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
 
 ### The data folder
@@ -230,7 +231,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
 | WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward exam (#374) |
 | WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 (#376) |
-| WS-G local AI checker | Ollama claim extraction w/ measured error rate | 🔨 step 1 of 3 done — nightly extraction + audit sheet (#378) |
+| WS-G local AI checker | Ollama claim extraction w/ measured error rate | 🔨 machinery done (#386) — awaiting Basil's filled audit sheet |
 
 The living log of all of this is pinned issue
 [#282](https://github.com/BasilSuhail/OSINT/issues/282).

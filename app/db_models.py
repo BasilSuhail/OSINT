@@ -429,3 +429,28 @@ class StoryClaimRow(Base):
         UniqueConstraint("story_id", "method_version", name="story_claims_unique"),
         Index("story_claims_story_idx", "story_id"),
     )
+
+
+class StoryReviewRow(Base):
+    """WS-G nightly story review — contradiction + cluster QA (issue #386).
+
+    Same guardrails as story_claims: attributable (model + prompt version),
+    consumed by nothing until its own agreement rate is published.
+    """
+
+    __tablename__ = "story_reviews"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    story_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    review: Mapped[dict[str, Any]] = mapped_column(JsonColumn, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("story_id", "method_version", name="story_reviews_unique"),
+        Index("story_reviews_story_idx", "story_id"),
+    )
