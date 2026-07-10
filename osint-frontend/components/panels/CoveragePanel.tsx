@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { fetchCoverageReport, type CoverageStat } from "@/lib/analytics"
+import { countryName } from "@/lib/countryName"
 import { BarRow, Hint, StatTile } from "./viz"
 
 const REFRESH_MS = 10 * 60_000
@@ -127,7 +128,7 @@ export function CoveragePanel() {
 
           <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-3">
             <p className="mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-              <Hint term="the loudness top 10 — share of global attention" wide>
+              <Hint term="the loudness top 10 — share of global attention">
                 The ten countries the record talks about most. Longer bar = louder. A spike in a
                 loud country is often just volume; a small spike in a quiet country can matter
                 far more.
@@ -136,10 +137,10 @@ export function CoveragePanel() {
             {topTen.map((s) => (
               <BarRow
                 key={s.country}
-                label={s.country}
+                label={countryName(s.country)}
                 value={`${(s.global_share * 100).toFixed(1)}%`}
                 fraction={s.global_share / maxShare}
-                hint={`${s.country}: ${(s.global_share * 100).toFixed(2)}% of all recorded events · ${s.events_per_month.toFixed(1)} events/month · ${s.fatalities_per_event.toFixed(2)} fatalities per event (${fatalTone(s.fatalities_per_event).word}).`}
+                hint={`${countryName(s.country)}: ${(s.global_share * 100).toFixed(2)}% of all recorded events · ${s.events_per_month.toFixed(1)} events/month · ${s.fatalities_per_event.toFixed(2)} fatalities per event (${fatalTone(s.fatalities_per_event).word}).`}
               />
             ))}
           </section>
@@ -158,10 +159,10 @@ export function CoveragePanel() {
                             sortKey === col.key ? "text-cyan-300" : "hover:text-neutral-200"
                           }
                         >
-                          <Hint term={col.label} wide>
+                          <Hint term={col.label}>
                             {col.hint} Click to sort by this column.
                           </Hint>
-                          {sortKey === col.key ? " ↓" : ""}
+                          <span className={sortKey === col.key ? "" : "opacity-0"}> ↓</span>
                         </button>
                       </th>
                     ))}
@@ -170,8 +171,11 @@ export function CoveragePanel() {
                 <tbody>
                   {rows.map((stat) => (
                     <tr key={stat.country} className="border-b border-neutral-800/50">
-                      <td className="px-2 py-1 font-mono text-[11px] text-neutral-200">
-                        {stat.country}
+                      <td className="max-w-44 truncate px-2 py-1 text-[11px] text-neutral-200">
+                        {countryName(stat.country)}{" "}
+                        <span className="font-mono text-[9px] text-neutral-500">
+                          {stat.country}
+                        </span>
                       </td>
                       {COLUMNS.map((col) => (
                         <td key={col.key} className={CELL}>
