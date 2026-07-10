@@ -23,6 +23,51 @@ export function corroborationTone(score: number | null): string {
   return "border-neutral-800 bg-neutral-900 text-neutral-500"
 }
 
+export interface CorroborationTier {
+  label: string
+  detail: string
+  count: number
+  tone: string
+}
+
+/** Bucket stories into the four named confidence tiers the badge colours encode. */
+export function corroborationTiers(stories: StoryRow[]): CorroborationTier[] {
+  const tiers: CorroborationTier[] = [
+    {
+      label: "unverified — single teller",
+      detail: "score 0: one organisation, nothing confirms it. A rumour until proven otherwise.",
+      count: 0,
+      tone: "bg-neutral-600",
+    },
+    {
+      label: "weakly corroborated",
+      detail: "score below 0.5: some independent confirmation exists, but thin.",
+      count: 0,
+      tone: "bg-neutral-400",
+    },
+    {
+      label: "well corroborated",
+      detail: "score 0.5 to 0.75: several independent organisations tell this story.",
+      count: 0,
+      tone: "bg-emerald-400",
+    },
+    {
+      label: "strong — many tellers / sensor-backed",
+      detail: "score 0.75+: many independent tellers, often confirmed by physical sensors.",
+      count: 0,
+      tone: "bg-cyan-400",
+    },
+  ]
+  for (const s of stories) {
+    const score = s.corroboration ?? 0
+    if (score >= 0.75) tiers[3].count += 1
+    else if (score >= 0.5) tiers[2].count += 1
+    else if (score > 0) tiers[1].count += 1
+    else tiers[0].count += 1
+  }
+  return tiers
+}
+
 /** Claim types the physical sensors confirmed — the ✓ chips on the story line. */
 export function confirmedClaims(checks: Record<string, string>): string[] {
   return Object.entries(checks)
