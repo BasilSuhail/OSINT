@@ -225,10 +225,15 @@ spawn_frontend() {
 export no_proxy="*"
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 
-# Prefork pool sized explicitly (#384): the default (= all cores) means a
-# 13-process pool on a 12-core Mac, each busy child holding its own pandas
-# memory. ~20 beat jobs need nowhere near that; the Pi .env sets 2.
-spawn worker .venv/bin/celery -A app.celery_app worker -l info --concurrency "${CELERY_CONCURRENCY:-4}"
+# Two workers (#384, #388). The default queue keeps a small concurrent pool
+# for the I/O-bound fetchers; every heavy analytical job routes to the
+# `analytics` queue consumed at concurrency 1 — strictly one at a time, so
+# peak memory is max(one job) and the nightly Ollama batch never overlaps a
+# pandas parse. The Pi .env can set CELERY_CONCURRENCY=1.
+spawn worker .venv/bin/celery -A app.celery_app worker -l info \
+  -Q celery --concurrency "${CELERY_CONCURRENCY:-2}" -n fetchers@%h
+spawn worker-analytics .venv/bin/celery -A app.celery_app worker -l info \
+  -Q analytics --concurrency 1 -n analytics@%h
 spawn beat   .venv/bin/celery -A app.celery_app beat   -l info
 spawn api    .venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
 spawn_frontend

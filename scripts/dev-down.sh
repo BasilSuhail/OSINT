@@ -5,7 +5,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-for label in frontend worker beat api; do
+for label in frontend worker worker-analytics beat api; do
   pidfile="logs/$label.pid"
   [ -f "$pidfile" ] || continue
   pid="$(cat "$pidfile")"
