@@ -225,7 +225,10 @@ spawn_frontend() {
 export no_proxy="*"
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 
-spawn worker .venv/bin/celery -A app.celery_app worker -l info
+# Prefork pool sized explicitly (#384): the default (= all cores) means a
+# 13-process pool on a 12-core Mac, each busy child holding its own pandas
+# memory. ~20 beat jobs need nowhere near that; the Pi .env sets 2.
+spawn worker .venv/bin/celery -A app.celery_app worker -l info --concurrency "${CELERY_CONCURRENCY:-4}"
 spawn beat   .venv/bin/celery -A app.celery_app beat   -l info
 spawn api    .venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
 spawn_frontend

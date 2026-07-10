@@ -17,6 +17,9 @@ from app.settings import settings
 
 _TIMEOUT_S: float = 120.0
 _KEEP_ALIVE: str = "5m"
+#: The claim prompt is a few hundred tokens; capping the context keeps the
+#: loaded model's KV cache small instead of reserving the default window (#384).
+_NUM_CTX: int = 2048
 
 
 def generate_json(prompt: str, *, model: str | None = None) -> dict[str, Any]:
@@ -30,7 +33,7 @@ def generate_json(prompt: str, *, model: str | None = None) -> dict[str, Any]:
             "stream": False,
             "think": False,
             "keep_alive": _KEEP_ALIVE,
-            "options": {"temperature": 0},
+            "options": {"temperature": 0, "num_ctx": _NUM_CTX},
         },
         timeout=_TIMEOUT_S,
     )
