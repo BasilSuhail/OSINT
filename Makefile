@@ -66,6 +66,9 @@ disagreement:  ## Run WS-B telling divergence once — most contested stories (#
 indicator-ranking:  ## Rank every dashboard indicator by measured predictive value (WS-F, #376)
 	.venv/bin/python -m app.ranking.run
 
+onset-eval:  ## Run the pre-registered onset evaluation — the composite's real exam (#380)
+	.venv/bin/python -m app.onset.run
+
 validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
 	.venv/bin/python -m app.validator.run
 
