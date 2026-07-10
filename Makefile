@@ -66,6 +66,12 @@ disagreement:  ## Run WS-B telling divergence once — most contested stories (#
 indicator-ranking:  ## Rank every dashboard indicator by measured predictive value (WS-F, #376)
 	.venv/bin/python -m app.ranking.run
 
+validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
+	.venv/bin/python -m app.validator.run
+
+validator-audit:  ## Emit the ~50-story human-check sheet for the validator (#378)
+	.venv/bin/python -m app.validator.audit
+
 backfill-signals:  ## Backfill historical market+geopolitical+hazard composite scores (2015-2024); GDELT download resumes via $OSINT_DATA_DIR/gdelt/ checkpoints
 	.venv/bin/python -m app.composite.backfill
 

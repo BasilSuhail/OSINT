@@ -65,6 +65,8 @@ green pulsing while working (with live progress), red while idle, red
 | `make sensor-checks` | check story claims against physical sensors → verdict board |
 | `make disagreement` | score cross-country telling divergence → most contested stories |
 | `make indicator-ranking` | rank every dashboard indicator by measured predictive value |
+| `make validator` | local-LLM claim extraction over window stories (needs Ollama) |
+| `make validator-audit` | emit the human-check sheet that gates validator use |
 | `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
 
 ### The data folder
@@ -180,9 +182,12 @@ We can't compute "truth", so we compute three honest proxies **per story**:
   `docs/disagreement-exam.md` before the first prediction was issued.
 - **Coverage bias (WS-D, done)** — the dashboard publishes its own blind
   spots instead of hiding them.
-- **Local AI checker (WS-G, planned)** — a local Ollama model extracts claims
-  and flags contradictions, treated as *another fallible annotator* whose
-  error rate is measured — never as a judge.
+- **Local AI checker (WS-G, running)** — a local Ollama model
+  (`qwen3.5:4b-q4_K_M`, 3.4 GB, nothing leaves the machine) extracts
+  structured claims per story nightly — countries, event type, casualty
+  count (#378). Treated as *another fallible annotator*, never a judge:
+  nothing consumes its output until its agreement with a human-checked
+  sample (`make validator-audit`) is measured and published.
 
 ### 2.3 The referee system (why our numbers can't cheat)
 
@@ -219,7 +224,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
 | WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward exam (#374) |
 | WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 (#376) |
-| WS-G local AI checker | Ollama claim extraction w/ measured error rate | 💡 planned |
+| WS-G local AI checker | Ollama claim extraction w/ measured error rate | 🔨 step 1 of 3 done — nightly extraction + audit sheet (#378) |
 
 The living log of all of this is pinned issue
 [#282](https://github.com/BasilSuhail/OSINT/issues/282).

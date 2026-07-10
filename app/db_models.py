@@ -403,3 +403,29 @@ class DisagreementPairRow(Base):
             "mean_divergence >= 0 AND mean_divergence <= 1", name="disagreement_pairs_range"
         ),
     )
+
+
+class StoryClaimRow(Base):
+    """WS-G model-extracted claims per story — issue #378.
+
+    The model is another noisy annotator: rows carry model + prompt_version
+    so every claim is attributable, and NOTHING downstream consumes them
+    until agreement with a human-checked sample is measured and published.
+    """
+
+    __tablename__ = "story_claims"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    story_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    claims: Mapped[dict[str, Any]] = mapped_column(JsonColumn, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    extracted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("story_id", "method_version", name="story_claims_unique"),
+        Index("story_claims_story_idx", "story_id"),
+    )

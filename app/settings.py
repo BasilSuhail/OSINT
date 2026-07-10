@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     pushover_token: str = Field(default="")
     pushover_user: str = Field(default="")
 
+    # WS-G local LLM validator (#378) — localhost only, never a cloud API.
+    ollama_url: str = Field(default="http://localhost:11434")
+    ollama_model: str = Field(default="qwen3.5:4b-q4_K_M")
+    validator_batch_limit: int = Field(default=200)
+
     log_level: str = Field(default="INFO")
     environment: str = Field(default="development")
 
