@@ -9,7 +9,7 @@ The thesis is one specific claim: **a composite of three heterogeneous OSINT sig
 - [Chapter 1 — Switch it on](#chapter-1--switch-it-on)
 - [Chapter 2 — Can we trust the data?](#chapter-2--can-we-trust-the-data)
 - [Chapter 3 — (reserved)](#chapter-3--reserved)
-- [Chapter 4 — (reserved)](#chapter-4--reserved)
+- [Chapter 4 — How to read the dashboard](#chapter-4--how-to-read-the-dashboard)
 - [Reference shelf](#reference-shelf) — deep architecture material
 
 ---
@@ -386,9 +386,121 @@ external disk and move it.
 
 ---
 
-# Chapter 4 — (reserved)
+# Chapter 4 — How to read the dashboard
 
-*Intentionally empty.*
+*Every number on the analytical cards, in plain language: what it is, what
+good and bad look like, and what to actually do with it. No statistics
+degree required.*
+
+The right pane is a deck of five cards (swipe, or click for fullscreen):
+**console** (the raw event feed as it arrives), **globe** (where things are
+happening), and the three analytical cards this chapter explains — stories,
+coverage, scoreboard.
+
+### 4.1 Stories — "what is the world talking about, and should I believe it?"
+
+Every row is **one real-world story**, no matter how many outlets wrote it
+up. The machine groups similar headlines every 30 minutes, so "Earthquake
+strikes Tokyo" and "Dozens injured as quake hits Tokyo" are one row, not two.
+
+**The badge on the left — `7 src`** — is the number that matters. It counts
+**independent tellers**, not feeds: ten copies of one Reuters wire story
+count as *one*, the BBC's two feeds count as *one*, RT and TASS (both
+controlled by the Russian state) count as *one*. So `7 src` means seven
+genuinely separate organisations chose to tell this story.
+
+**The badge's colour is a confidence score** (0 to 1, shown in the tooltip):
+
+| colour | score | plain meaning |
+|---|---|---|
+| dim grey | 0 | one unverified teller — this is a rumour until proven otherwise |
+| grey | up to 0.5 | a second independent teller exists — worth a look |
+| green | 0.5–0.75 | several independent tellers — probably real |
+| cyan | 0.75+ | many independent tellers, often machine-confirmed — take seriously |
+
+The formula behind the colour is one sentence: *each additional independent
+teller halves the remaining doubt; a physical-sensor confirmation halves it
+once more.*
+
+**The `✓ earthquake` / `✓ disaster` chips** are the machine check: the story
+*claimed* a physical event, and a sensor that cannot spin a narrative (USGS
+seismometers, NASA fire satellites, GDACS disaster feeds, market data)
+**confirmed something physical actually happened there, then**. A story with
+a ✓ chip is corroborated by hardware, not just by other journalists. No chip
+on a physical claim means no matching sensor row was found — often because
+the story is about a past event, sometimes because it's inflated.
+
+**What to do with it:** scanning for what's real, sort by instinct — cyan
+badges with ✓ chips first, dim single-teller rows last. The
+`min owners` filter (set it to 2+) hides everything only one organisation
+has said. The header line — *"X stories · Y told by 2+ independent owners ·
+Z sensor-confirmed"* — is the day's honesty summary: how much of the news
+flow is corroborated versus single-sourced.
+
+### 4.2 Coverage — "whose stories never get told?"
+
+This card is the dashboard admitting its own blind spots. Media attention is
+wildly uneven: the top five countries absorb roughly **30 % of all recorded
+event volume**. If you don't measure that, every other number quietly
+inherits the bias.
+
+| column | plain meaning |
+|---|---|
+| **months** | how long we've had data for this country — short history = shaky baselines |
+| **events** / **events/mo** | raw attention: how much gets recorded about this country at all |
+| **share** | this country's slice of *global* recorded events — the loudness ranking |
+| **fatal/event** | fatalities per recorded event — the quiet-country warning: a high number means events only get recorded there when people die |
+
+**The one comparison worth internalising:** the US logs ~0.01 fatalities per
+event (everything gets reported, however minor), Afghanistan ~3 (only
+catastrophe makes the record). Same planet, hundred-fold difference in what
+"an event" means.
+
+**What to do with it:** before believing any cross-country comparison on
+this dashboard — including ours — check both countries here. A spike in a
+high-share country is probably just loudness; a *small* spike in a country
+with high fatal/event may be a big deal that barely made the record. Loud
+countries are judged against their own past for exactly this reason.
+
+### 4.3 Scoreboard — "is any of this actually predictive?"
+
+The honesty engine. Two sections:
+
+**Forward track record.** Every month the system writes down its forecasts
+— *"country X will/won't see instability in the next 1 / 3 / 6 months"* —
+**server-stamped before the outcome is knowable**, impossible to edit
+afterwards, graded automatically once reality catches up. The columns:
+
+| column | plain meaning |
+|---|---|
+| **source** | which instrument made the forecast — `composite` (the stress index) or `disagreement` (do countries telling the same story differently predict trouble?) |
+| **k** | horizon: predicting 1, 3 or 6 months ahead |
+| **issued / graded / pending** | how many forecasts made, how many reality has already marked, how many still waiting |
+| **pos rate** | how often the bad outcome actually happened in the graded set |
+| **mean score** | how worried the instrument claimed to be, on average |
+| **Brier** | the grade: **0 = clairvoyant, 0.25 = coin flip, 1 = perfectly wrong.** Lower is better. This one number is the difference between a forecasting system and a mood ring |
+
+**Baselines.** The composite index versus deliberately dumb rivals —
+"predict randomly", "predict yesterday's weather", "predict each country's
+long-run average". The published result, stated plainly: **the composite has
+not yet beaten the dumb rivals** (AUROC ≈ 0.5 = coin flip, on both the
+ordinary exam and the pre-registered onset exam). That negative is published
+on purpose — it is what makes every other number here credible, and the
+per-indicator decomposition (`make indicator-ranking`) shows where the
+recoverable signal lives for the next version.
+
+**What to do with it:** treat the dashboard as **monitoring, not prophecy**.
+The stories card tells you what's happening and how corroborated it is —
+that part works today. The predictive claim is *on trial in public*: watch
+the Brier column accumulate; if the instruments are worth anything, it sinks
+below 0.25 and stays there. Until then, nobody here will pretend otherwise.
+
+### 4.4 The one-paragraph version
+
+Stories = what happened, weighted by independent confirmation, machine-checked
+against sensors. Coverage = which countries this whole apparatus is blind to.
+Scoreboard = whether the forecasting ambition is earning its keep, graded in
+public, currently honest about not winning yet. Read them in that order.
 
 ---
 
