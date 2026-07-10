@@ -65,6 +65,7 @@ green pulsing while working (with live progress), red while idle, red
 | `make sensor-checks` | check story claims against physical sensors → verdict board |
 | `make disagreement` | score cross-country telling divergence → most contested stories |
 | `make indicator-ranking` | rank every dashboard indicator by measured predictive value |
+| `make onset-eval` | run the pre-registered onset evaluation (calm-window months only) |
 | `make validator` | local-LLM claim extraction over window stories (needs Ollama) |
 | `make validator-audit` | emit the human-check sheet that gates validator use |
 | `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
@@ -206,12 +207,16 @@ We can't compute "truth", so we compute three honest proxies **per story**:
   and can never be back-filled. The track record is earned or it is nothing.
 - The current headline: with all three domains live, the composite scores
   **AUROC 0.502** against a per-country base rate of **0.929**. A coin flip —
-  published, not hidden. Why it loses is the interesting part: our index
-  measures *"is this country behaving unusually vs its own past?"* while the
-  exam asks *"which countries have conflict at all?"* — a register of known
-  troublemakers aces that exam without any signal. The next pre-registered
-  test restricts scoring to **onset months** (calm-before-the-storm cases),
-  which is the exam a deviation signal is actually built for.
+  published, not hidden. The generous reading was that our index measures
+  *"is this country behaving unusually vs its own past?"* while the exam asks
+  *"which countries have conflict at all?"* — so a second, pre-registered
+  test restricted scoring to **onset months** (calm-before-the-storm cases,
+  `docs/onset-eval.md`, #380). Verdict: **coin flip there too** (0.496–0.526
+  vs a 0.744 base rate) — even among countries calm for a full year, long-run
+  relapse history dominates and the composite adds nothing measurable yet.
+  Both negatives are published; the per-indicator decomposition
+  (`make indicator-ranking`, #376) shows where recoverable signal lives —
+  the magnitude of the deviation, which composite v1.1 must not discard.
 
 ### 2.4 Status board
 
@@ -221,6 +226,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-D coverage bias | attention-bias table | ✅ live on /coverage |
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
+| Onset exam | the composite's second pre-registered test | ✅ ran — coin flip again, honestly published (#380) |
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
 | WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward exam (#374) |
 | WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 (#376) |
