@@ -40,6 +40,7 @@ app.conf.task_routes = {
         "app.tasks.sensor_check_stories",
         "app.tasks.score_disagreement",
         "app.tasks.extract_claims",
+        "app.tasks.weekly_briefing",
         "app.tasks.journal_daily",
         "app.tasks.compute_composite",
         "app.tasks.compute_cii",

@@ -99,6 +99,31 @@ def country_name_to_iso2(name: str | None) -> str | None:
     return _country_name_to_iso2_map().get(normalized)
 
 
+@lru_cache(maxsize=1)
+def _iso2_to_name_map() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for feature in _features():
+        props = feature.get("properties") or {}
+        # Natural Earth sets ISO_A2 = "-99" for France, Norway and friends;
+        # ISO_A2_EH carries the real code in those rows.
+        iso2 = props.get("ISO_A2")
+        if not isinstance(iso2, str) or len(iso2) != 2 or iso2.startswith("-"):
+            iso2 = props.get("ISO_A2_EH")
+        if not isinstance(iso2, str) or len(iso2) != 2 or iso2.startswith("-"):
+            continue
+        name = props.get("NAME_EN") or props.get("NAME") or props.get("ADMIN")
+        if isinstance(name, str) and name:
+            out.setdefault(iso2.upper(), name)
+    return out
+
+
+def iso2_to_name(iso2: str | None) -> str | None:
+    """ISO2 → English country name (the briefing renders codes as words, #401)."""
+    if not iso2 or len(iso2) != 2:
+        return None
+    return _iso2_to_name_map().get(iso2.upper())
+
+
 def country_centroid(country: str | None) -> tuple[float, float] | None:
     if not country:
         return None

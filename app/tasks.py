@@ -19,6 +19,7 @@ from celery.schedules import crontab
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.briefing.task import _briefing_body
 from app.celery_app import app
 from app.cii.scoring import CII_METHOD_VERSION
 from app.cii.task import _compute_cii_body
@@ -183,6 +184,19 @@ def extract_claims() -> dict[str, Any]:
     (issue #378). Another noisy annotator — consumed by nothing until its
     agreement rate is measured."""
     return _validator_body()
+
+
+@app.task(
+    name="app.tasks.weekly_briefing",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def weekly_briefing() -> dict[str, Any]:
+    """Weekly briefing export — the newsletter artifact (issue #401)."""
+    return _briefing_body()
 
 
 @app.task(
@@ -424,6 +438,12 @@ app.conf.beat_schedule = {
     "validator-nightly": {
         "task": "app.tasks.extract_claims",
         "schedule": crontab(hour=2, minute=45),
+    },
+    # Weekly briefing (issue #401): Monday 06:30 UTC, in time for a morning
+    # newsletter send — after the weekend's beats have all landed.
+    "briefing-weekly": {
+        "task": "app.tasks.weekly_briefing",
+        "schedule": crontab(day_of_week=1, hour=6, minute=30),
     },
     "housekeeping-daily-3am-utc": {
         "task": "app.tasks.run_housekeeping",
