@@ -18,6 +18,7 @@ import {
   stressBand,
 } from "@/lib/analytics"
 import { countryName } from "@/lib/countryName"
+import { contestedVerdict, storyVerdict } from "@/lib/verdicts"
 import { Hint, Tip } from "./viz"
 
 const REFRESH_MS = 5 * 60_000
@@ -123,6 +124,15 @@ export function BriefingPanel() {
             ))}
           </div>
         )}
+        {best ? (
+          <p className="mt-1.5 text-[11px] leading-relaxed text-neutral-400">
+            {storyVerdict({
+              owner_count: best.owner_count,
+              corroboration: best.corroboration,
+              confirmed: bestConfirmed,
+            })}
+          </p>
+        ) : null}
       </Block>
 
       <Block
@@ -150,6 +160,11 @@ export function BriefingPanel() {
             </span>
           </div>
         )}
+        {topContested ? (
+          <p className="mt-1.5 text-[11px] leading-relaxed text-neutral-400">
+            {contestedVerdict(topContested)}
+          </p>
+        ) : null}
       </Block>
 
       <Block
