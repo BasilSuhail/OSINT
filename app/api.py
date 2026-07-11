@@ -251,6 +251,71 @@ def stories_top(
     ]
 
 
+@app.get("/stories/{story_id}/members")
+def story_members(
+    story_id: int,
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    """Drilldown (#396): who told this story, and how alike the tellings are.
+
+    One row per member article — outlet, independent owner, origin country,
+    join similarity. Fetched lazily when a story row is expanded.
+    """
+    from app.db_models import StoryMemberRow
+    from app.sources.rss_registry import content_owner_map, load_feed_configs, outlet_country_map
+
+    owners = content_owner_map()
+    origins = outlet_country_map()
+    pretty = {cfg.source: cfg.pretty_name for cfg in load_feed_configs()}
+
+    rows = session.execute(
+        select(StoryMemberRow, EventRow)
+        .join(EventRow, EventRow.id == StoryMemberRow.event_id)
+        .where(StoryMemberRow.story_id == story_id)
+        .order_by(EventRow.occurred_at)
+    ).all()
+    return [
+        {
+            "title": (event.payload or {}).get("title") or "",
+            "source": event.source,
+            "outlet": pretty.get(event.source, event.source),
+            "owner": owners.get(event.source, event.source),
+            "origin_country": origins.get(event.source),
+            "occurred_at": event.occurred_at.isoformat(),
+            "similarity": member.similarity,
+        }
+        for member, event in rows
+    ]
+
+
+@app.get("/journal/monthly")
+def journal_monthly(session: Session = Depends(get_session)) -> list[dict]:
+    """Drilldown (#396): the track record over time, per instrument per month.
+
+    Month = issuance month (bucket_start). Brier is computed over graded rows
+    only; months with no grades yet report brier null — honest pending state.
+    """
+    rows = session.execute(select(PredictionRow)).scalars().all()
+    grouped: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        month = row.bucket_start.strftime("%Y-%m-01")
+        slot = grouped.setdefault(
+            (row.source, month),
+            {"source": row.source, "month": month, "issued": 0, "graded": 0, "_sq": 0.0},
+        )
+        slot["issued"] += 1
+        if row.outcome is not None:
+            slot["graded"] += 1
+            slot["_sq"] += (row.score - row.outcome) ** 2
+    out = []
+    for slot in grouped.values():
+        sq = slot.pop("_sq")
+        slot["brier"] = sq / slot["graded"] if slot["graded"] else None
+        out.append(slot)
+    out.sort(key=lambda s: (s["source"], s["month"]))
+    return out
+
+
 @app.get("/jobs/recent")
 def jobs_recent(
     session: Session = Depends(get_session),

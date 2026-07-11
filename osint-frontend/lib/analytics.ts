@@ -82,6 +82,51 @@ export async function fetchTopStories(hours = 24, limit = 100): Promise<StoryRow
   return (await res.json()) as StoryRow[]
 }
 
+export interface StoryMember {
+  title: string
+  source: string
+  outlet: string
+  owner: string
+  origin_country: string | null
+  occurred_at: string
+  similarity: number
+}
+
+export async function fetchStoryMembers(storyId: string): Promise<StoryMember[]> {
+  const res = await fetch(`${API_BASE}/stories/${storyId}/members`)
+  if (!res.ok) throw new Error(`GET /stories/${storyId}/members ${res.status}`)
+  return (await res.json()) as StoryMember[]
+}
+
+export interface JournalMonthly {
+  source: string
+  month: string
+  issued: number
+  graded: number
+  brier: number | null
+}
+
+export async function fetchJournalMonthly(): Promise<JournalMonthly[]> {
+  const res = await fetch(`${API_BASE}/journal/monthly`)
+  if (!res.ok) throw new Error(`GET /journal/monthly ${res.status}`)
+  return (await res.json()) as JournalMonthly[]
+}
+
+export interface ScorePoint {
+  country: string
+  bucket_start: string
+  score_value: number
+}
+
+export async function fetchCountryScores(country: string): Promise<ScorePoint[]> {
+  const res = await fetch(
+    `${API_BASE}/scores?score_name=composite&country=${encodeURIComponent(country)}&limit=200`,
+  )
+  if (!res.ok) throw new Error(`GET /scores ${res.status}`)
+  const rows = (await res.json()) as ScorePoint[]
+  return rows.sort((a, b) => a.bucket_start.localeCompare(b.bucket_start))
+}
+
 export interface ScoreboardLine {
   source: string
   method_version: string
