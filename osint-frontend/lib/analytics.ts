@@ -127,6 +127,65 @@ export async function fetchCountryScores(country: string): Promise<ScorePoint[]>
   return rows.sort((a, b) => a.bucket_start.localeCompare(b.bucket_start))
 }
 
+export interface ContestedStory {
+  story_id: string
+  title: string
+  divergence: number
+  groups: Record<string, number>
+}
+
+export async function fetchContestedStories(): Promise<ContestedStory[]> {
+  const res = await fetch(`${API_BASE}/disagreement/top?hours=72&limit=5`)
+  if (!res.ok) throw new Error(`GET /disagreement/top ${res.status}`)
+  return (await res.json()) as ContestedStory[]
+}
+
+export interface CompositeMovers {
+  latest_month: string | null
+  global_mean: number | null
+  movers: { country: string; latest: number; delta: number }[]
+}
+
+export async function fetchCompositeMovers(): Promise<CompositeMovers> {
+  const res = await fetch(`${API_BASE}/composite/movers?limit=6`)
+  if (!res.ok) throw new Error(`GET /composite/movers ${res.status}`)
+  return (await res.json()) as CompositeMovers
+}
+
+/** GPRGauge pattern from the proto-OSINT project: plain words for a stress level. */
+export function stressBand(mean: number | null): {
+  word: string
+  tone: string
+  detail: string
+} {
+  if (mean === null)
+    return {
+      word: "no data",
+      tone: "text-neutral-500",
+      detail: "No composite scores computed yet.",
+    }
+  if (mean >= 0.7)
+    return {
+      word: "high stress",
+      tone: "text-red-400",
+      detail:
+        "The average country stress score is far above its usual range — many countries are behaving unusually versus their own history.",
+    }
+  if (mean >= 0.55)
+    return {
+      word: "elevated",
+      tone: "text-amber-300",
+      detail:
+        "The average country stress score sits above its usual range — more deviation from normal than a typical month.",
+    }
+  return {
+    word: "calm",
+    tone: "text-emerald-300",
+    detail:
+      "The average country stress score is inside its usual range — most countries look like their own normal.",
+  }
+}
+
 export interface ScoreboardLine {
   source: string
   method_version: string

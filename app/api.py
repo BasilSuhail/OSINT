@@ -288,6 +288,96 @@ def story_members(
     ]
 
 
+@app.get("/disagreement/top")
+def disagreement_top(
+    session: Session = Depends(get_session),
+    hours: int = Query(default=72, ge=1, le=24 * 30),
+    limit: int = Query(default=10, ge=1, le=100),
+) -> list[dict]:
+    """Briefing (#398): the most contested tellings — stories whose country
+    blocs word the same event most differently."""
+    from app.db_models import StoryDisagreementRow
+
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
+    rows = session.execute(
+        select(StoryDisagreementRow, StoryRow.title)
+        .join(StoryRow, StoryRow.id == StoryDisagreementRow.story_id)
+        .where(StoryDisagreementRow.computed_at >= cutoff)
+        .order_by(StoryDisagreementRow.divergence.desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "story_id": str(row.story_id),
+            "title": title,
+            "divergence": row.divergence,
+            "groups": (row.components or {}).get("groups", {}),
+        }
+        for row, title in rows
+    ]
+
+
+@app.get("/composite/movers")
+def composite_movers(
+    session: Session = Depends(get_session),
+    limit: int = Query(default=8, ge=1, le=50),
+) -> dict:
+    """Briefing (#398): who moved most between the two latest scored months,
+    plus the latest global mean for the plain-word status band."""
+    months = (
+        session.execute(
+            select(ScoreRow.bucket_start)
+            .where(ScoreRow.score_name == "composite")
+            .distinct()
+            .order_by(ScoreRow.bucket_start.desc())
+            .limit(2)
+        )
+        .scalars()
+        .all()
+    )
+    if not months:
+        return {"latest_month": None, "global_mean": None, "movers": []}
+
+    latest_month = months[0]
+    latest = {
+        row.country: row.score_value
+        for row in session.execute(
+            select(ScoreRow).where(
+                ScoreRow.score_name == "composite", ScoreRow.bucket_start == latest_month
+            )
+        ).scalars()
+    }
+    previous = (
+        {
+            row.country: row.score_value
+            for row in session.execute(
+                select(ScoreRow).where(
+                    ScoreRow.score_name == "composite", ScoreRow.bucket_start == months[1]
+                )
+            ).scalars()
+        }
+        if len(months) > 1
+        else {}
+    )
+    movers = sorted(
+        (
+            {
+                "country": country,
+                "latest": value,
+                "delta": value - previous[country],
+            }
+            for country, value in latest.items()
+            if country in previous
+        ),
+        key=lambda m: -abs(m["delta"]),
+    )[:limit]
+    return {
+        "latest_month": latest_month.strftime("%Y-%m-01"),
+        "global_mean": sum(latest.values()) / len(latest) if latest else None,
+        "movers": movers,
+    }
+
+
 @app.get("/journal/monthly")
 def journal_monthly(session: Session = Depends(get_session)) -> list[dict]:
     """Drilldown (#396): the track record over time, per instrument per month.

@@ -392,10 +392,29 @@ external disk and move it.
 good and bad look like, and what to actually do with it. No statistics
 degree required.*
 
-The right pane is a deck of five cards (swipe, or click for fullscreen):
-**console** (the raw event feed as it arrives), **globe** (where things are
-happening), and the three analytical cards this chapter explains — stories,
-coverage, scoreboard.
+The right pane is a deck of six cards (swipe, or click for fullscreen):
+**briefing** (the landing card, explained below), **console** (the raw event
+feed as it arrives), **globe** (where things are happening), and the three
+analytical cards — stories, coverage, scoreboard.
+
+### 4.0 Briefing — "just tell me what matters today"
+
+The deck opens with the answer instead of a hunt (a pattern carried over
+from the news-intelligence-platform, this project's predecessor):
+
+- **World stress level** in one plain word — *calm / elevated / high
+  stress* — computed from the average of every country's latest composite
+  score. Hover it for the honest caveat: the word describes *measured
+  stress today*, not a validated forecast.
+- **Most trustworthy story right now** — the highest-confidence story of
+  the last 24 hours, with its owners badge and sensor ✓.
+- **Most contested telling** — the story whose country blocs word it most
+  differently, with who disagrees with whom.
+- **Biggest stress movers** — countries whose index moved most since last
+  month, ▲ rising / ▼ easing.
+
+Everything on it is a doorway: the detail always lives on one of the three
+cards below.
 
 ### 4.1 Stories — "what is the world talking about, and should I believe it?"
 
