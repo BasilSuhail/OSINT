@@ -10,6 +10,7 @@ import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneStore } from "@/stores/rightPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { CardDeck, type DeckCard } from "./CardDeck"
+import { BriefingPanel } from "./panels/BriefingPanel"
 import { CoveragePanel } from "./panels/CoveragePanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
 import { StoriesPanel } from "./panels/StoriesPanel"
@@ -97,6 +98,7 @@ export function SplitLayout() {
   // first visit, then stays warm and pauses while off-screen), and the
   // analytical pages fill the rest.
   const deckCards: DeckCard[] = [
+    { key: "briefing", title: "briefing", content: <BriefingPanel /> },
     { key: "console", title: "console", fill: true, content: <RightPane /> },
     {
       key: "globe",

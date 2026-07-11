@@ -175,6 +175,69 @@ class TestJournalMonthly:
         assert _client(db_session).get("/journal/monthly").json() == []
 
 
+class TestDisagreementTop:
+    def test_most_contested_stories_with_titles(self, db_session):
+        """Briefing card (#398): the most contested telling of the window."""
+        from app.db_models import StoryDisagreementRow
+
+        fresh = _seed_stories(db_session)
+        db_session.add(
+            StoryDisagreementRow(
+                story_id=fresh.id,
+                divergence=0.885,
+                components={"groups": {"GB": 4, "RU": 4}, "n_pairs": 1},
+                method_version="disagreement-v1.0",
+                computed_at=NOW - timedelta(hours=1),
+            )
+        )
+        db_session.commit()
+
+        (row,) = _client(db_session).get("/disagreement/top").json()
+        assert row["title"] == "Earthquake strikes Tokyo"
+        assert row["divergence"] == 0.885
+        assert row["groups"] == {"GB": 4, "RU": 4}
+
+    def test_empty_returns_empty_list(self, db_session):
+        assert _client(db_session).get("/disagreement/top").json() == []
+
+
+class TestCompositeMovers:
+    def test_delta_between_last_two_months_ranked(self, db_session):
+        """Briefing card (#398): who moved most since last month, plus global mean."""
+        from app.db_models import ScoreRow
+
+        may = datetime(2026, 5, 1, tzinfo=UTC)
+        june = datetime(2026, 6, 1, tzinfo=UTC)
+        for country, prev, latest in [("AA", 0.2, 0.8), ("BB", 0.5, 0.4), ("CC", 0.5, 0.5)]:
+            for bucket, value in [(may, prev), (june, latest)]:
+                db_session.add(
+                    ScoreRow(
+                        country=country,
+                        bucket_start=bucket,
+                        bucket_length=timedelta(days=31),
+                        score_name="composite",
+                        score_value=value,
+                        components={},
+                        method_version="v1.0",
+                    )
+                )
+        db_session.commit()
+
+        body = _client(db_session).get("/composite/movers").json()
+        assert body["latest_month"] == "2026-06-01"
+        assert abs(body["global_mean"] - (0.8 + 0.4 + 0.5) / 3) < 1e-9
+        movers = body["movers"]
+        assert movers[0]["country"] == "AA"
+        assert abs(movers[0]["delta"] - 0.6) < 1e-9
+        assert movers[0]["latest"] == 0.8
+        # ranked by |delta|: AA (0.6) then BB (-0.1) then CC (0)
+        assert [m["country"] for m in movers[:2]] == ["AA", "BB"]
+
+    def test_empty_scores(self, db_session):
+        body = _client(db_session).get("/composite/movers").json()
+        assert body == {"latest_month": None, "global_mean": None, "movers": []}
+
+
 class TestJournalScoreboard:
     def test_scoreboard_lines(self, db_session):
         db_session.add_all(
