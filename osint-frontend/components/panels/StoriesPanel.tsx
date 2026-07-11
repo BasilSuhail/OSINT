@@ -6,9 +6,11 @@ import {
   confirmedClaims,
   corroborationTiers,
   corroborationTone,
+  fetchStoryMembers,
   fetchTopStories,
   type StoryRow,
 } from "@/lib/analytics"
+import { countryName } from "@/lib/countryName"
 import { BarRow, Hint, StatTile, Tip } from "./viz"
 
 const REFRESH_MS = 60_000
@@ -27,11 +29,61 @@ function relativeTime(iso: string): string {
   return `${Math.round(hours / 24)}d ago`
 }
 
-function StoryLine({ story }: { story: StoryRow }) {
+function StoryMembers({ storyId }: { storyId: string }) {
+  const { data, error } = useSWR(["story-members", storyId], () => fetchStoryMembers(storyId))
+  if (error)
+    return <p className="px-4 pb-2 font-mono text-[10px] text-red-400">members unavailable</p>
+  if (!data) return <p className="px-4 pb-2 font-mono text-[10px] text-neutral-500">loading…</p>
+  return (
+    <ul className="border-l-2 border-neutral-800 bg-neutral-950/40 px-4 py-1">
+      {data.map((m, i) => (
+        <li key={i} className="flex items-baseline gap-2 py-0.5">
+          <Tip
+            className="shrink-0"
+            content={
+              <>
+                <b className="text-neutral-100">{m.outlet}</b> — independent owner{" "}
+                <b className="text-neutral-100">{m.owner}</b>, editorial voice based in{" "}
+                {m.origin_country ? countryName(m.origin_country) : "unknown"}. Join similarity{" "}
+                {m.similarity.toFixed(2)}: how close this headline sits to the story&apos;s
+                centre (1.00 founded the story).
+              </>
+            }
+          >
+            <span className="font-mono text-[9px] uppercase tracking-wide text-cyan-300/80">
+              {m.outlet}
+            </span>
+          </Tip>
+          <span className="min-w-0 flex-1 truncate text-[12px] text-neutral-300">{m.title}</span>
+          <span className="shrink-0 font-mono text-[9px] tabular-nums text-neutral-600">
+            {m.origin_country ? countryName(m.origin_country) : "—"} · {m.similarity.toFixed(2)}
+          </span>
+        </li>
+      ))}
+      <li className="py-0.5 font-mono text-[8px] uppercase tracking-wide text-neutral-600">
+        who said what — each line is one outlet&apos;s telling of this same story
+      </li>
+    </ul>
+  )
+}
+
+function StoryLine({
+  story,
+  expanded,
+  onToggle,
+}: {
+  story: StoryRow
+  expanded: boolean
+  onToggle: () => void
+}) {
   const confirmed = confirmedClaims(story.sensor_checks)
   const score = story.corroboration
   return (
-    <li className="flex items-center gap-3 border-b border-neutral-800/70 px-3 py-2 hover:bg-neutral-900/60">
+    <li
+      className="cursor-pointer border-b border-neutral-800/70 hover:bg-neutral-900/60"
+      onClick={onToggle}
+    >
+      <div className="flex items-center gap-3 px-3 py-2">
       <Tip
         className="shrink-0"
         content={
@@ -75,8 +127,10 @@ function StoryLine({ story }: { story: StoryRow }) {
         </Tip>
       ))}
       <span className="shrink-0 font-mono text-[9px] tabular-nums uppercase tracking-wide text-neutral-500">
-        {relativeTime(story.last_seen)}
+        {relativeTime(story.last_seen)} {expanded ? "▾" : "▸"}
       </span>
+      </div>
+      {expanded ? <StoryMembers storyId={story.id} /> : null}
     </li>
   )
 }
@@ -85,6 +139,7 @@ function StoryLine({ story }: { story: StoryRow }) {
 export function StoriesPanel() {
   const [hours, setHours] = useState<number>(24)
   const [minOwners, setMinOwners] = useState<number>(1)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const { data, error, isLoading } = useSWR(
     ["stories-top", hours],
@@ -201,15 +256,21 @@ export function StoriesPanel() {
         ) : (
           <ul>
             {stories.map((story) => (
-              <StoryLine key={story.id} story={story} />
+              <StoryLine
+                key={story.id}
+                story={story}
+                expanded={expandedId === story.id}
+                onToggle={() => setExpandedId((v) => (v === story.id ? null : story.id))}
+              />
             ))}
           </ul>
         )}
       </section>
 
       <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-600">
-        hover anything dotted or badged for what it means · owners = independent organisations
-        (wire copies collapse) · ✓ = hardware confirmed the claim · rolling 72h window
+        click a story to see who said what · hover anything dotted or badged for what it means ·
+        owners = independent organisations (wire copies collapse) · ✓ = hardware confirmed the
+        claim · rolling 72h window
       </p>
     </div>
   )

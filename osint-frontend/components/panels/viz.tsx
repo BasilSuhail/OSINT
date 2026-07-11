@@ -170,6 +170,75 @@ export function BarRow({
 }
 
 /**
+ * Inline SVG sparkline — a single series over time, position-encoded (the
+ * most accurate perceptual channel). Hover any point for month + value via
+ * the portal tooltip; min/max labeled directly, no axis clutter.
+ */
+export function Sparkline({
+  points,
+  height = 44,
+  format = (v: number) => v.toFixed(3),
+  tone = "stroke-cyan-400",
+}: {
+  points: { label: string; value: number }[]
+  height?: number
+  format?: (v: number) => string
+  tone?: string
+}) {
+  if (points.length < 2) {
+    return (
+      <p className="font-mono text-[10px] text-neutral-500">
+        not enough history to draw yet ({points.length} point{points.length === 1 ? "" : "s"})
+      </p>
+    )
+  }
+  const values = points.map((p) => p.value)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const span = max - min || 1
+  const width = 100
+  const x = (i: number) => (i / (points.length - 1)) * width
+  const y = (v: number) => 4 + (1 - (v - min) / span) * (height - 8)
+  const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(p.value)}`).join(" ")
+  return (
+    <div>
+      <div className="flex justify-between font-mono text-[9px] tabular-nums text-neutral-500">
+        <span>high {format(max)}</span>
+        <span>low {format(min)}</span>
+      </div>
+      <div className="relative">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+          className="h-11 w-full"
+        >
+          <path d={path} fill="none" strokeWidth={1.5} className={tone} vectorEffect="non-scaling-stroke" />
+        </svg>
+        <div className="absolute inset-0 flex">
+          {points.map((p) => (
+            <Tip
+              key={p.label}
+              className="h-full flex-1"
+              content={
+                <span className="font-mono text-[10px]">
+                  {p.label}: {format(p.value)}
+                </span>
+              }
+            >
+              <span className="block h-full w-full" />
+            </Tip>
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-between font-mono text-[9px] text-neutral-600">
+        <span>{points[0].label}</span>
+        <span>{points[points.length - 1].label}</span>
+      </div>
+    </div>
+  )
+}
+
+/**
  * A 0→1 scale with named reference points and dot markers — used for Brier
  * (0 clairvoyant · 0.25 coin flip · 1 perfectly wrong) and AUROC-style scores.
  */

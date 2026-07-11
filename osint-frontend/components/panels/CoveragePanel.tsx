@@ -1,10 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import React, { useMemo, useState } from "react"
 import useSWR from "swr"
-import { fetchCoverageReport, type CoverageStat } from "@/lib/analytics"
+import { fetchCountryScores, fetchCoverageReport, type CoverageStat } from "@/lib/analytics"
 import { countryName } from "@/lib/countryName"
-import { BarRow, Hint, StatTile } from "./viz"
+import { BarRow, Hint, Sparkline, StatTile } from "./viz"
 
 const REFRESH_MS = 10 * 60_000
 
@@ -18,6 +18,43 @@ function fatalTone(v: number): { cls: string; mark: string; word: string } {
   if (v >= 1) return { cls: "text-red-400", mark: "▲", word: "severe blind spot" }
   if (v >= 0.1) return { cls: "text-amber-300", mark: "△", word: "under-covered" }
   return { cls: "text-neutral-300", mark: "", word: "well covered" }
+}
+
+function CountryDrilldown({ stat }: { stat: CoverageStat }) {
+  const { data, error } = useSWR(["country-scores", stat.country], () =>
+    fetchCountryScores(stat.country),
+  )
+  const t = fatalTone(stat.fatalities_per_event)
+  return (
+    <div className="border-l-2 border-neutral-800 bg-neutral-950/40 px-4 py-2">
+      <p className="mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
+        <Hint term={`${countryName(stat.country)} — composite stress index over time`}>
+          The country&apos;s monthly composite stress score (0 calm → 1 stressed), judged
+          against its own history. Hover the line for exact months. This is the number the
+          forecasting exam grades — read it as &quot;how unusual was this month for this
+          country&quot;, never as a cross-country comparison.
+        </Hint>
+      </p>
+      {error ? (
+        <p className="font-mono text-[10px] text-red-400">score history unavailable</p>
+      ) : !data ? (
+        <p className="font-mono text-[10px] text-neutral-500">loading…</p>
+      ) : (
+        <Sparkline
+          points={data.map((d) => ({
+            label: d.bucket_start.slice(0, 7),
+            value: d.score_value,
+          }))}
+        />
+      )}
+      <p className="mt-1 text-[11px] leading-relaxed text-neutral-400">
+        {countryName(stat.country)} has {stat.coverage_months} months of history,{" "}
+        {stat.events_per_month.toFixed(1)} recorded events per month (its own baseline),{" "}
+        {(stat.global_share * 100).toFixed(2)}% of global attention, and{" "}
+        {stat.fatalities_per_event.toFixed(2)} fatalities per recorded event — {t.word}.
+      </p>
+    </div>
+  )
 }
 
 const COLUMNS: {
@@ -75,6 +112,7 @@ export function CoveragePanel() {
     revalidateOnFocus: false,
   })
   const [sortKey, setSortKey] = useState<SortKey>("total_events")
+  const [expanded, setExpanded] = useState<string | null>(null)
   const [limit, setLimit] = useState<number>(30)
 
   const rows = useMemo(() => {
@@ -170,19 +208,34 @@ export function CoveragePanel() {
                 </thead>
                 <tbody>
                   {rows.map((stat) => (
-                    <tr key={stat.country} className="border-b border-neutral-800/50">
-                      <td className="max-w-44 truncate px-2 py-1 text-[11px] text-neutral-200">
-                        {countryName(stat.country)}{" "}
-                        <span className="font-mono text-[9px] text-neutral-500">
-                          {stat.country}
-                        </span>
-                      </td>
-                      {COLUMNS.map((col) => (
-                        <td key={col.key} className={CELL}>
-                          {col.render(stat)}
+                    <React.Fragment key={stat.country}>
+                      <tr
+                        className="cursor-pointer border-b border-neutral-800/50 hover:bg-neutral-900/60"
+                        onClick={() =>
+                          setExpanded((v) => (v === stat.country ? null : stat.country))
+                        }
+                      >
+                        <td className="max-w-44 truncate px-2 py-1 text-[11px] text-neutral-200">
+                          {expanded === stat.country ? "▾ " : "▸ "}
+                          {countryName(stat.country)}{" "}
+                          <span className="font-mono text-[9px] text-neutral-500">
+                            {stat.country}
+                          </span>
                         </td>
-                      ))}
-                    </tr>
+                        {COLUMNS.map((col) => (
+                          <td key={col.key} className={CELL}>
+                            {col.render(stat)}
+                          </td>
+                        ))}
+                      </tr>
+                      {expanded === stat.country ? (
+                        <tr className="border-b border-neutral-800/50">
+                          <td colSpan={COLUMNS.length + 1} className="p-0">
+                            <CountryDrilldown stat={stat} />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -198,7 +251,7 @@ export function CoveragePanel() {
           </section>
 
           <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-600">
-            ▲ = high fatalities per event: this country only makes the record when people die —
+            click a country for its stress-index history · ▲ = high fatalities per event: this country only makes the record when people die —
             read its small spikes seriously · generated{" "}
             {new Date(data.generated_at).toLocaleString()} · regenerate with `make coverage`
           </p>

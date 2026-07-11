@@ -3,10 +3,11 @@
 import useSWR from "swr"
 import {
   fetchBaselinesReport,
+  fetchJournalMonthly,
   fetchScoreboard,
   type BaselineResultRow,
 } from "@/lib/analytics"
-import { BarRow, Hint, NamedScale } from "./viz"
+import { BarRow, Hint, NamedScale, Sparkline } from "./viz"
 
 const REFRESH_MS = 5 * 60_000
 
@@ -118,6 +119,14 @@ export function ScoreboardPanel() {
     refreshInterval: REFRESH_MS,
     revalidateOnFocus: false,
   })
+  const monthly = useSWR("journal-monthly", fetchJournalMonthly, {
+    refreshInterval: REFRESH_MS,
+    revalidateOnFocus: false,
+  })
+  const briefTrend = (source: string) =>
+    (monthly.data ?? [])
+      .filter((m) => m.source === source && m.brier != null)
+      .map((m) => ({ label: m.month.slice(0, 7), value: m.brier as number }))
 
   const gradedLines = (journal.data ?? []).filter((l) => l.brier != null)
   const headToHeadK1 = (baselines.data?.head_to_head_common_support ?? []).filter(
@@ -231,6 +240,37 @@ export function ScoreboardPanel() {
                 earned, never backfilled
               </p>
             ) : null}
+
+            <p className="mt-3 mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
+              <Hint term="Brier over time — is the record improving month by month?">
+                Each point is one issuance month&apos;s mean Brier score across that
+                month&apos;s graded forecasts. A line that trends down and stays under the
+                0.25 coin-flip mark is a forecasting system earning its keep; a flat line at
+                0.25 is a mood ring.
+              </Hint>
+            </p>
+            {briefTrend("composite").length >= 2 || briefTrend("disagreement").length >= 2 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(["composite", "disagreement"] as const).map((src) =>
+                  briefTrend(src).length >= 2 ? (
+                    <div key={src}>
+                      <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-500">
+                        {src}
+                      </p>
+                      <Sparkline
+                        points={briefTrend(src)}
+                        tone={src === "composite" ? "stroke-cyan-400" : "stroke-emerald-400"}
+                      />
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            ) : (
+              <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-600">
+                the trend line draws itself once two months of forecasts have been graded —
+                nothing to show yet is the honest state of a system this young
+              </p>
+            )}
           </div>
         )}
       </Section>

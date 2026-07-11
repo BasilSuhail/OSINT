@@ -111,6 +111,70 @@ class TestStoriesTop:
         assert row["sensor_checks"] == {}
 
 
+class TestStoryMembers:
+    def test_lists_members_with_owner_and_origin(self, db_session):
+        """Cards v3 drilldown (#396): who said what, and how alike."""
+        from app.db_models import EventRow
+
+        fresh = _seed_stories(db_session)
+        db_session.add(
+            EventRow(
+                id=1,
+                source="rss-bbc-world",
+                source_event_id="e1",
+                occurred_at=NOW - timedelta(hours=2),
+                category="news",
+                keywords=[],
+                payload={"title": "Earthquake strikes Tokyo"},
+            )
+        )
+        db_session.commit()
+
+        rows = _client(db_session).get(f"/stories/{fresh.id}/members").json()
+        assert len(rows) == 1
+        member = rows[0]
+        assert member["title"] == "Earthquake strikes Tokyo"
+        assert member["outlet"] == "BBC World"
+        assert member["owner"] == "bbc"
+        assert member["origin_country"] == "GB"
+        assert member["similarity"] == 1.0
+
+    def test_unknown_story_returns_empty_list(self, db_session):
+        assert _client(db_session).get("/stories/999999/members").json() == []
+
+
+class TestJournalMonthly:
+    def test_groups_graded_by_instrument_and_month(self, db_session):
+        """Cards v3 (#396): the Brier trend the scoreboard draws as grades mature."""
+        base = datetime(2026, 5, 1, tzinfo=UTC)
+        for i, (outcome, score) in enumerate([(1, 0.8), (0, 0.4), (None, 0.5)]):
+            db_session.add(
+                PredictionRow(
+                    source="composite",
+                    method_version="v1.0",
+                    country=f"A{i}",
+                    bucket_start=base,
+                    horizon_months=1,
+                    score=score,
+                    outcome=outcome,
+                    graded_at=base if outcome is not None else None,
+                    payload={},
+                )
+            )
+        db_session.commit()
+
+        rows = _client(db_session).get("/journal/monthly").json()
+        (line,) = [r for r in rows if r["source"] == "composite"]
+        assert line["month"] == "2026-05-01"
+        assert line["issued"] == 3
+        assert line["graded"] == 2
+        # Brier over the two graded rows: ((0.8-1)^2 + (0.4-0)^2) / 2 = 0.1
+        assert abs(line["brier"] - 0.1) < 1e-9
+
+    def test_empty_journal_returns_empty_list(self, db_session):
+        assert _client(db_session).get("/journal/monthly").json() == []
+
+
 class TestJournalScoreboard:
     def test_scoreboard_lines(self, db_session):
         db_session.add_all(
