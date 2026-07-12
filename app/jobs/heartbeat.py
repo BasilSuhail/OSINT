@@ -19,6 +19,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db_models import JobRunRow
+from app.settings import settings
 
 #: Completed runs older than this are deleted on the next job start — cheap
 #: housekeeping so the beat jobs (48 runs/day) never accumulate unbounded.
@@ -48,13 +49,28 @@ def _write(factory: SessionFactory, fn: Callable[[Session], object]) -> object:
 
 @contextmanager
 def job_run(
-    job: str, *, session_factory: SessionFactory | None = None
+    job: str,
+    *,
+    session_factory: SessionFactory | None = None,
+    evict_brain: bool = True,
 ) -> Iterator[Callable[[str], None]]:
     """Record one job execution; yields a `progress(text)` heartbeat function.
 
     Exceptions mark the row failed (with truncated detail) and re-raise —
     the job's own error handling stays untouched.
+
+    On start, best-effort evicts the brain model (#409) so a heavy job
+    reclaims its RAM before the work begins. The brain's own narrate task
+    passes ``evict_brain=False`` so it never evicts itself.
     """
+    if evict_brain and settings.brain_enabled:
+        try:
+            from app.brain.client import evict
+
+            evict()
+        except Exception:  # best-effort: the brain must never break a real job
+            pass
+
     factory = session_factory or _default_factory()
 
     def _start(session: Session) -> int:
