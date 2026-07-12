@@ -766,7 +766,7 @@ def build_snapshot(session: Session, *, now: datetime | None = None) -> dict[str
     )
 
     freshest = session.execute(
-        select(func.max(IngestHealthRow.checked_at))
+        select(func.max(IngestHealthRow.last_success))
     ).scalar_one_or_none()
 
     return {
@@ -784,7 +784,7 @@ def build_snapshot(session: Session, *, now: datetime | None = None) -> dict[str
             "running": int(job_counts.get("running", 0)),
             "failed": int(job_counts.get("failed", 0)),
         },
-        "ingest_last_check": freshest.isoformat() if freshest else None,
+        "ingest_last_success": freshest.isoformat() if freshest else None,
     }
 
 
@@ -813,7 +813,7 @@ def build_prompt(snapshot: dict[str, Any]) -> str:
 Run: `.venv/bin/pytest tests/test_brain_context.py -v`
 Expected: PASS (3 tests)
 
-> **Note for the implementer:** confirm `IngestHealthRow` has a `checked_at` column before running (it is defined in `app/db_models.py`). If the column is named differently (e.g. `fetched_at`), use that name in the `freshest` query and the test stays green because it only checks `top_stories`/`jobs`.
+> **Note:** `IngestHealthRow.last_success` is the freshness column (verified in `app/db_models.py`); the columns are `source, day, success_n, failure_n, last_success, last_failure`.
 
 - [ ] **Step 5: Format + lint + commit**
 
@@ -1216,14 +1216,30 @@ def prune_brain_narrative(session: Session, *, now: datetime | None = None) -> i
     return result.rowcount or 0
 ```
 
-Then, inside `run_retention_and_cap(session)`, after the events prune runs, add:
+Then wire it into `run_retention_and_cap` (verified body: `now` is in scope, the returned dict is `deleted_by_source`). Change the tail from:
 
 ```python
-    brain_deleted = prune_brain_narrative(session, now=now)
-    result["brain_narrative"] = brain_deleted
+    now = now or datetime.now(UTC)
+    deleted_by_source = prune_events(session, now=now)
+    try:
+        enforce_size_cap(session, now=now)
+    except Exception:
+        logger.exception("size-cap enforcement failed; retention pass unaffected")
+    return deleted_by_source
 ```
 
-> **Note for the implementer:** open `run_retention_and_cap` and match the local variable names in scope (`now`, `result`/the returned dict). If `now` is not in scope there, call `prune_brain_narrative(session)`.
+to add the brain prune before the return:
+
+```python
+    now = now or datetime.now(UTC)
+    deleted_by_source = prune_events(session, now=now)
+    deleted_by_source["brain_narrative"] = prune_brain_narrative(session, now=now)
+    try:
+        enforce_size_cap(session, now=now)
+    except Exception:
+        logger.exception("size-cap enforcement failed; retention pass unaffected")
+    return deleted_by_source
+```
 
 - [ ] **Step 4: Run to verify it passes**
 
