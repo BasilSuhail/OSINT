@@ -69,6 +69,10 @@ def test_render_markdown_carries_every_section() -> None:
     assert "0.885" in md
     assert "coin flip" in md  # honesty footer explains Brier anchors
     assert "on trial" in md  # track-record honesty line
+    # verdict vocabulary leads each section, word-identical to the dashboard (#405)
+    assert "As close to verified as news gets: 5 independent organisations" in md
+    assert "United Kingdom and Russia are telling this story very differently" in md
+    assert "No forecasts graded yet — the track record is still being earned" in md
 
 
 def test_render_markdown_handles_empty_week() -> None:
