@@ -7,6 +7,7 @@ import {
   fetchScoreboard,
   type BaselineResultRow,
 } from "@/lib/analytics"
+import { scoreboardVerdict } from "@/lib/verdicts"
 import { BarRow, Hint, NamedScale, Sparkline } from "./viz"
 
 const REFRESH_MS = 5 * 60_000
@@ -151,6 +152,12 @@ export function ScoreboardPanel() {
           <p className="font-mono text-[11px] text-neutral-500">no forecasts issued yet</p>
         ) : (
           <div className="overflow-x-auto">
+            <p className="mb-2 text-[11px] leading-relaxed text-neutral-400">
+              {scoreboardVerdict(
+                journal.data.reduce((n, l) => n + l.graded, 0),
+                journal.data.find((l) => l.brier != null)?.brier ?? null,
+              )}
+            </p>
             <table className="w-full">
               <thead>
                 <tr className="border-b border-neutral-800 text-left">

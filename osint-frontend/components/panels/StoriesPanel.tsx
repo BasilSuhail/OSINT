@@ -11,6 +11,7 @@ import {
   type StoryRow,
 } from "@/lib/analytics"
 import { countryName } from "@/lib/countryName"
+import { storyVerdict } from "@/lib/verdicts"
 import { BarRow, Hint, StatTile, Tip } from "./viz"
 
 const REFRESH_MS = 60_000
@@ -130,7 +131,18 @@ function StoryLine({
         {relativeTime(story.last_seen)} {expanded ? "▾" : "▸"}
       </span>
       </div>
-      {expanded ? <StoryMembers storyId={story.id} /> : null}
+      {expanded ? (
+        <>
+          <p className="border-l-2 border-neutral-800 bg-neutral-950/40 px-4 pt-2 text-[11px] leading-relaxed text-neutral-400">
+            {storyVerdict({
+              owner_count: story.owner_count,
+              corroboration: story.corroboration,
+              confirmed: confirmedClaims(story.sensor_checks),
+            })}
+          </p>
+          <StoryMembers storyId={story.id} />
+        </>
+      ) : null}
     </li>
   )
 }
