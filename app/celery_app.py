@@ -45,6 +45,7 @@ app.conf.task_routes = {
         "app.tasks.compute_composite",
         "app.tasks.compute_cii",
         "app.tasks.run_housekeeping",
+        "app.tasks.brain_narrate",
     )
 }
 
