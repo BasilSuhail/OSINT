@@ -60,6 +60,7 @@ green pulsing while working (with live progress), red while idle, red
 | `make baselines` | score the composite against the no-skill baselines → the head-to-head report |
 | `make coverage` | measure who gets covered and who gets ignored → the attention-bias report |
 | `make journal` | run the forward-prediction journal once (emit + grade + scoreboard) |
+| `make briefing` | generate the weekly briefing — the newsletter-ready one-pager (#401) |
 | `make stories` | cluster the rolling news window into stories |
 | `make stories-audit` | emit the cluster hand-check sheet (threshold audit) |
 | `make sensor-checks` | check story claims against physical sensors → verdict board |
@@ -414,7 +415,9 @@ from the news-intelligence-platform, this project's predecessor):
   month, ▲ rising / ▼ easing.
 
 Everything on it is a doorway: the detail always lives on one of the three
-cards below.
+cards below. The same idea as a weekly artifact: `make briefing` writes a
+newsletter-ready one-pager (also generated automatically every Monday
+morning) — the first step on the productization path tracked in issue #400.
 
 ### 4.1 Stories — "what is the world talking about, and should I believe it?"
 
