@@ -21,6 +21,7 @@ import {
   type HazardIcon,
 } from "@/lib/hazardSymbols"
 import { hazardFootprintCollections } from "@/lib/mapFootprints"
+import { addMissingStyleImagePlaceholder } from "@/lib/mapStyleImages"
 import {
   isWorldScopeNews,
   worldNewsAggregates,
@@ -328,11 +329,12 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const handleMapError = useCallback((event: unknown) => {
     const e = event as { error?: { message?: string }; message?: string } | undefined
     const msg = (e?.error?.message || e?.message || "").toLowerCase()
+    // Only a genuine style/tile *load* failure warrants a reload. Missing sprite
+    // images (circle-11 / wood-pattern) are NOT load failures — they're handled
+    // in-place via styleimagemissing below, so they must never reach here (#407).
     const shouldFallback =
       msg.includes("tiles.openfreemap.org") ||
-      msg.includes("planet/") ||
-      msg.includes("circle-11") ||
-      msg.includes("wood-pattern")
+      msg.includes("planet/")
 
     if (!shouldFallback) return
     scheduleStyleRetry()
@@ -342,18 +344,19 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     if (!mapRef) return
     const map = mapRef.getMap()
 
+    // The dark style references sprite ids its sprite sheet doesn't ship, so
+    // maplibre fires styleimagemissing constantly while panning/zooming. Answer
+    // with a transparent placeholder — never a style reload (that flashed the
+    // map black and looped forever, #407).
     const onStyleImageMissing = (evt: { id?: string }) => {
-      const id = evt?.id ?? ""
-      if (id === "circle-11" || id === "wood-pattern") {
-        scheduleStyleRetry()
-      }
+      addMissingStyleImagePlaceholder(map, evt?.id)
     }
 
     map.on("styleimagemissing", onStyleImageMissing)
     return () => {
       map.off("styleimagemissing", onStyleImageMissing)
     }
-  }, [mapRef, scheduleStyleRetry])
+  }, [mapRef])
 
   const handleStyleLoad = () => {
     if (retryTimeoutRef.current) {
