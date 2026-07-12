@@ -8,6 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.briefing.verdicts import (
+    contested_verdict,
+    scoreboard_verdict,
+    story_verdict,
+)
 from app.enrichment.country_codes import iso2_to_name
 
 
@@ -42,6 +47,7 @@ def render_markdown(briefing: dict[str, Any]) -> str:
 
     lines += ["## Most corroborated stories this week", ""]
     if briefing["top_stories"]:
+        lines += [story_verdict(briefing["top_stories"][0]), ""]
         for s in briefing["top_stories"]:
             confirmed = (
                 f" · sensor-confirmed: {', '.join(c.replace('_', ' ') for c in s['confirmed'])}"
@@ -58,6 +64,7 @@ def render_markdown(briefing: dict[str, Any]) -> str:
 
     lines += ["## Most contested tellings", ""]
     if briefing["contested"]:
+        lines += [contested_verdict(briefing["contested"][0]), ""]
         for c in briefing["contested"]:
             groups = " vs ".join(
                 f"{_country(code)} x{n}" for code, n in sorted(c["groups"].items())
@@ -69,7 +76,14 @@ def render_markdown(briefing: dict[str, Any]) -> str:
 
     lines += ["## The track record, as of this week", ""]
     if briefing["scoreboard"]:
+        graded = sum(line["graded"] for line in briefing["scoreboard"])
+        brier = next(
+            (line["brier"] for line in briefing["scoreboard"] if line["brier"] is not None),
+            None,
+        )
         lines += [
+            scoreboard_verdict(graded, brier),
+            "",
             "| instrument | horizon | issued | graded | pending | Brier |",
             "|---|---|---|---|---|---|",
         ]
