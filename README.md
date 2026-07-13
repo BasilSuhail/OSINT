@@ -449,6 +449,31 @@ make brain                                 # run one narration now
 The nightly validator keeps its own 4b model; the brain is separate and lighter.
 Turn the brain off entirely with `BRAIN_ENABLED=false` in `.env`.
 
+### 4.5 Ask the app
+
+Beyond narrating on its own schedule, the brain answers questions on demand.
+`POST /brain/ask` with `{"question": "..."}` returns `{"answer": "...",
+"context_digest": "..."}`. The answer is grounded in the same live snapshot the
+narrative uses, plus three headline facts (the latest composite and its
+highest-stress country, the most-contested story, and the prediction scoreboard's
+graded/total counts). It answers only from that context and says "I don't have data
+on that" otherwise — it never invents.
+
+Because a question is user-initiated (you're waiting for the answer), Q&A does not
+back off on every running job the way the scheduled narrative does — it refuses only
+when free RAM is below the floor, returning a short "brain busy" answer so the Pi
+never OOMs. If Ollama is down it answers "The brain is offline right now." Nothing is
+persisted; the ask box lives at the bottom of the Situation card and clears on
+reload.
+
+Example:
+
+```
+POST /brain/ask  {"question": "what is the most contested story?"}
+→ {"answer": "The most contested story is the border-clashes report, with a
+   divergence of 0.83 across the outlets telling it.", "context_digest": "sha256:…"}
+```
+
 # Chapter 5 — How to read the dashboard
 
 *Every number on the analytical cards, in plain language: what it is, what

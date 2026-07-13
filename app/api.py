@@ -15,9 +15,11 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.brain import client, context, gate, qa
 from app.db import get_session_factory
 from app.db_models import (
     BrainNarrativeRow,
@@ -458,6 +460,35 @@ def brain_narrative_latest(session: Session = Depends(get_session)) -> dict:
         "model": row.model,
         "created_at": row.created_at.isoformat(),
     }
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+@app.post("/brain/ask")
+def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
+    """Answer a question grounded in the live data (#411).
+
+    User-initiated and synchronous, so it does NOT back off on every running job
+    the way the scheduled narrative does — it refuses only when RAM is genuinely
+    low, to protect the Pi from OOM. Every failure returns a typed answer at HTTP
+    200; only a bad request is a 422.
+    """
+    if gate.ram_free_mb() < settings.brain_min_free_mb:
+        return {
+            "answer": "Brain busy — the box is loaded right now, try again in a moment.",
+            "context_digest": None,
+        }
+    qa_context = qa.build_qa_context(session)
+    try:
+        raw = client.generate_json(qa.build_qa_prompt(qa_context, req.question))
+    except Exception:
+        return {"answer": "The brain is offline right now.", "context_digest": None}
+    answer = raw.get("answer") if isinstance(raw, dict) else None
+    if not isinstance(answer, str) or not answer.strip():
+        return {"answer": "I couldn't form an answer just now.", "context_digest": None}
+    return {"answer": answer, "context_digest": context.input_digest(qa_context)}
 
 
 @app.get("/journal/scoreboard")

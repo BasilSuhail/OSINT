@@ -82,3 +82,18 @@ export async function fetchBrainNarrative(): Promise<BrainNarrative> {
   if (!res.ok) throw new Error(`brain narrative ${res.status}`)
   return (await res.json()) as BrainNarrative
 }
+
+export interface BrainAsk {
+  answer: string
+  context_digest: string | null
+}
+
+export async function fetchBrainAsk(question: string): Promise<BrainAsk> {
+  const res = await fetch(`${API_BASE}/brain/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  })
+  if (!res.ok) throw new Error(`brain ask ${res.status}`)
+  return (await res.json()) as BrainAsk
+}
