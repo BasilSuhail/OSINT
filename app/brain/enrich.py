@@ -1,0 +1,170 @@
+"""The brain's story enrichment (#413) — a light gist + two enum tags per story.
+
+Timely first-look from the 1.5b model on idle windows; complements the nightly
+4b claim extraction. No-fabrication: the gist describes only the supplied
+headlines. The tags are fixed enums so a small model stays reliable and the
+values are filterable — anything off-enum is coerced to a safe fallback.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.brain import client, gate
+from app.db import get_engine
+from app.db_models import EventRow, StoryGistRow, StoryMemberRow, StoryRow
+from app.settings import settings
+from app.stories.task import WINDOW_HOURS
+
+CATEGORIES: frozenset[str] = frozenset({"conflict", "economy", "disaster", "politics", "other"})
+ESCALATING: frozenset[str] = frozenset({"yes", "no", "unclear"})
+
+METHOD_VERSION: str = "enrich-v1.0"
+PROMPT_VERSION: str = "enrich-prompt-v1.0"
+GIST_MAX_CHARS: int = 240
+
+#: How many member headlines the prompt carries — enough signal, bounded tokens.
+MAX_TITLES: int = 5
+
+DEFAULT_BATCH_LIMIT: int = 20
+
+
+def build_gist_prompt(titles: list[str]) -> str:
+    headlines = "\n".join(f"- {t}" for t in titles if t)
+    return (
+        "You summarize a news story for an OSINT dashboard. Below are the "
+        "headlines of the outlets telling one story. Using ONLY these headlines "
+        "(invent nothing), return a JSON object with exactly these keys:\n"
+        '  "gist": one short plain-English sentence, what this story is.\n'
+        '  "category": one of conflict, economy, disaster, politics, other.\n'
+        '  "escalating": one of yes, no, unclear — is the situation intensifying?\n\n'
+        f"HEADLINES:\n{headlines}"
+    )
+
+
+def parse_gist(raw: dict[str, Any]) -> dict[str, str]:
+    gist = raw.get("gist")
+    gist = gist.strip()[:GIST_MAX_CHARS] if isinstance(gist, str) else ""
+    category = raw.get("category")
+    category = category if isinstance(category, str) and category in CATEGORIES else "other"
+    escalating = raw.get("escalating")
+    escalating = (
+        escalating if isinstance(escalating, str) and escalating in ESCALATING else "unclear"
+    )
+    return {"gist": gist, "category": category, "escalating": escalating}
+
+
+def _pretty(payload: dict[str, str]) -> str:
+    """Compact JSON — handy for `make enrich` output and debugging."""
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _session_factory() -> sessionmaker[Session]:
+    return sessionmaker(bind=get_engine(), expire_on_commit=False, future=True)
+
+
+def _titles_for(session: Session, story_id: int) -> list[str]:
+    payloads = (
+        session.execute(
+            select(EventRow.payload)
+            .join(StoryMemberRow, StoryMemberRow.event_id == EventRow.id)
+            .where(StoryMemberRow.story_id == story_id)
+            .limit(MAX_TITLES)
+        )
+        .scalars()
+        .all()
+    )
+    return [(p or {}).get("title") or "" for p in payloads]
+
+
+def _insert_gist_if_absent(session: Session, *, story_id: int, parsed: dict[str, str]) -> bool:
+    values = {
+        "story_id": story_id,
+        "gist": parsed["gist"],
+        "category": parsed["category"],
+        "escalating": parsed["escalating"],
+        "model": settings.brain_model,
+        "method_version": METHOD_VERSION,
+    }
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        base = pg_insert(StoryGistRow).values(values)
+    elif dialect == "sqlite":
+        base = sqlite_insert(StoryGistRow).values(values)
+    else:
+        raise NotImplementedError(f"_insert_gist_if_absent: unsupported dialect {dialect!r}")
+    stmt = base.on_conflict_do_nothing(index_elements=["story_id", "method_version"]).returning(
+        StoryGistRow.id
+    )
+    inserted = session.execute(stmt).scalar_one_or_none()
+    session.commit()
+    return inserted is not None
+
+
+def _enrich_body(*, now: datetime | None = None, batch_limit: int | None = None) -> dict[str, Any]:
+    from app.jobs.heartbeat import job_run
+
+    now = now or datetime.now(UTC)
+    limit = batch_limit if batch_limit is not None else DEFAULT_BATCH_LIMIT
+    factory = _session_factory()
+    counters: dict[str, Any] = {
+        "window_stories": 0,
+        "enriched": 0,
+        "skipped_existing": 0,
+        "failed": 0,
+    }
+
+    with (
+        job_run(gate.BRAIN_ENRICH_JOB_NAME, session_factory=factory, evict_brain=False),
+        factory() as session,
+    ):
+        allowed, reason = gate.should_run(session, now=now)
+        if not allowed:
+            counters["reason"] = reason
+            return counters
+
+        cutoff = now - timedelta(hours=WINDOW_HOURS)
+        stories = (
+            session.execute(
+                select(StoryRow.id)
+                .where(StoryRow.last_seen >= cutoff)
+                .order_by(StoryRow.last_seen.desc())
+            )
+            .scalars()
+            .all()
+        )
+        counters["window_stories"] = len(stories)
+
+        for story_id in stories:
+            if counters["enriched"] >= limit:
+                break
+            existing = session.execute(
+                select(StoryGistRow.id).where(
+                    StoryGistRow.story_id == story_id,
+                    StoryGistRow.method_version == METHOD_VERSION,
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                counters["skipped_existing"] += 1
+                continue
+            titles = [t for t in _titles_for(session, story_id) if t]
+            if not titles:
+                continue
+            try:
+                raw = client.generate_json(build_gist_prompt(titles))
+            except Exception:
+                counters["failed"] += 1
+                continue
+            if _insert_gist_if_absent(session, story_id=story_id, parsed=parse_gist(raw)):
+                counters["enriched"] += 1
+            else:
+                counters["skipped_existing"] += 1
+
+    return counters

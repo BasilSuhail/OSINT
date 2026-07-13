@@ -474,3 +474,29 @@ class BrainNarrativeRow(Base):
     input_digest: Mapped[str] = mapped_column(Text, nullable=False)
 
     __table_args__ = (Index("brain_narrative_created_idx", "created_at"),)
+
+
+class StoryGistRow(Base):
+    """A light per-story gist + tags from the 1.5b brain (#413).
+
+    One row per (story, method version), idempotent like story_claims; 30-day
+    retention. Timely first-look that complements the nightly 4b claim layer.
+    """
+
+    __tablename__ = "story_gist"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    story_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    gist: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    escalating: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("story_id", "method_version", name="story_gist_unique"),
+        Index("story_gist_created_idx", "created_at"),
+    )

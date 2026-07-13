@@ -12,6 +12,9 @@ export interface StoryRow {
   corroboration_components: Record<string, unknown> | null
   sensor_checks: Record<string, string>
   method_version: string
+  gist: string | null
+  category: string | null
+  escalating: string | null
 }
 
 /** Badge tone for the corroboration-v1.0 score (null = not yet scored). */

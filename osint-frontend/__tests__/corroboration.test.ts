@@ -19,6 +19,9 @@ const story = (over: Partial<StoryRow>): StoryRow => ({
   corroboration_components: null,
   sensor_checks: {},
   method_version: "stories-v1.0",
+  gist: null,
+  category: null,
+  escalating: null,
   ...over,
 })
 

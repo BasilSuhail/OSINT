@@ -13,6 +13,7 @@ export default defineConfig({
       "lib/apiClient.test.mts",
       "lib/brainNarrative.test.mts",
       "lib/brainAsk.test.mts",
+      "lib/storyGist.test.mts",
     ],
     environment: "node",
     globals: false,

@@ -131,6 +131,17 @@ function StoryLine({
         {relativeTime(story.last_seen)} {expanded ? "▾" : "▸"}
       </span>
       </div>
+      {story.gist ? (
+        <p className="px-4 pb-1 text-[11px] leading-snug text-neutral-400">
+          {story.gist}
+          {story.category ? (
+            <span className="ml-2 rounded border border-neutral-700 px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-neutral-400">
+              {story.category}
+              {story.escalating === "yes" ? " ↑" : ""}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
       {expanded ? (
         <>
           <p className="border-l-2 border-neutral-800 bg-neutral-950/40 px-4 pt-2 text-[11px] leading-relaxed text-neutral-400">
