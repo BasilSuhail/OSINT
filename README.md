@@ -474,6 +474,22 @@ POST /brain/ask  {"question": "what is the most contested story?"}
    divergence of 0.83 across the outlets telling it.", "context_digest": "sha256:…"}
 ```
 
+### 4.6 Enriching new stories
+
+The nightly validator gives stories full claims once a night with the heavy 4b model.
+The brain adds a faster, lighter first-look: every ~20 minutes, on idle windows, the
+1.5b model gives each new story a one-line **gist** plus two tags — a **category**
+(`conflict`, `economy`, `disaster`, `politics`, `other`) and an **escalating** flag
+(`yes`, `no`, `unclear`). It reads only the story's own headlines and invents nothing;
+anything a small model returns off-vocabulary is coerced to `other` / `unclear`, so the
+tags stay clean and filterable.
+
+The pass is idle-gated (same RAM + no-heavy-job gate as the narrative) and batch-capped
+(~20 stories per run), so a burst of new stories clears within an hour or two without
+straining the Pi. Gists land on `/stories/top` and show as a line under each story on
+the Stories card, with a small category chip (↑ marks an escalating story). Run one pass
+by hand with `make enrich`. Stored 30 days, then pruned.
+
 # Chapter 5 — How to read the dashboard
 
 *Every number on the analytical cards, in plain language: what it is, what
