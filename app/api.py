@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.brain import client, context, gate, qa
+from app.brain import client, context, enrich, gate, qa
 from app.db import get_session_factory
 from app.db_models import (
     BrainNarrativeRow,
@@ -29,6 +29,7 @@ from app.db_models import (
     PredictionRow,
     ScoreRow,
     StoryCorroborationRow,
+    StoryGistRow,
     StoryRow,
     StorySensorCheckRow,
 )
@@ -236,6 +237,16 @@ def stories_top(
         ).scalars():
             checks.setdefault(check.story_id, {})[check.claim_type] = check.verdict
 
+    gists: dict[int, StoryGistRow] = {}
+    if story_ids:
+        for g in session.execute(
+            select(StoryGistRow).where(
+                StoryGistRow.story_id.in_(story_ids),
+                StoryGistRow.method_version == enrich.METHOD_VERSION,
+            )
+        ).scalars():
+            gists[g.story_id] = g
+
     return [
         {
             "id": str(story.id),
@@ -249,6 +260,9 @@ def stories_top(
             "corroboration_components": corro.components if corro else None,
             "sensor_checks": checks.get(story.id, {}),
             "method_version": story.method_version,
+            "gist": gists[story.id].gist if story.id in gists else None,
+            "category": gists[story.id].category if story.id in gists else None,
+            "escalating": gists[story.id].escalating if story.id in gists else None,
         }
         for story, corro in rows
     ]
