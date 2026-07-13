@@ -508,7 +508,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
             "context_digest": None,
             "sources": [],
         }
-    qa_context = qa.build_qa_context(session)
+    qa_context = qa.build_qa_context(session, question=req.question)
     try:
         raw = client.generate_json(qa.build_qa_prompt(qa_context, req.question))
     except Exception:
