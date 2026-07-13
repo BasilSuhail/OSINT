@@ -225,6 +225,16 @@ def prune_brain_narrative(session: Session, *, now: datetime | None = None) -> i
     return result.rowcount or 0
 
 
+def prune_story_gist(session: Session, *, now: datetime | None = None) -> int:
+    """Delete story gists older than the news retention window (#413)."""
+    from app.db_models import StoryGistRow
+
+    now = now or datetime.now(UTC)
+    cutoff = now - timedelta(days=settings.retention_news_days)
+    result = session.execute(delete(StoryGistRow).where(StoryGistRow.created_at < cutoff))
+    return result.rowcount or 0
+
+
 def vacuum_events(bind) -> bool:
     """``VACUUM (ANALYZE) events`` so space freed by the nightly deletes is
     reusable. Must run on an autocommit connection after the deletes commit —
@@ -250,6 +260,7 @@ def run_retention_and_cap(session: Session, *, now: datetime | None = None) -> d
     now = now or datetime.now(UTC)
     deleted_by_source = prune_events(session, now=now)
     deleted_by_source["brain_narrative"] = prune_brain_narrative(session, now=now)
+    deleted_by_source["story_gist"] = prune_story_gist(session, now=now)
     try:
         enforce_size_cap(session, now=now)
     except Exception:
