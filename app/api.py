@@ -44,7 +44,9 @@ API_MAX_LIMIT = 20_000
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.api_cors_origins.split(",") if o.strip()],
-    allow_methods=["GET"],
+    # POST is required for the browser's preflight on /brain/ask (#419); GET-only
+    # made every ask-the-brain request fail CORS as "offline".
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 

@@ -8,6 +8,23 @@ from app.api import app, get_session
 from app.db_models import Base
 
 
+def test_brain_ask_cors_preflight_allows_post():
+    # A browser sends a CORS preflight (OPTIONS) before POST /brain/ask because
+    # of the application/json content-type. GET-only allow_methods made every
+    # preflight fail 400 → the ask box always showed "offline" (#419).
+    client = TestClient(app)
+    resp = client.options(
+        "/brain/ask",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert resp.status_code == 200
+    assert "POST" in resp.headers.get("access-control-allow-methods", "")
+
+
 def _client():
     engine = create_engine(
         "sqlite://",
