@@ -1,10 +1,49 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db_models import Base, StoryGistRow
+from app.db_models import Base, BrainNarrativeRow, StoryGistRow
 from app.housekeeping import prune_story_gist
+
+
+def _gist(**kw):
+    base = {
+        "story_id": 1,
+        "gist": "g",
+        "category": "other",
+        "escalating": "unclear",
+        "model": "m",
+        "method_version": "enrich-v1.0",
+    }
+    base.update(kw)
+    return StoryGistRow(**base)
+
+
+def test_story_gist_unique_story_method_enforced():
+    # The worker's ON CONFLICT (story_id, method_version) dedup depends on this
+    # constraint existing at the ORM/create_all level — guard it explicitly.
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(_gist())
+        session.commit()
+        session.add(_gist(gist="dup"))
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+
+def test_table_args_not_cross_contaminated():
+    # Regression: StoryGistRow was once spliced in before BrainNarrativeRow's
+    # __table_args__, stealing its index and dropping the unique constraint.
+    assert {i.name for i in BrainNarrativeRow.__table__.indexes} == {"brain_narrative_created_idx"}
+    assert {i.name for i in StoryGistRow.__table__.indexes} == {"story_gist_created_idx"}
+    uniques = [
+        c for c in StoryGistRow.__table__.constraints if type(c).__name__ == "UniqueConstraint"
+    ]
+    assert any(set(c.columns.keys()) == {"story_id", "method_version"} for c in uniques)
 
 
 def test_story_gist_roundtrip():

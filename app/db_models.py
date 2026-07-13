@@ -473,6 +473,8 @@ class BrainNarrativeRow(Base):
     payload: Mapped[dict] = mapped_column(JsonColumn, nullable=False)
     input_digest: Mapped[str] = mapped_column(Text, nullable=False)
 
+    __table_args__ = (Index("brain_narrative_created_idx", "created_at"),)
+
 
 class StoryGistRow(Base):
     """A light per-story gist + tags from the 1.5b brain (#413).
@@ -498,5 +500,3 @@ class StoryGistRow(Base):
         UniqueConstraint("story_id", "method_version", name="story_gist_unique"),
         Index("story_gist_created_idx", "created_at"),
     )
-
-    __table_args__ = (Index("brain_narrative_created_idx", "created_at"),)
