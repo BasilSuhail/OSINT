@@ -64,3 +64,21 @@ export async function fetchSourceCoverage(days = 30): Promise<SourceCoverageRow[
 export function streamUrl(): string {
   return `${API_BASE}/stream`
 }
+
+export interface BrainNarrative {
+  present: boolean
+  payload: {
+    headline?: string
+    world?: string
+    system?: string
+    watch?: string[]
+  } | null
+  model: string | null
+  created_at: string | null
+}
+
+export async function fetchBrainNarrative(): Promise<BrainNarrative> {
+  const res = await fetch(`${API_BASE}/brain/narrative/latest`)
+  if (!res.ok) throw new Error(`brain narrative ${res.status}`)
+  return (await res.json()) as BrainNarrative
+}
