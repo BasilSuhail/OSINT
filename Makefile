@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain
+.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 start:  ## Start the full local app (Docker stores + backend + frontend)
 	@bash scripts/dev-up.sh
@@ -74,6 +74,9 @@ validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
 
 brain:  ## Run the brain narrate once — needs Ollama + qwen2.5:1.5b (#409)
 	.venv/bin/python -m app.brain.run
+
+enrich:  ## Run one brain enrichment pass — gist + tags for new stories (#413)
+	.venv/bin/python -m app.brain.enrich_run
 
 validator-audit:  ## Emit the ~50-story human-check sheet for the validator (#378)
 	.venv/bin/python -m app.validator.audit

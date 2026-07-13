@@ -19,6 +19,7 @@ from celery.schedules import crontab
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.brain.enrich import _enrich_body
 from app.brain.task import _narrate_body
 from app.briefing.task import _briefing_body
 from app.celery_app import app
@@ -212,6 +213,19 @@ def brain_narrate() -> dict[str, Any]:
     """The brain (#409): narrate the world signal + system state when the box
     has headroom. Gated; a busy box simply skips and leaves the last narrative."""
     return _narrate_body()
+
+
+@app.task(
+    name="app.tasks.brain_enrich",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def brain_enrich() -> dict[str, Any]:
+    """The brain (#413): gist + tag window stories that lack one, on idle windows."""
+    return _enrich_body()
 
 
 @app.task(
@@ -468,5 +482,10 @@ app.conf.beat_schedule = {
     "brain-narrate-15min": {
         "task": "app.tasks.brain_narrate",
         "schedule": crontab(minute="*/15"),
+    },
+    # The brain enriches new stories every 20 min when the box is idle (#413).
+    "brain-enrich-20min": {
+        "task": "app.tasks.brain_enrich",
+        "schedule": crontab(minute="*/20"),
     },
 }
