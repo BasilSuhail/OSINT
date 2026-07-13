@@ -7,8 +7,9 @@
  * stale one) so backoff is honest, never hidden.
  */
 
+import { useState } from "react"
 import useSWR from "swr"
-import { fetchBrainNarrative } from "@/lib/apiClient"
+import { fetchBrainAsk, fetchBrainNarrative } from "@/lib/apiClient"
 
 const REFRESH_MS = 5 * 60_000
 //: Older than this and the card says the brain is resting.
@@ -57,6 +58,65 @@ export function SituationPanel() {
           ) : null}
         </>
       ) : null}
+
+      <AskBox />
     </div>
+  )
+}
+
+type QA = { question: string; answer: string }
+
+function AskBox() {
+  const [question, setQuestion] = useState("")
+  const [pending, setPending] = useState(false)
+  const [history, setHistory] = useState<QA[]>([])
+
+  const submit = async () => {
+    const q = question.trim()
+    if (!q || pending) return
+    setPending(true)
+    try {
+      const { answer } = await fetchBrainAsk(q)
+      setHistory((h) => [{ question: q, answer }, ...h].slice(0, 5))
+      setQuestion("")
+    } catch {
+      setHistory((h) => [{ question: q, answer: "The brain is offline right now." }, ...h].slice(0, 5))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <section className="mt-auto border-t border-neutral-800 pt-3">
+      <div className="flex gap-2">
+        <input
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit()
+          }}
+          placeholder="ask the brain…"
+          disabled={pending}
+          className="flex-1 rounded-lg border border-neutral-800 bg-neutral-900/50 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:outline-none disabled:opacity-50"
+        />
+        <button
+          onClick={submit}
+          disabled={pending || !question.trim()}
+          className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 disabled:opacity-40"
+        >
+          {pending ? "…" : "ask"}
+        </button>
+      </div>
+      {history.length > 0 ? (
+        <ul className="mt-3 flex flex-col gap-2">
+          {history.map((qa, i) => (
+            <li key={`${i}-${qa.question}`} className="text-sm">
+              <p className="text-neutral-500">{qa.question}</p>
+              <p className="text-neutral-200">{qa.answer}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   )
 }
