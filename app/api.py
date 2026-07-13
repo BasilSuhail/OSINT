@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -482,6 +483,16 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+
+
+def _strip_bad_citations(answer: str, n_sources: int) -> str:
+    """Remove [n] citations that point past the sources we actually supplied."""
+    return _CITATION_RE.sub(
+        lambda m: m.group(0) if 1 <= int(m.group(1)) <= n_sources else "", answer
+    ).strip()
+
+
 @app.post("/brain/ask")
 def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     """Answer a question grounded in the live data (#411).
@@ -495,16 +506,41 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         return {
             "answer": "Brain busy — the box is loaded right now, try again in a moment.",
             "context_digest": None,
+            "sources": [],
         }
     qa_context = qa.build_qa_context(session)
     try:
         raw = client.generate_json(qa.build_qa_prompt(qa_context, req.question))
     except Exception:
-        return {"answer": "The brain is offline right now.", "context_digest": None}
+        return {
+            "answer": "The brain is offline right now.",
+            "context_digest": None,
+            "sources": [],
+        }
     answer = raw.get("answer") if isinstance(raw, dict) else None
     if not isinstance(answer, str) or not answer.strip():
-        return {"answer": "I couldn't form an answer just now.", "context_digest": None}
-    return {"answer": answer, "context_digest": context.input_digest(qa_context)}
+        return {
+            "answer": "I couldn't form an answer just now.",
+            "context_digest": None,
+            "sources": [],
+        }
+    stories = qa_context.get("stories") or []
+    sources = [
+        {
+            "n": s["n"],
+            "story_id": s["story_id"],
+            "title": s["title"],
+            "outlets": s["sources"],
+            "corroboration": s["corroboration"],
+            "contested": s["contested"],
+        }
+        for s in stories
+    ]
+    return {
+        "answer": _strip_bad_citations(answer, len(sources)),
+        "context_digest": context.input_digest(qa_context),
+        "sources": sources,
+    }
 
 
 @app.get("/journal/scoreboard")
