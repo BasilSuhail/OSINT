@@ -1,6 +1,14 @@
 from app.brain import enrich
 
 
+def test_parse_gist_coerces_non_string_tags_without_crashing():
+    # A small model can emit a list/dict/int where a bare enum string was asked
+    # for; `x in frozenset` would raise TypeError on unhashable input. The parser
+    # must coerce to the safe fallback, never crash.
+    out = enrich.parse_gist({"gist": 123, "category": ["conflict"], "escalating": {"v": "yes"}})
+    assert out == {"gist": "", "category": "other", "escalating": "unclear"}
+
+
 def test_parse_gist_keeps_valid_values():
     out = enrich.parse_gist(
         {"gist": "Border clashes reported.", "category": "conflict", "escalating": "yes"}

@@ -39,9 +39,11 @@ def parse_gist(raw: dict[str, Any]) -> dict[str, str]:
     gist = raw.get("gist")
     gist = gist.strip()[:GIST_MAX_CHARS] if isinstance(gist, str) else ""
     category = raw.get("category")
-    category = category if category in CATEGORIES else "other"
+    category = category if isinstance(category, str) and category in CATEGORIES else "other"
     escalating = raw.get("escalating")
-    escalating = escalating if escalating in ESCALATING else "unclear"
+    escalating = (
+        escalating if isinstance(escalating, str) and escalating in ESCALATING else "unclear"
+    )
     return {"gist": gist, "category": category, "escalating": escalating}
 
 
