@@ -124,7 +124,7 @@ def test_ask_returns_sources_and_strips_bad_citations(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session: {
+        lambda session, question=None: {
             "stories": [
                 {
                     "n": 1,
@@ -154,4 +154,22 @@ def test_ask_busy_has_empty_sources(monkeypatch):
     monkeypatch.setattr(api.settings, "brain_min_free_mb", 1200)
     body = client.post("/brain/ask", json={"question": "hi"}).json()
     assert body["sources"] == []
+    app.dependency_overrides.clear()
+
+
+def test_ask_threads_question_into_context_retrieval(monkeypatch):
+    client = _client()
+    captured = {}
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+
+    def _context(session, question=None):
+        captured["question"] = question
+        return {"stories": []}
+
+    monkeypatch.setattr(api.qa, "build_qa_context", _context)
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "No match."})
+    body = client.post("/brain/ask", json={"question": "what about hormuz?"}).json()
+    assert body["answer"] == "No match."
+    assert body["sources"] == []
+    assert captured["question"] == "what about hormuz?"
     app.dependency_overrides.clear()
