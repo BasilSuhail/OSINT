@@ -23,6 +23,10 @@ from app.settings import settings
 #: A job whose heartbeat is older than this is treated as dead, not busy.
 _HEARTBEAT_FRESH_S: int = 90
 
+#: The brain's own narrate job name — excluded from its own heavy-job check
+#: so it never backs off from a job_run row it just opened on itself.
+BRAIN_JOB_NAME = "brain-narrate"
+
 
 def _parse_meminfo(text: str) -> int:
     """MB available from /proc/meminfo (MemAvailable is in kB)."""
@@ -65,7 +69,11 @@ def heavy_job_active(session: Session, *, now: datetime | None = None) -> bool:
     cutoff = now - timedelta(seconds=_HEARTBEAT_FRESH_S)
     row = session.execute(
         select(JobRunRow.id)
-        .where(JobRunRow.status == "running", JobRunRow.heartbeat_at >= cutoff)
+        .where(
+            JobRunRow.status == "running",
+            JobRunRow.heartbeat_at >= cutoff,
+            JobRunRow.job != BRAIN_JOB_NAME,
+        )
         .limit(1)
     ).first()
     return row is not None

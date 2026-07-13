@@ -72,3 +72,21 @@ def test_should_run_allows_when_idle_and_ram_ok(monkeypatch):
     monkeypatch.setattr(gate, "ram_free_mb", lambda: 4000)
     allowed, _reason = gate.should_run(session)
     assert allowed is True
+
+
+def test_heavy_job_active_false_for_own_fresh_brain_row():
+    """#409: the brain's own job_run row must never count as heavy work it
+    has to back off from — only other jobs do."""
+    session = _memory_session()
+    now = datetime.now(UTC)
+    session.add(JobRunRow(job=gate.BRAIN_JOB_NAME, status="running", heartbeat_at=now))
+    session.commit()
+    assert gate.heavy_job_active(session, now=now) is False
+
+
+def test_heavy_job_active_true_for_other_job_same_freshness():
+    session = _memory_session()
+    now = datetime.now(UTC)
+    session.add(JobRunRow(job="cluster", status="running", heartbeat_at=now))
+    session.commit()
+    assert gate.heavy_job_active(session, now=now) is True

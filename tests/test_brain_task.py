@@ -38,3 +38,23 @@ def test_narrate_skips_when_gated(monkeypatch):
     assert result["reason"] == "low RAM"
     with factory() as session:
         assert session.execute(select(BrainNarrativeRow)).first() is None
+
+
+def test_narrate_body_real_gate_on_idle_box_persists(monkeypatch):
+    """Regression for #409: the brain's own job_run row must not trip its
+    own heavy-job gate. Drives the REAL gate.should_run inside a real
+    job_run("brain-narrate") context — no mocking gate at all — on an
+    otherwise idle box, and asserts the narrative is actually persisted."""
+    factory = _factory()
+    monkeypatch.setattr(brain_task, "_session_factory", lambda: factory)
+    monkeypatch.setattr(brain_task.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        brain_task.client,
+        "generate_json",
+        lambda prompt: {"headline": "quiet", "world": "w", "system": "s", "watch": []},
+    )
+    result = brain_task._narrate_body(now=datetime.now(UTC))
+    assert result["persisted"] is True
+    with factory() as session:
+        rows = session.execute(select(BrainNarrativeRow)).scalars().all()
+        assert len(rows) == 1

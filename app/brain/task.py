@@ -31,7 +31,7 @@ def _narrate_body(*, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     factory = _session_factory()
     with (
-        job_run("brain-narrate", session_factory=factory, evict_brain=False),
+        job_run(gate.BRAIN_JOB_NAME, session_factory=factory, evict_brain=False),
         factory() as session,
     ):
         allowed, reason = gate.should_run(session, now=now)

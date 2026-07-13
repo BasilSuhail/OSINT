@@ -68,7 +68,11 @@ def build_snapshot(session: Session, *, now: datetime | None = None) -> dict[str
 
 
 def input_digest(snapshot: dict[str, Any]) -> str:
-    blob = json.dumps(snapshot, sort_keys=True, default=str).encode("utf-8")
+    """Hash the snapshot's content, excluding `as_of` — a mere re-render at a
+    later timestamp with identical world/system content must not look like a
+    new narrative worth telling."""
+    stable = {key: value for key, value in snapshot.items() if key != "as_of"}
+    blob = json.dumps(stable, sort_keys=True, default=str).encode("utf-8")
     return "sha256:" + hashlib.sha256(blob).hexdigest()
 
 

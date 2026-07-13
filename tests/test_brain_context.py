@@ -45,6 +45,14 @@ def test_input_digest_is_stable_and_prefixed():
     assert d1.startswith("sha256:")
 
 
+def test_input_digest_ignores_as_of():
+    """A mere re-render — same world/system content, later timestamp — must
+    not produce a new digest (#409)."""
+    snap_a = {"top_stories": [], "jobs": {}, "as_of": "2026-07-12T12:00:00+00:00"}
+    snap_b = {"top_stories": [], "jobs": {}, "as_of": "2026-07-12T12:15:00+00:00"}
+    assert context.input_digest(snap_a) == context.input_digest(snap_b)
+
+
 def test_build_prompt_is_bounded():
     now = datetime(2026, 7, 12, 12, 0, tzinfo=UTC)
     session = _session_with_data(now)
