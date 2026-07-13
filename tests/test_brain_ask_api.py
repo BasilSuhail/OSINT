@@ -75,3 +75,27 @@ def test_ask_ollama_down_returns_offline(monkeypatch):
     assert "offline" in body["answer"].lower()
     assert body["context_digest"] is None
     app.dependency_overrides.clear()
+
+
+def test_ask_non_dict_model_output_degrades_gracefully(monkeypatch):
+    # A small model can emit valid-but-non-object JSON (e.g. a bare list); it must
+    # NOT 500 — the endpoint promises a typed answer at HTTP 200 for every failure.
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: ["not", "a", "dict"])
+    resp = client.post("/brain/ask", json={"question": "hi"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "couldn't form" in body["answer"].lower()
+    assert body["context_digest"] is None
+    app.dependency_overrides.clear()
+
+
+def test_ask_blank_answer_degrades_gracefully(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "  "})
+    body = client.post("/brain/ask", json={"question": "hi"}).json()
+    assert "couldn't form" in body["answer"].lower()
+    assert body["context_digest"] is None
+    app.dependency_overrides.clear()

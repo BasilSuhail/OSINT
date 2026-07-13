@@ -485,7 +485,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         raw = client.generate_json(qa.build_qa_prompt(qa_context, req.question))
     except Exception:
         return {"answer": "The brain is offline right now.", "context_digest": None}
-    answer = raw.get("answer")
+    answer = raw.get("answer") if isinstance(raw, dict) else None
     if not isinstance(answer, str) or not answer.strip():
         return {"answer": "I couldn't form an answer just now.", "context_digest": None}
     return {"answer": answer, "context_digest": context.input_digest(qa_context)}
