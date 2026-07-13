@@ -23,7 +23,7 @@ from datetime import time as dtime
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
-from app.db_models import EventRow, HousekeepingRunRow
+from app.db_models import BrainNarrativeRow, EventRow, HousekeepingRunRow
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -217,6 +217,14 @@ def enforce_size_cap(
     }
 
 
+def prune_brain_narrative(session: Session, *, now: datetime | None = None) -> int:
+    """Delete situation narratives older than the news retention window (#409)."""
+    now = now or datetime.now(UTC)
+    cutoff = now - timedelta(days=settings.retention_news_days)
+    result = session.execute(delete(BrainNarrativeRow).where(BrainNarrativeRow.created_at < cutoff))
+    return result.rowcount or 0
+
+
 def vacuum_events(bind) -> bool:
     """``VACUUM (ANALYZE) events`` so space freed by the nightly deletes is
     reusable. Must run on an autocommit connection after the deletes commit —
@@ -241,6 +249,7 @@ def run_retention_and_cap(session: Session, *, now: datetime | None = None) -> d
     """
     now = now or datetime.now(UTC)
     deleted_by_source = prune_events(session, now=now)
+    deleted_by_source["brain_narrative"] = prune_brain_narrative(session, now=now)
     try:
         enforce_size_cap(session, now=now)
     except Exception:

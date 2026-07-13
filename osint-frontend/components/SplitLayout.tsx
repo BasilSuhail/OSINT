@@ -13,6 +13,7 @@ import { CardDeck, type DeckCard } from "./CardDeck"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { CoveragePanel } from "./panels/CoveragePanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
+import { SituationPanel } from "./panels/SituationPanel"
 import { StoriesPanel } from "./panels/StoriesPanel"
 import { SystemStatusBar } from "./SystemStatusBar"
 
@@ -98,6 +99,7 @@ export function SplitLayout() {
   // first visit, then stays warm and pauses while off-screen), and the
   // analytical pages fill the rest.
   const deckCards: DeckCard[] = [
+    { key: "situation", title: "situation", content: <SituationPanel /> },
     { key: "briefing", title: "briefing", content: <BriefingPanel /> },
     { key: "console", title: "console", fill: true, content: <RightPane /> },
     {

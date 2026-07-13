@@ -8,7 +8,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["__tests__/**/*.test.ts", "lib/apiClient.test.mts"],
+    include: ["__tests__/**/*.test.ts", "lib/apiClient.test.mts", "lib/brainNarrative.test.mts"],
     environment: "node",
     globals: false,
   },

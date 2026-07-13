@@ -8,8 +8,9 @@ The thesis is one specific claim: **a composite of three heterogeneous OSINT sig
 
 - [Chapter 1 — Switch it on](#chapter-1--switch-it-on)
 - [Chapter 2 — Can we trust the data?](#chapter-2--can-we-trust-the-data)
-- [Chapter 3 — (reserved)](#chapter-3--reserved)
-- [Chapter 4 — How to read the dashboard](#chapter-4--how-to-read-the-dashboard)
+- [Chapter 3 — How the data gets collected](#chapter-3--how-the-data-gets-collected)
+- [Chapter 4 — The brain](#chapter-4--the-brain)
+- [Chapter 5 — How to read the dashboard](#chapter-5--how-to-read-the-dashboard)
 - [Reference shelf](#reference-shelf) — deep architecture material
 
 ---
@@ -387,7 +388,68 @@ external disk and move it.
 
 ---
 
-# Chapter 4 — How to read the dashboard
+# Chapter 4 — The brain
+
+The system has a small local brain: a light model (`qwen2.5:1.5b-instruct-q4_K_M`,
+~1 GB) that runs **only when the box has headroom** and narrates what is going on —
+both the world signal and the pipeline itself.
+
+### 4.1 Why it isn't always resident
+
+Production is an 8 GB Raspberry Pi. A model pinned in RAM 24/7 would fight scraping
+and the analytical batch and OOM the Pi. So the brain uses **adaptive keep-alive**:
+warm during idle windows, **evicted the instant a heavy job starts**, reloaded when
+the box goes quiet again. The eviction is wired into `job_run()` — every heavy job
+passes through it, so the model always steps aside *before* the pandas parse grabs
+memory. A resource gate (`app/brain/gate.py`) also refuses to load unless there is
+enough free RAM and no heavy job is already running.
+
+### 4.2 What it produces
+
+Every ~15 minutes, when the gate allows, the brain reads a compact snapshot (top
+stories, job outcomes, ingest freshness) and writes a short JSON narrative:
+
+- **headline** — the single most important thing right now
+- **world** — 2-4 sentences on the story signal
+- **system** — 1-2 sentences on pipeline health
+- **watch** — a few things to keep an eye on
+
+It describes **only the numbers it is given** — same no-fabrication discipline as the
+validator. It never invents facts.
+
+### 4.3 Expected vs actual output
+
+Expected shape (`GET /brain/narrative/latest`):
+
+```json
+{
+  "present": true,
+  "model": "qwen2.5:1.5b-instruct-q4_K_M",
+  "created_at": "2026-07-12T12:00:00+00:00",
+  "payload": {
+    "headline": "Border-clash coverage is the loudest signal; pipeline healthy.",
+    "world": "Seven outlets are carrying a border-clashes story across twelve members. No other cluster is close in reach.",
+    "system": "All six analytical jobs completed in the last hour; ingest last checked two minutes ago.",
+    "watch": ["Whether the border story keeps gaining outlets", "The failed composite job from earlier"]
+  }
+}
+```
+
+When the box is busy, the brain steps aside; `GET /brain/narrative/latest` simply
+returns the last narrative and the **Situation card renders "brain resting"** so the
+backoff is visible.
+
+### 4.4 Running it
+
+```bash
+ollama pull qwen2.5:1.5b-instruct-q4_K_M   # one time
+make brain                                 # run one narration now
+```
+
+The nightly validator keeps its own 4b model; the brain is separate and lighter.
+Turn the brain off entirely with `BRAIN_ENABLED=false` in `.env`.
+
+# Chapter 5 — How to read the dashboard
 
 *Every number on the analytical cards, in plain language: what it is, what
 good and bad look like, and what to actually do with it. No statistics

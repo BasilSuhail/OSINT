@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session_factory
 from app.db_models import (
+    BrainNarrativeRow,
     EventRow,
     IngestHealthRow,
     JobRunRow,
@@ -437,6 +438,26 @@ def jobs_recent(
         }
         for row in session.execute(stmt).scalars()
     ]
+
+
+@app.get("/brain/narrative/latest")
+def brain_narrative_latest(session: Session = Depends(get_session)) -> dict:
+    """The newest situation narrative (#409), or an explicit empty shape.
+
+    The frontend uses `created_at` to decide when to render the card as stale
+    ("brain resting") — backoff is visible, never a silent lie.
+    """
+    row = session.execute(
+        select(BrainNarrativeRow).order_by(BrainNarrativeRow.created_at.desc()).limit(1)
+    ).scalar_one_or_none()
+    if row is None:
+        return {"present": False, "payload": None, "model": None, "created_at": None}
+    return {
+        "present": True,
+        "payload": row.payload,
+        "model": row.model,
+        "created_at": row.created_at.isoformat(),
+    }
 
 
 @app.get("/journal/scoreboard")

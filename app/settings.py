@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     ollama_model: str = Field(default="qwen3.5:4b-q4_K_M")
     validator_batch_limit: int = Field(default=200)
 
+    # The brain (#409) — a light always-warm-when-idle local model, separate
+    # from the 4b nightly validator above. Localhost only.
+    brain_enabled: bool = Field(default=True)
+    brain_model: str = Field(default="qwen2.5:1.5b-instruct-q4_K_M")
+    # Refuse to load the model unless at least this much RAM is free (Pi guard).
+    brain_min_free_mb: int = Field(default=1200)
+    brain_keep_alive: str = Field(default="30m")
+
     log_level: str = Field(default="INFO")
     environment: str = Field(default="development")
 

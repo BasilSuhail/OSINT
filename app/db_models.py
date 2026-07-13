@@ -454,3 +454,23 @@ class StoryReviewRow(Base):
         UniqueConstraint("story_id", "method_version", name="story_reviews_unique"),
         Index("story_reviews_story_idx", "story_id"),
     )
+
+
+class BrainNarrativeRow(Base):
+    """One situation narrative produced by the brain (#409).
+
+    Append-only, 30-day retention (housekeeping prunes it). `input_digest`
+    lets a reader tell a genuinely new narrative from a mere re-render.
+    """
+
+    __tablename__ = "brain_narrative"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JsonColumn, nullable=False)
+    input_digest: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (Index("brain_narrative_created_idx", "created_at"),)
