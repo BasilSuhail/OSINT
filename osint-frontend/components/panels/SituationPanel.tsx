@@ -10,6 +10,7 @@
 import { useState } from "react"
 import useSWR from "swr"
 import { fetchBrainAsk, fetchBrainNarrative } from "@/lib/apiClient"
+import type { BrainSource } from "@/lib/apiClient"
 import { fetchStoryMembers, fetchTopStories, type StoryRow } from "@/lib/analytics"
 
 const NARRATIVE_REFRESH_MS = 5 * 60_000
@@ -187,7 +188,7 @@ export function SituationPanel() {
   )
 }
 
-type QA = { question: string; answer: string }
+type QA = { question: string; answer: string; sources: BrainSource[] }
 
 function AskBox() {
   const [question, setQuestion] = useState("")
@@ -199,11 +200,11 @@ function AskBox() {
     if (!q || pending) return
     setPending(true)
     try {
-      const { answer } = await fetchBrainAsk(q)
-      setLast({ question: q, answer })
+      const { answer, sources } = await fetchBrainAsk(q)
+      setLast({ question: q, answer, sources })
       setQuestion("")
     } catch {
-      setLast({ question: q, answer: "The brain is offline right now." })
+      setLast({ question: q, answer: "The brain is offline right now.", sources: [] })
     } finally {
       setPending(false)
     }
@@ -215,6 +216,18 @@ function AskBox() {
         <div className="mb-2 text-sm">
           <p className="text-neutral-500">{last.question}</p>
           <p className="text-neutral-200">{last.answer}</p>
+          {last.sources.length > 0 ? (
+            <p className="mt-1 text-[11px] leading-snug text-neutral-500">
+              sources:{" "}
+              {last.sources.map((s) => (
+                <span key={s.n}>
+                  [{s.n}] {s.outlets.join(", ") || s.title}
+                  {s.contested ? " ⚠" : ""}
+                  {s.n < last.sources.length ? " · " : ""}
+                </span>
+              ))}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <div className="flex gap-2">
