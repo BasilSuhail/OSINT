@@ -35,7 +35,7 @@ cd osint-frontend && pnpm install && cd ..
 
 | Want | Command |
 |------|---------|
-| Everything ON (stores, worker, beat, API, dashboard) | `make up` |
+| Everything ON (stores, worker, beat, API, dashboard, Ollama) | `make up` |
 | Everything OFF, keep data | `make stop` |
 | OFF + quit Docker Desktop | `make off` |
 | Restart after a code change | `make stop && make up` |
@@ -441,8 +441,16 @@ backoff is visible.
 
 ### 4.4 Running it
 
+`make up` starts Ollama for you: if it's installed and not already running, the
+start-up brings up `ollama serve`, waits for it, and pulls the light brain model on a
+fresh box — so one command runs the whole app *with* its brain, and `make down`/`make
+off` stops the Ollama it started (a hand-started `ollama serve` is left alone). It's
+best-effort: if Ollama isn't installed the app still comes up and the brain stays
+dormant. Skip the autostart with `OLLAMA_AUTOSTART=0`.
+
+Run one pass by hand:
+
 ```bash
-ollama pull qwen2.5:1.5b-instruct-q4_K_M   # one time
 make brain                                 # run one narration now
 ```
 
