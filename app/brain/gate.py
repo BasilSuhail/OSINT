@@ -23,9 +23,13 @@ from app.settings import settings
 #: A job whose heartbeat is older than this is treated as dead, not busy.
 _HEARTBEAT_FRESH_S: int = 90
 
-#: The brain's own narrate job name — excluded from its own heavy-job check
-#: so it never backs off from a job_run row it just opened on itself.
+#: The brain's own job names share this prefix; they are excluded from the
+#: heavy-job check so a brain task never backs off from a job_run row it just
+#: opened on itself (the Phase 1 self-block, #410 — now generalized to every
+#: brain job so brain-enrich doesn't reintroduce it).
+BRAIN_JOB_PREFIX = "brain-"
 BRAIN_JOB_NAME = "brain-narrate"
+BRAIN_ENRICH_JOB_NAME = "brain-enrich"
 
 
 def _parse_meminfo(text: str) -> int:
@@ -72,7 +76,7 @@ def heavy_job_active(session: Session, *, now: datetime | None = None) -> bool:
         .where(
             JobRunRow.status == "running",
             JobRunRow.heartbeat_at >= cutoff,
-            JobRunRow.job != BRAIN_JOB_NAME,
+            JobRunRow.job.not_like(f"{BRAIN_JOB_PREFIX}%"),
         )
         .limit(1)
     ).first()
