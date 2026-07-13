@@ -168,9 +168,17 @@ def build_qa_context(session: Session, *, now: datetime | None = None) -> dict[s
 def build_qa_prompt(qa_context: dict[str, Any], question: str) -> str:
     return (
         "You are the Q&A brain of an OSINT early-warning system. Answer the user's "
-        "question using ONLY the JSON context below. If the context does not contain "
-        "the answer, reply exactly: I don't have data on that. Invent no facts, names, "
-        "places, or numbers not present in the context.\n\n"
+        "question using ONLY the JSON context below. The context includes a numbered "
+        '"stories" list; each story has a corroboration score (how many INDEPENDENT '
+        "outlets tell it), a contested flag (do tellers disagree sharply), and sensor "
+        "verdicts (machine-confirmed claims).\n\n"
+        "Rules:\n"
+        "- Answer only from the context. If it is not there, reply exactly: "
+        "I don't have data on that. Invent no facts, names, places, or numbers.\n"
+        "- When a claim rests on a story, cite it as [n] using that story's number.\n"
+        "- Flag trust: call out a story that is single-source (low corroboration or "
+        "owner_count 1), contested (contested: true), or sensor-unconfirmed. Prefer "
+        "corroborated stories; never present a single-teller claim as established fact.\n\n"
         'Return a JSON object with exactly one key: "answer" (a short plain-English '
         "string).\n\n"
         f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
