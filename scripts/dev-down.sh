@@ -5,7 +5,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-for label in frontend worker worker-analytics beat api; do
+# Ollama is included only via its pidfile, which dev-up.sh writes ONLY when it
+# started the server itself — a user-managed `ollama serve` has no pidfile here
+# and is left running.
+for label in frontend worker worker-analytics beat api ollama; do
   pidfile="logs/$label.pid"
   [ -f "$pidfile" ] || continue
   pid="$(cat "$pidfile")"

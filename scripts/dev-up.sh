@@ -15,6 +15,9 @@ DOCKER_WAIT_STEP="${DOCKER_WAIT_STEP:-2}"
 API_WAIT_SECONDS="${API_WAIT_SECONDS:-20}"
 FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-60}"
 DOCKER_WAIT_MESSAGE_EVERY="${DOCKER_WAIT_MESSAGE_EVERY:-10}"
+OLLAMA_WAIT_SECONDS="${OLLAMA_WAIT_SECONDS:-30}"
+# Matches settings.brain_model (env BRAIN_MODEL overrides both).
+OLLAMA_BRAIN_MODEL="${BRAIN_MODEL:-qwen2.5:1.5b-instruct-q4_K_M}"
 
 docker_ready() {
   if [ -n "${DOCKER_HOST:-}" ]; then
@@ -101,6 +104,69 @@ ensure_docker() {
     echo "Start/activate Docker Desktop, then run make up again." >&2
   fi
   exit 1
+}
+
+ollama_ready() {
+  curl -s -m2 http://localhost:11434/api/tags >/dev/null 2>&1
+}
+
+ensure_ollama() {
+  # The brain (situation narrative, Q&A, story enrichment, nightly validator)
+  # reaches Ollama on localhost:11434. Bring it up here so one `make up` starts
+  # the whole app WITH its brain. Strictly best-effort: if Ollama is absent,
+  # slow, or the pull fails, the app still runs and the brain degrades cleanly
+  # (narrate/enrich skip, /brain/ask answers "offline"). Never aborts make up.
+  if [ "${OLLAMA_AUTOSTART:-1}" != "1" ]; then
+    echo "  ollama autostart disabled (OLLAMA_AUTOSTART=0)"
+    return 0
+  fi
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "  ollama not installed; skipping (brain features stay dormant)"
+    return 0
+  fi
+
+  if ollama_ready; then
+    echo "  ollama already running"
+  else
+    echo "  starting ollama"
+    nohup ollama serve >logs/ollama.log 2>&1 &
+    echo $! >logs/ollama.pid
+    printf "  waiting for ollama"
+    for _ in $(seq 1 "$OLLAMA_WAIT_SECONDS"); do
+      if ollama_ready; then break; fi
+      printf "."
+      sleep 1
+    done
+    if ollama_ready; then
+      printf " \342\234\223 ready\n"
+    else
+      printf "\n  ollama did not become ready in %ss; brain stays dormant (see logs/ollama.log).\n" "$OLLAMA_WAIT_SECONDS"
+      return 0
+    fi
+  fi
+
+  # Ensure the light brain model is present (one-time ~1GB pull on a fresh box).
+  # Right after `ollama serve` boots, the model listing is briefly flaky — the
+  # CLI and the /api/tags endpoint can each momentarily miss a model that IS on
+  # disk. Check BOTH and retry for a few seconds so we never trigger a spurious
+  # pull for an already-present model. On a genuinely fresh box every check
+  # misses and we pull once (the few seconds of waiting are negligible next to
+  # the download).
+  local have_model=""
+  for _ in $(seq 1 8); do
+    if ollama list 2>/dev/null | grep -q "$OLLAMA_BRAIN_MODEL" ||
+      curl -s -m2 http://localhost:11434/api/tags 2>/dev/null | grep -q "$OLLAMA_BRAIN_MODEL"; then
+      have_model=1
+      break
+    fi
+    sleep 1
+  done
+  if [ -z "$have_model" ]; then
+    echo "  pulling brain model $OLLAMA_BRAIN_MODEL (one-time download)…"
+    if ! ollama pull "$OLLAMA_BRAIN_MODEL" >logs/ollama-pull.log 2>&1; then
+      echo "  model pull failed (see logs/ollama-pull.log); brain stays dormant until pulled."
+    fi
+  fi
 }
 
 FRONTEND_PORT_DEFAULT=3000
@@ -224,6 +290,9 @@ spawn_frontend() {
 # OBJC flag covers the Objective-C side. Both are harmless on Linux.
 export no_proxy="*"
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+
+echo "→ brain (ollama)"
+ensure_ollama
 
 # Two workers (#384, #388). The default queue keeps a small concurrent pool
 # for the I/O-bound fetchers; every heavy analytical job routes to the
