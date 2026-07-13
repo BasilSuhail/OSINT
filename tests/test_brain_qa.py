@@ -113,3 +113,13 @@ def test_build_qa_prompt_is_grounded_and_bounded():
     assert "What is most contested?" in prompt
     assert '"answer"' in prompt  # asks for the answer schema
     assert len(prompt) < 8000
+
+
+def test_build_qa_prompt_asks_for_citations_and_flags():
+    ctx = {"stories": [{"n": 1, "title": "X", "corroboration": 0.2, "contested": True}]}
+    prompt = qa.build_qa_prompt(ctx, "what is going on?")
+    low = prompt.lower()
+    assert "[n]" in low or "cite" in low
+    assert "contested" in low
+    assert "single" in low or "corrobor" in low
+    assert "what is going on?" in prompt

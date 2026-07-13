@@ -83,9 +83,19 @@ export async function fetchBrainNarrative(): Promise<BrainNarrative> {
   return (await res.json()) as BrainNarrative
 }
 
+export interface BrainSource {
+  n: number
+  story_id: number
+  title: string
+  outlets: string[]
+  corroboration: number | null
+  contested: boolean
+}
+
 export interface BrainAsk {
   answer: string
   context_digest: string | null
+  sources: BrainSource[]
 }
 
 export async function fetchBrainAsk(question: string): Promise<BrainAsk> {
