@@ -69,3 +69,6 @@ backups/
 
 # Celery beat local schedule state
 celerybeat-schedule*
+
+# Local strategy scratch (not tracked)
+POSITIONING-SCRATCH.md
