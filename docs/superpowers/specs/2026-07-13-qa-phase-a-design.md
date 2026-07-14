@@ -86,7 +86,8 @@ Response becomes:
   `1..len(sources)` (cheap regex guard against invented citation numbers). If a
   non-refusal answer has sources but no valid citation, the API makes one citation
   repair attempt against the same context; if the repaired answer is still uncited,
-  it returns a citation-verification failure instead of uncited prose.
+  it returns a deterministic cited fallback from the retrieved story context instead
+  of uncited prose.
 - Busy / offline / malformed paths return `sources: []`.
 
 ## 4. Frontend

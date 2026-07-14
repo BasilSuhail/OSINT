@@ -132,3 +132,23 @@ def test_citation_compliance_requires_valid_citation_for_story_answer():
     assert qa.citation_compliant("Border clashes.", 2) is False
     assert qa.citation_compliant(qa.REFUSAL_ANSWER, 2) is True
     assert qa.strip_bad_citations("Good [1], bad [9].", 1) == "Good [1], bad ."
+
+
+def test_build_cited_fallback_answer_uses_first_story():
+    answer = qa.build_cited_fallback_answer(
+        [
+            {
+                "n": 1,
+                "title": "Thailand fire kills 27",
+                "sources": ["Al Jazeera English", "BBC World"],
+                "contested": True,
+                "corroboration": 1.0,
+                "sensor": {},
+            }
+        ]
+    )
+
+    assert "Thailand fire kills 27 [1]" in answer
+    assert "Al Jazeera English" in answer
+    assert "contested" in answer.lower()
+    assert qa.citation_compliant(answer, 1) is True

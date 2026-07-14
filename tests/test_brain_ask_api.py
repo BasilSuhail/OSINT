@@ -103,7 +103,7 @@ def test_ask_non_dict_model_output_degrades_gracefully(monkeypatch):
     resp = client.post("/brain/ask", json={"question": "hi"})
     assert resp.status_code == 200
     body = resp.json()
-    assert "couldn't form" in body["answer"].lower()
+    assert body["answer"] == "The brain is not working right now."
     assert body["context_digest"] is None
     app.dependency_overrides.clear()
 
@@ -113,7 +113,7 @@ def test_ask_blank_answer_degrades_gracefully(monkeypatch):
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "  "})
     body = client.post("/brain/ask", json={"question": "hi"}).json()
-    assert "couldn't form" in body["answer"].lower()
+    assert body["answer"] == "The brain is not working right now."
     assert body["context_digest"] is None
     app.dependency_overrides.clear()
 
@@ -176,7 +176,7 @@ def test_ask_repairs_uncited_story_answer(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def test_ask_rejects_uncited_story_answer_after_failed_repair(monkeypatch):
+def test_ask_falls_back_to_cited_story_after_failed_repair(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(
@@ -199,7 +199,8 @@ def test_ask_rejects_uncited_story_answer_after_failed_repair(monkeypatch):
 
     body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
 
-    assert body["answer"] == "I couldn't verify citations for that answer."
+    assert "Border clashes [1]" in body["answer"]
+    assert "Reuters" in body["answer"]
     assert body["sources"][0]["n"] == 1
     app.dependency_overrides.clear()
 
