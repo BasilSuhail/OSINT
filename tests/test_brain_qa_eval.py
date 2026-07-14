@@ -42,8 +42,64 @@ def test_evaluate_answer_records_latency_and_invalid_citations(monkeypatch):
 
     assert out["ok"] is True
     assert out["elapsed_ms"] == 250
-    assert out["cited"] == [1, 9]
+    assert out["cited"] == [1]
     assert out["invalid_citations"] == [9]
+    assert out["citation_ok"] is True
+
+
+def test_evaluate_answer_fails_uncited_story_answer(monkeypatch):
+    session = _session()
+    monkeypatch.setattr(
+        qa_eval.qa,
+        "build_qa_context",
+        lambda session, now=None, question=None: {
+            "as_of": "x",
+            "stories": [{"n": 1, "story_id": 5, "title": "x", "sources": ["Reuters"]}],
+        },
+    )
+    monkeypatch.setattr(qa_eval.qa, "build_qa_prompt", lambda ctx, question: "prompt")
+    ticks = iter([1.0, 1.25, 1.25])
+
+    out = qa_eval.evaluate_answer(
+        session,
+        question="q",
+        model="candidate",
+        now=datetime(2026, 7, 14, tzinfo=UTC),
+        generate_json=lambda prompt, *, model, keep_alive: {"answer": "Uncited."},
+        clock=lambda: next(ticks),
+    )
+
+    assert out["ok"] is False
+    assert out["citation_ok"] is False
+    assert "uncited" in out["error"]
+
+
+def test_evaluate_answer_repairs_uncited_story_answer(monkeypatch):
+    session = _session()
+    monkeypatch.setattr(
+        qa_eval.qa,
+        "build_qa_context",
+        lambda session, now=None, question=None: {
+            "as_of": "x",
+            "stories": [{"n": 1, "story_id": 5, "title": "x", "sources": ["Reuters"]}],
+        },
+    )
+    monkeypatch.setattr(qa_eval.qa, "build_qa_prompt", lambda ctx, question: "prompt")
+    ticks = iter([1.0, 1.25])
+    calls = iter([{"answer": "Uncited."}, {"answer": "Cited [1]."}])
+
+    out = qa_eval.evaluate_answer(
+        session,
+        question="q",
+        model="candidate",
+        now=datetime(2026, 7, 14, tzinfo=UTC),
+        generate_json=lambda prompt, *, model, keep_alive: next(calls),
+        clock=lambda: next(ticks),
+    )
+
+    assert out["ok"] is True
+    assert out["answer"] == "Cited [1]."
+    assert out["citation_repaired"] is True
 
 
 def test_run_eval_crosses_questions_and_models(tmp_path, monkeypatch):
