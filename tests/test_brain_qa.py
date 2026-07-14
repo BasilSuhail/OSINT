@@ -120,6 +120,15 @@ def test_build_qa_prompt_asks_for_citations_and_flags():
     prompt = qa.build_qa_prompt(ctx, "what is going on?")
     low = prompt.lower()
     assert "[n]" in low or "cite" in low
+    assert "must include at least one valid" in low
     assert "contested" in low
     assert "single" in low or "corrobor" in low
     assert "what is going on?" in prompt
+
+
+def test_citation_compliance_requires_valid_citation_for_story_answer():
+    assert qa.citation_compliant("Border clashes [1].", 2) is True
+    assert qa.citation_compliant("Border clashes [9].", 2) is False
+    assert qa.citation_compliant("Border clashes.", 2) is False
+    assert qa.citation_compliant(qa.REFUSAL_ANSWER, 2) is True
+    assert qa.strip_bad_citations("Good [1], bad [9].", 1) == "Good [1], bad ."

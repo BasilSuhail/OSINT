@@ -148,6 +148,62 @@ def test_ask_returns_sources_and_strips_bad_citations(monkeypatch):
     app.dependency_overrides.clear()
 
 
+def test_ask_repairs_uncited_story_answer(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                }
+            ]
+        },
+    )
+    calls = iter([{"answer": "Border clashes."}, {"answer": "Border clashes [1]."}])
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: next(calls))
+
+    body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
+
+    assert body["answer"] == "Border clashes [1]."
+    app.dependency_overrides.clear()
+
+
+def test_ask_rejects_uncited_story_answer_after_failed_repair(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "Border clashes."})
+
+    body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
+
+    assert body["answer"] == "I couldn't verify citations for that answer."
+    assert body["sources"][0]["n"] == 1
+    app.dependency_overrides.clear()
+
+
 def test_ask_busy_has_empty_sources(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 100)

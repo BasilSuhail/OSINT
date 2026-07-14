@@ -28,6 +28,8 @@ source/citation prompt. The harness records:
 - source count
 - cited source numbers
 - invalid citation numbers
+- citation compliance: a non-refusal answer with sources must cite at least one valid
+  `[n]`; uncited answers get one repair attempt, then count as failed
 - error, if the model call failed
 
 The generated artifacts live under `data/exports/`:
