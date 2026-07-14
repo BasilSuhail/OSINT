@@ -370,3 +370,27 @@ def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answ
         f"QUESTION: {question}\n"
         f"DRAFT_ANSWER: {answer}"
     )
+
+
+def build_cited_fallback_answer(stories: list[dict[str, Any]]) -> str:
+    """Deterministic answer when the model cannot repair missing citations."""
+    if not stories:
+        return REFUSAL_ANSWER
+    story = stories[0]
+    title = str(story.get("title") or "").strip()
+    if not title:
+        return REFUSAL_ANSWER
+    n = int(story.get("n") or 1)
+    parts = [f"The retrieved story is: {title} [{n}]."]
+    outlets = [str(s) for s in story.get("sources") or [] if str(s).strip()]
+    if outlets:
+        parts.append(f"Outlets in context: {', '.join(outlets[:3])}.")
+    if story.get("contested"):
+        parts.append("This story is flagged contested, so treat it as disputed coverage.")
+    corroboration = story.get("corroboration")
+    if corroboration is not None:
+        parts.append(f"Corroboration score: {corroboration}.")
+    sensor = story.get("sensor") or {}
+    if sensor:
+        parts.append(f"Sensor checks: {sensor}.")
+    return " ".join(parts)

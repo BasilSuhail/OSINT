@@ -509,7 +509,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     answer = raw.get("answer") if isinstance(raw, dict) else None
     if not isinstance(answer, str) or not answer.strip():
         return {
-            "answer": "I couldn't form an answer just now.",
+            "answer": "The brain is not working right now.",
             "context_digest": None,
             "sources": [],
         }
@@ -537,7 +537,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         if isinstance(repaired_answer, str) and repaired_answer.strip():
             answer = qa.strip_bad_citations(repaired_answer, len(sources))
     if not qa.citation_compliant(answer, len(sources)):
-        answer = "I couldn't verify citations for that answer."
+        answer = qa.build_cited_fallback_answer(stories)
     return {
         "answer": answer,
         "context_digest": context.input_digest(qa_context),
