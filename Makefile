@@ -78,6 +78,9 @@ brain:  ## Run the brain narrate once — needs Ollama + qwen2.5:1.5b (#409)
 enrich:  ## Run one brain enrichment pass — gist + tags for new stories (#413)
 	.venv/bin/python -m app.brain.enrich_run
 
+brain-qa-eval:  ## Compare Q&A candidate models locally (Phase C, #413)
+	.venv/bin/python -m app.brain.qa_eval
+
 validator-audit:  ## Emit the ~50-story human-check sheet for the validator (#378)
 	.venv/bin/python -m app.validator.audit
 

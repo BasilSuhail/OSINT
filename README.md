@@ -71,6 +71,7 @@ green pulsing while working (with live progress), red while idle, red
 | `make validator` | local-LLM claim extraction over window stories (needs Ollama) |
 | `make validator-audit` | emit the human-check sheet that gates validator use |
 | `make validator-agreement` | publish the model-vs-human agreement rate from the filled sheet |
+| `make brain-qa-eval` | compare Q&A candidate models locally and write the Phase C report |
 | `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
 
 ### The data folder
@@ -461,11 +462,10 @@ Turn the brain off entirely with `BRAIN_ENABLED=false` in `.env`.
 
 Beyond narrating on its own schedule, the brain answers questions on demand.
 `POST /brain/ask` with `{"question": "..."}` returns `{"answer": "...",
-"context_digest": "..."}`. The answer is grounded in the same live snapshot the
-narrative uses, plus three headline facts (the latest composite and its
-highest-stress country, the most-contested story, and the prediction scoreboard's
-graded/total counts). It answers only from that context and says "I don't have data
-on that" otherwise — it never invents.
+"context_digest": "...", "sources": [...]}`. The answer is grounded in the same live
+snapshot the narrative uses, plus question-retrieved recent stories carrying source
+outlets, corroboration, contested flags, sensor verdicts, and gists. It answers only
+from that context and says "I don't have data on that" otherwise — it never invents.
 
 Because a question is user-initiated (you're waiting for the answer), Q&A does not
 back off on every running job the way the scheduled narrative does — it refuses only
@@ -479,8 +479,15 @@ Example:
 ```
 POST /brain/ask  {"question": "what is the most contested story?"}
 → {"answer": "The most contested story is the border-clashes report, with a
-   divergence of 0.83 across the outlets telling it.", "context_digest": "sha256:…"}
+   divergence of 0.83 across the outlets telling it [1].",
+   "context_digest": "sha256:…",
+   "sources": [{"n": 1, "outlets": ["Reuters", "BBC"], "contested": true, ...}]}
 ```
+
+Phase C evaluates whether the validator's heavier 4b model is worth using for Q&A.
+Run `make brain-qa-eval` to compare it with the current 1.5b on identical retrieved
+contexts. The command writes `data/exports/brain-qa-model-eval.md` and `.json`; it is
+a decision artifact, not a production model switch.
 
 ### 4.6 Enriching new stories
 
