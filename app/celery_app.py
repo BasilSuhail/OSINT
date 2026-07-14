@@ -44,6 +44,7 @@ app.conf.task_routes = {
         "app.tasks.journal_daily",
         "app.tasks.compute_composite",
         "app.tasks.compute_cii",
+        "app.tasks.enrich_footprints",
         "app.tasks.run_housekeeping",
         "app.tasks.brain_narrate",
         "app.tasks.brain_enrich",

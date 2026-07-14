@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db_models import JobRunRow
+from app.runtime import load as runtime_load
 from app.settings import settings
 
 #: A job whose heartbeat is older than this is treated as dead, not busy.
@@ -91,6 +92,8 @@ def should_run(session: Session, *, now: datetime | None = None) -> tuple[bool, 
     free = ram_free_mb()
     if free < settings.brain_min_free_mb:
         return False, f"low RAM: {free}MB free < {settings.brain_min_free_mb}MB floor"
+    if reason := runtime_load.busy_reason(now=now):
+        return False, reason
     if heavy_job_active(session, now=now):
         return False, "heavy job in flight — backing off"
     return True, f"ok: {free}MB free, no heavy job"

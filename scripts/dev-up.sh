@@ -294,13 +294,14 @@ export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 echo "→ brain (ollama)"
 ensure_ollama
 
-# Two workers (#384, #388). The default queue keeps a small concurrent pool
+# Two workers (#384, #388). The default queue keeps a tiny concurrent pool
 # for the I/O-bound fetchers; every heavy analytical job routes to the
 # `analytics` queue consumed at concurrency 1 — strictly one at a time, so
 # peak memory is max(one job) and the nightly Ollama batch never overlaps a
-# pandas parse. The Pi .env can set CELERY_CONCURRENCY=1.
+# pandas parse. Default to one fetcher locally so Docker, Next, Ollama, and
+# Postgres keep enough headroom; fast machines can set CELERY_CONCURRENCY=2.
 spawn worker .venv/bin/celery -A app.celery_app worker -l info \
-  -Q celery --concurrency "${CELERY_CONCURRENCY:-2}" -n fetchers@%h
+  -Q celery --concurrency "${CELERY_CONCURRENCY:-1}" -n fetchers@%h
 spawn worker-analytics .venv/bin/celery -A app.celery_app worker -l info \
   -Q analytics --concurrency 1 -n analytics@%h
 spawn beat   .venv/bin/celery -A app.celery_app beat   -l info

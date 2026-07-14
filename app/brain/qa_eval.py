@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.brain import client, context, qa
 from app.db import get_session_factory
+from app.runtime import load as runtime_load
 from app.settings import settings
 
 DEFAULT_QUESTIONS: tuple[str, ...] = (
@@ -101,17 +102,20 @@ def run_eval(
     now = now or datetime.now(UTC)
     model_list = list(models or candidate_models())
     question_list = [q for q in questions if q.strip()]
-    results = [
-        evaluate_answer(
-            session,
-            question=question,
-            model=model,
-            now=now,
-            generate_json=generate_json,
-        )
-        for question in question_list
-        for model in model_list
-    ]
+    results = []
+    with runtime_load.activity("brain-qa-eval"):
+        for question in question_list:
+            for model in model_list:
+                runtime_load.heartbeat("brain-qa-eval")
+                results.append(
+                    evaluate_answer(
+                        session,
+                        question=question,
+                        model=model,
+                        now=now,
+                        generate_json=generate_json,
+                    )
+                )
     return {
         "created_at": now.isoformat(),
         "models": model_list,
