@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest"
-import { fetchBrainAsk } from "./apiClient"
+import { fetchBrainAsk, streamBrainAsk } from "./apiClient"
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -40,5 +40,36 @@ describe("fetchBrainAsk", () => {
     )
     const out = await fetchBrainAsk("q")
     expect(out.sources[0].outlets[0]).toBe("Reuters")
+  })
+
+  it("streams deltas and returns final answer", async () => {
+    const encoder = new TextEncoder()
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'event: sources\ndata: {"context_digest":"sha256:a","sources":[]}\n\n',
+              'event: delta\ndata: {"text":"Border "}\n\n',
+              'event: delta\ndata: {"text":"clashes"}\n\n',
+              'event: final\ndata: {"answer":"Border clashes [1].","context_digest":"sha256:a","sources":[]}\n\n',
+            ].join(""),
+          ),
+        )
+        controller.close()
+      },
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        body,
+      })),
+    )
+    const chunks: string[] = []
+    const out = await streamBrainAsk("q", { onDelta: (text) => chunks.push(text) })
+
+    expect(chunks.join("")).toBe("Border clashes")
+    expect(out.answer).toBe("Border clashes [1].")
   })
 })

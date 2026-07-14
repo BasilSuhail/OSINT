@@ -8,6 +8,7 @@ that unloads it immediately (keep_alive=0) the moment a heavy job needs the RAM.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -37,6 +38,33 @@ def generate_json(
     )
     response.raise_for_status()
     return json.loads(response.json()["response"])
+
+
+def generate_text_stream(prompt: str, *, model: str | None = None) -> Iterator[str]:
+    """Yield Ollama response text chunks for a plain-text answer prompt."""
+    with httpx.stream(
+        "POST",
+        f"{settings.ollama_url}/api/generate",
+        json={
+            "model": model or settings.brain_model,
+            "prompt": prompt,
+            "stream": True,
+            "think": False,
+            "keep_alive": settings.brain_keep_alive,
+            "options": {"temperature": 0, "num_ctx": _NUM_CTX},
+        },
+        timeout=_TIMEOUT_S,
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            payload = json.loads(line)
+            chunk = payload.get("response")
+            if isinstance(chunk, str) and chunk:
+                yield chunk
+            if payload.get("done"):
+                break
 
 
 def evict(*, model: str | None = None) -> None:
