@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -483,16 +482,6 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
-_CITATION_RE = re.compile(r"\[(\d+)\]")
-
-
-def _strip_bad_citations(answer: str, n_sources: int) -> str:
-    """Remove [n] citations that point past the sources we actually supplied."""
-    return _CITATION_RE.sub(
-        lambda m: m.group(0) if 1 <= int(m.group(1)) <= n_sources else "", answer
-    ).strip()
-
-
 @app.post("/brain/ask")
 def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     """Answer a question grounded in the live data (#411).
@@ -536,8 +525,21 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         }
         for s in stories
     ]
+    answer = qa.strip_bad_citations(answer, len(sources))
+    if not qa.citation_compliant(answer, len(sources)):
+        try:
+            repaired = client.generate_json(
+                qa.build_citation_repair_prompt(qa_context, req.question, answer)
+            )
+        except Exception:
+            repaired = None
+        repaired_answer = repaired.get("answer") if isinstance(repaired, dict) else None
+        if isinstance(repaired_answer, str) and repaired_answer.strip():
+            answer = qa.strip_bad_citations(repaired_answer, len(sources))
+    if not qa.citation_compliant(answer, len(sources)):
+        answer = "I couldn't verify citations for that answer."
     return {
-        "answer": _strip_bad_citations(answer, len(sources)),
+        "answer": answer,
         "context_digest": context.input_digest(qa_context),
         "sources": sources,
     }

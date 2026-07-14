@@ -115,6 +115,8 @@ _QUESTION_STOPWORDS = frozenset(
 )
 _TERM_RE = re.compile(r"[a-z0-9]{3,}")
 _COUNTRY_CODE_RE = re.compile(r"\b[A-Z]{2}\b")
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+REFUSAL_ANSWER = "I don't have data on that."
 
 
 def _question_terms(question: str | None) -> list[str]:
@@ -311,8 +313,10 @@ def build_qa_prompt(qa_context: dict[str, Any], question: str) -> str:
         "(do tellers disagree sharply), and sensor verdicts (machine-confirmed claims).\n\n"
         "Rules:\n"
         "- Answer only from the context. If it is not there, reply exactly: "
-        "I don't have data on that. Invent no facts, names, places, or numbers.\n"
+        f"{REFUSAL_ANSWER} Invent no facts, names, places, or numbers.\n"
         "- When a claim rests on a story, cite it as [n] using that story's number.\n"
+        "- Every non-refusal answer that uses any story MUST include at least one valid "
+        "[n] citation from the numbered stories list.\n"
         "- Flag trust: call out a story that is single-source (low corroboration or "
         "owner_count 1), contested (contested: true), or sensor-unconfirmed. Prefer "
         "corroborated stories; never present a single-teller claim as established fact.\n\n"
@@ -320,4 +324,49 @@ def build_qa_prompt(qa_context: dict[str, Any], question: str) -> str:
         "string).\n\n"
         f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
         f"QUESTION: {question}"
+    )
+
+
+def citation_numbers(answer: str) -> list[int]:
+    return [int(match.group(1)) for match in _CITATION_RE.finditer(answer)]
+
+
+def strip_bad_citations(answer: str, n_sources: int) -> str:
+    """Remove [n] citations that point past the sources we actually supplied."""
+    return _CITATION_RE.sub(
+        lambda m: m.group(0) if 1 <= int(m.group(1)) <= n_sources else "", answer
+    ).strip()
+
+
+def invalid_citations(answer: str, n_sources: int) -> list[int]:
+    return [n for n in citation_numbers(answer) if n < 1 or n > n_sources]
+
+
+def valid_citations(answer: str, n_sources: int) -> list[int]:
+    return [n for n in citation_numbers(answer) if 1 <= n <= n_sources]
+
+
+def requires_citation(answer: str, n_sources: int) -> bool:
+    return n_sources > 0 and answer.strip() != REFUSAL_ANSWER
+
+
+def citation_compliant(answer: str, n_sources: int) -> bool:
+    if not requires_citation(answer, n_sources):
+        return True
+    return bool(valid_citations(answer, n_sources))
+
+
+def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answer: str) -> str:
+    return (
+        "Rewrite the draft answer so it satisfies the citation rules. Use ONLY the "
+        "JSON context below. If the context does not support the draft, reply exactly: "
+        f"{REFUSAL_ANSWER}\n\n"
+        "Rules:\n"
+        "- Every non-refusal answer MUST include at least one valid [n] citation from "
+        'the numbered "stories" list.\n'
+        "- Remove unsupported claims instead of inventing citations.\n"
+        '- Return a JSON object with exactly one key: "answer".\n\n'
+        f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
+        f"QUESTION: {question}\n"
+        f"DRAFT_ANSWER: {answer}"
     )

@@ -7,7 +7,6 @@ through candidate local Ollama models and writes a decision artifact.
 from __future__ import annotations
 
 import json
-import re
 import time
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
@@ -27,7 +26,6 @@ DEFAULT_QUESTIONS: tuple[str, ...] = (
     "what has sensor confirmation?",
     "where is coverage thin?",
 )
-_CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
 def candidate_models() -> list[str]:
@@ -37,10 +35,6 @@ def candidate_models() -> list[str]:
         if model not in models:
             models.append(model)
     return models
-
-
-def _citation_numbers(answer: str) -> list[int]:
-    return [int(match.group(1)) for match in _CITATION_RE.finditer(answer)]
 
 
 def evaluate_answer(
@@ -63,8 +57,24 @@ def evaluate_answer(
         if not isinstance(answer, str) or not answer.strip():
             raise ValueError("model returned no answer string")
         sources = qa_context.get("stories") or []
-        cited = _citation_numbers(answer)
-        invalid = [n for n in cited if n < 1 or n > len(sources)]
+        invalid = qa.invalid_citations(answer, len(sources))
+        answer = qa.strip_bad_citations(answer, len(sources))
+        repaired = False
+        if not qa.citation_compliant(answer, len(sources)):
+            repair_raw = generate_json(
+                qa.build_citation_repair_prompt(qa_context, question, answer),
+                model=model,
+                keep_alive="0",
+            )
+            repair_answer = repair_raw.get("answer") if isinstance(repair_raw, dict) else None
+            if isinstance(repair_answer, str) and repair_answer.strip():
+                invalid.extend(qa.invalid_citations(repair_answer, len(sources)))
+                answer = qa.strip_bad_citations(repair_answer, len(sources))
+                repaired = True
+        cited = qa.citation_numbers(answer)
+        citation_ok = qa.citation_compliant(answer, len(sources))
+        if not citation_ok:
+            raise ValueError("model returned an uncited answer")
         return {
             "question": question,
             "model": model,
@@ -75,6 +85,8 @@ def evaluate_answer(
             "n_sources": len(sources),
             "cited": cited,
             "invalid_citations": invalid,
+            "citation_ok": citation_ok,
+            "citation_repaired": repaired,
         }
     except Exception as exc:
         return {
@@ -87,6 +99,8 @@ def evaluate_answer(
             "n_sources": len(qa_context.get("stories") or []),
             "cited": [],
             "invalid_citations": [],
+            "citation_ok": False,
+            "citation_repaired": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
 
@@ -153,6 +167,8 @@ def render_markdown(report: dict[str, Any]) -> str:
                 f"- sources: {row['n_sources']}",
                 f"- cited: {row['cited']}",
                 f"- invalid_citations: {row['invalid_citations']}",
+                f"- citation_ok: {row.get('citation_ok', False)}",
+                f"- citation_repaired: {row.get('citation_repaired', False)}",
             ]
         )
         if row["ok"]:
