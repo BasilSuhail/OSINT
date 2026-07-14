@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     # Refuse to load the model unless at least this much RAM is free (Pi guard).
     brain_min_free_mb: int = Field(default=1200)
     brain_keep_alive: str = Field(default="30m")
+    runtime_busy_lock_ttl_s: int = Field(default=1800)
+    footprint_enrichment_limit: int = Field(default=25)
 
     log_level: str = Field(default="INFO")
     environment: str = Field(default="development")

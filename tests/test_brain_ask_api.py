@@ -103,7 +103,7 @@ def test_ask_non_dict_model_output_degrades_gracefully(monkeypatch):
     resp = client.post("/brain/ask", json={"question": "hi"})
     assert resp.status_code == 200
     body = resp.json()
-    assert "couldn't form" in body["answer"].lower()
+    assert body["answer"] == "The brain is not working right now."
     assert body["context_digest"] is None
     app.dependency_overrides.clear()
 
@@ -113,7 +113,7 @@ def test_ask_blank_answer_degrades_gracefully(monkeypatch):
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "  "})
     body = client.post("/brain/ask", json={"question": "hi"}).json()
-    assert "couldn't form" in body["answer"].lower()
+    assert body["answer"] == "The brain is not working right now."
     assert body["context_digest"] is None
     app.dependency_overrides.clear()
 
@@ -124,7 +124,7 @@ def test_ask_returns_sources_and_strips_bad_citations(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session: {
+        lambda session, question=None: {
             "stories": [
                 {
                     "n": 1,
@@ -148,10 +148,85 @@ def test_ask_returns_sources_and_strips_bad_citations(monkeypatch):
     app.dependency_overrides.clear()
 
 
+def test_ask_repairs_uncited_story_answer(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                }
+            ]
+        },
+    )
+    calls = iter([{"answer": "Border clashes."}, {"answer": "Border clashes [1]."}])
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: next(calls))
+
+    body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
+
+    assert body["answer"] == "Border clashes [1]."
+    app.dependency_overrides.clear()
+
+
+def test_ask_falls_back_to_cited_story_after_failed_repair(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "Border clashes."})
+
+    body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
+
+    assert "Border clashes [1]" in body["answer"]
+    assert "Reuters" in body["answer"]
+    assert body["sources"][0]["n"] == 1
+    app.dependency_overrides.clear()
+
+
 def test_ask_busy_has_empty_sources(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 100)
     monkeypatch.setattr(api.settings, "brain_min_free_mb", 1200)
     body = client.post("/brain/ask", json={"question": "hi"}).json()
     assert body["sources"] == []
+    app.dependency_overrides.clear()
+
+
+def test_ask_threads_question_into_context_retrieval(monkeypatch):
+    client = _client()
+    captured = {}
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+
+    def _context(session, question=None):
+        captured["question"] = question
+        return {"stories": []}
+
+    monkeypatch.setattr(api.qa, "build_qa_context", _context)
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "No match."})
+    body = client.post("/brain/ask", json={"question": "what about hormuz?"}).json()
+    assert body["answer"] == "No match."
+    assert body["sources"] == []
+    assert captured["question"] == "what about hormuz?"
     app.dependency_overrides.clear()

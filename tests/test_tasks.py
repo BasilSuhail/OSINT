@@ -180,3 +180,27 @@ def test_beat_schedule_includes_composite_worker() -> None:
         entry for entry in schedule.values() if entry["task"] == "app.tasks.compute_composite"
     ]
     assert len(composite_entries) == 1
+
+
+def test_optional_heavy_tasks_skip_when_runtime_busy(monkeypatch) -> None:
+    monkeypatch.setattr(tasks.runtime_load, "busy_reason", lambda: "brain-qa-eval active")
+
+    assert tasks.cluster_stories() == {
+        "skipped": True,
+        "reason": "brain-qa-eval active",
+    }
+
+
+def test_footprint_task_uses_configured_limit(monkeypatch) -> None:
+    captured: dict[str, int] = {}
+    monkeypatch.setattr(tasks.runtime_load, "busy_reason", lambda: None)
+    monkeypatch.setattr(tasks.settings, "footprint_enrichment_limit", 17)
+    monkeypatch.setattr(
+        tasks,
+        "_enrich_footprints_body",
+        lambda *, limit: captured.setdefault("limit", limit) or {"ok": 1},
+    )
+
+    tasks.enrich_footprints()
+
+    assert captured == {"limit": 17}

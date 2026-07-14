@@ -70,8 +70,20 @@ def test_should_run_blocks_when_ram_low(monkeypatch):
 def test_should_run_allows_when_idle_and_ram_ok(monkeypatch):
     session = _memory_session()
     monkeypatch.setattr(gate, "ram_free_mb", lambda: 4000)
+    monkeypatch.setattr(gate.runtime_load, "busy_reason", lambda now=None: None)
     allowed, _reason = gate.should_run(session)
     assert allowed is True
+
+
+def test_should_run_blocks_when_runtime_busy(monkeypatch):
+    session = _memory_session()
+    monkeypatch.setattr(gate, "ram_free_mb", lambda: 4000)
+    monkeypatch.setattr(gate.runtime_load, "busy_reason", lambda now=None: "eval active")
+
+    allowed, reason = gate.should_run(session)
+
+    assert allowed is False
+    assert reason == "eval active"
 
 
 def test_heavy_job_active_false_for_own_fresh_brain_row():

@@ -83,8 +83,11 @@ Response becomes:
 - `sources` = the numbered context stories (always real — they are what we grounded on,
   so the UI can always show honest provenance even if the model's prose cites poorly).
 - **Citation post-check**: strip any `[n]` in the answer where `n` is out of range
-  `1..len(sources)` (cheap regex guard against invented citation numbers). The `answer`
-  otherwise passes through the existing busy/offline/malformed guards unchanged.
+  `1..len(sources)` (cheap regex guard against invented citation numbers). If a
+  non-refusal answer has sources but no valid citation, the API makes one citation
+  repair attempt against the same context; if the repaired answer is still uncited,
+  it returns a deterministic cited fallback from the retrieved story context instead
+  of uncited prose.
 - Busy / offline / malformed paths return `sources: []`.
 
 ## 4. Frontend
