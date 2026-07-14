@@ -327,6 +327,14 @@ def build_qa_prompt(qa_context: dict[str, Any], question: str) -> str:
     )
 
 
+def build_qa_text_prompt(qa_context: dict[str, Any], question: str) -> str:
+    return build_qa_prompt(qa_context, question).replace(
+        'Return a JSON object with exactly one key: "answer" (a short plain-English string).\n\n',
+        "Return only the final plain-English answer text. Do not wrap it in JSON. "
+        "Do not include markdown.\n\n",
+    )
+
+
 def citation_numbers(answer: str) -> list[int]:
     return [int(match.group(1)) for match in _CITATION_RE.finditer(answer)]
 
