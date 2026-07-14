@@ -230,3 +230,89 @@ def test_ask_threads_question_into_context_retrieval(monkeypatch):
     assert body["sources"] == []
     assert captured["question"] == "what about hormuz?"
     app.dependency_overrides.clear()
+
+
+def test_ask_stream_returns_sources_delta_and_final(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        api.client,
+        "generate_text_stream",
+        lambda prompt: iter(["Border ", "clashes [1]."]),
+    )
+
+    with client.stream(
+        "POST", "/brain/ask/stream", json={"question": "what is happening?"}
+    ) as resp:
+        text = "".join(resp.iter_text())
+
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+    assert "event: sources" in text
+    assert "event: delta" in text
+    assert "Border clashes [1]." in text
+    app.dependency_overrides.clear()
+
+
+def test_ask_stream_falls_back_when_uncited(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        api.client,
+        "generate_text_stream",
+        lambda prompt: iter(["Border clashes."]),
+    )
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "Still uncited."})
+
+    with client.stream(
+        "POST", "/brain/ask/stream", json={"question": "what is happening?"}
+    ) as resp:
+        text = "".join(resp.iter_text())
+
+    assert "The retrieved story is: Border clashes [1]." in text
+    app.dependency_overrides.clear()
+
+
+def test_ask_stream_busy_returns_final(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 100)
+    monkeypatch.setattr(api.settings, "brain_min_free_mb", 1200)
+
+    with client.stream("POST", "/brain/ask/stream", json={"question": "hi"}) as resp:
+        text = "".join(resp.iter_text())
+
+    assert "event: final" in text
+    assert "Brain busy" in text
+    app.dependency_overrides.clear()

@@ -482,6 +482,48 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+def _ask_sources(stories: list[dict]) -> list[dict]:
+    return [
+        {
+            "n": s["n"],
+            "story_id": s["story_id"],
+            "title": s["title"],
+            "outlets": s["sources"],
+            "corroboration": s["corroboration"],
+            "contested": s["contested"],
+        }
+        for s in stories
+    ]
+
+
+def _checked_ask_answer(
+    *,
+    answer: str,
+    qa_context: dict,
+    question: str,
+    stories: list[dict],
+    n_sources: int,
+) -> str:
+    answer = qa.strip_bad_citations(answer, n_sources)
+    if not qa.citation_compliant(answer, n_sources):
+        try:
+            repaired = client.generate_json(
+                qa.build_citation_repair_prompt(qa_context, question, answer)
+            )
+        except Exception:
+            repaired = None
+        repaired_answer = repaired.get("answer") if isinstance(repaired, dict) else None
+        if isinstance(repaired_answer, str) and repaired_answer.strip():
+            answer = qa.strip_bad_citations(repaired_answer, n_sources)
+    if not qa.citation_compliant(answer, n_sources):
+        answer = qa.build_cited_fallback_answer(stories)
+    return answer
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
 @app.post("/brain/ask")
 def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     """Answer a question grounded in the live data (#411).
@@ -514,35 +556,78 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
             "sources": [],
         }
     stories = qa_context.get("stories") or []
-    sources = [
-        {
-            "n": s["n"],
-            "story_id": s["story_id"],
-            "title": s["title"],
-            "outlets": s["sources"],
-            "corroboration": s["corroboration"],
-            "contested": s["contested"],
-        }
-        for s in stories
-    ]
-    answer = qa.strip_bad_citations(answer, len(sources))
-    if not qa.citation_compliant(answer, len(sources)):
-        try:
-            repaired = client.generate_json(
-                qa.build_citation_repair_prompt(qa_context, req.question, answer)
-            )
-        except Exception:
-            repaired = None
-        repaired_answer = repaired.get("answer") if isinstance(repaired, dict) else None
-        if isinstance(repaired_answer, str) and repaired_answer.strip():
-            answer = qa.strip_bad_citations(repaired_answer, len(sources))
-    if not qa.citation_compliant(answer, len(sources)):
-        answer = qa.build_cited_fallback_answer(stories)
+    sources = _ask_sources(stories)
+    answer = _checked_ask_answer(
+        answer=answer,
+        qa_context=qa_context,
+        question=req.question,
+        stories=stories,
+        n_sources=len(sources),
+    )
     return {
         "answer": answer,
         "context_digest": context.input_digest(qa_context),
         "sources": sources,
     }
+
+
+@app.post("/brain/ask/stream")
+def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -> StreamingResponse:
+    """Stream ask-the-brain answer chunks, then a citation-checked final answer."""
+
+    def gen() -> Iterator[str]:
+        if gate.ram_free_mb() < settings.brain_min_free_mb:
+            yield _sse(
+                "final",
+                {
+                    "answer": "Brain busy — the box is loaded right now, try again in a moment.",
+                    "context_digest": None,
+                    "sources": [],
+                },
+            )
+            return
+        qa_context = qa.build_qa_context(session, question=req.question)
+        stories = qa_context.get("stories") or []
+        sources = _ask_sources(stories)
+        digest = context.input_digest(qa_context)
+        yield _sse("sources", {"context_digest": digest, "sources": sources})
+        chunks: list[str] = []
+        try:
+            prompt = qa.build_qa_text_prompt(qa_context, req.question)
+            for chunk in client.generate_text_stream(prompt):
+                chunks.append(chunk)
+                yield _sse("delta", {"text": chunk})
+        except Exception:
+            yield _sse(
+                "final",
+                {
+                    "answer": "The brain is offline right now.",
+                    "context_digest": None,
+                    "sources": [],
+                },
+            )
+            return
+        answer = "".join(chunks).strip()
+        if not answer:
+            answer = "The brain is not working right now."
+        else:
+            answer = _checked_ask_answer(
+                answer=answer,
+                qa_context=qa_context,
+                question=req.question,
+                stories=stories,
+                n_sources=len(sources),
+            )
+        yield _sse(
+            "final",
+            {
+                "answer": answer,
+                "context_digest": digest,
+                "sources": sources,
+            },
+        )
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 @app.get("/journal/scoreboard")

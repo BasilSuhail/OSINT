@@ -9,7 +9,7 @@
 
 import { useState } from "react"
 import useSWR from "swr"
-import { fetchBrainAsk, fetchBrainNarrative } from "@/lib/apiClient"
+import { fetchBrainAsk, fetchBrainNarrative, streamBrainAsk } from "@/lib/apiClient"
 import type { BrainSource } from "@/lib/apiClient"
 import { fetchStoryMembers, fetchTopStories, type StoryRow } from "@/lib/analytics"
 
@@ -199,12 +199,34 @@ function AskBox() {
     const q = question.trim()
     if (!q || pending) return
     setPending(true)
+    setLast({ question: q, answer: "", sources: [] })
     try {
-      const { answer, sources } = await fetchBrainAsk(q)
+      const { answer, sources } = await streamBrainAsk(q, {
+        onDelta: (text) => {
+          setLast((prev) =>
+            prev && prev.question === q
+              ? { ...prev, answer: `${prev.answer}${text}` }
+              : { question: q, answer: text, sources: [] },
+          )
+        },
+        onSources: (sources) => {
+          setLast((prev) =>
+            prev && prev.question === q
+              ? { ...prev, sources }
+              : { question: q, answer: "", sources },
+          )
+        },
+      })
       setLast({ question: q, answer, sources })
       setQuestion("")
     } catch {
-      setLast({ question: q, answer: "The brain is offline right now.", sources: [] })
+      try {
+        const { answer, sources } = await fetchBrainAsk(q)
+        setLast({ question: q, answer, sources })
+        setQuestion("")
+      } catch {
+        setLast({ question: q, answer: "The brain is offline right now.", sources: [] })
+      }
     } finally {
       setPending(false)
     }
@@ -215,7 +237,7 @@ function AskBox() {
       {last ? (
         <div className="mb-2 text-sm">
           <p className="text-neutral-500">{last.question}</p>
-          <p className="text-neutral-200">{last.answer}</p>
+          <p className="text-neutral-200">{last.answer || "…"}</p>
           {last.sources.length > 0 ? (
             <p className="mt-1 text-[11px] leading-snug text-neutral-500">
               sources:{" "}
