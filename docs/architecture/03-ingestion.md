@@ -8,6 +8,7 @@ How data flows in: Celery queues, the fetcher contract, dedup, retry, rate limit
 - [Rate limiting](#rate-limiting)
 - [Retry and dead-letter](#retry-and-dead-letter)
 - [Schedule (Celery Beat)](#schedule-celery-beat)
+- [Runtime backpressure](#runtime-backpressure)
 - [Raw archive write](#raw-archive-write)
 - [Observability](#observability)
 
@@ -180,6 +181,26 @@ Beat is declarative. All schedules live in `app/tasks.py` so they are auditable.
 The 25 RSS feeds are not enumerated individually — they're generated from `app/sources/rss_feeds.json` via `feed_cadence_map()` (issue #158). Adding a new feed = one JSON entry.
 
 WebSocket consumers (none active yet — AIS deferred to a follow-up issue) would run as their own systemd-managed worker with auto-reconnect rather than via Beat.
+
+---
+
+## Runtime backpressure
+
+Local model work is the tightest resource constraint on Mac/Pi-class systems.
+`brain-qa-eval` writes a heartbeat lock at `data/runtime/busy.json` while it is
+running. Optional expensive Celery work checks that lock and exits with
+`{"skipped": true, "reason": ...}` instead of competing for CPU/RAM. The API,
+frontend, stores, watchdog, and source fetchers remain live, so this is a
+degraded full-system mode rather than an eval-only mode.
+
+The default lock TTL is `RUNTIME_BUSY_LOCK_TTL_S=1800`; a stale lock is ignored
+automatically. Footprint enrichment is also routed to the serialized analytics
+worker and defaults to `FOOTPRINT_ENRICHMENT_LIMIT=25`, because the upstream
+geometry fetches are optional and can otherwise dominate a small box.
+
+Local `make up` starts the fetcher worker at `CELERY_CONCURRENCY=1` unless
+overridden. Bigger machines may raise it, but the Pi/default profile preserves
+headroom for Postgres, Redis, Next, FastAPI, and Ollama.
 
 ---
 
