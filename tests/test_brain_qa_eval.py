@@ -46,8 +46,9 @@ def test_evaluate_answer_records_latency_and_invalid_citations(monkeypatch):
     assert out["invalid_citations"] == [9]
 
 
-def test_run_eval_crosses_questions_and_models(monkeypatch):
+def test_run_eval_crosses_questions_and_models(tmp_path, monkeypatch):
     session = _session()
+    monkeypatch.setattr(qa_eval.runtime_load.settings, "data_dir", str(tmp_path))
     monkeypatch.setattr(
         qa_eval.qa,
         "build_qa_context",

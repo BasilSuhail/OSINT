@@ -35,6 +35,8 @@ from app.fetcher_registry import get_fetcher
 from app.housekeeping import run_retention_and_cap, vacuum_events
 from app.journal.task import _journal_daily_body
 from app.persistence import upsert_events
+from app.runtime import load as runtime_load
+from app.settings import settings
 from app.sources.rss_registry import feed_cadence_map
 from app.stories.task import _cluster_stories_body
 from app.validator.task import _validator_body
@@ -44,6 +46,13 @@ logger = logging.getLogger(__name__)
 
 #: Hazard sources whose real footprint geometry we enrich (issue #205).
 _FOOTPRINT_SOURCES: tuple[str, ...] = ("usgs-quake", "gdacs", "eonet")
+
+
+def _skip_optional_heavy() -> dict[str, Any] | None:
+    reason = runtime_load.busy_reason()
+    if reason is None:
+        return None
+    return {"skipped": True, "reason": reason}
 
 
 def _record_success(session: Session, *, source: str) -> None:
@@ -114,6 +123,8 @@ def run_fetcher(name: str) -> dict[str, Any]:
 )
 def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
     """Run the composite worker (read events, aggregate, normalise, score, upsert)."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _compute_composite_body(method_version=method_version)
 
 
@@ -128,6 +139,8 @@ def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
 def journal_daily() -> dict[str, Any]:
     """WS-E prediction journal: issue new forecasts from composite scores and
     grade every prediction whose window has matured (issue #292)."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _journal_daily_body()
 
 
@@ -142,6 +155,8 @@ def journal_daily() -> dict[str, Any]:
 def cluster_stories() -> dict[str, Any]:
     """WS-A story clustering: group the rolling news window into stories
     (issue #296)."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _cluster_stories_body()
 
 
@@ -156,6 +171,8 @@ def cluster_stories() -> dict[str, Any]:
 def sensor_check_stories() -> dict[str, Any]:
     """WS-C sensor cross-checks: claim-vs-sensor verdicts for stories in the
     rolling window (issue #361)."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _sensor_checks_body()
 
 
@@ -170,6 +187,8 @@ def sensor_check_stories() -> dict[str, Any]:
 def score_disagreement() -> dict[str, Any]:
     """WS-B disagreement: per-story cross-country telling divergence
     (issue #370)."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _disagreement_body()
 
 
@@ -185,6 +204,8 @@ def extract_claims() -> dict[str, Any]:
     """WS-G validator: nightly local-LLM claim extraction over window stories
     (issue #378). Another noisy annotator — consumed by nothing until its
     agreement rate is measured."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _validator_body()
 
 
@@ -198,6 +219,8 @@ def extract_claims() -> dict[str, Any]:
 )
 def weekly_briefing() -> dict[str, Any]:
     """Weekly briefing export — the newsletter artifact (issue #401)."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _briefing_body()
 
 
@@ -212,6 +235,8 @@ def weekly_briefing() -> dict[str, Any]:
 def brain_narrate() -> dict[str, Any]:
     """The brain (#409): narrate the world signal + system state when the box
     has headroom. Gated; a busy box simply skips and leaves the last narrative."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _narrate_body()
 
 
@@ -225,6 +250,8 @@ def brain_narrate() -> dict[str, Any]:
 )
 def brain_enrich() -> dict[str, Any]:
     """The brain (#413): gist + tag window stories that lack one, on idle windows."""
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _enrich_body()
 
 
@@ -243,6 +270,8 @@ def compute_cii(method_version: str = CII_METHOD_VERSION) -> dict[str, Any]:
     the composite worker; the two coexist on the ``scores`` table via the
     ``score_name`` discriminator.
     """
+    if skipped := _skip_optional_heavy():
+        return skipped
     return _compute_cii_body(method_version=method_version)
 
 
@@ -295,9 +324,11 @@ def _enrich_footprints_body(
     retry_jitter=True,
     max_retries=3,
 )
-def enrich_footprints(limit: int = 200) -> dict[str, Any]:
+def enrich_footprints(limit: int | None = None) -> dict[str, Any]:
     """Celery entry point for real hazard footprint enrichment (issue #205)."""
-    return _enrich_footprints_body(limit=limit)
+    if skipped := _skip_optional_heavy():
+        return skipped
+    return _enrich_footprints_body(limit=limit or settings.footprint_enrichment_limit)
 
 
 @app.task(name="app.tasks.ingest_watchdog")
@@ -316,6 +347,8 @@ def run_housekeeping() -> dict[str, int]:
     windows and the ``STORAGE_CAP_GB`` rule. VACUUM runs after the deletes
     commit so the freed space is actually reusable.
     """
+    if skipped := _skip_optional_heavy():
+        return skipped
     with session_scope() as session:
         result = run_retention_and_cap(session)
         bind = session.get_bind()
