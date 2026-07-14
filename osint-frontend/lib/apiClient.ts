@@ -107,3 +107,67 @@ export async function fetchBrainAsk(question: string): Promise<BrainAsk> {
   if (!res.ok) throw new Error(`brain ask ${res.status}`)
   return (await res.json()) as BrainAsk
 }
+
+type BrainAskStreamHandlers = {
+  onDelta?: (text: string) => void
+  onSources?: (sources: BrainSource[], contextDigest: string | null) => void
+}
+
+function parseSseBlock(block: string): { event: string; data: unknown } | null {
+  let event = "message"
+  const dataLines: string[] = []
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice("event:".length).trim()
+    if (line.startsWith("data:")) dataLines.push(line.slice("data:".length).trimStart())
+  }
+  if (!dataLines.length) return null
+  return { event, data: JSON.parse(dataLines.join("\n")) }
+}
+
+export async function streamBrainAsk(
+  question: string,
+  handlers: BrainAskStreamHandlers = {},
+): Promise<BrainAsk> {
+  const res = await fetch(`${API_BASE}/brain/ask/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  })
+  if (!res.ok) throw new Error(`brain ask stream ${res.status}`)
+  if (!res.body) return fetchBrainAsk(question)
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let latest: BrainAsk | null = null
+
+  const handle = (block: string) => {
+    const msg = parseSseBlock(block)
+    if (!msg) return
+    if (msg.event === "sources") {
+      const data = msg.data as { sources: BrainSource[]; context_digest: string | null }
+      handlers.onSources?.(data.sources, data.context_digest)
+      return
+    }
+    if (msg.event === "delta") {
+      const data = msg.data as { text: string }
+      handlers.onDelta?.(data.text)
+      return
+    }
+    if (msg.event === "final") latest = msg.data as BrainAsk
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (value) {
+      buffer += decoder.decode(value, { stream: !done })
+      const blocks = buffer.split("\n\n")
+      buffer = blocks.pop() || ""
+      for (const block of blocks) handle(block)
+    }
+    if (done) break
+  }
+  if (buffer.trim()) handle(buffer)
+  if (!latest) throw new Error("brain ask stream ended without final")
+  return latest
+}
