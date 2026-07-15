@@ -61,3 +61,122 @@ def test_relevant_sources_contested_mode_needs_contested_flag():
 def test_relevant_sources_coverage_mode_accepts_all():
     stories = [_story(1, "A"), _story(2, "B")]
     assert qa_rubric.relevant_sources(COVERAGE, stories) == [1, 2]
+
+
+from app.brain.qa import REFUSAL_ANSWER
+
+
+def _score(spec, answer, stories, invalid=None, error=None):
+    return qa_rubric.score_answer(
+        spec, answer=answer, stories=stories, invalid_citations=invalid or [], error=error
+    )
+
+
+def test_wrong_topic_citation_fails_relevance_typhoon_repro():
+    stories = [
+        _story(1, "Typhoon slams Philippines"),
+        _story(2, "Iran ceasefire collapses after strikes"),
+    ]
+    out = _score(WAR, "The retrieved story is: Typhoon slams Philippines [1].", stories)
+    assert out["relevance"] is False
+    assert out["passed"] is False
+    assert any("relevant" in r for r in out["reasons"])
+    # refusal dim passes: relevant evidence exists and the model did answer
+    assert out["refusal"] is True
+
+
+def test_relevant_cited_risky_answer_with_uncertainty_passes():
+    stories = [
+        _story(1, "Typhoon slams Philippines"),
+        _story(2, "Iran ceasefire collapses after strikes", gist="Strikes resumed near Tehran."),
+    ]
+    answer = (
+        "Reported strikes suggest the Iran ceasefire collapsed [2]; "
+        "this remains unconfirmed by sensors."
+    )
+    out = _score(WAR, answer, stories)
+    assert out == {
+        "relevance": True,
+        "citation": True,
+        "uncertainty": True,
+        "contested": True,
+        "refusal": True,
+        "usefulness": True,
+        "passed": True,
+        "reasons": [],
+    }
+
+
+def test_refusal_with_relevant_evidence_fails_refusal_dim():
+    stories = [_story(1, "Iran ceasefire collapses after strikes")]
+    out = _score(WAR, REFUSAL_ANSWER, stories)
+    assert out["refusal"] is False
+    assert out["passed"] is False
+
+
+def test_refusal_without_relevant_evidence_passes_all():
+    stories = [_story(1, "Typhoon slams Philippines")]
+    out = _score(WAR, REFUSAL_ANSWER, stories)
+    assert out["passed"] is True
+    assert out["reasons"] == []
+
+
+def test_answer_without_relevant_evidence_fails_refusal_dim():
+    stories = [_story(1, "Typhoon slams Philippines")]
+    out = _score(WAR, "The war restarted yesterday [1].", stories)
+    assert out["refusal"] is False
+
+
+def test_risky_answer_without_uncertainty_marker_fails():
+    stories = [_story(1, "Iran ceasefire collapses after strikes")]
+    answer = "Yes. The Iran ceasefire collapses story shows strikes resumed [1]."
+    out = _score(WAR, answer, stories)
+    assert out["uncertainty"] is False
+
+
+def test_contested_cited_story_requires_contested_language():
+    stories = [_story(1, "Iran ceasefire collapses after strikes", contested=True)]
+    answer = "Reported strikes ended the Iran ceasefire [1]; details remain unclear."
+    out = _score(WAR, answer, stories)
+    assert out["contested"] is False
+    answer_flagged = answer + " Coverage of this ceasefire story is disputed."
+    assert _score(WAR, answer_flagged, stories)["contested"] is True
+
+
+def test_invalid_citations_fail_citation_dim():
+    stories = [_story(1, "Iran ceasefire collapses after strikes")]
+    answer = "Reported strikes ended the Iran ceasefire [1], sources say unconfirmed."
+    out = _score(WAR, answer, stories, invalid=[9])
+    assert out["citation"] is False
+
+
+def test_short_generic_answer_fails_usefulness():
+    stories = [_story(1, "Iran ceasefire collapses after strikes")]
+    out = _score(WAR, "Maybe, reported [1].", stories)
+    assert out["usefulness"] is False
+
+
+def test_coverage_mode_needs_coverage_language():
+    stories = [_story(1, "Iran ceasefire collapses after strikes")]
+    good = "Coverage is thin: only one outlet reported this ceasefire story [1]."
+    bad = "The Iran ceasefire collapses story is the main reported event [1]."
+    assert _score(COVERAGE, good, stories)["relevance"] is True
+    assert _score(COVERAGE, bad, stories)["relevance"] is False
+
+
+def test_sensor_mode_relevance():
+    stories = [
+        _story(1, "Wildfire in Spain kills twelve", sensor={"fire": "confirmed"}),
+        _story(2, "Political speech"),
+    ]
+    answer = "Sensors confirmed the Spain wildfire that reportedly killed twelve [1]."
+    out = _score(SENSOR, answer, stories)
+    assert out["relevance"] is True
+    assert _score(SENSOR, "The main story is a political speech [2].", stories)["relevance"] is False
+
+
+def test_error_row_fails_every_dimension():
+    out = _score(WAR, None, [_story(1, "Iran ceasefire collapses")], error="boom")
+    assert out["passed"] is False
+    assert all(out[d] is False for d in qa_rubric.DIMENSIONS)
+    assert out["reasons"] == ["model error: boom"]
