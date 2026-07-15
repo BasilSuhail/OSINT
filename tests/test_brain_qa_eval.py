@@ -170,6 +170,16 @@ def test_render_markdown_summarizes_models():
                 "n_sources": 1,
                 "cited": [1],
                 "invalid_citations": [],
+                "rubric": {
+                    "relevance": True,
+                    "citation": True,
+                    "uncertainty": False,
+                    "contested": True,
+                    "refusal": True,
+                    "usefulness": True,
+                    "passed": False,
+                    "reasons": ["risky/weakly-sourced answer lacks uncertainty language"],
+                },
             }
         ],
     }
@@ -177,5 +187,8 @@ def test_render_markdown_summarizes_models():
     md = qa_eval.render_markdown(report)
 
     assert "Brain Q&A model evaluation" in md
-    assert "`m1`" in md
+    assert "| Rubric | relevance |" in md
+    assert "| `m1` | 1/1 | 0/1 |" in md
+    assert "- rubric_failed: ['uncertainty']" in md
+    assert "risky/weakly-sourced answer lacks uncertainty language" in md
     assert "A [1]" in md

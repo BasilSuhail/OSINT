@@ -155,8 +155,10 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         f"Created: `{report['created_at']}`",
         "",
-        "| Model | OK | Median latency ms | Invalid citations |",
-        "|---|---:|---:|---:|",
+        "| Model | OK | Rubric | "
+        + " | ".join(qa_rubric.DIMENSIONS)
+        + " | Median latency ms | Invalid citations |",
+        "|---|---:|---:|" + "---:|" * len(qa_rubric.DIMENSIONS) + "---:|---:|",
     ]
     for model in report["models"]:
         rows = [r for r in report["results"] if r["model"] == model]
@@ -164,7 +166,15 @@ def render_markdown(report: dict[str, Any]) -> str:
         latencies = sorted(r["elapsed_ms"] for r in ok_rows)
         median = latencies[len(latencies) // 2] if latencies else None
         invalid = sum(len(r["invalid_citations"]) for r in rows)
-        lines.append(f"| `{model}` | {len(ok_rows)}/{len(rows)} | {median or 'n/a'} | {invalid} |")
+        rubrics = [r.get("rubric") or {} for r in rows]
+        passed = sum(1 for rub in rubrics if rub.get("passed"))
+        dims = " | ".join(
+            f"{sum(1 for rub in rubrics if rub.get(d))}/{len(rows)}" for d in qa_rubric.DIMENSIONS
+        )
+        lines.append(
+            f"| `{model}` | {len(ok_rows)}/{len(rows)} | {passed}/{len(rows)} | {dims} "
+            f"| {median or 'n/a'} | {invalid} |"
+        )
 
     lines.extend(["", "## Runs", ""])
     for row in report["results"]:
@@ -182,6 +192,12 @@ def render_markdown(report: dict[str, Any]) -> str:
                 f"- citation_repaired: {row.get('citation_repaired', False)}",
             ]
         )
+        rubric = row.get("rubric") or {}
+        failed = [d for d in qa_rubric.DIMENSIONS if not rubric.get(d)]
+        lines.append(f"- rubric_passed: {bool(rubric.get('passed'))}")
+        lines.append(f"- rubric_failed: {failed}")
+        for reason in rubric.get("reasons") or []:
+            lines.append(f"- reason: {reason}")
         if row["ok"]:
             lines.extend(["", row["answer"] or "", ""])
         else:
