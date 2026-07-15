@@ -78,7 +78,7 @@ after strip; `relevant_ns` = `relevant_sources(spec, stories)`.
 
 | Dim | Pass rule |
 |---|---|
-| refusal | refusal ∧ no relevant sources → pass. refusal ∧ relevant exist → FAIL. non-refusal ∧ no relevant sources → FAIL. non-refusal ∧ relevant exist → pass |
+| refusal | refusal ∧ no relevant sources → pass. refusal ∧ relevant exist → FAIL; coverage mode: refusal always acceptable. non-refusal ∧ no relevant sources → FAIL. non-refusal ∧ relevant exist → pass |
 | relevance | refusal → pass (n/a). else `set(cited) ∩ set(relevant_ns)` non-empty; coverage mode additionally requires a coverage-language marker in the answer. Cited-typhoon-for-war-question fails here |
 | citation | refusal → pass. else `citation_ok` ∧ pre-strip `invalid_citations == []` (invalid citations count against the model even though production strips them) |
 | uncertainty | required iff `risky` or any cited story is weak (contested, `owner_count == 1`, corroboration < 0.5, or a non-confirmed sensor verdict). If required, answer must contain >= 1 marker: contested, disputed, single, unconfirmed, not confirmed, unverified, claim, reported, unclear, unknown, no local evidence, insufficient. Not required → pass |

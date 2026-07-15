@@ -154,12 +154,26 @@ def test_short_generic_answer_fails_usefulness():
     assert out["usefulness"] is False
 
 
+def test_long_answer_without_story_overlap_fails_usefulness():
+    stories = [_story(1, "Iran ceasefire collapses after strikes")]
+    answer = "Something reportedly happened somewhere recently, details pending [1]."
+    out = _score(WAR, answer, stories)
+    assert out["usefulness"] is False
+
+
 def test_coverage_mode_needs_coverage_language():
     stories = [_story(1, "Iran ceasefire collapses after strikes")]
     good = "Coverage is thin: only one outlet reported this ceasefire story [1]."
     bad = "The Iran ceasefire collapses story is the main reported event [1]."
     assert _score(COVERAGE, good, stories)["relevance"] is True
     assert _score(COVERAGE, bad, stories)["relevance"] is False
+
+
+def test_coverage_mode_refusal_is_acceptable():
+    stories = [_story(1, "Iran ceasefire collapses after strikes")]
+    out = _score(COVERAGE, REFUSAL_ANSWER, stories)
+    assert out["refusal"] is True
+    assert out["passed"] is True
 
 
 def test_sensor_mode_relevance():

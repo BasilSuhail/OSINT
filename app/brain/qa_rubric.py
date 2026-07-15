@@ -167,9 +167,12 @@ def score_answer(
 
     # refusal correctness: refuse iff there is no relevant local evidence.
     if refusal:
-        refusal_ok = not relevant
-        if not refusal_ok:
-            reasons.append(f"refused despite relevant sources {relevant}")
+        if spec.mode == "coverage":
+            refusal_ok = True
+        else:
+            refusal_ok = not relevant
+            if not refusal_ok:
+                reasons.append(f"refused despite relevant sources {relevant}")
     else:
         refusal_ok = bool(relevant)
         if not refusal_ok:
