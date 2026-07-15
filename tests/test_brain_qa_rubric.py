@@ -1,4 +1,5 @@
 from app.brain import qa_rubric
+from app.brain.qa import REFUSAL_ANSWER
 
 
 def _story(n: int, title: str, **kw):
@@ -61,9 +62,6 @@ def test_relevant_sources_contested_mode_needs_contested_flag():
 def test_relevant_sources_coverage_mode_accepts_all():
     stories = [_story(1, "A"), _story(2, "B")]
     assert qa_rubric.relevant_sources(COVERAGE, stories) == [1, 2]
-
-
-from app.brain.qa import REFUSAL_ANSWER
 
 
 def _score(spec, answer, stories, invalid=None, error=None):
@@ -172,7 +170,8 @@ def test_sensor_mode_relevance():
     answer = "Sensors confirmed the Spain wildfire that reportedly killed twelve [1]."
     out = _score(SENSOR, answer, stories)
     assert out["relevance"] is True
-    assert _score(SENSOR, "The main story is a political speech [2].", stories)["relevance"] is False
+    speech = _score(SENSOR, "The main story is a political speech [2].", stories)
+    assert speech["relevance"] is False
 
 
 def test_error_row_fails_every_dimension():

@@ -187,9 +187,7 @@ def score_answer(
             reasons.append("coverage question answered without coverage language")
 
     # citation: production strips invalid [n]; the model still loses the point.
-    citation_ok = refusal or (
-        qa.citation_compliant(answer, len(stories)) and not invalid_citations
-    )
+    citation_ok = refusal or (qa.citation_compliant(answer, len(stories)) and not invalid_citations)
     if not citation_ok:
         reasons.append(f"citation failure (invalid={invalid_citations})")
 
