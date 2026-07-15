@@ -152,3 +152,22 @@ def test_build_cited_fallback_answer_uses_first_story():
     assert "Al Jazeera English" in answer
     assert "contested" in answer.lower()
     assert qa.citation_compliant(answer, 1) is True
+
+
+def test_qa_prompt_requires_uncertainty_framing():
+    prompt = qa.build_qa_prompt({"stories": []}, "is the war back on?")
+    assert "never established fact" in prompt
+    assert "disputed" in prompt
+    assert "sensor-confirmed" in prompt
+    assert "what is not known" in prompt
+
+
+def test_qa_text_prompt_keeps_framing_rules():
+    prompt = qa.build_qa_text_prompt({"stories": []}, "q")
+    assert "never established fact" in prompt
+    assert "Do not wrap it in JSON" in prompt
+
+
+def test_repair_prompt_keeps_uncertainty_framing():
+    prompt = qa.build_citation_repair_prompt({"stories": []}, "q", "draft")
+    assert "disputed stays disputed" in prompt

@@ -317,9 +317,14 @@ def build_qa_prompt(qa_context: dict[str, Any], question: str) -> str:
         "- When a claim rests on a story, cite it as [n] using that story's number.\n"
         "- Every non-refusal answer that uses any story MUST include at least one valid "
         "[n] citation from the numbered stories list.\n"
-        "- Flag trust: call out a story that is single-source (low corroboration or "
-        "owner_count 1), contested (contested: true), or sensor-unconfirmed. Prefer "
-        "corroborated stories; never present a single-teller claim as established fact.\n\n"
+        "- A single-source or low-corroboration claim is 'reported', never "
+        "established fact. Prefer corroborated stories.\n"
+        "- Call out contested stories as disputed and name who says what when "
+        "the context shows it.\n"
+        "- Say when a claim is sensor-confirmed; mark heavy sensor-unconfirmed "
+        "claims as unverified.\n"
+        "- If the context cannot answer part of the question, say what is not "
+        "known. Never guess.\n\n"
         'Return a JSON object with exactly one key: "answer" (a short plain-English '
         "string).\n\n"
         f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
@@ -373,6 +378,8 @@ def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answ
         "- Every non-refusal answer MUST include at least one valid [n] citation from "
         'the numbered "stories" list.\n'
         "- Remove unsupported claims instead of inventing citations.\n"
+        "- Keep uncertainty framing: disputed stays disputed, single-source "
+        "stays 'reported'.\n"
         '- Return a JSON object with exactly one key: "answer".\n\n'
         f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
         f"QUESTION: {question}\n"
