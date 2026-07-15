@@ -474,6 +474,12 @@ never OOMs. If Ollama is down it answers "The brain is offline right now." Nothi
 persisted; the ask box lives at the bottom of the Situation card and clears on
 reload.
 
+**Model policy** (#413/#433): the 1.5b `brain_model` stays warm for the scheduled
+narrative and story enrichment above; every user ask (`/brain/ask` and
+`/brain/ask/stream`) and the nightly validator run the heavier 4b model per-call
+with `keep_alive=0`, so the Pi never keeps two models resident at once. Q&A
+refuses politely below `qa_min_free_mb` (3800 MB free RAM).
+
 Example:
 
 ```
