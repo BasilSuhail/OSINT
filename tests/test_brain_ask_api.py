@@ -368,3 +368,34 @@ def test_ask_stream_uses_qa_model_and_evicts(monkeypatch):
     assert captured["model"] == api.settings.qa_model
     assert captured["keep_alive"] == "0"
     app.dependency_overrides.clear()
+
+
+def test_ask_no_evidence_fallback_for_wrong_topic(monkeypatch):
+    # Retrieval returned an unrelated story and the model can't cite: the old
+    # fallback echoed the unrelated story as the answer; now it must be honest.
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "gist": None,
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                    "sensor": {},
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        api.client, "generate_json", lambda prompt, **kw: {"answer": "Uncited text."}
+    )
+    body = client.post("/brain/ask", json={"question": "what about the typhoon?"}).json()
+    assert body["answer"] == api.qa.NO_EVIDENCE_ANSWER
+    app.dependency_overrides.clear()

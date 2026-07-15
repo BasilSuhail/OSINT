@@ -518,7 +518,7 @@ def _checked_ask_answer(
         if isinstance(repaired_answer, str) and repaired_answer.strip():
             answer = qa.strip_bad_citations(repaired_answer, n_sources)
     if not qa.citation_compliant(answer, n_sources):
-        answer = qa.build_cited_fallback_answer(stories)
+        answer = qa.build_cited_fallback_answer(stories, question=question)
     return answer
 
 

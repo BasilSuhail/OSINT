@@ -117,6 +117,9 @@ _TERM_RE = re.compile(r"[a-z0-9]{3,}")
 _COUNTRY_CODE_RE = re.compile(r"\b[A-Z]{2}\b")
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 REFUSAL_ANSWER = "I don't have data on that."
+NO_EVIDENCE_ANSWER = (
+    "I don't have enough local evidence to answer that — closest stories are listed as sources."
+)
 
 
 def _question_terms(question: str | None) -> list[str]:
@@ -360,7 +363,7 @@ def valid_citations(answer: str, n_sources: int) -> list[int]:
 
 
 def requires_citation(answer: str, n_sources: int) -> bool:
-    return n_sources > 0 and answer.strip() != REFUSAL_ANSWER
+    return n_sources > 0 and answer.strip() not in (REFUSAL_ANSWER, NO_EVIDENCE_ANSWER)
 
 
 def citation_compliant(answer: str, n_sources: int) -> bool:
@@ -387,7 +390,7 @@ def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answ
     )
 
 
-def build_cited_fallback_answer(stories: list[dict[str, Any]]) -> str:
+def build_cited_fallback_answer(stories: list[dict[str, Any]], question: str | None = None) -> str:
     """Deterministic answer when the model cannot repair missing citations."""
     if not stories:
         return REFUSAL_ANSWER
@@ -395,6 +398,11 @@ def build_cited_fallback_answer(stories: list[dict[str, Any]]) -> str:
     title = str(story.get("title") or "").strip()
     if not title:
         return REFUSAL_ANSWER
+    if question is not None:
+        terms = _question_terms(question)
+        text = f"{title} {story.get('gist') or ''}".lower()
+        if terms and not any(term in text for term in terms):
+            return NO_EVIDENCE_ANSWER
     n = int(story.get("n") or 1)
     parts = [f"The retrieved story is: {title} [{n}]."]
     outlets = [str(s) for s in story.get("sources") or [] if str(s).strip()]
