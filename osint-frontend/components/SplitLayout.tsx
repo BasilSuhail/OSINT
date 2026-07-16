@@ -99,7 +99,9 @@ export function SplitLayout() {
   // first visit, then stays warm and pauses while off-screen), and the
   // analytical pages fill the rest.
   const deckCards: DeckCard[] = [
-    { key: "situation", title: "situation", content: <SituationPanel /> },
+    //: fill — the panel is its own scroll surface (live list + transcript) with
+    //: a fixed ask-box footer; the deck's non-fill outer scroll would defeat it.
+    { key: "situation", title: "situation", fill: true, content: <SituationPanel /> },
     { key: "briefing", title: "briefing", content: <BriefingPanel /> },
     { key: "console", title: "console", fill: true, content: <RightPane /> },
     {
