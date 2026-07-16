@@ -84,3 +84,48 @@ def test_enrich_failed_story_does_not_abort_batch(monkeypatch):
     result = enrich._enrich_body(now=now)
     assert result["failed"] == 1
     assert result["enriched"] == 0
+
+
+def test_enrich_embeds_window_stories(monkeypatch):
+    now = datetime.now(UTC)
+    factory = _factory_with_story(now)
+    monkeypatch.setattr(enrich, "_session_factory", lambda: factory)
+    monkeypatch.setattr(enrich.gate, "should_run", lambda session, now=None: (True, "ok"))
+    monkeypatch.setattr(
+        enrich.client,
+        "generate_json",
+        lambda prompt: {"gist": "Clashes.", "category": "conflict", "escalating": "yes"},
+    )
+    monkeypatch.setattr(
+        enrich.embeddings.client, "embed", lambda texts, **kw: [[0.1] for _ in texts]
+    )
+    result = enrich._enrich_body(now=now)
+    assert result["embedded"] == 1
+    from app.db_models import StoryEmbeddingRow
+
+    with factory() as s:
+        row = s.execute(select(StoryEmbeddingRow)).scalar_one()
+        assert row.vector == [0.1]
+    # idempotent second run
+    result2 = enrich._enrich_body(now=now)
+    assert result2["embedded"] == 0
+
+
+def test_enrich_embed_failure_never_fails_job(monkeypatch):
+    now = datetime.now(UTC)
+    factory = _factory_with_story(now)
+    monkeypatch.setattr(enrich, "_session_factory", lambda: factory)
+    monkeypatch.setattr(enrich.gate, "should_run", lambda session, now=None: (True, "ok"))
+    monkeypatch.setattr(
+        enrich.client,
+        "generate_json",
+        lambda prompt: {"gist": "Clashes.", "category": "conflict", "escalating": "yes"},
+    )
+
+    def _boom(texts, **kw):
+        raise RuntimeError("ollama down")
+
+    monkeypatch.setattr(enrich.embeddings.client, "embed", _boom)
+    result = enrich._enrich_body(now=now)
+    assert result["enriched"] == 1
+    assert result["embed_failed"] == 1

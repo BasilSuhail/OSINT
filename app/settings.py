@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     # enrichment stay on the warm 1.5b brain_model above.
     qa_model: str = Field(default="qwen3.5:4b-q4_K_M")
     qa_min_free_mb: int = Field(default=3800)
+    # Semantic ask retrieval (#441): tiny local embedder, always keep_alive=0.
+    embed_model: str = Field(default="nomic-embed-text")
     runtime_busy_lock_ttl_s: int = Field(default=1800)
     footprint_enrichment_limit: int = Field(default=25)
 

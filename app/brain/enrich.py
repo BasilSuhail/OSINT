@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.brain import client, gate
+from app.brain import client, embeddings, gate
 from app.db import get_engine
 from app.db_models import EventRow, StoryGistRow, StoryMemberRow, StoryRow
 from app.settings import settings
@@ -119,6 +119,9 @@ def _enrich_body(*, now: datetime | None = None, batch_limit: int | None = None)
         "enriched": 0,
         "skipped_existing": 0,
         "failed": 0,
+        "embedded": 0,
+        "embed_skipped": 0,
+        "embed_failed": 0,
     }
 
     with (
@@ -166,5 +169,12 @@ def _enrich_body(*, now: datetime | None = None, batch_limit: int | None = None)
                 counters["enriched"] += 1
             else:
                 counters["skipped_existing"] += 1
+
+        #: Semantic retrieval vectors (#441) ride the same beat: one batched
+        #: embed call for window stories still missing a current-version vector.
+        embed_counters = embeddings.embed_missing_stories(session, list(stories))
+        counters["embedded"] = embed_counters["embedded"]
+        counters["embed_skipped"] = embed_counters["skipped_existing"]
+        counters["embed_failed"] = embed_counters["failed"]
 
     return counters

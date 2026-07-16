@@ -476,6 +476,30 @@ class BrainNarrativeRow(Base):
     __table_args__ = (Index("brain_narrative_created_idx", "created_at"),)
 
 
+class StoryEmbeddingRow(Base):
+    """A per-story vector for semantic ask retrieval (#441).
+
+    One row per (story, method version), embedded in the enrich beat from
+    title · gist · keywords. ~3 KB each; rides the stories' 30-day retention.
+    """
+
+    __tablename__ = "story_embeddings"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    story_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    vector: Mapped[list[float]] = mapped_column(JsonColumn, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("story_id", "method_version", name="story_embeddings_unique"),
+        Index("story_embeddings_created_idx", "created_at"),
+    )
+
+
 class StoryGistRow(Base):
     """A light per-story gist + tags from the 1.5b brain (#413).
 

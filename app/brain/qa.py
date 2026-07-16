@@ -11,18 +11,20 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.brain import context, enrich
+from app.brain import client, context, embeddings, enrich
 from app.db_models import (
     EventRow,
     PredictionRow,
     ScoreRow,
     StoryCorroborationRow,
     StoryDisagreementRow,
+    StoryEmbeddingRow,
     StoryGistRow,
     StoryMemberRow,
     StoryRow,
@@ -111,6 +113,42 @@ _QUESTION_STOPWORDS = frozenset(
         "what",
         "where",
         "with",
+        # Live junk observed in real user questions (#441): auxiliaries,
+        # question words, and meta-words that describe the asking, not the news.
+        "any",
+        "are",
+        "been",
+        "could",
+        "had",
+        "has",
+        "have",
+        "how",
+        "just",
+        "know",
+        "like",
+        "more",
+        "most",
+        "said",
+        "says",
+        "should",
+        "some",
+        "source",
+        "sources",
+        "theories",
+        "theory",
+        "they",
+        "thing",
+        "things",
+        "think",
+        "want",
+        "was",
+        "were",
+        "when",
+        "which",
+        "who",
+        "why",
+        "will",
+        "would",
     }
 )
 _TERM_RE = re.compile(r"[a-z0-9]{3,}")
@@ -137,6 +175,17 @@ def _question_terms(question: str | None) -> list[str]:
         terms.append(term)
         seen.add(term)
     return terms
+
+
+@lru_cache(maxsize=512)
+def _term_pattern(term: str) -> re.Pattern[str]:
+    """Whole-word match with naive plural folding: 'explosions' ⇄ 'explosion'.
+
+    Substring scoring was the live failure mode (#441): 'any' matched
+    'germany', 'was' matched nearly every gist.
+    """
+    stem = term[:-1] if term.endswith("s") and len(term) > 3 else term
+    return re.compile(rf"\b{re.escape(stem)}s?\b")
 
 
 def _payload_text(payload: Any) -> str:
@@ -193,11 +242,69 @@ def _rank_story_rows(
             )
             if p
         )
-        score = sum((4 if term in title else 1) for term in terms if term in trust_text)
+        patterns = [_term_pattern(term) for term in terms]
+        score = sum(
+            (4 if pattern.search(title) else 1)
+            for pattern in patterns
+            if pattern.search(trust_text)
+        )
         if score:
             scored.append((score, story.outlet_count, story.member_count, (story, corro)))
     scored.sort(key=lambda row: (-row[0], -row[1], -row[2]))
     return [row for *_unused, row in scored]
+
+
+_CandidateRows = list[tuple[StoryRow, StoryCorroborationRow | None]]
+
+
+def _select_rows(
+    session: Session,
+    candidate_rows: _CandidateRows,
+    *,
+    gists: dict[int, StoryGistRow],
+    question: str | None,
+    limit: int,
+) -> _CandidateRows:
+    """Pick the context stories: semantic first, repaired keywords as fallback.
+
+    Semantic path (#441): embed the question, cosine-rank candidates that have
+    a current-version vector, then fill any remaining slots with vectorless
+    candidates in loudness order. Skipped entirely when no candidate has a
+    vector (saves the Ollama round-trip); any embed failure falls back to the
+    keyword ranker.
+    """
+    story_ids = [s.id for s, _ in candidate_rows]
+    if question:
+        vector_rows = session.execute(
+            select(StoryEmbeddingRow.story_id, StoryEmbeddingRow.vector).where(
+                StoryEmbeddingRow.story_id.in_(story_ids),
+                StoryEmbeddingRow.method_version == embeddings.EMBED_METHOD_VERSION,
+            )
+        ).all()
+        if vector_rows:
+            try:
+                query_vector = client.embed([question])[0]
+            except Exception:
+                query_vector = None
+            if query_vector is not None:
+                ranked = embeddings.cosine_rank(
+                    query_vector, [(sid, vec) for sid, vec in vector_rows]
+                )
+                by_id = {s.id: (s, c) for s, c in candidate_rows}
+                chosen = [by_id[sid] for sid, _ in ranked[:limit] if sid in by_id]
+                if len(chosen) < limit:
+                    have = {s.id for s, _ in chosen}
+                    chosen.extend(rc for rc in candidate_rows if rc[0].id not in have)
+                return chosen[:limit]
+    terms = _question_terms(question)
+    if terms:
+        return _rank_story_rows(
+            candidate_rows,
+            gists=gists,
+            member_texts=_member_texts(session, story_ids),
+            terms=terms,
+        )[:limit]
+    return candidate_rows[:limit]
 
 
 def build_qa_stories(
@@ -231,16 +338,7 @@ def build_qa_stories(
             )
         ).scalars()
     }
-    terms = _question_terms(question)
-    if terms:
-        rows = _rank_story_rows(
-            candidate_rows,
-            gists=gists,
-            member_texts=_member_texts(session, story_ids),
-            terms=terms,
-        )[:limit]
-    else:
-        rows = candidate_rows[:limit]
+    rows = _select_rows(session, candidate_rows, gists=gists, question=question, limit=limit)
     story_ids = [s.id for s, _ in rows]
     if not story_ids:
         return []
