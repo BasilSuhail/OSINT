@@ -159,7 +159,7 @@ def score_answer(
         return {**dict.fromkeys(DIMENSIONS, False), "passed": False, "reasons": [reason]}
 
     reasons: list[str] = []
-    refusal = answer.strip() == qa.REFUSAL_ANSWER
+    refusal = answer.strip() in (qa.REFUSAL_ANSWER, qa.NO_EVIDENCE_ANSWER)
     cited = qa.valid_citations(answer, len(stories))
     relevant = relevant_sources(spec, stories)
     by_n = {story.get("n"): story for story in stories}

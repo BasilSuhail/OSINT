@@ -508,7 +508,9 @@ def _checked_ask_answer(
     if not qa.citation_compliant(answer, n_sources):
         try:
             repaired = client.generate_json(
-                qa.build_citation_repair_prompt(qa_context, question, answer)
+                qa.build_citation_repair_prompt(qa_context, question, answer),
+                model=settings.qa_model,
+                keep_alive="0",
             )
         except Exception:
             repaired = None
@@ -516,7 +518,7 @@ def _checked_ask_answer(
         if isinstance(repaired_answer, str) and repaired_answer.strip():
             answer = qa.strip_bad_citations(repaired_answer, n_sources)
     if not qa.citation_compliant(answer, n_sources):
-        answer = qa.build_cited_fallback_answer(stories)
+        answer = qa.build_cited_fallback_answer(stories, question=question)
     return answer
 
 
@@ -533,7 +535,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     low, to protect the Pi from OOM. Every failure returns a typed answer at HTTP
     200; only a bad request is a 422.
     """
-    if gate.ram_free_mb() < settings.brain_min_free_mb:
+    if gate.ram_free_mb() < settings.qa_min_free_mb:
         return {
             "answer": "Brain busy — the box is loaded right now, try again in a moment.",
             "context_digest": None,
@@ -541,7 +543,11 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         }
     qa_context = qa.build_qa_context(session, question=req.question)
     try:
-        raw = client.generate_json(qa.build_qa_prompt(qa_context, req.question))
+        raw = client.generate_json(
+            qa.build_qa_prompt(qa_context, req.question),
+            model=settings.qa_model,
+            keep_alive="0",
+        )
     except Exception:
         return {
             "answer": "The brain is offline right now.",
@@ -576,7 +582,7 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
     """Stream ask-the-brain answer chunks, then a citation-checked final answer."""
 
     def gen() -> Iterator[str]:
-        if gate.ram_free_mb() < settings.brain_min_free_mb:
+        if gate.ram_free_mb() < settings.qa_min_free_mb:
             yield _sse(
                 "final",
                 {
@@ -594,7 +600,9 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
         chunks: list[str] = []
         try:
             prompt = qa.build_qa_text_prompt(qa_context, req.question)
-            for chunk in client.generate_text_stream(prompt):
+            for chunk in client.generate_text_stream(
+                prompt, model=settings.qa_model, keep_alive="0"
+            ):
                 chunks.append(chunk)
                 yield _sse("delta", {"text": chunk})
         except Exception:
