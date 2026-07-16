@@ -152,3 +152,54 @@ def test_build_cited_fallback_answer_uses_first_story():
     assert "Al Jazeera English" in answer
     assert "contested" in answer.lower()
     assert qa.citation_compliant(answer, 1) is True
+
+
+def test_qa_prompt_requires_uncertainty_framing():
+    prompt = qa.build_qa_prompt({"stories": []}, "is the war back on?")
+    assert "never established fact" in prompt
+    assert "disputed" in prompt
+    assert "sensor-confirmed" in prompt
+    assert "what is not known" in prompt
+
+
+def test_qa_text_prompt_keeps_framing_rules():
+    prompt = qa.build_qa_text_prompt({"stories": []}, "q")
+    assert "never established fact" in prompt
+    assert "Do not wrap it in JSON" in prompt
+
+
+def test_repair_prompt_keeps_uncertainty_framing():
+    prompt = qa.build_citation_repair_prompt({"stories": []}, "q", "draft")
+    assert "disputed stays disputed" in prompt
+
+
+_FALLBACK_STORY = {
+    "n": 1,
+    "story_id": 5,
+    "title": "Typhoon slams Philippines",
+    "gist": None,
+    "sources": ["Reuters"],
+    "contested": False,
+    "corroboration": 0.9,
+    "sensor": {},
+}
+
+
+def test_fallback_mismatched_question_returns_no_evidence():
+    out = qa.build_cited_fallback_answer([_FALLBACK_STORY], question="is the war back on?")
+    assert out == qa.NO_EVIDENCE_ANSWER
+
+
+def test_fallback_matching_question_keeps_cited_story():
+    out = qa.build_cited_fallback_answer([_FALLBACK_STORY], question="typhoon update?")
+    assert "Typhoon slams Philippines [1]" in out
+
+
+def test_fallback_without_question_keeps_cited_story():
+    out = qa.build_cited_fallback_answer([_FALLBACK_STORY])
+    assert "Typhoon slams Philippines [1]" in out
+
+
+def test_requires_citation_exempts_no_evidence_answer():
+    assert qa.requires_citation(qa.NO_EVIDENCE_ANSWER, 3) is False
+    assert qa.citation_compliant(qa.NO_EVIDENCE_ANSWER, 3) is True

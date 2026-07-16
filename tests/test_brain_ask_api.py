@@ -48,7 +48,9 @@ def _client():
 def test_ask_happy_path(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
-    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "Border clashes."})
+    monkeypatch.setattr(
+        api.client, "generate_json", lambda prompt, **kw: {"answer": "Border clashes."}
+    )
     body = client.post("/brain/ask", json={"question": "what is loudest?"}).json()
     assert body["answer"] == "Border clashes."
     assert body["context_digest"].startswith("sha256:")
@@ -65,10 +67,10 @@ def test_ask_empty_question_is_422():
 def test_ask_ram_below_floor_returns_busy(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 100)
-    monkeypatch.setattr(api.settings, "brain_min_free_mb", 1200)
+    monkeypatch.setattr(api.settings, "qa_min_free_mb", 3800)
     called = {"model": False}
 
-    def _should_not_call(prompt):
+    def _should_not_call(prompt, **kw):
         called["model"] = True
         return {"answer": "x"}
 
@@ -84,7 +86,7 @@ def test_ask_ollama_down_returns_offline(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
 
-    def _boom(prompt):
+    def _boom(prompt, **kw):
         raise RuntimeError("connection refused")
 
     monkeypatch.setattr(api.client, "generate_json", _boom)
@@ -99,7 +101,7 @@ def test_ask_non_dict_model_output_degrades_gracefully(monkeypatch):
     # NOT 500 — the endpoint promises a typed answer at HTTP 200 for every failure.
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
-    monkeypatch.setattr(api.client, "generate_json", lambda prompt: ["not", "a", "dict"])
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt, **kw: ["not", "a", "dict"])
     resp = client.post("/brain/ask", json={"question": "hi"})
     assert resp.status_code == 200
     body = resp.json()
@@ -111,7 +113,7 @@ def test_ask_non_dict_model_output_degrades_gracefully(monkeypatch):
 def test_ask_blank_answer_degrades_gracefully(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
-    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "  "})
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt, **kw: {"answer": "  "})
     body = client.post("/brain/ask", json={"question": "hi"}).json()
     assert body["answer"] == "The brain is not working right now."
     assert body["context_digest"] is None
@@ -138,7 +140,7 @@ def test_ask_returns_sources_and_strips_bad_citations(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        api.client, "generate_json", lambda prompt: {"answer": "Clashes [1]. See [9]."}
+        api.client, "generate_json", lambda prompt, **kw: {"answer": "Clashes [1]. See [9]."}
     )
     body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
     assert len(body["sources"]) == 1 and body["sources"][0]["n"] == 1
@@ -168,7 +170,7 @@ def test_ask_repairs_uncited_story_answer(monkeypatch):
         },
     )
     calls = iter([{"answer": "Border clashes."}, {"answer": "Border clashes [1]."}])
-    monkeypatch.setattr(api.client, "generate_json", lambda prompt: next(calls))
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt, **kw: next(calls))
 
     body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
 
@@ -195,7 +197,9 @@ def test_ask_falls_back_to_cited_story_after_failed_repair(monkeypatch):
             ]
         },
     )
-    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "Border clashes."})
+    monkeypatch.setattr(
+        api.client, "generate_json", lambda prompt, **kw: {"answer": "Border clashes."}
+    )
 
     body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
 
@@ -208,7 +212,7 @@ def test_ask_falls_back_to_cited_story_after_failed_repair(monkeypatch):
 def test_ask_busy_has_empty_sources(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 100)
-    monkeypatch.setattr(api.settings, "brain_min_free_mb", 1200)
+    monkeypatch.setattr(api.settings, "qa_min_free_mb", 3800)
     body = client.post("/brain/ask", json={"question": "hi"}).json()
     assert body["sources"] == []
     app.dependency_overrides.clear()
@@ -224,7 +228,7 @@ def test_ask_threads_question_into_context_retrieval(monkeypatch):
         return {"stories": []}
 
     monkeypatch.setattr(api.qa, "build_qa_context", _context)
-    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "No match."})
+    monkeypatch.setattr(api.client, "generate_json", lambda prompt, **kw: {"answer": "No match."})
     body = client.post("/brain/ask", json={"question": "what about hormuz?"}).json()
     assert body["answer"] == "No match."
     assert body["sources"] == []
@@ -254,7 +258,7 @@ def test_ask_stream_returns_sources_delta_and_final(monkeypatch):
     monkeypatch.setattr(
         api.client,
         "generate_text_stream",
-        lambda prompt: iter(["Border ", "clashes [1]."]),
+        lambda prompt, **kw: iter(["Border ", "clashes [1]."]),
     )
 
     with client.stream(
@@ -292,9 +296,11 @@ def test_ask_stream_falls_back_when_uncited(monkeypatch):
     monkeypatch.setattr(
         api.client,
         "generate_text_stream",
-        lambda prompt: iter(["Border clashes."]),
+        lambda prompt, **kw: iter(["Border clashes."]),
     )
-    monkeypatch.setattr(api.client, "generate_json", lambda prompt: {"answer": "Still uncited."})
+    monkeypatch.setattr(
+        api.client, "generate_json", lambda prompt, **kw: {"answer": "Still uncited."}
+    )
 
     with client.stream(
         "POST", "/brain/ask/stream", json={"question": "what is happening?"}
@@ -308,11 +314,133 @@ def test_ask_stream_falls_back_when_uncited(monkeypatch):
 def test_ask_stream_busy_returns_final(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 100)
-    monkeypatch.setattr(api.settings, "brain_min_free_mb", 1200)
+    monkeypatch.setattr(api.settings, "qa_min_free_mb", 3800)
 
     with client.stream("POST", "/brain/ask/stream", json={"question": "hi"}) as resp:
         text = "".join(resp.iter_text())
 
     assert "event: final" in text
     assert "Brain busy" in text
+    app.dependency_overrides.clear()
+
+
+def test_ask_uses_qa_model_and_evicts(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(api.qa, "build_qa_context", lambda session, question=None: {"stories": []})
+    captured = {}
+
+    def _generate(prompt, *, model=None, keep_alive=None):
+        captured["model"] = model
+        captured["keep_alive"] = keep_alive
+        return {"answer": "No match."}
+
+    monkeypatch.setattr(api.client, "generate_json", _generate)
+    client.post("/brain/ask", json={"question": "hi"})
+    assert captured["model"] == api.settings.qa_model
+    assert captured["keep_alive"] == "0"
+    app.dependency_overrides.clear()
+
+
+def test_ask_gate_uses_qa_floor(monkeypatch):
+    # 2000 MB is fine for 1.5b (old 1200 floor) but NOT for the 4b Q&A model.
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 2000)
+    body = client.post("/brain/ask", json={"question": "hi"}).json()
+    assert "busy" in body["answer"].lower()
+    app.dependency_overrides.clear()
+
+
+def test_ask_stream_uses_qa_model_and_evicts(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(api.qa, "build_qa_context", lambda session, question=None: {"stories": []})
+    captured = {}
+
+    def _stream(prompt, *, model=None, keep_alive=None):
+        captured["model"] = model
+        captured["keep_alive"] = keep_alive
+        yield "No match."
+
+    monkeypatch.setattr(api.client, "generate_text_stream", _stream)
+    resp = client.post("/brain/ask/stream", json={"question": "hi"})
+    assert resp.status_code == 200
+    assert captured["model"] == api.settings.qa_model
+    assert captured["keep_alive"] == "0"
+    app.dependency_overrides.clear()
+
+
+def test_ask_no_evidence_fallback_for_wrong_topic(monkeypatch):
+    # Retrieval returned an unrelated story and the model can't cite: the old
+    # fallback echoed the unrelated story as the answer; now it must be honest.
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "gist": None,
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                    "sensor": {},
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        api.client, "generate_json", lambda prompt, **kw: {"answer": "Uncited text."}
+    )
+    body = client.post("/brain/ask", json={"question": "what about the typhoon?"}).json()
+    assert body["answer"] == api.qa.NO_EVIDENCE_ANSWER
+    app.dependency_overrides.clear()
+
+
+def test_ask_stream_no_evidence_fallback_for_wrong_topic(monkeypatch):
+    # Same dynamic as test_ask_no_evidence_fallback_for_wrong_topic above, but
+    # through the STREAM endpoint: retrieval returns an unrelated story and
+    # neither the draft nor the citation-repair pass produces a valid citation,
+    # so the honest NO_EVIDENCE fallback must win over echoing the unrelated
+    # story as an answer.
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "gist": None,
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                    "sensor": {},
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        api.client,
+        "generate_text_stream",
+        lambda prompt, **kw: iter(["Uncited text."]),
+    )
+    monkeypatch.setattr(
+        api.client, "generate_json", lambda prompt, **kw: {"answer": "Still uncited."}
+    )
+
+    with client.stream(
+        "POST", "/brain/ask/stream", json={"question": "what about the typhoon?"}
+    ) as resp:
+        text = "".join(resp.iter_text())
+
+    assert api.qa.NO_EVIDENCE_ANSWER in text
+    assert "The retrieved story is" not in text
     app.dependency_overrides.clear()
