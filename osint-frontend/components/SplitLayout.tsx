@@ -1,13 +1,8 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useCallback, useEffect, useRef, useState } from "react"
-import {
-  Panel,
-  Group as PanelGroup,
-  type PanelImperativeHandle,
-  Separator as PanelResizeHandle,
-} from "react-resizable-panels"
+import { useCallback, useEffect, useState } from "react"
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { useConfigured } from "@/app/providers"
 import type { VisibleEvent } from "@/lib/queries"
 import { useMediaQuery } from "@/lib/useMediaQuery"
@@ -62,17 +57,9 @@ export function SplitLayout() {
   // event id also expands its hazard footprint on the map.
   //: Story pop-out (#448): a second card left of the deck, same width.
   const storyDetailOpen = useStoryDetailStore((s) => s.storyId !== null)
-  const deckPanelRef = useRef<PanelImperativeHandle | null>(null)
-
-  //: The pop-out mounts at EXACTLY the deck's current width — read the deck's
-  //: size in the render that inserts the panel; the map absorbs the difference.
-  let deckWidthPct = 30
-  try {
-    const size = deckPanelRef.current?.getSize()
-    if (size && size.asPercentage > 0) deckWidthPct = size.asPercentage
-  } catch {
-    // deck not laid out yet — first paint; the default is fine
-  }
+  //: The pop-out overlay is EXACTLY the deck's current pixel width — fed by
+  //: the deck panel's onResize (fires on mount and on every drag).
+  const [deckWidthPx, setDeckWidthPx] = useState<number | null>(null)
   const entity = useRightPaneModeStore((s) => s.entity)
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
@@ -207,6 +194,7 @@ export function SplitLayout() {
             </div>
           </div>
         ) : (
+          <div className="relative h-full w-full">
           <PanelGroup orientation="horizontal" className="h-full w-full">
             <Panel id="map" defaultSize={70} minSize={20}>
               <div
@@ -231,21 +219,12 @@ export function SplitLayout() {
               <span className="absolute left-1/2 top-1/2 z-30 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-700 transition-colors group-hover:bg-emerald-500" />
             </PanelResizeHandle>
 
-            {storyDetailOpen ? (
-              <>
-                <Panel id="story-detail" defaultSize={deckWidthPct} minSize={12}>
-                  <div className="h-full w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/40 p-0">
-                    <StoryDetailCard />
-                  </div>
-                </Panel>
-                <PanelResizeHandle className="group relative w-px bg-neutral-800 outline-none">
-                  <span className="absolute inset-y-0 -left-1 -right-1 z-30 transition-colors group-data-[resize-handle-state=drag]:bg-emerald-500/20 group-data-[resize-handle-state=hover]:bg-emerald-500/10" />
-                  <span className="absolute left-1/2 top-1/2 z-30 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-700 transition-colors group-hover:bg-emerald-500" />
-                </PanelResizeHandle>
-              </>
-            ) : null}
-
-            <Panel id="deck" panelRef={deckPanelRef} defaultSize={30} minSize={12}>
+            <Panel
+              id="deck"
+              defaultSize={30}
+              minSize={12}
+              onResize={(size) => setDeckWidthPx(size.inPixels)}
+            >
               <div
                 className="relative h-full w-full"
                 onMouseEnter={() => setFocused("right")}
@@ -255,6 +234,21 @@ export function SplitLayout() {
               </div>
             </Panel>
           </PanelGroup>
+
+          {storyDetailOpen ? (
+            //: Overlay, not a Panel — inserting a third panel makes the group
+            //: normalize and SHRINK the deck. Pinned to the deck's left edge at
+            //: the deck's exact pixel width; map and deck never move.
+            <div
+              className="absolute inset-y-0 z-40 p-1.5"
+              style={{ right: deckWidthPx ?? "30%", width: deckWidthPx ?? "30%" }}
+            >
+              <div className="h-full w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
+                <StoryDetailCard />
+              </div>
+            </div>
+          ) : null}
+          </div>
         )}
       </div>
     </main>
