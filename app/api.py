@@ -513,6 +513,12 @@ def _checked_ask_answer(
 ) -> str:
     answer = qa.strip_bad_citations(answer, n_sources)
     if not qa.citation_compliant(answer, n_sources):
+        #: Grounded-but-uncited drafts keep their prose with the citation
+        #: appended (#446) — cheaper and kinder than the repair/template path.
+        salvaged = qa.attach_supported_citation(answer, stories)
+        if salvaged is not None:
+            answer = salvaged
+    if not qa.citation_compliant(answer, n_sources):
         try:
             repaired = client.generate_json(
                 qa.build_citation_repair_prompt(qa_context, question, answer),
@@ -525,7 +531,7 @@ def _checked_ask_answer(
         if isinstance(repaired_answer, str) and repaired_answer.strip():
             answer = qa.strip_bad_citations(repaired_answer, n_sources)
     if not qa.citation_compliant(answer, n_sources):
-        answer = qa.build_cited_fallback_answer(stories, question=question)
+        answer = qa.build_no_evidence_answer(stories)
     return answer
 
 

@@ -169,7 +169,10 @@ def test_ask_repairs_uncited_story_answer(monkeypatch):
             ]
         },
     )
-    calls = iter([{"answer": "Border clashes."}, {"answer": "Border clashes [1]."}])
+    # Draft shares no content terms with the story → unsalvageable → repair runs.
+    calls = iter(
+        [{"answer": "Tensions are rising in the region."}, {"answer": "Border clashes [1]."}]
+    )
     monkeypatch.setattr(api.client, "generate_json", lambda prompt, **kw: next(calls))
 
     body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
@@ -198,13 +201,15 @@ def test_ask_falls_back_to_cited_story_after_failed_repair(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        api.client, "generate_json", lambda prompt, **kw: {"answer": "Border clashes."}
+        api.client,
+        "generate_json",
+        lambda prompt, **kw: {"answer": "Tensions are rising in the region."},
     )
 
     body = client.post("/brain/ask", json={"question": "what is happening?"}).json()
 
-    assert "Border clashes [1]" in body["answer"]
-    assert "Reuters" in body["answer"]
+    # No template: the honest no-evidence sentence, with sources still listed.
+    assert body["answer"] == api.qa.NO_EVIDENCE_ANSWER
     assert body["sources"][0]["n"] == 1
     app.dependency_overrides.clear()
 
@@ -296,7 +301,7 @@ def test_ask_stream_falls_back_when_uncited(monkeypatch):
     monkeypatch.setattr(
         api.client,
         "generate_text_stream",
-        lambda prompt, **kw: iter(["Border clashes."]),
+        lambda prompt, **kw: iter(["Tensions are rising in the region."]),
     )
     monkeypatch.setattr(
         api.client, "generate_json", lambda prompt, **kw: {"answer": "Still uncited."}
@@ -307,7 +312,8 @@ def test_ask_stream_falls_back_when_uncited(monkeypatch):
     ) as resp:
         text = "".join(resp.iter_text())
 
-    assert "The retrieved story is: Border clashes [1]." in text
+    assert api.qa.NO_EVIDENCE_ANSWER in text
+    assert "The retrieved story is:" not in text
     app.dependency_overrides.clear()
 
 
@@ -481,4 +487,43 @@ def test_ask_history_capped_at_three_exchanges():
         json={"question": "q?", "history": [exchange] * 4},
     )
     assert resp.status_code == 422
+    app.dependency_overrides.clear()
+
+
+def test_ask_salvages_uncited_grounded_answer(monkeypatch):
+    # The model's prose matches the retrieved story but lacks [n]: the answer
+    # must keep the prose with an appended citation — no repair call, never
+    # the fallback template (#446).
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None, history=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 10,
+                    "title": "Trade ban on Israeli settlements is the latest test of EU unity",
+                    "gist": "EU weighs a trade ban covering settlement goods.",
+                    "sources": ["Al Jazeera English"],
+                    "corroboration": 0.938,
+                    "contested": True,
+                    "sensor": {},
+                }
+            ]
+        },
+    )
+    calls: list[str] = []
+
+    def fake_generate(prompt, **kw):
+        calls.append(prompt)
+        return {"answer": "Yes, there is a trade ban on Israeli settlements under EU discussion."}
+
+    monkeypatch.setattr(api.client, "generate_json", fake_generate)
+    body = client.post("/brain/ask", json={"question": "is there a trade ban on israel?"}).json()
+    assert body["answer"] == (
+        "Yes, there is a trade ban on Israeli settlements under EU discussion. [1]"
+    )
+    assert len(calls) == 1  # no repair round-trip
     app.dependency_overrides.clear()
