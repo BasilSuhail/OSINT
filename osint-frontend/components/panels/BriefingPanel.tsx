@@ -19,6 +19,7 @@ import {
 } from "@/lib/analytics"
 import { countryName } from "@/lib/countryName"
 import { contestedVerdict, storyVerdict } from "@/lib/verdicts"
+import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { Hint, Tip } from "./viz"
 
 const REFRESH_MS = 5 * 60_000
@@ -44,6 +45,7 @@ function Block({
 
 /** The deck's landing card: today's answer in four blocks. */
 export function BriefingPanel() {
+  const openStory = useStoryDetailStore((s) => s.openStory)
   const stories = useSWR(["stories-top", 24], () => fetchTopStories(24, 200), {
     refreshInterval: REFRESH_MS,
     revalidateOnFocus: false,
@@ -146,7 +148,10 @@ export function BriefingPanel() {
             no cross-country tellings scored in the window yet
           </p>
         ) : (
-          <div className="flex items-center gap-2">
+          <button
+            onClick={() => openStory(topContested.story_id)}
+            className="flex w-full items-center gap-2 text-left"
+          >
             <span className="shrink-0 rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-amber-300">
               {topContested.divergence.toFixed(2)}
             </span>
@@ -158,7 +163,7 @@ export function BriefingPanel() {
                 .map(([c, n]) => `${countryName(c)} ×${n}`)
                 .join(" vs ")}
             </span>
-          </div>
+          </button>
         )}
         {topContested ? (
           <p className="mt-1.5 text-[11px] leading-relaxed text-neutral-400">

@@ -95,6 +95,31 @@ export function chatReducer(state: ChatMessage[], action: ChatAction): ChatMessa
   }
 }
 
+export interface OriginGroup<T> {
+  origin: string | null
+  members: T[]
+}
+
+/** Members bucketed by outlet origin country, biggest bloc first, unknown last (#448). */
+export function groupByOrigin<T extends { origin_country: string | null }>(
+  members: T[],
+): OriginGroup<T>[] {
+  const buckets = new Map<string | null, T[]>()
+  for (const m of members) {
+    const key = m.origin_country
+    const list = buckets.get(key) ?? []
+    list.push(m)
+    buckets.set(key, list)
+  }
+  return [...buckets.entries()]
+    .map(([origin, grouped]) => ({ origin, members: grouped }))
+    .sort((a, b) => {
+      if (a.origin === null) return 1
+      if (b.origin === null) return -1
+      return b.members.length - a.members.length
+    })
+}
+
 const HISTORY_MAX = 3
 //: Matches the backend AskExchange answer cap headroom (#444).
 const HISTORY_ANSWER_CHARS = 2000

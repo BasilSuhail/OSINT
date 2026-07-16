@@ -11,7 +11,8 @@
 import { useEffect, useReducer, useRef, useState } from "react"
 import useSWR from "swr"
 import { fetchBrainAsk, fetchBrainNarrative, streamBrainAsk } from "@/lib/apiClient"
-import { fetchStoryMembers, fetchTopStories, type StoryRow } from "@/lib/analytics"
+import { fetchTopStories, type StoryRow } from "@/lib/analytics"
+import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import {
   askHistory,
   chatReducer,
@@ -40,32 +41,14 @@ function TagChip({ category, escalating }: { category: string | null; escalating
   )
 }
 
-function StorySources({ storyId }: { storyId: string }) {
-  const { data, error } = useSWR(["situation-members", storyId], () => fetchStoryMembers(storyId))
-  if (error) return <p className="px-2 py-1 font-mono text-[10px] text-red-400">sources unavailable</p>
-  if (!data) return <p className="px-2 py-1 font-mono text-[10px] text-neutral-500">loading…</p>
-  return (
-    <ul className="mt-2 border-l-2 border-neutral-800 pl-3">
-      {data.map((m, i) => (
-        <li key={i} className="py-0.5 text-[11px] leading-snug text-neutral-400">
-          <span className="font-mono text-[9px] uppercase tracking-wide text-cyan-300/70">{m.outlet}</span>{" "}
-          {m.title}
-        </li>
-      ))}
-    </ul>
-  )
-}
-
 function StoryLine({
   n,
   story,
-  expanded,
-  onToggle,
+  onOpen,
 }: {
   n: number
   story: StoryRow
-  expanded: boolean
-  onToggle: () => void
+  onOpen: () => void
 }) {
   const time = new Date(story.last_seen).toLocaleTimeString([], {
     hour: "2-digit",
@@ -73,20 +56,12 @@ function StoryLine({
   })
   return (
     <div className="py-1">
-      <button onClick={onToggle} className="flex w-full items-baseline gap-2 text-left">
+      <button onClick={onOpen} className="flex w-full items-baseline gap-2 text-left">
         <span className="shrink-0 font-mono text-[10px] text-neutral-600">{n}</span>
         <span className="shrink-0 font-mono text-[10px] text-neutral-500">{time}</span>
         <span className="min-w-0 flex-1 truncate text-[12px] text-neutral-300">{story.title}</span>
         <TagChip category={story.category} escalating={story.escalating} />
       </button>
-      {expanded ? (
-        <div className="pl-5">
-          {story.gist ? (
-            <p className="mt-1 text-[12px] leading-snug text-neutral-400">{story.gist}</p>
-          ) : null}
-          <StorySources storyId={story.id} />
-        </div>
-      ) : null}
     </div>
   )
 }
@@ -173,7 +148,7 @@ export function SituationPanel() {
   const { data: stories } = useSWR("situation-stories", () => fetchTopStories(72, 50), {
     refreshInterval: STORIES_REFRESH_MS,
   })
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const openStory = useStoryDetailStore((s) => s.openStory)
   const [showOlder, setShowOlder] = useState(false)
   const [question, setQuestion] = useState("")
   const { messages, pending, ask, clear } = useBrainChat()
@@ -192,14 +167,6 @@ export function SituationPanel() {
     const el = scrollRef.current
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight
   }, [messages])
-
-  const toggle = (id: string) =>
-    setExpanded((s) => {
-      const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
 
   const submit = () => {
     const q = question.trim()
@@ -251,12 +218,7 @@ export function SituationPanel() {
                     {markers[i]}
                   </p>
                 ) : null}
-                <StoryLine
-                  n={i + 1}
-                  story={s}
-                  expanded={expanded.has(s.id)}
-                  onToggle={() => toggle(s.id)}
-                />
+                <StoryLine n={i + 1} story={s} onOpen={() => openStory(s.id)} />
               </div>
             ))}
           </div>

@@ -1,16 +1,23 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useCallback, useEffect, useState } from "react"
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
+import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  Panel,
+  Group as PanelGroup,
+  type PanelImperativeHandle,
+  Separator as PanelResizeHandle,
+} from "react-resizable-panels"
 import { useConfigured } from "@/app/providers"
 import type { VisibleEvent } from "@/lib/queries"
 import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneStore } from "@/stores/rightPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
+import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { CardDeck, type DeckCard } from "./CardDeck"
 import { BriefingPanel } from "./panels/BriefingPanel"
+import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
 import { SituationPanel } from "./panels/SituationPanel"
@@ -53,6 +60,19 @@ export function SplitLayout() {
 
   // Selections drive the right pane's entity-lock mode (#252). The clicked
   // event id also expands its hazard footprint on the map.
+  //: Story pop-out (#448): a second card left of the deck, same width.
+  const storyDetailOpen = useStoryDetailStore((s) => s.storyId !== null)
+  const deckPanelRef = useRef<PanelImperativeHandle | null>(null)
+
+  //: The pop-out mounts at EXACTLY the deck's current width — read the deck's
+  //: size in the render that inserts the panel; the map absorbs the difference.
+  let deckWidthPct = 30
+  try {
+    const size = deckPanelRef.current?.getSize()
+    if (size && size.asPercentage > 0) deckWidthPct = size.asPercentage
+  } catch {
+    // deck not laid out yet — first paint; the default is fine
+  }
   const entity = useRightPaneModeStore((s) => s.entity)
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
@@ -61,6 +81,11 @@ export function SplitLayout() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      //: Esc closes the story pop-out from anywhere, even while typing.
+      if (e.key === "Escape") {
+        useStoryDetailStore.getState().closeStory()
+        return
+      }
       const target = e.target as HTMLElement
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return
       if (e.key === "[") {
@@ -178,7 +203,7 @@ export function SplitLayout() {
               style={{ display: activePane === "right" ? "block" : "none" }}
               onMouseEnter={() => setFocused("right")}
             >
-              <CardDeck cards={deckCards} />
+              {storyDetailOpen ? <StoryDetailCard /> : <CardDeck cards={deckCards} />}
             </div>
           </div>
         ) : (
@@ -206,7 +231,21 @@ export function SplitLayout() {
               <span className="absolute left-1/2 top-1/2 z-30 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-700 transition-colors group-hover:bg-emerald-500" />
             </PanelResizeHandle>
 
-            <Panel defaultSize={30} minSize={12}>
+            {storyDetailOpen ? (
+              <>
+                <Panel id="story-detail" defaultSize={deckWidthPct} minSize={12}>
+                  <div className="h-full w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/40 p-0">
+                    <StoryDetailCard />
+                  </div>
+                </Panel>
+                <PanelResizeHandle className="group relative w-px bg-neutral-800 outline-none">
+                  <span className="absolute inset-y-0 -left-1 -right-1 z-30 transition-colors group-data-[resize-handle-state=drag]:bg-emerald-500/20 group-data-[resize-handle-state=hover]:bg-emerald-500/10" />
+                  <span className="absolute left-1/2 top-1/2 z-30 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-700 transition-colors group-hover:bg-emerald-500" />
+                </PanelResizeHandle>
+              </>
+            ) : null}
+
+            <Panel id="deck" panelRef={deckPanelRef} defaultSize={30} minSize={12}>
               <div
                 className="relative h-full w-full"
                 onMouseEnter={() => setFocused("right")}

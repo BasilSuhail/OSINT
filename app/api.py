@@ -307,6 +307,83 @@ def story_members(
     ]
 
 
+@app.get("/stories/{story_id}/detail")
+def story_detail(
+    story_id: int,
+    session: Session = Depends(get_session),
+) -> dict:
+    """The story pop-out card (#448): everything known about one story in one
+    read — gist, corroboration evidence, contested-telling groups, sensor
+    verdicts, and every member article with outlet + origin country."""
+    from app.db_models import StoryDisagreementRow, StoryMemberRow
+    from app.sources.rss_registry import content_owner_map, load_feed_configs, outlet_country_map
+
+    story = session.get(StoryRow, story_id)
+    if story is None:
+        raise HTTPException(status_code=404, detail="story not found")
+
+    corro = session.execute(
+        select(StoryCorroborationRow).where(StoryCorroborationRow.story_id == story_id)
+    ).scalar_one_or_none()
+    disagreement = session.execute(
+        select(StoryDisagreementRow).where(StoryDisagreementRow.story_id == story_id)
+    ).scalar_one_or_none()
+    gist = session.execute(
+        select(StoryGistRow)
+        .where(StoryGistRow.story_id == story_id)
+        .order_by(StoryGistRow.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    checks = {
+        c.claim_type: c.verdict
+        for c in session.execute(
+            select(StorySensorCheckRow).where(StorySensorCheckRow.story_id == story_id)
+        ).scalars()
+    }
+
+    owners = content_owner_map()
+    origins = outlet_country_map()
+    pretty = {cfg.source: cfg.pretty_name for cfg in load_feed_configs()}
+    members = [
+        {
+            "title": (event.payload or {}).get("title") or "",
+            "source": event.source,
+            "outlet": pretty.get(event.source, event.source),
+            "owner": owners.get(event.source, event.source),
+            "origin_country": origins.get(event.source),
+            "occurred_at": event.occurred_at.isoformat(),
+            "similarity": member.similarity,
+        }
+        for member, event in session.execute(
+            select(StoryMemberRow, EventRow)
+            .join(EventRow, EventRow.id == StoryMemberRow.event_id)
+            .where(StoryMemberRow.story_id == story_id)
+            .order_by(EventRow.occurred_at)
+        ).all()
+    ]
+
+    return {
+        "id": str(story.id),
+        "title": story.title,
+        "first_seen": story.first_seen.isoformat(),
+        "last_seen": story.last_seen.isoformat(),
+        "member_count": story.member_count,
+        "outlet_count": story.outlet_count,
+        "owner_count": story.owner_count,
+        "gist": gist.gist if gist else None,
+        "category": gist.category if gist else None,
+        "escalating": gist.escalating if gist else None,
+        "corroboration": corro.score if corro else None,
+        "corroboration_components": corro.components if corro else None,
+        "divergence": disagreement.divergence if disagreement else None,
+        "divergence_groups": (disagreement.components or {}).get("groups", {})
+        if disagreement
+        else None,
+        "sensor_checks": checks,
+        "members": members,
+    }
+
+
 @app.get("/disagreement/top")
 def disagreement_top(
     session: Session = Depends(get_session),

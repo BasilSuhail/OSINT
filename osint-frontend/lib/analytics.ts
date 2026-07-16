@@ -95,6 +95,32 @@ export interface StoryMember {
   similarity: number
 }
 
+/** Everything known about one story — the pop-out card's single read (#448). */
+export interface StoryDetail {
+  id: string
+  title: string
+  first_seen: string
+  last_seen: string
+  member_count: number
+  outlet_count: number
+  owner_count: number
+  gist: string | null
+  category: string | null
+  escalating: string | null
+  corroboration: number | null
+  corroboration_components: Record<string, unknown> | null
+  divergence: number | null
+  divergence_groups: Record<string, number> | null
+  sensor_checks: Record<string, string>
+  members: StoryMember[]
+}
+
+export async function fetchStoryDetail(storyId: string): Promise<StoryDetail> {
+  const res = await fetch(`${API_BASE}/stories/${storyId}/detail`)
+  if (!res.ok) throw new Error(`GET /stories/${storyId}/detail ${res.status}`)
+  return (await res.json()) as StoryDetail
+}
+
 export async function fetchStoryMembers(storyId: string): Promise<StoryMember[]> {
   const res = await fetch(`${API_BASE}/stories/${storyId}/members`)
   if (!res.ok) throw new Error(`GET /stories/${storyId}/members ${res.status}`)

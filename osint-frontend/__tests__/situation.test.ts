@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  groupByOrigin,
   OFFLINE_ANSWER,
   askHistory,
   MAX_CHAT_MESSAGES,
@@ -242,5 +243,39 @@ describe("askHistory", () => {
     const messages = [finalized("q", "x".repeat(5000))]
     const [entry] = askHistory(messages)
     expect(entry.answer.length).toBeLessThanOrEqual(2000)
+  })
+})
+
+describe("groupByOrigin", () => {
+  const member = (outlet: string, origin: string | null) => ({
+    title: `${outlet} headline`,
+    source: outlet.toLowerCase(),
+    outlet,
+    owner: outlet,
+    origin_country: origin,
+    occurred_at: "2026-07-17T10:00:00+00:00",
+    similarity: 0.9,
+  })
+
+  it("groups members by origin country, biggest bloc first", () => {
+    const groups = groupByOrigin([
+      member("Dawn", "PK"),
+      member("Egypt Independent", "EG"),
+      member("Geo English", "PK"),
+    ])
+    expect(groups.map((g) => g.origin)).toEqual(["PK", "EG"])
+    expect(groups[0].members).toHaveLength(2)
+  })
+
+  it("collects unknown origins under null, sorted last", () => {
+    const groups = groupByOrigin([
+      member("Mystery Wire", null),
+      member("Dawn", "PK"),
+    ])
+    expect(groups.map((g) => g.origin)).toEqual(["PK", null])
+  })
+
+  it("empty input yields no groups", () => {
+    expect(groupByOrigin([])).toEqual([])
   })
 })
