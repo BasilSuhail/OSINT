@@ -69,6 +69,25 @@ def generate_text_stream(
                 break
 
 
+def embed(texts: list[str], *, model: str | None = None) -> list[list[float]]:
+    """Batch of texts → one vector each, via one /api/embed call.
+
+    Always keep_alive=0 — the embedder is tiny but the Pi never keeps an extra
+    model resident. Raises on HTTP failure like the generate fns.
+    """
+    response = httpx.post(
+        f"{settings.ollama_url}/api/embed",
+        json={
+            "model": model or settings.embed_model,
+            "input": texts,
+            "keep_alive": 0,
+        },
+        timeout=_TIMEOUT_S,
+    )
+    response.raise_for_status()
+    return response.json()["embeddings"]
+
+
 def evict(*, model: str | None = None) -> None:
     """Unload the model now: an empty generate with keep_alive=0."""
     response = httpx.post(
