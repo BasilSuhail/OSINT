@@ -399,3 +399,48 @@ def test_ask_no_evidence_fallback_for_wrong_topic(monkeypatch):
     body = client.post("/brain/ask", json={"question": "what about the typhoon?"}).json()
     assert body["answer"] == api.qa.NO_EVIDENCE_ANSWER
     app.dependency_overrides.clear()
+
+
+def test_ask_stream_no_evidence_fallback_for_wrong_topic(monkeypatch):
+    # Same dynamic as test_ask_no_evidence_fallback_for_wrong_topic above, but
+    # through the STREAM endpoint: retrieval returns an unrelated story and
+    # neither the draft nor the citation-repair pass produces a valid citation,
+    # so the honest NO_EVIDENCE fallback must win over echoing the unrelated
+    # story as an answer.
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None: {
+            "stories": [
+                {
+                    "n": 1,
+                    "story_id": 5,
+                    "title": "Border clashes",
+                    "gist": None,
+                    "sources": ["Reuters"],
+                    "corroboration": 0.8,
+                    "contested": False,
+                    "sensor": {},
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        api.client,
+        "generate_text_stream",
+        lambda prompt, **kw: iter(["Uncited text."]),
+    )
+    monkeypatch.setattr(
+        api.client, "generate_json", lambda prompt, **kw: {"answer": "Still uncited."}
+    )
+
+    with client.stream(
+        "POST", "/brain/ask/stream", json={"question": "what about the typhoon?"}
+    ) as resp:
+        text = "".join(resp.iter_text())
+
+    assert api.qa.NO_EVIDENCE_ANSWER in text
+    assert "The retrieved story is" not in text
+    app.dependency_overrides.clear()

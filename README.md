@@ -476,9 +476,10 @@ reload.
 
 **Model policy** (#413/#433): the 1.5b `brain_model` stays warm for the scheduled
 narrative and story enrichment above; every user ask (`/brain/ask` and
-`/brain/ask/stream`) and the nightly validator run the heavier 4b model per-call
-with `keep_alive=0`, so the Pi never keeps two models resident at once. Q&A
-refuses politely below `qa_min_free_mb` (3800 MB free RAM).
+`/brain/ask/stream`) runs the heavier 4b model per-call with `keep_alive=0`, so
+the 4b never lingers after an ask. The nightly validator reuses the same 4b
+model but keeps it warm (`keep_alive=5m`) across its own batch. Q&A refuses
+politely below `qa_min_free_mb` (3800 MB free RAM).
 
 Example:
 
@@ -490,10 +491,10 @@ POST /brain/ask  {"question": "what is the most contested story?"}
    "sources": [{"n": 1, "outlets": ["Reuters", "BBC"], "contested": true, ...}]}
 ```
 
-Phase C evaluates whether the validator's heavier 4b model is worth using for Q&A.
-Run `make brain-qa-eval` to compare it with the current 1.5b on identical retrieved
-contexts. The command writes `data/exports/brain-qa-model-eval.md` and `.json`; it is
-a decision artifact, not a production model switch.
+Phase C evaluated whether the validator's heavier 4b model was worth using for Q&A;
+the answer was yes — Q&A has run the 4b in production since #433. `make brain-qa-eval`
+remains the before/after measurement tool, comparing it with the 1.5b on identical
+retrieved contexts and writing `data/exports/brain-qa-model-eval.md` and `.json`.
 
 ### 4.6 Enriching new stories
 
