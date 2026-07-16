@@ -313,6 +313,7 @@ def build_qa_stories(
     limit: int = _QA_STORIES,
     now: datetime | None = None,
     question: str | None = None,
+    history: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Relevant recent stories, provenance-tagged with trust signals + outlet sources."""
     now = now or datetime.now(UTC)
@@ -338,7 +339,8 @@ def build_qa_stories(
             )
         ).scalars()
     }
-    rows = _select_rows(session, candidate_rows, gists=gists, question=question, limit=limit)
+    retrieval_text = build_retrieval_text(question, history) if question else question
+    rows = _select_rows(session, candidate_rows, gists=gists, question=retrieval_text, limit=limit)
     story_ids = [s.id for s, _ in rows]
     if not story_ids:
         return []
@@ -392,8 +394,47 @@ def build_qa_stories(
     return out
 
 
+#: How much of a previous answer rides along for anchoring/prompting (#444).
+_HISTORY_ANSWER_CHARS: int = 300
+#: Exchanges the prompt may carry — mirrors the API's max_length cap.
+MAX_HISTORY: int = 3
+
+
+def build_retrieval_text(question: str, history: list[dict[str, Any]] | None) -> str:
+    """The text retrieval matches on: the question plus the last exchange.
+
+    A vague follow-up ("what do u think that was?") carries no topic of its
+    own — folding in the previous turn lets both the embedding and the keyword
+    fallback inherit it.
+    """
+    if not history:
+        return question
+    last = history[-1]
+    previous_question = str(last.get("question") or "")
+    previous_answer = str(last.get("answer") or "")[:_HISTORY_ANSWER_CHARS]
+    return " ".join(part for part in (question, previous_question, previous_answer) if part)
+
+
+def _conversation_block(history: list[dict[str, Any]] | None) -> str:
+    if not history:
+        return ""
+    turns = "\n".join(
+        f"Q: {h.get('question', '')}\nA: {str(h.get('answer', ''))[:_HISTORY_ANSWER_CHARS]}"
+        for h in history[-MAX_HISTORY:]
+    )
+    return (
+        "RECENT CONVERSATION (use only to resolve references like 'that' or 'it'; "
+        "answer ONLY the new question):\n"
+        f"{turns}\n\n"
+    )
+
+
 def build_qa_context(
-    session: Session, *, now: datetime | None = None, question: str | None = None
+    session: Session,
+    *,
+    now: datetime | None = None,
+    question: str | None = None,
+    history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     snapshot = context.build_snapshot(session, now=now)
     return {
@@ -401,11 +442,15 @@ def build_qa_context(
         "latest_composite": _latest_composite(session),
         "most_contested": _most_contested(session),
         "scoreboard": _scoreboard(session),
-        "stories": build_qa_stories(session, now=now, question=question),
+        "stories": build_qa_stories(session, now=now, question=question, history=history),
     }
 
 
-def build_qa_prompt(qa_context: dict[str, Any], question: str) -> str:
+def build_qa_prompt(
+    qa_context: dict[str, Any],
+    question: str,
+    history: list[dict[str, Any]] | None = None,
+) -> str:
     return (
         "You are the Q&A brain of an OSINT early-warning system. Answer the user's "
         "question using ONLY the JSON context below. The context includes a numbered "
@@ -428,13 +473,18 @@ def build_qa_prompt(qa_context: dict[str, Any], question: str) -> str:
         "known. Never guess.\n\n"
         'Return a JSON object with exactly one key: "answer" (a short plain-English '
         "string).\n\n"
+        f"{_conversation_block(history)}"
         f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
         f"QUESTION: {question}"
     )
 
 
-def build_qa_text_prompt(qa_context: dict[str, Any], question: str) -> str:
-    return build_qa_prompt(qa_context, question).replace(
+def build_qa_text_prompt(
+    qa_context: dict[str, Any],
+    question: str,
+    history: list[dict[str, Any]] | None = None,
+) -> str:
+    return build_qa_prompt(qa_context, question, history=history).replace(
         'Return a JSON object with exactly one key: "answer" (a short plain-English string).\n\n',
         "Return only the final plain-English answer text. Do not wrap it in JSON. "
         "Do not include markdown.\n\n",

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
+  OFFLINE_ANSWER,
+  askHistory,
   MAX_CHAT_MESSAGES,
   chatReducer,
   dayMarkers,
@@ -207,5 +209,38 @@ describe("parseChatStorage", () => {
     expect(parsed).toHaveLength(MAX_CHAT_MESSAGES)
     expect(parsed[0].question).toBe("q5")
     expect(parsed[parsed.length - 1].question).toBe(`q${MAX_CHAT_MESSAGES + 4}`)
+  })
+})
+
+describe("askHistory", () => {
+  const finalized = (q: string, a: string) => msg({ question: q, answer: a })
+
+  it("keeps the last three finalized exchanges in order", () => {
+    const messages = [
+      finalized("q1", "a1"),
+      finalized("q2", "a2"),
+      finalized("q3", "a3"),
+      finalized("q4", "a4"),
+    ]
+    expect(askHistory(messages)).toEqual([
+      { question: "q2", answer: "a2" },
+      { question: "q3", answer: "a3" },
+      { question: "q4", answer: "a4" },
+    ])
+  })
+
+  it("skips drafts and offline failures", () => {
+    const messages = [
+      finalized("good", "real answer"),
+      msg({ question: "failed", answer: OFFLINE_ANSWER }),
+      msg({ question: "typing", answer: "partial", draft: true }),
+    ]
+    expect(askHistory(messages)).toEqual([{ question: "good", answer: "real answer" }])
+  })
+
+  it("truncates long answers", () => {
+    const messages = [finalized("q", "x".repeat(5000))]
+    const [entry] = askHistory(messages)
+    expect(entry.answer.length).toBeLessThanOrEqual(2000)
   })
 })

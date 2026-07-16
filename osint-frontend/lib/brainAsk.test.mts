@@ -14,7 +14,7 @@ describe("fetchBrainAsk", () => {
     expect(out.answer).toBe("Border clashes.")
     const [, init] = spy.mock.calls[0]
     expect(init.method).toBe("POST")
-    expect(JSON.parse(init.body)).toEqual({ question: "what is loudest?" })
+    expect(JSON.parse(init.body)).toEqual({ question: "what is loudest?", history: [] })
   })
 
   it("parses sources", async () => {

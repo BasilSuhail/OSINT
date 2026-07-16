@@ -13,6 +13,7 @@ import useSWR from "swr"
 import { fetchBrainAsk, fetchBrainNarrative, streamBrainAsk } from "@/lib/apiClient"
 import { fetchStoryMembers, fetchTopStories, type StoryRow } from "@/lib/analytics"
 import {
+  askHistory,
   chatReducer,
   dayMarkers,
   parseChatStorage,
@@ -108,17 +109,23 @@ function useBrainChat() {
   }, [messages, hydrated])
 
   const ask = async (question: string) => {
+    //: Snapshot before the new draft joins the transcript (#444).
+    const history = askHistory(messages)
     dispatch({ type: "ask", question })
     setPending(true)
     try {
-      const { answer, sources } = await streamBrainAsk(question, {
-        onDelta: (text) => dispatch({ type: "delta", text }),
-        onSources: (sources) => dispatch({ type: "sources", sources }),
-      })
+      const { answer, sources } = await streamBrainAsk(
+        question,
+        {
+          onDelta: (text) => dispatch({ type: "delta", text }),
+          onSources: (sources) => dispatch({ type: "sources", sources }),
+        },
+        history,
+      )
       dispatch({ type: "finalize", answer, sources })
     } catch {
       try {
-        const { answer, sources } = await fetchBrainAsk(question)
+        const { answer, sources } = await fetchBrainAsk(question, history)
         dispatch({ type: "finalize", answer, sources })
       } catch {
         dispatch({ type: "fail" })
