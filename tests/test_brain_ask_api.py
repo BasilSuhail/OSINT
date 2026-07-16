@@ -126,7 +126,7 @@ def test_ask_returns_sources_and_strips_bad_citations(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None: {
+        lambda session, question=None, history=None: {
             "stories": [
                 {
                     "n": 1,
@@ -156,7 +156,7 @@ def test_ask_repairs_uncited_story_answer(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None: {
+        lambda session, question=None, history=None: {
             "stories": [
                 {
                     "n": 1,
@@ -184,7 +184,7 @@ def test_ask_falls_back_to_cited_story_after_failed_repair(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None: {
+        lambda session, question=None, history=None: {
             "stories": [
                 {
                     "n": 1,
@@ -223,7 +223,7 @@ def test_ask_threads_question_into_context_retrieval(monkeypatch):
     captured = {}
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
 
-    def _context(session, question=None):
+    def _context(session, question=None, history=None):
         captured["question"] = question
         return {"stories": []}
 
@@ -242,7 +242,7 @@ def test_ask_stream_returns_sources_delta_and_final(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None: {
+        lambda session, question=None, history=None: {
             "stories": [
                 {
                     "n": 1,
@@ -280,7 +280,7 @@ def test_ask_stream_falls_back_when_uncited(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None: {
+        lambda session, question=None, history=None: {
             "stories": [
                 {
                     "n": 1,
@@ -327,7 +327,9 @@ def test_ask_stream_busy_returns_final(monkeypatch):
 def test_ask_uses_qa_model_and_evicts(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
-    monkeypatch.setattr(api.qa, "build_qa_context", lambda session, question=None: {"stories": []})
+    monkeypatch.setattr(
+        api.qa, "build_qa_context", lambda session, question=None, history=None: {"stories": []}
+    )
     captured = {}
 
     def _generate(prompt, *, model=None, keep_alive=None):
@@ -354,7 +356,9 @@ def test_ask_gate_uses_qa_floor(monkeypatch):
 def test_ask_stream_uses_qa_model_and_evicts(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
-    monkeypatch.setattr(api.qa, "build_qa_context", lambda session, question=None: {"stories": []})
+    monkeypatch.setattr(
+        api.qa, "build_qa_context", lambda session, question=None, history=None: {"stories": []}
+    )
     captured = {}
 
     def _stream(prompt, *, model=None, keep_alive=None):
@@ -378,7 +382,7 @@ def test_ask_no_evidence_fallback_for_wrong_topic(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None: {
+        lambda session, question=None, history=None: {
             "stories": [
                 {
                     "n": 1,
@@ -412,7 +416,7 @@ def test_ask_stream_no_evidence_fallback_for_wrong_topic(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None: {
+        lambda session, question=None, history=None: {
             "stories": [
                 {
                     "n": 1,
@@ -443,4 +447,38 @@ def test_ask_stream_no_evidence_fallback_for_wrong_topic(monkeypatch):
 
     assert api.qa.NO_EVIDENCE_ANSWER in text
     assert "The retrieved story is" not in text
+    app.dependency_overrides.clear()
+
+
+def test_ask_passes_history_to_context_and_prompt(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    seen: dict = {}
+
+    def fake_generate(prompt, **kw):
+        seen["prompt"] = prompt
+        return {"answer": "Anchored."}
+
+    monkeypatch.setattr(api.client, "generate_json", fake_generate)
+    body = client.post(
+        "/brain/ask",
+        json={
+            "question": "what do u think that was?",
+            "history": [{"question": "what about iran?", "answer": "US strikes on Iran."}],
+        },
+    ).json()
+    assert body["answer"] == "Anchored."
+    assert "RECENT CONVERSATION" in seen["prompt"]
+    assert "what about iran?" in seen["prompt"]
+    app.dependency_overrides.clear()
+
+
+def test_ask_history_capped_at_three_exchanges():
+    client = _client()
+    exchange = {"question": "q", "answer": "a"}
+    resp = client.post(
+        "/brain/ask",
+        json={"question": "q?", "history": [exchange] * 4},
+    )
+    assert resp.status_code == 422
     app.dependency_overrides.clear()

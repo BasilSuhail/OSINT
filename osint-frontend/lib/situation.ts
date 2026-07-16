@@ -1,5 +1,5 @@
 import { format, isSameDay, subDays } from "date-fns"
-import type { BrainSource } from "./apiClient"
+import type { AskExchange, BrainSource } from "./apiClient"
 
 /** One ask-the-brain exchange in the Situation chat transcript (#439). */
 export interface ChatMessage {
@@ -93,6 +93,18 @@ export function chatReducer(state: ChatMessage[], action: ChatAction): ChatMessa
     case "restore":
       return action.messages
   }
+}
+
+const HISTORY_MAX = 3
+//: Matches the backend AskExchange answer cap headroom (#444).
+const HISTORY_ANSWER_CHARS = 2000
+
+/** Recent finalized exchanges to send with an ask, so follow-ups stay anchored. */
+export function askHistory(messages: ChatMessage[]): AskExchange[] {
+  return messages
+    .filter((m) => !m.draft && m.answer && m.answer !== OFFLINE_ANSWER)
+    .slice(-HISTORY_MAX)
+    .map((m) => ({ question: m.question, answer: m.answer.slice(0, HISTORY_ANSWER_CHARS) }))
 }
 
 /** Restore a transcript from sessionStorage; corrupt or foreign data yields []. */

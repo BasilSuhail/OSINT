@@ -98,11 +98,20 @@ export interface BrainAsk {
   sources: BrainSource[]
 }
 
-export async function fetchBrainAsk(question: string): Promise<BrainAsk> {
+/** One prior transcript turn sent with an ask (#444) — anchors follow-ups. */
+export interface AskExchange {
+  question: string
+  answer: string
+}
+
+export async function fetchBrainAsk(
+  question: string,
+  history: AskExchange[] = [],
+): Promise<BrainAsk> {
   const res = await fetch(`${API_BASE}/brain/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history }),
   })
   if (!res.ok) throw new Error(`brain ask ${res.status}`)
   return (await res.json()) as BrainAsk
@@ -127,14 +136,15 @@ function parseSseBlock(block: string): { event: string; data: unknown } | null {
 export async function streamBrainAsk(
   question: string,
   handlers: BrainAskStreamHandlers = {},
+  history: AskExchange[] = [],
 ): Promise<BrainAsk> {
   const res = await fetch(`${API_BASE}/brain/ask/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history }),
   })
   if (!res.ok) throw new Error(`brain ask stream ${res.status}`)
-  if (!res.body) return fetchBrainAsk(question)
+  if (!res.body) return fetchBrainAsk(question, history)
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()

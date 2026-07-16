@@ -478,8 +478,15 @@ def brain_narrative_latest(session: Session = Depends(get_session)) -> dict:
     }
 
 
+class AskExchange(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    answer: str = Field(default="", max_length=4000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
+    #: Recent transcript turns (#444) — anchors vague follow-ups ("that", "it").
+    history: list[AskExchange] = Field(default_factory=list, max_length=3)
 
 
 def _ask_sources(stories: list[dict]) -> list[dict]:
@@ -541,10 +548,11 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
             "context_digest": None,
             "sources": [],
         }
-    qa_context = qa.build_qa_context(session, question=req.question)
+    history = [h.model_dump() for h in req.history]
+    qa_context = qa.build_qa_context(session, question=req.question, history=history)
     try:
         raw = client.generate_json(
-            qa.build_qa_prompt(qa_context, req.question),
+            qa.build_qa_prompt(qa_context, req.question, history=history),
             model=settings.qa_model,
             keep_alive="0",
         )
@@ -592,14 +600,15 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
                 },
             )
             return
-        qa_context = qa.build_qa_context(session, question=req.question)
+        history = [h.model_dump() for h in req.history]
+        qa_context = qa.build_qa_context(session, question=req.question, history=history)
         stories = qa_context.get("stories") or []
         sources = _ask_sources(stories)
         digest = context.input_digest(qa_context)
         yield _sse("sources", {"context_digest": digest, "sources": sources})
         chunks: list[str] = []
         try:
-            prompt = qa.build_qa_text_prompt(qa_context, req.question)
+            prompt = qa.build_qa_text_prompt(qa_context, req.question, history=history)
             for chunk in client.generate_text_stream(
                 prompt, model=settings.qa_model, keep_alive="0"
             ):
