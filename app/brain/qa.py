@@ -117,6 +117,9 @@ _TERM_RE = re.compile(r"[a-z0-9]{3,}")
 _COUNTRY_CODE_RE = re.compile(r"\b[A-Z]{2}\b")
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 REFUSAL_ANSWER = "I don't have data on that."
+NO_EVIDENCE_ANSWER = (
+    "I don't have enough local evidence to answer that — closest stories are listed as sources."
+)
 
 
 def _question_terms(question: str | None) -> list[str]:
@@ -317,9 +320,14 @@ def build_qa_prompt(qa_context: dict[str, Any], question: str) -> str:
         "- When a claim rests on a story, cite it as [n] using that story's number.\n"
         "- Every non-refusal answer that uses any story MUST include at least one valid "
         "[n] citation from the numbered stories list.\n"
-        "- Flag trust: call out a story that is single-source (low corroboration or "
-        "owner_count 1), contested (contested: true), or sensor-unconfirmed. Prefer "
-        "corroborated stories; never present a single-teller claim as established fact.\n\n"
+        "- A single-source or low-corroboration claim is 'reported', never "
+        "established fact. Prefer corroborated stories.\n"
+        "- Call out contested stories as disputed and name who says what when "
+        "the context shows it.\n"
+        "- Say when a claim is sensor-confirmed; mark heavy sensor-unconfirmed "
+        "claims as unverified.\n"
+        "- If the context cannot answer part of the question, say what is not "
+        "known. Never guess.\n\n"
         'Return a JSON object with exactly one key: "answer" (a short plain-English '
         "string).\n\n"
         f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
@@ -355,7 +363,7 @@ def valid_citations(answer: str, n_sources: int) -> list[int]:
 
 
 def requires_citation(answer: str, n_sources: int) -> bool:
-    return n_sources > 0 and answer.strip() != REFUSAL_ANSWER
+    return n_sources > 0 and answer.strip() not in (REFUSAL_ANSWER, NO_EVIDENCE_ANSWER)
 
 
 def citation_compliant(answer: str, n_sources: int) -> bool:
@@ -373,6 +381,8 @@ def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answ
         "- Every non-refusal answer MUST include at least one valid [n] citation from "
         'the numbered "stories" list.\n'
         "- Remove unsupported claims instead of inventing citations.\n"
+        "- Keep uncertainty framing: disputed stays disputed, single-source "
+        "stays 'reported'.\n"
         '- Return a JSON object with exactly one key: "answer".\n\n'
         f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
         f"QUESTION: {question}\n"
@@ -380,7 +390,7 @@ def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answ
     )
 
 
-def build_cited_fallback_answer(stories: list[dict[str, Any]]) -> str:
+def build_cited_fallback_answer(stories: list[dict[str, Any]], question: str | None = None) -> str:
     """Deterministic answer when the model cannot repair missing citations."""
     if not stories:
         return REFUSAL_ANSWER
@@ -388,6 +398,11 @@ def build_cited_fallback_answer(stories: list[dict[str, Any]]) -> str:
     title = str(story.get("title") or "").strip()
     if not title:
         return REFUSAL_ANSWER
+    if question is not None:
+        terms = _question_terms(question)
+        text = f"{title} {story.get('gist') or ''}".lower()
+        if terms and not any(term in text for term in terms):
+            return NO_EVIDENCE_ANSWER
     n = int(story.get("n") or 1)
     parts = [f"The retrieved story is: {title} [{n}]."]
     outlets = [str(s) for s in story.get("sources") or [] if str(s).strip()]

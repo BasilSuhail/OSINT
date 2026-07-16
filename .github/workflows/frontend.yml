@@ -60,8 +60,10 @@ jobs:
       - name: Lint (eslint)
         run: pnpm lint
 
-      - name: Dependency security scan (npm audit)
-        run: pnpm audit --audit-level high
+      # `pnpm audit` was removed (#435): npm retired the audit endpoints it
+      # calls (410 on every run). PR-diff vulnerability gating stays via the
+      # dependency-review workflow; Dependabot keeps patching. Re-add when
+      # pnpm supports npm's bulk advisory endpoint.
 
       - name: Ephemeris unit tests (node --test)
         run: node --test --experimental-strip-types lib/ephemeris.test.mts

@@ -193,3 +193,12 @@ def test_error_row_fails_every_dimension():
     assert out["passed"] is False
     assert all(out[d] is False for d in qa_rubric.DIMENSIONS)
     assert out["reasons"] == ["model error: boom"]
+
+
+def test_no_evidence_answer_scores_as_refusal():
+    from app.brain.qa import NO_EVIDENCE_ANSWER
+
+    stories = [_story(1, "Typhoon slams Philippines")]
+    out = _score(WAR, NO_EVIDENCE_ANSWER, stories)
+    assert out["refusal"] is True
+    assert out["passed"] is True

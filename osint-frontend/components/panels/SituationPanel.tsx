@@ -188,7 +188,7 @@ export function SituationPanel() {
   )
 }
 
-type QA = { question: string; answer: string; sources: BrainSource[] }
+type QA = { question: string; answer: string; sources: BrainSource[]; draft?: boolean }
 
 function AskBox() {
   const [question, setQuestion] = useState("")
@@ -199,33 +199,33 @@ function AskBox() {
     const q = question.trim()
     if (!q || pending) return
     setPending(true)
-    setLast({ question: q, answer: "", sources: [] })
+    setLast({ question: q, answer: "", sources: [], draft: true })
     try {
       const { answer, sources } = await streamBrainAsk(q, {
         onDelta: (text) => {
           setLast((prev) =>
             prev && prev.question === q
-              ? { ...prev, answer: `${prev.answer}${text}` }
-              : { question: q, answer: text, sources: [] },
+              ? { ...prev, answer: `${prev.answer}${text}`, draft: true }
+              : { question: q, answer: text, sources: [], draft: true },
           )
         },
         onSources: (sources) => {
           setLast((prev) =>
             prev && prev.question === q
-              ? { ...prev, sources }
-              : { question: q, answer: "", sources },
+              ? { ...prev, sources, draft: true }
+              : { question: q, answer: "", sources, draft: true },
           )
         },
       })
-      setLast({ question: q, answer, sources })
+      setLast({ question: q, answer, sources, draft: false })
       setQuestion("")
     } catch {
       try {
         const { answer, sources } = await fetchBrainAsk(q)
-        setLast({ question: q, answer, sources })
+        setLast({ question: q, answer, sources, draft: false })
         setQuestion("")
       } catch {
-        setLast({ question: q, answer: "The brain is offline right now.", sources: [] })
+        setLast({ question: q, answer: "The brain is offline right now.", sources: [], draft: false })
       }
     } finally {
       setPending(false)
@@ -237,7 +237,14 @@ function AskBox() {
       {last ? (
         <div className="mb-2 text-sm">
           <p className="text-neutral-500">{last.question}</p>
-          <p className="text-neutral-200">{last.answer || "…"}</p>
+          <p className={last.draft ? "italic text-neutral-400" : "text-neutral-200"}>
+            {last.answer || "…"}
+          </p>
+          {last.draft && last.answer ? (
+            <p className="mt-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
+              drafting — verifying sources…
+            </p>
+          ) : null}
           {last.sources.length > 0 ? (
             <p className="mt-1 text-[11px] leading-snug text-neutral-500">
               sources:{" "}

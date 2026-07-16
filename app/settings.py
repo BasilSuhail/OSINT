@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # Refuse to load the model unless at least this much RAM is free (Pi guard).
     brain_min_free_mb: int = Field(default=1200)
     brain_keep_alive: str = Field(default="30m")
+    # Q&A (#433): user asks run the 4b model per-ask and evict it right after
+    # (keep_alive="0") — the Pi never keeps two models resident. Narrative and
+    # enrichment stay on the warm 1.5b brain_model above.
+    qa_model: str = Field(default="qwen3.5:4b-q4_K_M")
+    qa_min_free_mb: int = Field(default=3800)
     runtime_busy_lock_ttl_s: int = Field(default=1800)
     footprint_enrichment_limit: int = Field(default=25)
 

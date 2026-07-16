@@ -40,7 +40,9 @@ def generate_json(
     return json.loads(response.json()["response"])
 
 
-def generate_text_stream(prompt: str, *, model: str | None = None) -> Iterator[str]:
+def generate_text_stream(
+    prompt: str, *, model: str | None = None, keep_alive: str | None = None
+) -> Iterator[str]:
     """Yield Ollama response text chunks for a plain-text answer prompt."""
     with httpx.stream(
         "POST",
@@ -50,7 +52,7 @@ def generate_text_stream(prompt: str, *, model: str | None = None) -> Iterator[s
             "prompt": prompt,
             "stream": True,
             "think": False,
-            "keep_alive": settings.brain_keep_alive,
+            "keep_alive": keep_alive or settings.brain_keep_alive,
             "options": {"temperature": 0, "num_ctx": _NUM_CTX},
         },
         timeout=_TIMEOUT_S,
