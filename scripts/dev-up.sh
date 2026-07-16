@@ -300,10 +300,19 @@ ensure_ollama
 # peak memory is max(one job) and the nightly Ollama batch never overlaps a
 # pandas parse. Default to one fetcher locally so Docker, Next, Ollama, and
 # Postgres keep enough headroom; fast machines can set CELERY_CONCURRENCY=2.
+# macOS only (#437): prefork children segfault in SCDynamicStoreCopyProxies /
+# CFPrefs on their first HTTP request (fork-without-exec poisons ObjC/dispatch
+# state) — "Python quit unexpectedly" dialog spam. Threads pool avoids the
+# fork; tasks are I/O-bound and the queues already run at concurrency 1.
+# Linux (the Pi) keeps celery's default prefork.
+POOL_ARGS=()
+if [ "$(uname -s)" = "Darwin" ]; then
+  POOL_ARGS=(--pool threads)
+fi
 spawn worker .venv/bin/celery -A app.celery_app worker -l info \
-  -Q celery --concurrency "${CELERY_CONCURRENCY:-1}" -n fetchers@%h
+  -Q celery --concurrency "${CELERY_CONCURRENCY:-1}" -n fetchers@%h "${POOL_ARGS[@]}"
 spawn worker-analytics .venv/bin/celery -A app.celery_app worker -l info \
-  -Q analytics --concurrency 1 -n analytics@%h
+  -Q analytics --concurrency 1 -n analytics@%h "${POOL_ARGS[@]}"
 spawn beat   .venv/bin/celery -A app.celery_app beat   -l info
 spawn api    .venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
 spawn_frontend
