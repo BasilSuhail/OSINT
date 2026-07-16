@@ -134,26 +134,6 @@ def test_citation_compliance_requires_valid_citation_for_story_answer():
     assert qa.strip_bad_citations("Good [1], bad [9].", 1) == "Good [1], bad ."
 
 
-def test_build_cited_fallback_answer_uses_first_story():
-    answer = qa.build_cited_fallback_answer(
-        [
-            {
-                "n": 1,
-                "title": "Thailand fire kills 27",
-                "sources": ["Al Jazeera English", "BBC World"],
-                "contested": True,
-                "corroboration": 1.0,
-                "sensor": {},
-            }
-        ]
-    )
-
-    assert "Thailand fire kills 27 [1]" in answer
-    assert "Al Jazeera English" in answer
-    assert "contested" in answer.lower()
-    assert qa.citation_compliant(answer, 1) is True
-
-
 def test_qa_prompt_requires_uncertainty_framing():
     prompt = qa.build_qa_prompt({"stories": []}, "is the war back on?")
     assert "never established fact" in prompt
@@ -185,19 +165,15 @@ _FALLBACK_STORY = {
 }
 
 
-def test_fallback_mismatched_question_returns_no_evidence():
-    out = qa.build_cited_fallback_answer([_FALLBACK_STORY], question="is the war back on?")
-    assert out == qa.NO_EVIDENCE_ANSWER
+def test_no_evidence_answer_when_stories_exist():
+    # The robotic "The retrieved story is: ..." template is gone (#446): an
+    # unrepairable draft yields the honest no-evidence sentence instead.
+    assert qa.build_no_evidence_answer([_FALLBACK_STORY]) == qa.NO_EVIDENCE_ANSWER
+    assert not hasattr(qa, "build_cited_fallback_answer")
 
 
-def test_fallback_matching_question_keeps_cited_story():
-    out = qa.build_cited_fallback_answer([_FALLBACK_STORY], question="typhoon update?")
-    assert "Typhoon slams Philippines [1]" in out
-
-
-def test_fallback_without_question_keeps_cited_story():
-    out = qa.build_cited_fallback_answer([_FALLBACK_STORY])
-    assert "Typhoon slams Philippines [1]" in out
+def test_no_evidence_answer_without_stories_is_refusal():
+    assert qa.build_no_evidence_answer([]) == qa.REFUSAL_ANSWER
 
 
 def test_requires_citation_exempts_no_evidence_answer():

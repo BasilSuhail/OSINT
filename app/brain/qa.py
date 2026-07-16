@@ -520,6 +520,33 @@ def citation_compliant(answer: str, n_sources: int) -> bool:
     return bool(valid_citations(answer, n_sources))
 
 
+#: Content terms of a story that must appear in a draft to call it grounded.
+_SALVAGE_MIN_TERMS: int = 2
+
+
+def attach_supported_citation(answer: str, stories: list[dict[str, Any]]) -> str | None:
+    """Append the best-matching story's [n] to an uncited but grounded draft (#446).
+
+    Grounded = at least _SALVAGE_MIN_TERMS content terms from one story's
+    title+gist appear (word-boundary, plural-folded) in the draft. Returns None
+    when nothing grounds the draft — the caller falls through to LLM repair and
+    ultimately the deterministic template. Deterministic: no extra model call,
+    and the user keeps the prose they watched stream in.
+    """
+    text = answer.lower()
+    best_n = 0
+    best_score = 0
+    for story in stories:
+        terms = _question_terms(f"{story.get('title') or ''} {story.get('gist') or ''}")
+        score = sum(1 for term in terms if _term_pattern(term).search(text))
+        if score > best_score:
+            best_score = score
+            best_n = int(story.get("n") or 0)
+    if best_n and best_score >= _SALVAGE_MIN_TERMS:
+        return f"{answer} [{best_n}]"
+    return None
+
+
 def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answer: str) -> str:
     return (
         "Rewrite the draft answer so it satisfies the citation rules. Use ONLY the "
@@ -538,30 +565,12 @@ def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answ
     )
 
 
-def build_cited_fallback_answer(stories: list[dict[str, Any]], question: str | None = None) -> str:
-    """Deterministic answer when the model cannot repair missing citations."""
-    if not stories:
-        return REFUSAL_ANSWER
-    story = stories[0]
-    title = str(story.get("title") or "").strip()
-    if not title:
-        return REFUSAL_ANSWER
-    if question is not None:
-        terms = _question_terms(question)
-        text = f"{title} {story.get('gist') or ''}".lower()
-        if terms and not any(term in text for term in terms):
-            return NO_EVIDENCE_ANSWER
-    n = int(story.get("n") or 1)
-    parts = [f"The retrieved story is: {title} [{n}]."]
-    outlets = [str(s) for s in story.get("sources") or [] if str(s).strip()]
-    if outlets:
-        parts.append(f"Outlets in context: {', '.join(outlets[:3])}.")
-    if story.get("contested"):
-        parts.append("This story is flagged contested, so treat it as disputed coverage.")
-    corroboration = story.get("corroboration")
-    if corroboration is not None:
-        parts.append(f"Corroboration score: {corroboration}.")
-    sensor = story.get("sensor") or {}
-    if sensor:
-        parts.append(f"Sensor checks: {sensor}.")
-    return " ".join(parts)
+def build_no_evidence_answer(stories: list[dict[str, Any]]) -> str:
+    """Honest last resort when a draft can be neither salvaged nor repaired.
+
+    Replaces the old "The retrieved story is: ..." template (#446) — Basil
+    never wanted a robotic dump in place of the answer. The closest stories
+    stay visible in the sources row; the sentence just says we can't back the
+    prose with them.
+    """
+    return NO_EVIDENCE_ANSWER if stories else REFUSAL_ANSWER
