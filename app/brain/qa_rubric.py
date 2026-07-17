@@ -19,6 +19,7 @@ DIMENSIONS: tuple[str, ...] = (
     "contested",
     "refusal",
     "usefulness",
+    "echo",
 )
 
 
@@ -152,8 +153,9 @@ def score_answer(
     stories: list[dict[str, Any]],
     invalid_citations: list[int],
     error: str | None = None,
+    previous_answer: str | None = None,
 ) -> dict[str, Any]:
-    """Six pass/fail dimensions + reasons. `passed` only if every dim passes."""
+    """Pass/fail dimensions + reasons. `passed` only if every dim passes."""
     if not isinstance(answer, str) or not answer.strip():
         reason = f"model error: {error}" if error else "no answer produced"
         return {**dict.fromkeys(DIMENSIONS, False), "passed": False, "reasons": [reason]}
@@ -219,6 +221,11 @@ def score_answer(
         if not usefulness_ok:
             reasons.append("answer too short or does not engage cited story content")
 
+    # echo: a different question deserves a fresh answer, not a recycled one (#451).
+    echo_ok = not (previous_answer and qa.answer_echoes(previous_answer, answer))
+    if not echo_ok:
+        reasons.append("echoes the previous answer — must be freshly worded")
+
     scores = {
         "relevance": relevance_ok,
         "citation": citation_ok,
@@ -226,5 +233,6 @@ def score_answer(
         "contested": contested_ok,
         "refusal": refusal_ok,
         "usefulness": usefulness_ok,
+        "echo": echo_ok,
     }
     return {**scores, "passed": all(scores.values()), "reasons": reasons}

@@ -100,6 +100,7 @@ def test_relevant_cited_risky_answer_with_uncertainty_passes():
         "contested": True,
         "refusal": True,
         "usefulness": True,
+        "echo": True,
         "passed": True,
         "reasons": [],
     }
