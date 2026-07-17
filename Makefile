@@ -84,6 +84,12 @@ enrich:  ## Run one brain enrichment pass — gist + tags for new stories (#413)
 brain-qa-eval:  ## Compare Q&A candidate models locally (Phase C, #413)
 	.venv/bin/python -m app.brain.qa_eval
 
+brain-qa-audit:  ## Emit the human answer-audit sheet (#413 item 9)
+	.venv/bin/python -m app.brain.qa_audit
+
+brain-qa-audit-score:  ## Score a graded answer-audit sheet
+	.venv/bin/python -m app.brain.qa_audit score
+
 validator-audit:  ## Emit the ~50-story human-check sheet for the validator (#378)
 	.venv/bin/python -m app.validator.audit
 
