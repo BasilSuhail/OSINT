@@ -177,6 +177,107 @@ def _question_terms(question: str | None) -> list[str]:
     return terms
 
 
+#: Question terms that reveal which gist category is being asked about
+#: (#413 roadmap item 2). Ambiguous terms (coup, protest, sanction, trade)
+#: sit in several categories on purpose: they widen the allowed set instead
+#: of gating the right stories out.
+_INTENT_LEXICON: dict[str, frozenset[str]] = {
+    "conflict": frozenset(
+        {
+            "airstrike",
+            "artillery",
+            "attack",
+            "bombardment",
+            "bombing",
+            "ceasefire",
+            "clash",
+            "combat",
+            "coup",
+            "drone",
+            "escalation",
+            "fighting",
+            "frontline",
+            "invasion",
+            "militia",
+            "missile",
+            "offensive",
+            "protest",
+            "rocket",
+            "sanction",
+            "shelling",
+            "strike",
+            "troop",
+            "truce",
+            "war",
+        }
+    ),
+    "disaster": frozenset(
+        {
+            "aftershock",
+            "cyclone",
+            "earthquake",
+            "eruption",
+            "flood",
+            "flooding",
+            "hurricane",
+            "landslide",
+            "magnitude",
+            "quake",
+            "storm",
+            "tsunami",
+            "typhoon",
+            "volcano",
+            "wildfire",
+        }
+    ),
+    "economy": frozenset(
+        {
+            "currency",
+            "economy",
+            "gdp",
+            "inflation",
+            "recession",
+            "sanction",
+            "tariff",
+            "trade",
+        }
+    ),
+    "politics": frozenset(
+        {
+            "coup",
+            "election",
+            "impeachment",
+            "parliament",
+            "protest",
+            "referendum",
+            "vote",
+        }
+    ),
+}
+
+
+def question_intents(question: str | None) -> frozenset[str]:
+    """Gist categories the question explicitly asks about (#413 roadmap item 2).
+
+    Deterministic lexicon lookup with plural folding ("strikes" → "strike",
+    "clashes" → "clash") — no model call. Empty set = no detectable intent,
+    retrieval stays ungated.
+    """
+    if not question:
+        return frozenset()
+    intents: set[str] = set()
+    for token in _TERM_RE.findall(question.lower()):
+        forms = {token}
+        if token.endswith("es") and len(token) > 4:
+            forms.add(token[:-2])
+        if token.endswith("s") and len(token) > 3:
+            forms.add(token[:-1])
+        for category, lexicon in _INTENT_LEXICON.items():
+            if forms & lexicon:
+                intents.add(category)
+    return frozenset(intents)
+
+
 @lru_cache(maxsize=512)
 def _term_pattern(term: str) -> re.Pattern[str]:
     """Whole-word match with naive plural folding: 'explosions' ⇄ 'explosion'.
@@ -268,12 +369,30 @@ def _select_rows(
 ) -> _CandidateRows:
     """Pick the context stories: semantic first, repaired keywords as fallback.
 
+    Intent gate (#413 roadmap item 2): when the bare question names a category
+    (war → conflict, typhoon → disaster, …), candidates whose gist category
+    contradicts it are dropped before any ranking — a loud typhoon must never
+    answer a war question, however well it scores. Ungisted and "other"
+    stories stay eligible; an emptied pool returns [] so the answer path
+    refuses instead of presenting an unrelated story.
+
     Semantic path (#441/#451): embed the bare question AND the history-anchored
     text in one batched call, score each candidate by its best match — history
     widens retrieval without drowning the question itself. Vectorless
     candidates fill remaining slots in loudness order. Skipped entirely when no
     candidate has a vector; any embed failure falls back to the keyword ranker.
     """
+    intents = question_intents(question)
+    if intents:
+        candidate_rows = [
+            (story, corro)
+            for story, corro in candidate_rows
+            if (gist := gists.get(story.id)) is None
+            or gist.category in ("other", None)
+            or gist.category in intents
+        ]
+        if not candidate_rows:
+            return []
     story_ids = [s.id for s, _ in candidate_rows]
     if question:
         vector_rows = session.execute(
