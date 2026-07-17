@@ -80,6 +80,56 @@ _QA_STORIES: int = 6
 _QA_WINDOW_H: int = 72
 _MAX_OUTLETS: int = 3
 _QA_CANDIDATES: int = 120
+#: Countries the coverage block carries — loudest first (#413 item 7).
+_COVERAGE_COUNTRIES: int = 8
+#: Fewer independent content owners than this = thin coverage.
+THIN_OWNER_COUNT: int = 3
+
+
+def build_coverage_bias(session: Session, *, now: datetime | None = None) -> dict[str, Any]:
+    """Per-country local feed coverage over the QA window (#413 item 7).
+
+    Transparent bias, not fake neutrality: event share, distinct sources, and
+    independent content owners per country. Owners come from the registry's
+    content-owner map, so a syndicated feed cannot inflate independence. A
+    country is `thin` when its owner diversity sits below THIN_OWNER_COUNT.
+    """
+    from app.sources.rss_registry import content_owner_map
+
+    now = now or datetime.now(UTC)
+    cutoff = now - timedelta(hours=_QA_WINDOW_H)
+    rows = session.execute(
+        select(EventRow.country, EventRow.source, func.count())
+        .where(EventRow.occurred_at >= cutoff, EventRow.country.is_not(None))
+        .group_by(EventRow.country, EventRow.source)
+    ).all()
+    owner_of = content_owner_map()
+    events: dict[str, int] = {}
+    sources: dict[str, set[str]] = {}
+    owners: dict[str, set[str]] = {}
+    for country, source, n in rows:
+        events[country] = events.get(country, 0) + int(n)
+        sources.setdefault(country, set()).add(source)
+        owners.setdefault(country, set()).add(owner_of.get(source, source))
+    total = sum(events.values())
+    top = sorted(events, key=lambda c: (-events[c], c))[:_COVERAGE_COUNTRIES]
+    return {
+        "window_h": _QA_WINDOW_H,
+        "total_events": total,
+        "countries": [
+            {
+                "country": c,
+                "events": events[c],
+                "share": round(events[c] / total, 3) if total else 0.0,
+                "sources": len(sources[c]),
+                "owners": len(owners[c]),
+                "thin": len(owners[c]) < THIN_OWNER_COUNT,
+            }
+            for c in top
+        ],
+    }
+
+
 _QUESTION_STOPWORDS = frozenset(
     {
         "about",
@@ -706,6 +756,7 @@ def build_qa_context(
         "latest_composite": _latest_composite(session),
         "most_contested": _most_contested(session),
         "scoreboard": _scoreboard(session),
+        "coverage": build_coverage_bias(session, now=now),
         "stories": build_qa_stories(
             session, now=now, question=question, history=history, trace=trace
         ),
@@ -744,6 +795,10 @@ def build_qa_prompt(
         "the context shows it.\n"
         "- Say when a claim is sensor-confirmed; mark heavy sensor-unconfirmed "
         "claims as unverified.\n"
+        '- CONTEXT.coverage shows per-country local feed coverage (events, share, "sources", '
+        'independent "owners", "thin" flag). When the answer centers on a country whose '
+        "coverage is thin, say local coverage is thin (few sources/owners) before any "
+        "conclusion.\n"
         "- If the context cannot answer part of the question, say what is not "
         "known. Never guess.\n\n"
         'Return a JSON object with exactly one key: "answer" (a short plain-English '
