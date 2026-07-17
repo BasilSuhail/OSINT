@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from app.sources.rss_news_fetcher import RssFeedConfig, RssNewsFetcher
+if TYPE_CHECKING:
+    from app.sources.rss_news_fetcher import RssFeedConfig, RssNewsFetcher
 
 _FEEDS_PATH = Path(__file__).parent / "rss_feeds.json"
 
@@ -27,6 +29,8 @@ def load_feed_configs() -> list[RssFeedConfig]:
     the per-feed metadata but is exposed as a tuple-of-dicts via
     ``feed_cadence_map`` for the scheduler.
     """
+    from app.sources.rss_news_fetcher import RssFeedConfig
+
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
     out: list[RssFeedConfig] = []
     for entry in raw:
@@ -79,6 +83,8 @@ def build_rss_fetchers() -> dict[str, RssNewsFetcher]:
     so it satisfies the ``Fetcher`` contract (``name`` + ``config``
     class attributes) without hand-writing a class per feed.
     """
+    from app.sources.rss_news_fetcher import RssNewsFetcher
+
     out: dict[str, RssNewsFetcher] = {}
     for cfg in load_feed_configs():
         cls = type(

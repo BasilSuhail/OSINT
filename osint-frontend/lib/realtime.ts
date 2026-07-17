@@ -1,4 +1,4 @@
-import { fetchEvents, streamUrl } from "./apiClient"
+import { CLIENT_LIMITS, fetchEvents, streamUrl } from "./apiClient"
 import { sourceKeyForEvent, type EventRow } from "./types"
 
 export type ConnectionStatus =
@@ -17,7 +17,7 @@ export interface ConnectionDiagnostics {
   lastSeenAt: Date | null
 }
 
-const MAX_EVENTS = 20_000
+const MAX_EVENTS = CLIENT_LIMITS.eventBuffer
 
 const POLL_INTERVAL_MS = 30_000
 const MAX_RECONNECT_BEFORE_POLL = 3

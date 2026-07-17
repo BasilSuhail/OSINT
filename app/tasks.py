@@ -19,28 +19,14 @@ from celery.schedules import crontab
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.brain.enrich import _enrich_body
-from app.brain.task import _narrate_body
-from app.briefing.task import _briefing_body
 from app.celery_app import app
 from app.cii.scoring import CII_METHOD_VERSION
-from app.cii.task import _compute_cii_body
-from app.composite.task import _compute_composite_body
-from app.corroboration.task import _sensor_checks_body
 from app.db import session_scope
 from app.db_models import EventRow, IngestFailureRow, IngestHealthRow
-from app.disagreement.task import _disagreement_body
-from app.enrichment.footprint import USER_AGENT, footprint_for_event
-from app.fetcher_registry import get_fetcher
-from app.housekeeping import run_retention_and_cap, vacuum_events
-from app.journal.task import _journal_daily_body
 from app.persistence import upsert_events
 from app.runtime import load as runtime_load
 from app.settings import settings
 from app.sources.rss_registry import feed_cadence_map
-from app.stories.task import _cluster_stories_body
-from app.validator.task import _validator_body
-from app.watchdog import check_sources
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +72,8 @@ def _record_failure(session: Session, *, source: str, exc: BaseException) -> Non
 
 def _run_fetcher_body(name: str) -> dict[str, Any]:
     """Plain-function task body — testable without Celery."""
+    from app.fetcher_registry import get_fetcher
+
     fetcher = get_fetcher(name)
     try:
         events = fetcher.fetch()
@@ -125,6 +113,8 @@ def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
     """Run the composite worker (read events, aggregate, normalise, score, upsert)."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.composite.task import _compute_composite_body
+
     return _compute_composite_body(method_version=method_version)
 
 
@@ -141,6 +131,8 @@ def journal_daily() -> dict[str, Any]:
     grade every prediction whose window has matured (issue #292)."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.journal.task import _journal_daily_body
+
     return _journal_daily_body()
 
 
@@ -157,6 +149,8 @@ def cluster_stories() -> dict[str, Any]:
     (issue #296)."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.stories.task import _cluster_stories_body
+
     return _cluster_stories_body()
 
 
@@ -173,6 +167,8 @@ def sensor_check_stories() -> dict[str, Any]:
     rolling window (issue #361)."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.corroboration.task import _sensor_checks_body
+
     return _sensor_checks_body()
 
 
@@ -189,6 +185,8 @@ def score_disagreement() -> dict[str, Any]:
     (issue #370)."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.disagreement.task import _disagreement_body
+
     return _disagreement_body()
 
 
@@ -206,6 +204,8 @@ def extract_claims() -> dict[str, Any]:
     agreement rate is measured."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.validator.task import _validator_body
+
     return _validator_body()
 
 
@@ -221,6 +221,8 @@ def weekly_briefing() -> dict[str, Any]:
     """Weekly briefing export — the newsletter artifact (issue #401)."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.briefing.task import _briefing_body
+
     return _briefing_body()
 
 
@@ -237,6 +239,8 @@ def brain_narrate() -> dict[str, Any]:
     has headroom. Gated; a busy box simply skips and leaves the last narrative."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.brain.task import _narrate_body
+
     return _narrate_body()
 
 
@@ -252,6 +256,8 @@ def brain_enrich() -> dict[str, Any]:
     """The brain (#413): gist + tag window stories that lack one, on idle windows."""
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.brain.enrich import _enrich_body
+
     return _enrich_body()
 
 
@@ -272,6 +278,8 @@ def compute_cii(method_version: str = CII_METHOD_VERSION) -> dict[str, Any]:
     """
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.cii.task import _compute_cii_body
+
     return _compute_cii_body(method_version=method_version)
 
 
@@ -286,6 +294,8 @@ def _enrich_footprints_body(
     that row untouched for the next run. ``upsert_events`` never updates existing
     rows (ON CONFLICT DO NOTHING), so this is the only path that mutates them.
     """
+    from app.enrichment.footprint import USER_AGENT, footprint_for_event
+
     owns_client = client is None
     if client is None:
         client = httpx.Client(timeout=30.0, headers={"User-Agent": USER_AGENT})
@@ -334,6 +344,8 @@ def enrich_footprints(limit: int | None = None) -> dict[str, Any]:
 @app.task(name="app.tasks.ingest_watchdog")
 def ingest_watchdog() -> dict[str, Any]:
     """Walk ingest_health and flag any source whose last_success has gone stale."""
+    from app.watchdog import check_sources
+
     with session_scope() as session:
         return check_sources(session)
 
@@ -349,6 +361,8 @@ def run_housekeeping() -> dict[str, int]:
     """
     if skipped := _skip_optional_heavy():
         return skipped
+    from app.housekeeping import run_retention_and_cap, vacuum_events
+
     with session_scope() as session:
         result = run_retention_and_cap(session)
         bind = session.get_bind()

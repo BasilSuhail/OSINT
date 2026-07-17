@@ -2,6 +2,23 @@ import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "./t
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
+function intEnv(raw: string | undefined, fallback: number, min: number, max: number): number {
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(max, Math.max(min, parsed))
+}
+
+export const CLIENT_LIMITS = {
+  eventWindow: intEnv(process.env.NEXT_PUBLIC_EVENT_WINDOW_LIMIT, 5000, 500, 10000),
+  eventBuffer: intEnv(process.env.NEXT_PUBLIC_EVENT_BUFFER_LIMIT, 7500, 1000, 15000),
+  hazardEvents: intEnv(process.env.NEXT_PUBLIC_HAZARD_EVENT_LIMIT, 2500, 250, 10000),
+  cyberEvents: intEnv(process.env.NEXT_PUBLIC_CYBER_EVENT_LIMIT, 1000, 250, 5000),
+  firmsEvents: intEnv(process.env.NEXT_PUBLIC_FIRMS_EVENT_LIMIT, 1000, 250, 5000),
+  scoreRows: intEnv(process.env.NEXT_PUBLIC_SCORE_ROW_LIMIT, 2000, 500, 10000),
+  analyticsRows: intEnv(process.env.NEXT_PUBLIC_ANALYTICS_ROW_LIMIT, 7500, 1000, 10000),
+}
+
 // Local API always has a valid default base; kept as a named export so call
 // sites read the same way the old isSupabaseConfigured did.
 export const isApiConfigured = true
@@ -36,7 +53,7 @@ export interface ScoreQuery {
   limit?: number
 }
 
-export async function fetchScores(params: number | ScoreQuery = 5000): Promise<ScoreRow[]> {
+export async function fetchScores(params: number | ScoreQuery = CLIENT_LIMITS.scoreRows): Promise<ScoreRow[]> {
   const query = typeof params === "number" ? { limit: params } : params
   const qs = new URLSearchParams()
   if (query.scoreName) qs.set("score_name", query.scoreName)

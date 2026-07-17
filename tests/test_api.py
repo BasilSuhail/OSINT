@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+import app.api as api
 from app.api import app, get_session
 from app.db_models import EventRow, IngestHealthRow, ScoreRow
 
@@ -63,20 +64,24 @@ def test_events_returns_rows(db_session):
 
 def test_events_accepts_dashboard_analytics_limit(db_session):
     client = _client(db_session)
-    resp = client.get("/events?limit=20000")
+    resp = client.get("/events?limit=10000")
     assert resp.status_code == 200
 
 
 def test_scores_accepts_dashboard_analytics_limit(db_session):
     client = _client(db_session)
-    resp = client.get("/scores?limit=20000")
+    resp = client.get("/scores?limit=10000")
     assert resp.status_code == 200
 
 
 def test_scores_rejects_limits_above_contract(db_session):
     client = _client(db_session)
-    resp = client.get("/scores?limit=20001")
+    resp = client.get("/scores?limit=10001")
     assert resp.status_code == 422
+
+
+def test_api_default_limit_never_exceeds_max_limit():
+    assert api.API_DEFAULT_LIMIT <= api.API_MAX_LIMIT
 
 
 def test_scores_filters_by_score_name_before_limit(db_session):

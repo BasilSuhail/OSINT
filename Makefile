@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: start stop off up down down-soft logs data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: start stop off up down down-soft clean-dev logs data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 start:  ## Start the full local app (Docker stores + backend + frontend)
 	@bash scripts/dev-up.sh
@@ -16,6 +16,9 @@ down-soft: stop  ## Alias for a no-teardown stop
 
 off: stop  ## Stop the app, then quit Docker Desktop on macOS
 	@bash scripts/dev-off.sh
+
+clean-dev:  ## Stop stale frontend/build processes and clear generated Next cache
+	@bash scripts/dev-clean.sh
 
 up: start  ## Alias for make start
 

@@ -18,7 +18,7 @@ import {
   ZAxis,
 } from "recharts"
 import { useEvents } from "@/app/providers"
-import { fetchEvents, fetchIngestHealth, fetchScores, fetchSourceCoverage } from "@/lib/apiClient"
+import { CLIENT_LIMITS, fetchEvents, fetchIngestHealth, fetchScores, fetchSourceCoverage } from "@/lib/apiClient"
 import { buildNewsStories } from "@/lib/dashboardHelpers"
 import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "@/lib/types"
 
@@ -215,7 +215,7 @@ function useScoreSeries(scoreName: string, days: number = COMPOSITE_BUCKETS): { 
   const [data, setData] = useState<ScoreRow[]>([])
   useEffect(() => {
     const since = subDays(new Date(), days).toISOString()
-    fetchScores({ scoreName, since, limit: 5000 })
+    fetchScores({ scoreName, since, limit: CLIENT_LIMITS.scoreRows })
       .then(setData)
       .catch(() => {/* ignore fetch errors */})
   }, [scoreName, days])
@@ -457,10 +457,10 @@ function useHindsightCorrelation(): HindsightStats {
   const [quakeRows, setQuakeRows] = useState<EventRow[]>([])
   useEffect(() => {
     const since = subDays(new Date(), 90).toISOString()
-    void fetchScores({ scoreName: "cii_v1", since, limit: 20000 })
+    void fetchScores({ scoreName: "cii_v1", since, limit: CLIENT_LIMITS.analyticsRows })
       .then(setCiiRows)
       .catch(() => {/* ignore fetch errors */})
-    void fetchEvents({ sources: ["usgs-quake"], since, limit: 20000 })
+    void fetchEvents({ sources: ["usgs-quake"], since, limit: CLIENT_LIMITS.analyticsRows })
       .then((rows) => { setQuakeRows(rows) })
       .catch(() => {/* ignore fetch errors */})
   }, [])
@@ -516,7 +516,7 @@ function useCiiByCountry(): CiiCountryRow[] {
   const [rows, setRows] = useState<ScoreRow[]>([])
   useEffect(() => {
     const since = subDays(new Date(), 30).toISOString()
-    fetchScores({ scoreName: "cii_v1", since, limit: 20000 })
+    fetchScores({ scoreName: "cii_v1", since, limit: CLIENT_LIMITS.analyticsRows })
       .then(setRows)
       .catch(() => {/* ignore fetch errors */})
   }, [])

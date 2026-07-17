@@ -19,6 +19,31 @@ OLLAMA_WAIT_SECONDS="${OLLAMA_WAIT_SECONDS:-30}"
 # Matches settings.brain_model (env BRAIN_MODEL overrides both).
 OLLAMA_BRAIN_MODEL="${BRAIN_MODEL:-qwen2.5:1.5b-instruct-q4_K_M}"
 
+load_frontend_public_env() {
+  [ -f .env ] || return 0
+
+  local line key value
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ""|\#*) continue ;;
+    esac
+
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+      NEXT_PUBLIC_API_URL|NEXT_PUBLIC_EVENT_WINDOW_LIMIT|NEXT_PUBLIC_EVENT_BUFFER_LIMIT|NEXT_PUBLIC_HAZARD_EVENT_LIMIT|NEXT_PUBLIC_CYBER_EVENT_LIMIT|NEXT_PUBLIC_FIRMS_EVENT_LIMIT|NEXT_PUBLIC_SCORE_ROW_LIMIT|NEXT_PUBLIC_ANALYTICS_ROW_LIMIT)
+        if [ -z "${!key+x}" ]; then
+          case "$value" in
+            \"*\") value="${value#\"}"; value="${value%\"}" ;;
+            \'*\') value="${value#\'}"; value="${value%\'}" ;;
+          esac
+          export "$key=$value"
+        fi
+        ;;
+    esac
+  done < .env
+}
+
 docker_ready() {
   if [ -n "${DOCKER_HOST:-}" ]; then
     if docker info >/dev/null 2>&1; then
@@ -278,6 +303,7 @@ spawn_frontend() {
     return
   fi
 
+  load_frontend_public_env
   nohup bash -lc "cd osint-frontend && pnpm dev" >"logs/frontend.log" 2>&1 &
   echo $! >"$pidfile"
   echo "  frontend started (pid $!) → logs/frontend.log"

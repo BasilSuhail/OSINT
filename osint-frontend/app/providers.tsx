@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import useSWR from "swr"
 import { EventBuffer, FIREHOSE_EXCLUDE, type ConnectionDiagnostics, type ConnectionStatus } from "@/lib/realtime"
-import { fetchEvents, isApiConfigured } from "@/lib/apiClient"
+import { CLIENT_LIMITS, fetchEvents, isApiConfigured } from "@/lib/apiClient"
 import type { EventRow } from "@/lib/types"
 
 interface RealtimeContextValue {
@@ -14,7 +14,6 @@ interface RealtimeContextValue {
 const RealtimeContext = createContext<RealtimeContextValue | null>(null)
 
 const WINDOW_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
-const TARGET_ROWS = 20_000
 
 /**
  * Pull the most-recent events into the buffer in 1000-row pages.
@@ -33,20 +32,20 @@ const TARGET_ROWS = 20_000
  */
 async function fetchRecentEvents(): Promise<EventRow[]> {
   const since = new Date(Date.now() - WINDOW_MS).toISOString()
-  return fetchEvents({ since, exclude: FIREHOSE_EXCLUDE, limit: TARGET_ROWS })
+  return fetchEvents({ since, exclude: FIREHOSE_EXCLUDE, limit: CLIENT_LIMITS.eventWindow })
 }
 
 /** abuse.ch cyber (~20k rows) is dense enough to saturate the firehose, so it
  *  is excluded from the main pull and fetched here capped — enough to render
  *  the recent C2 layer on the map without bloating the shared buffer. */
 async function fetchCyberEvents(): Promise<EventRow[]> {
-  return fetchEvents({ sources: ["abuse-ch-urlhaus", "abuse-ch-feodo"], limit: 2000 })
+  return fetchEvents({ sources: ["abuse-ch-urlhaus", "abuse-ch-feodo"], limit: CLIENT_LIMITS.cyberEvents })
 }
 
 /** NASA FIRMS (100k+ rows) is globe-only; the globe caps at 1500 points, so a
  *  small capped pull keeps the fire layer alive without flooding the buffer. */
 async function fetchFirmsEvents(): Promise<EventRow[]> {
-  return fetchEvents({ sources: ["nasa-firms"], limit: 1500 })
+  return fetchEvents({ sources: ["nasa-firms"], limit: CLIENT_LIMITS.firmsEvents })
 }
 
 /** Sparse but high-value hazard sources. NASA FIRMS alone emits ~50k rows in
@@ -62,7 +61,7 @@ async function fetchHazardEvents(): Promise<EventRow[]> {
   // No `since` filter: GDACS volcanoes / long-running cyclones can have started
   // months ago yet still be active, so the 30-day window would drop them. The
   // hazard sources are sparse (hundreds of rows), so pulling the lot is cheap.
-  return fetchEvents({ sources: HAZARD_SOURCES, limit: TARGET_ROWS })
+  return fetchEvents({ sources: HAZARD_SOURCES, limit: CLIENT_LIMITS.hazardEvents })
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {

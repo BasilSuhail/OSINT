@@ -39,7 +39,8 @@ from app.settings import settings
 
 app = FastAPI(title="OSINT local API", version="1.0")
 app.state.event_source = subscribe_new_events
-API_MAX_LIMIT = 20_000
+API_MAX_LIMIT = settings.api_max_limit
+API_DEFAULT_LIMIT = min(settings.api_default_limit, API_MAX_LIMIT)
 
 app.add_middleware(
     CORSMiddleware,
@@ -175,7 +176,7 @@ def events(
     sources: str | None = Query(default=None),
     exclude: str | None = Query(default=None),
     country: str | None = Query(default=None),
-    limit: int = Query(default=5000, ge=1, le=API_MAX_LIMIT),
+    limit: int = Query(default=API_DEFAULT_LIMIT, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
     stmt = select(EventRow).order_by(EventRow.occurred_at.desc()).limit(limit)
     if since is not None:
@@ -197,7 +198,7 @@ def scores(
     score_name: str | None = Query(default=None),
     since: datetime | None = Query(default=None),
     country: str | None = Query(default=None),
-    limit: int = Query(default=5000, ge=1, le=API_MAX_LIMIT),
+    limit: int = Query(default=API_DEFAULT_LIMIT, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
     stmt = select(ScoreRow).order_by(ScoreRow.bucket_start.desc()).limit(limit)
     if score_name is not None:
