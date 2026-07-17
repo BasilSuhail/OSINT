@@ -77,6 +77,8 @@ def evaluate_answer(
         citation_ok = qa.citation_compliant(answer, len(sources))
         if not citation_ok:
             raise ValueError("model returned an uncited answer")
+        #: Sentence-level claim check (#413 item 4): which sentences no story backs.
+        claim_report = qa.check_claims(answer, qa.story_support_texts(session, sources))
         return {
             "question": spec.question,
             "model": model,
@@ -89,6 +91,8 @@ def evaluate_answer(
             "invalid_citations": invalid,
             "citation_ok": citation_ok,
             "citation_repaired": repaired,
+            "claims": claim_report["claims"],
+            "unsupported_claims": claim_report["unsupported"],
             "trace": trace,
             "rubric": qa_rubric.score_answer(
                 spec, answer=answer, stories=sources, invalid_citations=invalid
@@ -108,6 +112,8 @@ def evaluate_answer(
             "invalid_citations": [],
             "citation_ok": False,
             "citation_repaired": False,
+            "claims": [],
+            "unsupported_claims": None,
             "trace": trace,
             "error": f"{type(exc).__name__}: {exc}",
             "rubric": qa_rubric.score_answer(
@@ -185,8 +191,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "| Model | OK | Rubric | "
         + " | ".join(qa_rubric.DIMENSIONS)
-        + " | Median latency ms | Invalid citations |",
-        "|---|---:|---:|" + "---:|" * len(qa_rubric.DIMENSIONS) + "---:|---:|",
+        + " | Median latency ms | Invalid citations | Unsupported claims |",
+        "|---|---:|---:|" + "---:|" * len(qa_rubric.DIMENSIONS) + "---:|---:|---:|",
     ]
     for model in report["models"]:
         rows = [r for r in report["results"] if r["model"] == model]
@@ -194,6 +200,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         latencies = sorted(r["elapsed_ms"] for r in ok_rows)
         median = latencies[len(latencies) // 2] if latencies else None
         invalid = sum(len(r["invalid_citations"]) for r in rows)
+        unsupported = sum(r.get("unsupported_claims") or 0 for r in rows)
         rubrics = [r.get("rubric") or {} for r in rows]
         passed = sum(1 for rub in rubrics if rub.get("passed"))
         dims = " | ".join(
@@ -201,7 +208,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         )
         lines.append(
             f"| `{model}` | {len(ok_rows)}/{len(rows)} | {passed}/{len(rows)} | {dims} "
-            f"| {median or 'n/a'} | {invalid} |"
+            f"| {median or 'n/a'} | {invalid} | {unsupported} |"
         )
 
     lines.extend(["", "## Runs", ""])
@@ -218,8 +225,12 @@ def render_markdown(report: dict[str, Any]) -> str:
                 f"- invalid_citations: {row['invalid_citations']}",
                 f"- citation_ok: {row.get('citation_ok', False)}",
                 f"- citation_repaired: {row.get('citation_repaired', False)}",
+                f"- unsupported_claims: {row.get('unsupported_claims')}",
             ]
         )
+        for claim in row.get("claims") or []:
+            if not claim.get("supported"):
+                lines.append(f"  - unsupported: {claim.get('text')}")
         rubric = row.get("rubric") or {}
         failed = [d for d in qa_rubric.DIMENSIONS if not rubric.get(d)]
         lines.append(f"- rubric_passed: {bool(rubric.get('passed'))}")
