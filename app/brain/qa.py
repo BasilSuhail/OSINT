@@ -218,6 +218,16 @@ SEMANTIC_RELEVANT_MIN: float = 0.55
 KEYWORD_RELEVANT_MIN: float = 1 / 3
 
 
+def _age_hours(last_seen: datetime, now: datetime) -> float:
+    """Hours since a story last moved (#469). The model gets this per story so
+    freshness questions get real ages, not guesses from as_of.
+
+    SQLite hands back naive datetimes; everything stored is UTC."""
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=UTC)
+    return round((now - last_seen).total_seconds() / 3600, 1)
+
+
 def _question_terms(question: str | None) -> list[str]:
     if not question:
         return []
@@ -647,6 +657,7 @@ def build_qa_stories(
                 "n": i,
                 "story_id": story.id,
                 "title": story.title,
+                "age_h": _age_hours(story.last_seen, now),
                 "gist": gists[story.id].gist if story.id in gists else None,
                 "corroboration": round(float(corro.score), 3) if corro else None,
                 "outlet_count": story.outlet_count,
@@ -773,14 +784,20 @@ def build_qa_prompt(
         "question using ONLY the JSON context below. The context includes a numbered "
         '"stories" list selected by local question-driven retrieval; each story has a '
         "corroboration score (how many INDEPENDENT outlets tell it), a contested flag "
-        "(do tellers disagree sharply), and sensor verdicts (machine-confirmed claims).\n\n"
+        "(do tellers disagree sharply), sensor verdicts (machine-confirmed claims), and "
+        "age_h — hours since the story last moved.\n\n"
         "Rules:\n"
         "- Write like a sharp, neutral analyst talking to a person: plain "
         "conversational English, direct and specific, no boilerplate.\n"
+        "- Speak as an analyst who read the local reporting — never say 'the "
+        "context', 'the provided context', or 'the available data'. Say 'local "
+        "reporting shows…' or 'no local reporting covers…' instead.\n"
         "- Answer THE question asked, freshly worded every time. Never repeat or "
         "rephrase an earlier answer from RECENT CONVERSATION.\n"
         "- If the question asks for a number, date, or name and the context has "
         "it, lead with it in the first sentence.\n"
+        "- Direct yes/no questions get a direct opening — yes, no, or unclear, "
+        "with its qualifier — then the evidence.\n"
         "- Opinion or judgement questions (who is right, who is the bad guy): do "
         "not take sides. Say the data supports no judgement, then lay out what "
         "each side says or emphasizes, and leave the conclusion to the reader.\n"
@@ -795,6 +812,9 @@ def build_qa_prompt(
         "the context shows it.\n"
         "- Say when a claim is sensor-confirmed; mark heavy sensor-unconfirmed "
         "claims as unverified.\n"
+        "- Questions about how old or fresh the data is: answer from as_of and "
+        "the stories' age_h — the newest story's age is how fresh local "
+        "reporting is.\n"
         '- CONTEXT.coverage shows per-country local feed coverage (events, share, "sources", '
         'independent "owners", "thin" flag). When the answer centers on a country whose '
         "coverage is thin, say local coverage is thin (few sources/owners) before any "
