@@ -801,8 +801,12 @@ def build_qa_prompt(
         "- Opinion or judgement questions (who is right, who is the bad guy): do "
         "not take sides. Say the data supports no judgement, then lay out what "
         "each side says or emphasizes, and leave the conclusion to the reader.\n"
-        "- Answer only from the context. If it is not there, reply exactly: "
-        f"{REFUSAL_ANSWER} Invent no facts, names, places, or numbers.\n"
+        "- Answer only from the context. Invent no facts, names, places, or "
+        "numbers.\n"
+        "- Refuse ONLY when nothing in the context relates to the question — "
+        f"then reply exactly: {REFUSAL_ANSWER} If related stories exist but "
+        "answer the question only partly, do not refuse: say what they show, "
+        "with caveats, and name what is not known.\n"
         "- When a claim rests on a story, cite it as [n] using that story's number.\n"
         "- Every non-refusal answer that uses any story MUST include at least one valid "
         "[n] citation from the numbered stories list.\n"
@@ -988,6 +992,31 @@ def build_echo_retry_prompt(
         f"NEW QUESTION: {question}\n"
         f"PREVIOUS_ANSWER: {previous_answer}\n"
         f"DRAFT_ANSWER: {answer}"
+    )
+
+
+def build_refusal_retry_prompt(qa_context: dict[str, Any], question: str) -> str:
+    """One retry when the model refuses despite relevant local evidence (#467).
+
+    Fired only when retrieval itself judged the stories plausibly relevant
+    (has_relevant_evidence, #460) — the model's refusal contradicts its own
+    context. A retry that still refuses is kept: refusal beats invention.
+    """
+    return (
+        "You refused, but the numbered stories in the context ARE relevant to "
+        "the question. Do not refuse.\n\n"
+        "Rules:\n"
+        "- Answer from those stories: say what they show, with caveats, and "
+        "name what is not known. Partial evidence deserves a partial answer, "
+        "not a refusal.\n"
+        "- Use ONLY the JSON context; cite stories as [n]. Invent nothing.\n"
+        "- Keep uncertainty framing: single-source claims stay 'reported', "
+        "contested stays disputed.\n"
+        "- Only if truly NOTHING in the context relates to the question, reply "
+        f"exactly: {REFUSAL_ANSWER}\n"
+        '- Return a JSON object with exactly one key: "answer".\n\n'
+        f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
+        f"QUESTION: {question}"
     )
 
 
