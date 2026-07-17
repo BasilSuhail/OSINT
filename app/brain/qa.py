@@ -368,6 +368,8 @@ _CandidateRows = list[tuple[StoryRow, StoryCorroborationRow | None]]
 #: "semantic", matched-term fraction for "keyword", None for "fill" — the
 #: loudness-ordered padding that never counts as evidence (#413 item 3).
 _RetrievalMeta = dict[int, tuple[str, float | None]]
+#: Cap on per-list entries in the debug trace (#413 item 10).
+_TRACE_REJECTED: int = 10
 
 
 def _select_rows(
@@ -378,6 +380,7 @@ def _select_rows(
     question: str | None,
     anchored: str | None,
     limit: int,
+    trace: dict[str, Any] | None = None,
 ) -> tuple[_CandidateRows, _RetrievalMeta]:
     """Pick the context stories: semantic first, repaired keywords as fallback.
 
@@ -393,17 +396,38 @@ def _select_rows(
     widens retrieval without drowning the question itself. Vectorless
     candidates fill remaining slots in loudness order. Skipped entirely when no
     candidate has a vector; any embed failure falls back to the keyword ranker.
+
+    Question-understood trace (#413 item 10): pass a dict as `trace` and it is
+    filled in place with why retrieval chose what it chose — parsed intents,
+    terms, gate rejections, method, and scored-but-rejected candidates.
+    Debug/eval-only; behavior is identical when no trace is requested.
     """
     intents = question_intents(question)
+    if trace is not None:
+        trace.update(
+            {
+                "intents": sorted(intents),
+                "terms": _question_terms(anchored or question),
+                "candidates": len(candidate_rows),
+                "intent_rejected": [],
+                "method": "loudness",
+                "rejected": [],
+            }
+        )
     if intents:
-        candidate_rows = [
-            (story, corro)
-            for story, corro in candidate_rows
-            if (gist := gists.get(story.id)) is None
-            or gist.category in ("other", None)
-            or gist.category in intents
-        ]
+        kept: _CandidateRows = []
+        for story, corro in candidate_rows:
+            gist = gists.get(story.id)
+            if gist is None or gist.category in ("other", None) or gist.category in intents:
+                kept.append((story, corro))
+            elif trace is not None and len(trace["intent_rejected"]) < _TRACE_REJECTED:
+                trace["intent_rejected"].append(
+                    {"story_id": story.id, "title": story.title, "category": gist.category}
+                )
+        candidate_rows = kept
         if not candidate_rows:
+            if trace is not None:
+                trace["method"] = "none"
             return [], {}
     story_ids = [s.id for s, _ in candidate_rows]
     if question:
@@ -421,6 +445,8 @@ def _select_rows(
                 query_vectors = client.embed(query_texts)
             except Exception:
                 query_vectors = None
+                if trace is not None:
+                    trace["embed_failed"] = True
             if query_vectors:
                 candidates = [(sid, vec) for sid, vec in vector_rows]
                 best: dict[int, float] = {}
@@ -432,6 +458,17 @@ def _select_rows(
                 by_id = {s.id: (s, c) for s, c in candidate_rows}
                 chosen = [by_id[sid] for sid in ranked_ids[:limit] if sid in by_id]
                 meta: _RetrievalMeta = {s.id: ("semantic", round(best[s.id], 3)) for s, _ in chosen}
+                if trace is not None:
+                    trace["method"] = "semantic"
+                    trace["rejected"] = [
+                        {
+                            "story_id": sid,
+                            "title": by_id[sid][0].title,
+                            "relevance": round(best[sid], 3),
+                        }
+                        for sid in ranked_ids[limit : limit + _TRACE_REJECTED]
+                        if sid in by_id
+                    ]
                 if len(chosen) < limit:
                     have = {s.id for s, _ in chosen}
                     fill = [rc for rc in candidate_rows if rc[0].id not in have]
@@ -445,7 +482,14 @@ def _select_rows(
             gists=gists,
             member_texts=_member_texts(session, story_ids),
             terms=terms,
-        )[:limit]
+        )
+        if trace is not None:
+            trace["method"] = "keyword"
+            trace["rejected"] = [
+                {"story_id": row[0].id, "title": row[0].title, "relevance": round(fraction, 3)}
+                for row, fraction in ranked[limit : limit + _TRACE_REJECTED]
+            ]
+        ranked = ranked[:limit]
         return (
             [row for row, _ in ranked],
             {row[0].id: ("keyword", round(fraction, 3)) for row, fraction in ranked},
@@ -461,9 +505,24 @@ def build_qa_stories(
     now: datetime | None = None,
     question: str | None = None,
     history: list[dict[str, Any]] | None = None,
+    trace: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Relevant recent stories, provenance-tagged with trust signals + outlet sources."""
     now = now or datetime.now(UTC)
+    if trace is not None:
+        trace.update(
+            {
+                "question": question,
+                "anchored": None,
+                "intents": [],
+                "terms": [],
+                "candidates": 0,
+                "intent_rejected": [],
+                "method": "none",
+                "rejected": [],
+                "selected": [],
+            }
+        )
     cutoff = now - timedelta(hours=_QA_WINDOW_H)
     candidate_limit = max(limit, _QA_CANDIDATES)
     candidate_rows = session.execute(
@@ -487,8 +546,16 @@ def build_qa_stories(
         ).scalars()
     }
     anchored = build_retrieval_text(question, history) if question else question
+    if trace is not None and anchored != question:
+        trace["anchored"] = anchored
     rows, retrieval_meta = _select_rows(
-        session, candidate_rows, gists=gists, question=question, anchored=anchored, limit=limit
+        session,
+        candidate_rows,
+        gists=gists,
+        question=question,
+        anchored=anchored,
+        limit=limit,
+        trace=trace,
     )
     story_ids = [s.id for s, _ in rows]
     if not story_ids:
@@ -542,6 +609,17 @@ def build_qa_stories(
                 "relevance": retrieval_meta.get(story.id, ("fill", None))[1],
             }
         )
+    if trace is not None:
+        trace["selected"] = [
+            {
+                "n": s["n"],
+                "story_id": s["story_id"],
+                "title": s["title"],
+                "retrieval": s["retrieval"],
+                "relevance": s["relevance"],
+            }
+            for s in out
+        ]
     return out
 
 
@@ -617,14 +695,20 @@ def build_qa_context(
     now: datetime | None = None,
     question: str | None = None,
     history: list[dict[str, Any]] | None = None,
+    trace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """The model's JSON context. `trace` (debug/eval-only, #413 item 10) is
+    filled in place with the retrieval explanation and stays OUT of the
+    returned context — the model never sees it and the digest is unchanged."""
     snapshot = context.build_snapshot(session, now=now)
     return {
         **snapshot,
         "latest_composite": _latest_composite(session),
         "most_contested": _most_contested(session),
         "scoreboard": _scoreboard(session),
-        "stories": build_qa_stories(session, now=now, question=question, history=history),
+        "stories": build_qa_stories(
+            session, now=now, question=question, history=history, trace=trace
+        ),
     }
 
 

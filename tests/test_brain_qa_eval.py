@@ -18,7 +18,7 @@ def test_evaluate_answer_records_latency_and_invalid_citations(monkeypatch):
     monkeypatch.setattr(
         qa_eval.qa,
         "build_qa_context",
-        lambda session, now=None, question=None: {
+        lambda session, now=None, question=None, trace=None: {
             "as_of": "x",
             "stories": [{"n": 1, "story_id": 5, "title": "x", "sources": ["Reuters"]}],
         },
@@ -54,7 +54,7 @@ def test_evaluate_answer_scores_rubric_on_error_rows(monkeypatch):
     monkeypatch.setattr(
         qa_eval.qa,
         "build_qa_context",
-        lambda session, now=None, question=None: {"as_of": "x", "stories": []},
+        lambda session, now=None, question=None, trace=None: {"as_of": "x", "stories": []},
     )
     monkeypatch.setattr(qa_eval.qa, "build_qa_prompt", lambda ctx, question: "prompt")
 
@@ -80,7 +80,7 @@ def test_evaluate_answer_fails_uncited_story_answer(monkeypatch):
     monkeypatch.setattr(
         qa_eval.qa,
         "build_qa_context",
-        lambda session, now=None, question=None: {
+        lambda session, now=None, question=None, trace=None: {
             "as_of": "x",
             "stories": [{"n": 1, "story_id": 5, "title": "x", "sources": ["Reuters"]}],
         },
@@ -107,7 +107,7 @@ def test_evaluate_answer_repairs_uncited_story_answer(monkeypatch):
     monkeypatch.setattr(
         qa_eval.qa,
         "build_qa_context",
-        lambda session, now=None, question=None: {
+        lambda session, now=None, question=None, trace=None: {
             "as_of": "x",
             "stories": [{"n": 1, "story_id": 5, "title": "x", "sources": ["Reuters"]}],
         },
@@ -136,7 +136,7 @@ def test_run_eval_crosses_questions_and_models(tmp_path, monkeypatch):
     monkeypatch.setattr(
         qa_eval.qa,
         "build_qa_context",
-        lambda session, now=None, question=None: {"as_of": "x", "stories": []},
+        lambda session, now=None, question=None, trace=None: {"as_of": "x", "stories": []},
     )
     monkeypatch.setattr(qa_eval.qa, "build_qa_prompt", lambda ctx, question: "prompt")
 
