@@ -609,6 +609,36 @@ def _deechoed_answer(
     return answer
 
 
+def _derefused_answer(
+    answer: str,
+    *,
+    qa_context: dict,
+    question: str,
+    stories: list[dict],
+) -> str:
+    """One regeneration when the model refuses despite relevant evidence (#467).
+
+    Fires only when retrieval judged its stories plausibly relevant (#460) —
+    an over-refusal, not an honest one. A failed or still-refusing retry keeps
+    the refusal: refusal beats invention. The retry output goes through the
+    same citation check chain as any draft.
+    """
+    if answer.strip() != qa.REFUSAL_ANSWER or not qa.has_relevant_evidence(stories):
+        return answer
+    try:
+        raw = client.generate_json(
+            qa.build_refusal_retry_prompt(qa_context, question),
+            model=settings.qa_model,
+            keep_alive="0",
+        )
+    except Exception:
+        return answer
+    retry = raw.get("answer") if isinstance(raw, dict) else None
+    if isinstance(retry, str) and retry.strip():
+        return retry.strip()
+    return answer
+
+
 def _checked_ask_answer(
     *,
     answer: str,
@@ -687,6 +717,9 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     stories = qa_context.get("stories") or []
     sources = _ask_sources(stories)
     answer = _deechoed_answer(answer, qa_context=qa_context, question=req.question, history=history)
+    answer = _derefused_answer(
+        answer, qa_context=qa_context, question=req.question, stories=stories
+    )
     answer = _checked_ask_answer(
         answer=answer,
         qa_context=qa_context,
@@ -733,6 +766,9 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
         else:
             answer = _deechoed_answer(
                 answer, qa_context=qa_context, question=req.question, history=history
+            )
+            answer = _derefused_answer(
+                answer, qa_context=qa_context, question=req.question, stories=stories
             )
             answer = _checked_ask_answer(
                 answer=answer,
