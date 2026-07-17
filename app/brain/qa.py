@@ -263,15 +263,16 @@ def _select_rows(
     *,
     gists: dict[int, StoryGistRow],
     question: str | None,
+    anchored: str | None,
     limit: int,
 ) -> _CandidateRows:
     """Pick the context stories: semantic first, repaired keywords as fallback.
 
-    Semantic path (#441): embed the question, cosine-rank candidates that have
-    a current-version vector, then fill any remaining slots with vectorless
-    candidates in loudness order. Skipped entirely when no candidate has a
-    vector (saves the Ollama round-trip); any embed failure falls back to the
-    keyword ranker.
+    Semantic path (#441/#451): embed the bare question AND the history-anchored
+    text in one batched call, score each candidate by its best match — history
+    widens retrieval without drowning the question itself. Vectorless
+    candidates fill remaining slots in loudness order. Skipped entirely when no
+    candidate has a vector; any embed failure falls back to the keyword ranker.
     """
     story_ids = [s.id for s, _ in candidate_rows]
     if question:
@@ -282,21 +283,28 @@ def _select_rows(
             )
         ).all()
         if vector_rows:
+            query_texts = [question]
+            if anchored and anchored != question:
+                query_texts.append(anchored)
             try:
-                query_vector = client.embed([question])[0]
+                query_vectors = client.embed(query_texts)
             except Exception:
-                query_vector = None
-            if query_vector is not None:
-                ranked = embeddings.cosine_rank(
-                    query_vector, [(sid, vec) for sid, vec in vector_rows]
-                )
+                query_vectors = None
+            if query_vectors:
+                candidates = [(sid, vec) for sid, vec in vector_rows]
+                best: dict[int, float] = {}
+                for query_vector in query_vectors:
+                    for sid, score in embeddings.cosine_rank(query_vector, candidates):
+                        if score > best.get(sid, float("-inf")):
+                            best[sid] = score
+                ranked_ids = sorted(best, key=lambda sid: -best[sid])
                 by_id = {s.id: (s, c) for s, c in candidate_rows}
-                chosen = [by_id[sid] for sid, _ in ranked[:limit] if sid in by_id]
+                chosen = [by_id[sid] for sid in ranked_ids[:limit] if sid in by_id]
                 if len(chosen) < limit:
                     have = {s.id for s, _ in chosen}
                     chosen.extend(rc for rc in candidate_rows if rc[0].id not in have)
                 return chosen[:limit]
-    terms = _question_terms(question)
+    terms = _question_terms(anchored or question)
     if terms:
         return _rank_story_rows(
             candidate_rows,
@@ -339,8 +347,10 @@ def build_qa_stories(
             )
         ).scalars()
     }
-    retrieval_text = build_retrieval_text(question, history) if question else question
-    rows = _select_rows(session, candidate_rows, gists=gists, question=retrieval_text, limit=limit)
+    anchored = build_retrieval_text(question, history) if question else question
+    rows = _select_rows(
+        session, candidate_rows, gists=gists, question=question, anchored=anchored, limit=limit
+    )
     story_ids = [s.id for s, _ in rows]
     if not story_ids:
         return []
@@ -394,10 +404,40 @@ def build_qa_stories(
     return out
 
 
-#: How much of a previous answer rides along for anchoring/prompting (#444).
+#: How much of a previous answer rides along for retrieval anchoring (#444).
 _HISTORY_ANSWER_CHARS: int = 300
+#: The prompt sees far less of each previous answer (#451) — enough to resolve
+#: "that", too little to parrot back.
+_PROMPT_ANSWER_CHARS: int = 120
 #: Exchanges the prompt may carry — mirrors the API's max_length cap.
 MAX_HISTORY: int = 3
+
+_ECHO_NGRAM: int = 5
+_ECHO_THRESHOLD: float = 0.3
+
+
+def _shingles(text: str, n: int = _ECHO_NGRAM) -> set[tuple[str, ...]]:
+    tokens = _TERM_RE.findall(text.lower())
+    return {tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1)}
+
+
+def answer_echoes(previous: str, current: str) -> bool:
+    """Did the model recycle its previous answer? (#451)
+
+    Word 5-gram overlap against the smaller answer — catches copied and
+    lightly-edited sentences. Canned answers (refusal, no-evidence) are exempt:
+    repeating an honest refusal is correct behaviour, not an echo.
+    """
+    if not previous or not current:
+        return False
+    canned = (REFUSAL_ANSWER, NO_EVIDENCE_ANSWER)
+    if previous.strip() in canned or current.strip() in canned:
+        return False
+    a = _shingles(previous)
+    b = _shingles(current)
+    if not a or not b:
+        return False
+    return len(a & b) / min(len(a), len(b)) >= _ECHO_THRESHOLD
 
 
 def build_retrieval_text(question: str, history: list[dict[str, Any]] | None) -> str:
@@ -419,12 +459,13 @@ def _conversation_block(history: list[dict[str, Any]] | None) -> str:
     if not history:
         return ""
     turns = "\n".join(
-        f"Q: {h.get('question', '')}\nA: {str(h.get('answer', ''))[:_HISTORY_ANSWER_CHARS]}"
+        f"Q: {h.get('question', '')}\nA: {str(h.get('answer', ''))[:_PROMPT_ANSWER_CHARS]}"
         for h in history[-MAX_HISTORY:]
     )
     return (
-        "RECENT CONVERSATION (use only to resolve references like 'that' or 'it'; "
-        "answer ONLY the new question):\n"
+        "RECENT CONVERSATION (ONLY for resolving references like 'that' or 'it'. "
+        "Never repeat or rephrase these earlier answers — the new answer must be "
+        "freshly worded from CONTEXT and answer only the NEW question):\n"
         f"{turns}\n\n"
     )
 
@@ -458,6 +499,15 @@ def build_qa_prompt(
         "corroboration score (how many INDEPENDENT outlets tell it), a contested flag "
         "(do tellers disagree sharply), and sensor verdicts (machine-confirmed claims).\n\n"
         "Rules:\n"
+        "- Write like a sharp, neutral analyst talking to a person: plain "
+        "conversational English, direct and specific, no boilerplate.\n"
+        "- Answer THE question asked, freshly worded every time. Never repeat or "
+        "rephrase an earlier answer from RECENT CONVERSATION.\n"
+        "- If the question asks for a number, date, or name and the context has "
+        "it, lead with it in the first sentence.\n"
+        "- Opinion or judgement questions (who is right, who is the bad guy): do "
+        "not take sides. Say the data supports no judgement, then lay out what "
+        "each side says or emphasizes, and leave the conclusion to the reader.\n"
         "- Answer only from the context. If it is not there, reply exactly: "
         f"{REFUSAL_ANSWER} Invent no facts, names, places, or numbers.\n"
         "- When a claim rests on a story, cite it as [n] using that story's number.\n"
@@ -545,6 +595,28 @@ def attach_supported_citation(answer: str, stories: list[dict[str, Any]]) -> str
     if best_n and best_score >= _SALVAGE_MIN_TERMS:
         return f"{answer} [{best_n}]"
     return None
+
+
+def build_echo_retry_prompt(
+    qa_context: dict[str, Any], question: str, answer: str, previous_answer: str
+) -> str:
+    """One retry when a draft parrots the previous answer (#451)."""
+    return (
+        "Your draft repeats your previous answer. The user asked a NEW question "
+        "and deserves a fresh, specific answer to it.\n\n"
+        "Rules:\n"
+        "- Answer ONLY the new question, freshly worded. Reuse no sentences from "
+        "PREVIOUS_ANSWER.\n"
+        "- If the new question asks for a number, date, or name and the context "
+        "has it, lead with it.\n"
+        "- Use ONLY the JSON context; cite stories as [n]. If the context cannot "
+        f"answer, reply exactly: {REFUSAL_ANSWER}\n"
+        '- Return a JSON object with exactly one key: "answer".\n\n'
+        f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
+        f"NEW QUESTION: {question}\n"
+        f"PREVIOUS_ANSWER: {previous_answer}\n"
+        f"DRAFT_ANSWER: {answer}"
+    )
 
 
 def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answer: str) -> str:

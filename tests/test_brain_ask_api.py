@@ -527,3 +527,93 @@ def test_ask_salvages_uncited_grounded_answer(monkeypatch):
     )
     assert len(calls) == 1  # no repair round-trip
     app.dependency_overrides.clear()
+
+
+_ECHO_STORIES = {
+    "stories": [
+        {
+            "n": 1,
+            "story_id": 9,
+            "title": "US completes series of strikes on Iran, third this week",
+            "gist": "US strikes Iran a third time this week.",
+            "sources": ["Al Jazeera English"],
+            "corroboration": 0.9,
+            "contested": False,
+            "sensor": {},
+        }
+    ]
+}
+
+_ECHO_HISTORY = [
+    {
+        "question": "is the US attacking iran again?",
+        "answer": (
+            "Yes, the US is launching strikes on Iran again, "
+            "with the third strike occurring this week [1]."
+        ),
+    }
+]
+
+
+def test_ask_regenerates_when_answer_echoes_history(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa, "build_qa_context", lambda session, question=None, history=None: _ECHO_STORIES
+    )
+    calls = iter(
+        [
+            # first generation parrots the previous answer
+            {
+                "answer": (
+                    "Yes, the US is launching strikes on Iran again, "
+                    "with the third strike occurring this week [1]."
+                )
+            },
+            # retry answers the actual question
+            {"answer": "Three strikes so far — the third hit this week per CENTCOM [1]."},
+        ]
+    )
+    seen_prompts: list[str] = []
+
+    def fake_generate(prompt, **kw):
+        seen_prompts.append(prompt)
+        return next(calls)
+
+    monkeypatch.setattr(api.client, "generate_json", fake_generate)
+    body = client.post(
+        "/brain/ask", json={"question": "how many attacks till now?", "history": _ECHO_HISTORY}
+    ).json()
+    assert body["answer"].startswith("Three strikes so far")
+    assert len(seen_prompts) == 2
+    assert "repeat" in seen_prompts[1].lower()
+    app.dependency_overrides.clear()
+
+
+def test_ask_keeps_echoing_answer_when_retry_fails(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(
+        api.qa, "build_qa_context", lambda session, question=None, history=None: _ECHO_STORIES
+    )
+    echoing = {
+        "answer": (
+            "Yes, the US is launching strikes on Iran again, "
+            "with the third strike occurring this week [1]."
+        )
+    }
+    calls = {"n": 0}
+
+    def fake_generate(prompt, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return echoing
+        raise RuntimeError("retry failed")
+
+    monkeypatch.setattr(api.client, "generate_json", fake_generate)
+    body = client.post(
+        "/brain/ask", json={"question": "how many attacks till now?", "history": _ECHO_HISTORY}
+    ).json()
+    # degrade gracefully: an echo beats an error
+    assert "third" in body["answer"]
+    app.dependency_overrides.clear()

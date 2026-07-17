@@ -580,6 +580,34 @@ def _ask_sources(stories: list[dict]) -> list[dict]:
     ]
 
 
+def _deechoed_answer(
+    answer: str,
+    *,
+    qa_context: dict,
+    question: str,
+    history: list[dict],
+) -> str:
+    """One regeneration when the draft parrots the previous answer (#451).
+
+    A retry failure keeps the echoing draft — an echo beats an error.
+    """
+    previous = str(history[-1].get("answer") or "") if history else ""
+    if not previous or not qa.answer_echoes(previous, answer):
+        return answer
+    try:
+        raw = client.generate_json(
+            qa.build_echo_retry_prompt(qa_context, question, answer, previous),
+            model=settings.qa_model,
+            keep_alive="0",
+        )
+    except Exception:
+        return answer
+    retry = raw.get("answer") if isinstance(raw, dict) else None
+    if isinstance(retry, str) and retry.strip() and not qa.answer_echoes(previous, retry):
+        return retry.strip()
+    return answer
+
+
 def _checked_ask_answer(
     *,
     answer: str,
@@ -654,6 +682,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         }
     stories = qa_context.get("stories") or []
     sources = _ask_sources(stories)
+    answer = _deechoed_answer(answer, qa_context=qa_context, question=req.question, history=history)
     answer = _checked_ask_answer(
         answer=answer,
         qa_context=qa_context,
@@ -711,6 +740,9 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
         if not answer:
             answer = "The brain is not working right now."
         else:
+            answer = _deechoed_answer(
+                answer, qa_context=qa_context, question=req.question, history=history
+            )
             answer = _checked_ask_answer(
                 answer=answer,
                 qa_context=qa_context,

@@ -177,6 +177,7 @@ def test_render_markdown_summarizes_models():
                     "contested": True,
                     "refusal": True,
                     "usefulness": True,
+                    "echo": True,
                     "passed": False,
                     "reasons": ["risky/weakly-sourced answer lacks uncertainty language"],
                 },
