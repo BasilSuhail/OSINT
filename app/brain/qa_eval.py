@@ -47,7 +47,9 @@ def evaluate_answer(
 ) -> dict[str, Any]:
     """Run one question/model pair and return measured, machine-checkable facts."""
     spec = _coerce_spec(spec)
-    qa_context = qa.build_qa_context(session, now=now, question=spec.question)
+    #: Question-understood trace (#413 item 10): why retrieval chose each source.
+    trace: dict[str, Any] = {}
+    qa_context = qa.build_qa_context(session, now=now, question=spec.question, trace=trace)
     prompt = qa.build_qa_prompt(qa_context, spec.question)
     started = clock()
     try:
@@ -87,6 +89,7 @@ def evaluate_answer(
             "invalid_citations": invalid,
             "citation_ok": citation_ok,
             "citation_repaired": repaired,
+            "trace": trace,
             "rubric": qa_rubric.score_answer(
                 spec, answer=answer, stories=sources, invalid_citations=invalid
             ),
@@ -105,6 +108,7 @@ def evaluate_answer(
             "invalid_citations": [],
             "citation_ok": False,
             "citation_repaired": False,
+            "trace": trace,
             "error": f"{type(exc).__name__}: {exc}",
             "rubric": qa_rubric.score_answer(
                 spec,
@@ -147,6 +151,30 @@ def run_eval(
         "questions": [s.question for s in spec_list],
         "results": results,
     }
+
+
+def _trace_lines(trace: dict[str, Any]) -> list[str]:
+    """Why each source was selected (#413 item 10), as per-run report lines."""
+    if not trace:
+        return []
+    lines = [
+        f"- understood: intents={trace.get('intents')} terms={trace.get('terms')}",
+        f"- retrieval: {trace.get('method')}"
+        + (" (embed failed)" if trace.get("embed_failed") else "")
+        + f" — {trace.get('candidates', 0)} candidates, "
+        f"{len(trace.get('intent_rejected') or [])} intent-rejected",
+    ]
+    for s in trace.get("selected") or []:
+        relevance = s.get("relevance")
+        lines.append(
+            f"  - [{s.get('n')}] {s.get('title')} — {s.get('retrieval')}"
+            + (f" {relevance}" if relevance is not None else "")
+        )
+    for s in trace.get("rejected") or []:
+        lines.append(f"  - rejected: {s.get('title')} — {s.get('relevance')}")
+    for s in trace.get("intent_rejected") or []:
+        lines.append(f"  - intent-rejected: {s.get('title')} ({s.get('category')})")
+    return lines
 
 
 def render_markdown(report: dict[str, Any]) -> str:
@@ -198,6 +226,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         lines.append(f"- rubric_failed: {failed}")
         for reason in rubric.get("reasons") or []:
             lines.append(f"- reason: {reason}")
+        lines.extend(_trace_lines(row.get("trace") or {}))
         if row["ok"]:
             lines.extend(["", row["answer"] or "", ""])
         else:
