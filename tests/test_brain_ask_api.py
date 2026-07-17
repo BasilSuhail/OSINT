@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -196,6 +198,8 @@ def test_ask_falls_back_to_cited_story_after_failed_repair(monkeypatch):
                     "sources": ["Reuters"],
                     "corroboration": 0.8,
                     "contested": False,
+                    "retrieval": "semantic",
+                    "relevance": 0.8,
                 }
             ]
         },
@@ -294,6 +298,8 @@ def test_ask_stream_falls_back_when_uncited(monkeypatch):
                     "sources": ["Reuters"],
                     "corroboration": 0.8,
                     "contested": False,
+                    "retrieval": "semantic",
+                    "relevance": 0.8,
                 }
             ]
         },
@@ -382,7 +388,8 @@ def test_ask_stream_uses_qa_model_and_evicts(monkeypatch):
 
 def test_ask_no_evidence_fallback_for_wrong_topic(monkeypatch):
     # Retrieval returned an unrelated story and the model can't cite: the old
-    # fallback echoed the unrelated story as the answer; now it must be honest.
+    # fallback echoed the unrelated story as the answer; the split (#459) now
+    # answers the no-answer sentence and demotes the story to closest_matches.
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(
@@ -399,6 +406,8 @@ def test_ask_no_evidence_fallback_for_wrong_topic(monkeypatch):
                     "corroboration": 0.8,
                     "contested": False,
                     "sensor": {},
+                    "retrieval": "fill",
+                    "relevance": None,
                 }
             ]
         },
@@ -407,7 +416,9 @@ def test_ask_no_evidence_fallback_for_wrong_topic(monkeypatch):
         api.client, "generate_json", lambda prompt, **kw: {"answer": "Uncited text."}
     )
     body = client.post("/brain/ask", json={"question": "what about the typhoon?"}).json()
-    assert body["answer"] == api.qa.NO_EVIDENCE_ANSWER
+    assert body["answer"] == api.qa.NO_LOCAL_EVIDENCE_ANSWER
+    assert body["sources"] == []
+    assert [s["story_id"] for s in body["closest_matches"]] == [5]
     app.dependency_overrides.clear()
 
 
@@ -415,8 +426,8 @@ def test_ask_stream_no_evidence_fallback_for_wrong_topic(monkeypatch):
     # Same dynamic as test_ask_no_evidence_fallback_for_wrong_topic above, but
     # through the STREAM endpoint: retrieval returns an unrelated story and
     # neither the draft nor the citation-repair pass produces a valid citation,
-    # so the honest NO_EVIDENCE fallback must win over echoing the unrelated
-    # story as an answer.
+    # so the honest no-answer fallback must win over echoing the unrelated
+    # story as an answer — and the final event demotes it to closest_matches.
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(
@@ -433,6 +444,8 @@ def test_ask_stream_no_evidence_fallback_for_wrong_topic(monkeypatch):
                     "corroboration": 0.8,
                     "contested": False,
                     "sensor": {},
+                    "retrieval": "fill",
+                    "relevance": None,
                 }
             ]
         },
@@ -451,8 +464,12 @@ def test_ask_stream_no_evidence_fallback_for_wrong_topic(monkeypatch):
     ) as resp:
         text = "".join(resp.iter_text())
 
-    assert api.qa.NO_EVIDENCE_ANSWER in text
+    assert api.qa.NO_LOCAL_EVIDENCE_ANSWER in text
     assert "The retrieved story is" not in text
+    final = next(b for b in text.split("\n\n") if "event: final" in b)
+    final_data = json.loads(final.split("data: ", 1)[1])
+    assert final_data["sources"] == []
+    assert [s["story_id"] for s in final_data["closest_matches"]] == [5]
     app.dependency_overrides.clear()
 
 

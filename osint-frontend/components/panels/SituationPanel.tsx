@@ -10,7 +10,12 @@
 
 import { useEffect, useReducer, useRef, useState } from "react"
 import useSWR from "swr"
-import { fetchBrainAsk, fetchBrainNarrative, streamBrainAsk } from "@/lib/apiClient"
+import {
+  fetchBrainAsk,
+  fetchBrainNarrative,
+  streamBrainAsk,
+  type BrainSource,
+} from "@/lib/apiClient"
 import { fetchTopStories, type StoryRow } from "@/lib/analytics"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import {
@@ -89,7 +94,7 @@ function useBrainChat() {
     dispatch({ type: "ask", question })
     setPending(true)
     try {
-      const { answer, sources } = await streamBrainAsk(
+      const { answer, sources, closest_matches } = await streamBrainAsk(
         question,
         {
           onDelta: (text) => dispatch({ type: "delta", text }),
@@ -97,11 +102,11 @@ function useBrainChat() {
         },
         history,
       )
-      dispatch({ type: "finalize", answer, sources })
+      dispatch({ type: "finalize", answer, sources, closest: closest_matches ?? [] })
     } catch {
       try {
-        const { answer, sources } = await fetchBrainAsk(question, history)
-        dispatch({ type: "finalize", answer, sources })
+        const { answer, sources, closest_matches } = await fetchBrainAsk(question, history)
+        dispatch({ type: "finalize", answer, sources, closest: closest_matches ?? [] })
       } catch {
         dispatch({ type: "fail" })
       }
@@ -113,6 +118,16 @@ function useBrainChat() {
   const clear = () => dispatch({ type: "clear" })
 
   return { messages, pending, ask, clear }
+}
+
+function sourceSpans(items: BrainSource[]) {
+  return items.map((s, i) => (
+    <span key={s.n}>
+      [{s.n}] {s.outlets.join(", ") || s.title}
+      {s.contested ? " ⚠" : ""}
+      {i < items.length - 1 ? " · " : ""}
+    </span>
+  ))
 }
 
 function ChatEntry({ m }: { m: ChatMessage }) {
@@ -127,14 +142,12 @@ function ChatEntry({ m }: { m: ChatMessage }) {
       ) : null}
       {m.sources.length > 0 ? (
         <p className="mt-1 text-[11px] leading-snug text-neutral-500">
-          sources:{" "}
-          {m.sources.map((s, i) => (
-            <span key={s.n}>
-              [{s.n}] {s.outlets.join(", ") || s.title}
-              {s.contested ? " ⚠" : ""}
-              {i < m.sources.length - 1 ? " · " : ""}
-            </span>
-          ))}
+          sources: {sourceSpans(m.sources)}
+        </p>
+      ) : null}
+      {m.closest.length > 0 ? (
+        <p className="mt-1 text-[11px] leading-snug text-neutral-600">
+          closest matches — not evidence: {sourceSpans(m.closest)}
         </p>
       ) : null}
     </div>

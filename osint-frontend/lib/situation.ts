@@ -6,6 +6,8 @@ export interface ChatMessage {
   question: string
   answer: string
   sources: BrainSource[]
+  /** Weak-retrieval fallback (#459): near-misses shown separately, never as evidence. */
+  closest: BrainSource[]
   draft: boolean
 }
 
@@ -13,7 +15,7 @@ export type ChatAction =
   | { type: "ask"; question: string }
   | { type: "delta"; text: string }
   | { type: "sources"; sources: BrainSource[] }
-  | { type: "finalize"; answer: string; sources: BrainSource[] }
+  | { type: "finalize"; answer: string; sources: BrainSource[]; closest: BrainSource[] }
   | { type: "fail" }
   | { type: "clear" }
   | { type: "restore"; messages: ChatMessage[] }
@@ -74,7 +76,10 @@ function patchLast(state: ChatMessage[], patch: (last: ChatMessage) => ChatMessa
 export function chatReducer(state: ChatMessage[], action: ChatAction): ChatMessage[] {
   switch (action.type) {
     case "ask":
-      return [...state, { question: action.question, answer: "", sources: [], draft: true }]
+      return [
+        ...state,
+        { question: action.question, answer: "", sources: [], closest: [], draft: true },
+      ]
     case "delta":
       return patchLast(state, (m) => ({ ...m, answer: `${m.answer}${action.text}` }))
     case "sources":
@@ -84,6 +89,7 @@ export function chatReducer(state: ChatMessage[], action: ChatAction): ChatMessa
         ...m,
         answer: action.answer,
         sources: action.sources,
+        closest: action.closest,
         draft: false,
       }))
     case "fail":
@@ -152,5 +158,8 @@ export function parseChatStorage(raw: string | null): ChatMessage[] {
   )
   if (!valid) return []
   //: A draft persisted mid-stream must not reload stuck on "drafting".
-  return (data as ChatMessage[]).slice(-MAX_CHAT_MESSAGES).map((m) => ({ ...m, draft: false }))
+  //: Transcripts saved before #459 lack `closest` — default it.
+  return (data as ChatMessage[])
+    .slice(-MAX_CHAT_MESSAGES)
+    .map((m) => ({ ...m, closest: m.closest ?? [], draft: false }))
 }
