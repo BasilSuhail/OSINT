@@ -881,6 +881,74 @@ def attach_supported_citation(answer: str, stories: list[dict[str, Any]]) -> str
     return None
 
 
+#: Content terms a sentence must share with one story to count as supported,
+#: and the minimum for a sentence to be checkable at all (#413 item 4).
+_CLAIM_MIN_TERMS: int = 2
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def story_support_texts(session: Session, stories: list[dict[str, Any]]) -> dict[int, str]:
+    """Story number → lowercased support text: title + gist + member payload
+    text/keywords. The widest deterministic ground truth we hold locally."""
+    member = _member_texts(session, [int(s["story_id"]) for s in stories])
+    return {
+        int(s["n"]): " ".join(
+            p
+            for p in (
+                str(s.get("title") or "").lower(),
+                str(s.get("gist") or "").lower(),
+                member.get(s["story_id"], ""),
+            )
+            if p
+        )
+        for s in stories
+    }
+
+
+def check_claims(answer: str | None, support_texts: dict[int, str]) -> dict[str, Any]:
+    """Sentence-level claim check (#413 item 4): a [n] citation only proves a
+    story was in context; this maps each answer sentence to the stories that
+    actually back it.
+
+    Deterministic, no model call. A sentence is supported when one story's
+    support text matches at least _CLAIM_MIN_TERMS of its content terms — the
+    cited stories are checked first, then the whole context, so a right claim
+    with the wrong citation stays visible as cited ≠ matched_story. Sentences
+    with fewer than _CLAIM_MIN_TERMS content terms are uncheckable and
+    skipped; canned answers carry no claims.
+    """
+    canned = (REFUSAL_ANSWER, NO_EVIDENCE_ANSWER, NO_LOCAL_EVIDENCE_ANSWER)
+    if not answer or answer.strip() in canned:
+        return {"claims": [], "unsupported": 0}
+    claims: list[dict[str, Any]] = []
+    unsupported = 0
+    for sentence in _SENTENCE_RE.split(answer.strip()):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        cited = [n for n in citation_numbers(sentence) if n in support_texts]
+        patterns = [_term_pattern(t) for t in _question_terms(sentence)]
+        if len(patterns) < _CLAIM_MIN_TERMS:
+            continue
+
+        def _supports(n: int, patterns=tuple(patterns)) -> bool:
+            text = support_texts.get(n, "")
+            return sum(1 for p in patterns if p.search(text)) >= _CLAIM_MIN_TERMS
+
+        matched = next((n for pool in (cited, support_texts) for n in pool if _supports(n)), None)
+        if matched is None:
+            unsupported += 1
+        claims.append(
+            {
+                "text": sentence,
+                "cited": cited,
+                "supported": matched is not None,
+                "matched_story": matched,
+            }
+        )
+    return {"claims": claims, "unsupported": unsupported}
+
+
 def build_echo_retry_prompt(
     qa_context: dict[str, Any], question: str, answer: str, previous_answer: str
 ) -> str:
