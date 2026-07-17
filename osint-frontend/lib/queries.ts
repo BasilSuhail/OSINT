@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { useEvents } from "@/app/providers"
-import { fetchEvents, fetchScores as apiFetchScores } from "./apiClient"
+import { CLIENT_LIMITS, fetchEvents, fetchScores as apiFetchScores } from "./apiClient"
 import { paneForEvent, sourceKeyForEvent, type EventRow, type HazardTypeKey, type Pane, type ScoreRow } from "./types"
 import { hazardKind } from "./hazardSymbols"
 import { isPersistentActiveHazard } from "./hazardActivity"
@@ -113,7 +113,7 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
 }
 
 async function fetchScores(): Promise<ScoreRow[]> {
-  return apiFetchScores(5000)
+  return apiFetchScores(CLIENT_LIMITS.scoreRows)
 }
 
 export interface LatestScore {

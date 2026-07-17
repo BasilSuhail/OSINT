@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     embed_model: str = Field(default="nomic-embed-text")
     runtime_busy_lock_ttl_s: int = Field(default=1800)
     footprint_enrichment_limit: int = Field(default=25)
+    # Local read API caps. Large raw JSON pulls multiply memory across
+    # Postgres, FastAPI, Next dev, browser state, and map render state.
+    api_default_limit: int = Field(default=2000)
+    api_max_limit: int = Field(default=10000)
 
     log_level: str = Field(default="INFO")
     environment: str = Field(default="development")

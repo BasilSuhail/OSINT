@@ -38,10 +38,16 @@ cd osint-frontend && pnpm install && cd ..
 | Everything ON (stores, worker, beat, API, dashboard, Ollama) | `make up` |
 | Everything OFF, keep data | `make stop` |
 | OFF + quit Docker Desktop | `make off` |
+| Clean stale dev processes + Next cache | `make clean-dev` |
 | Restart after a code change | `make stop && make up` |
 | Watch the logs | `make logs` |
 
 Dashboard: **http://localhost:3000** · API health: `curl localhost:8000/health` → `{"status":"ok"}`.
+
+Local dev keeps raw API pulls deliberately capped so the same data is not held
+at full size by Postgres, FastAPI, Next dev, browser state, and the map at once.
+Tune `API_MAX_LIMIT` plus the `NEXT_PUBLIC_*_LIMIT` values in `.env` when moving
+between laptop and Pi-class hardware.
 
 `make up` is self-healing: it opens Docker if needed, skips what already runs,
 and if the Docker daemon has corrupted the compose project (the "No such
