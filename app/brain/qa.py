@@ -158,6 +158,14 @@ REFUSAL_ANSWER = "I don't have data on that."
 NO_EVIDENCE_ANSWER = (
     "I don't have enough local evidence to answer that — closest stories are listed as sources."
 )
+#: No-answer fallback (#413 roadmap item 3): retrieval itself looks off-topic,
+#: so nothing retrieved may be presented as the answer's sources — the API
+#: moves them to a separate closest-matches list instead.
+NO_LOCAL_EVIDENCE_ANSWER = "I do not have enough local evidence for that question."
+#: A semantic pick (cosine vs the question) below this is a weak match.
+SEMANTIC_RELEVANT_MIN: float = 0.55
+#: A keyword pick matching less than this fraction of question terms is weak.
+KEYWORD_RELEVANT_MIN: float = 1 / 3
 
 
 def _question_terms(question: str | None) -> list[str]:
@@ -327,8 +335,10 @@ def _rank_story_rows(
     gists: dict[int, StoryGistRow],
     member_texts: dict[int, str],
     terms: list[str],
-) -> list[tuple[StoryRow, StoryCorroborationRow | None]]:
-    scored: list[tuple[int, int, int, tuple[StoryRow, StoryCorroborationRow | None]]] = []
+) -> list[tuple[tuple[StoryRow, StoryCorroborationRow | None], float]]:
+    """Keyword-ranked (row, relevance) pairs — relevance is the fraction of
+    question terms the story matches (#413 roadmap item 3)."""
+    scored: list[tuple[int, int, int, tuple[StoryRow, StoryCorroborationRow | None], float]] = []
     for story, corro in rows:
         gist = gists.get(story.id)
         title = (story.title or "").lower()
@@ -344,18 +354,20 @@ def _rank_story_rows(
             if p
         )
         patterns = [_term_pattern(term) for term in terms]
-        score = sum(
-            (4 if pattern.search(title) else 1)
-            for pattern in patterns
-            if pattern.search(trust_text)
-        )
+        matched = [pattern for pattern in patterns if pattern.search(trust_text)]
+        score = sum(4 if pattern.search(title) else 1 for pattern in matched)
         if score:
-            scored.append((score, story.outlet_count, story.member_count, (story, corro)))
+            fraction = len(matched) / len(patterns)
+            scored.append((score, story.outlet_count, story.member_count, (story, corro), fraction))
     scored.sort(key=lambda row: (-row[0], -row[1], -row[2]))
-    return [row for *_unused, row in scored]
+    return [(row, fraction) for *_unused, row, fraction in scored]
 
 
 _CandidateRows = list[tuple[StoryRow, StoryCorroborationRow | None]]
+#: story_id → (retrieval method, relevance). Relevance is cosine for
+#: "semantic", matched-term fraction for "keyword", None for "fill" — the
+#: loudness-ordered padding that never counts as evidence (#413 item 3).
+_RetrievalMeta = dict[int, tuple[str, float | None]]
 
 
 def _select_rows(
@@ -366,7 +378,7 @@ def _select_rows(
     question: str | None,
     anchored: str | None,
     limit: int,
-) -> _CandidateRows:
+) -> tuple[_CandidateRows, _RetrievalMeta]:
     """Pick the context stories: semantic first, repaired keywords as fallback.
 
     Intent gate (#413 roadmap item 2): when the bare question names a category
@@ -392,7 +404,7 @@ def _select_rows(
             or gist.category in intents
         ]
         if not candidate_rows:
-            return []
+            return [], {}
     story_ids = [s.id for s, _ in candidate_rows]
     if question:
         vector_rows = session.execute(
@@ -419,19 +431,27 @@ def _select_rows(
                 ranked_ids = sorted(best, key=lambda sid: -best[sid])
                 by_id = {s.id: (s, c) for s, c in candidate_rows}
                 chosen = [by_id[sid] for sid in ranked_ids[:limit] if sid in by_id]
+                meta: _RetrievalMeta = {s.id: ("semantic", round(best[s.id], 3)) for s, _ in chosen}
                 if len(chosen) < limit:
                     have = {s.id for s, _ in chosen}
-                    chosen.extend(rc for rc in candidate_rows if rc[0].id not in have)
-                return chosen[:limit]
+                    fill = [rc for rc in candidate_rows if rc[0].id not in have]
+                    chosen.extend(fill)
+                    meta.update({s.id: ("fill", None) for s, _ in fill})
+                return chosen[:limit], meta
     terms = _question_terms(anchored or question)
     if terms:
-        return _rank_story_rows(
+        ranked = _rank_story_rows(
             candidate_rows,
             gists=gists,
             member_texts=_member_texts(session, story_ids),
             terms=terms,
         )[:limit]
-    return candidate_rows[:limit]
+        return (
+            [row for row, _ in ranked],
+            {row[0].id: ("keyword", round(fraction, 3)) for row, fraction in ranked},
+        )
+    rows = candidate_rows[:limit]
+    return rows, {s.id: ("fill", None) for s, _ in rows}
 
 
 def build_qa_stories(
@@ -467,7 +487,7 @@ def build_qa_stories(
         ).scalars()
     }
     anchored = build_retrieval_text(question, history) if question else question
-    rows = _select_rows(
+    rows, retrieval_meta = _select_rows(
         session, candidate_rows, gists=gists, question=question, anchored=anchored, limit=limit
     )
     story_ids = [s.id for s, _ in rows]
@@ -518,6 +538,8 @@ def build_qa_stories(
                 "contested": bool(div is not None and div >= CONTESTED_THRESHOLD),
                 "sensor": sensors.get(story.id, {}),
                 "sources": [pretty.get(s, s) for s in srcs],
+                "retrieval": retrieval_meta.get(story.id, ("fill", None))[0],
+                "relevance": retrieval_meta.get(story.id, ("fill", None))[1],
             }
         )
     return out
@@ -549,7 +571,7 @@ def answer_echoes(previous: str, current: str) -> bool:
     """
     if not previous or not current:
         return False
-    canned = (REFUSAL_ANSWER, NO_EVIDENCE_ANSWER)
+    canned = (REFUSAL_ANSWER, NO_EVIDENCE_ANSWER, NO_LOCAL_EVIDENCE_ANSWER)
     if previous.strip() in canned or current.strip() in canned:
         return False
     a = _shingles(previous)
@@ -680,7 +702,11 @@ def valid_citations(answer: str, n_sources: int) -> list[int]:
 
 
 def requires_citation(answer: str, n_sources: int) -> bool:
-    return n_sources > 0 and answer.strip() not in (REFUSAL_ANSWER, NO_EVIDENCE_ANSWER)
+    return n_sources > 0 and answer.strip() not in (
+        REFUSAL_ANSWER,
+        NO_EVIDENCE_ANSWER,
+        NO_LOCAL_EVIDENCE_ANSWER,
+    )
 
 
 def citation_compliant(answer: str, n_sources: int) -> bool:
@@ -756,12 +782,34 @@ def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answ
     )
 
 
+def has_relevant_evidence(stories: list[dict[str, Any]]) -> bool:
+    """Does any retrieved story plausibly relate to the question? (#413 item 3)
+
+    Judged from retrieval provenance: a semantic pick needs a decent cosine,
+    a keyword pick a decent term-match fraction. "fill" padding (loudness
+    order, no match signal) never counts as evidence.
+    """
+    for story in stories:
+        relevance = story.get("relevance")
+        if relevance is None:
+            continue
+        retrieval = story.get("retrieval")
+        if retrieval == "semantic" and relevance >= SEMANTIC_RELEVANT_MIN:
+            return True
+        if retrieval == "keyword" and relevance >= KEYWORD_RELEVANT_MIN:
+            return True
+    return False
+
+
 def build_no_evidence_answer(stories: list[dict[str, Any]]) -> str:
     """Honest last resort when a draft can be neither salvaged nor repaired.
 
     Replaces the old "The retrieved story is: ..." template (#446) — Basil
-    never wanted a robotic dump in place of the answer. The closest stories
-    stay visible in the sources row; the sentence just says we can't back the
-    prose with them.
+    never wanted a robotic dump in place of the answer. Split into two modes
+    (#413 item 3): with plausibly relevant retrieval the closest stories stay
+    visible as sources; with weak retrieval the answer must not lean on them
+    at all — the API moves them to a separate closest-matches list.
     """
-    return NO_EVIDENCE_ANSWER if stories else REFUSAL_ANSWER
+    if not stories:
+        return REFUSAL_ANSWER
+    return NO_EVIDENCE_ANSWER if has_relevant_evidence(stories) else NO_LOCAL_EVIDENCE_ANSWER

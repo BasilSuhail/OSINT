@@ -16,6 +16,7 @@ const msg = (over: Partial<ChatMessage> = {}): ChatMessage => ({
   question: "q",
   answer: "a",
   sources: [],
+  closest: [],
   draft: false,
   ...over,
 })
@@ -121,6 +122,7 @@ describe("chatReducer", () => {
       question: "will iran fight back?",
       answer: "",
       sources: [],
+      closest: [],
       draft: true,
     })
   })
@@ -148,8 +150,36 @@ describe("chatReducer", () => {
   it("finalize replaces answer and sources and ends draft", () => {
     const state = chatReducer([], { type: "ask", question: "q" })
     const src = { n: 1, story_id: 7, title: "t", outlets: ["BBC"], corroboration: 0.8, contested: true }
-    const next = chatReducer(state, { type: "finalize", answer: "full answer", sources: [src] })
-    expect(next[0]).toEqual({ question: "q", answer: "full answer", sources: [src], draft: false })
+    const next = chatReducer(state, {
+      type: "finalize",
+      answer: "full answer",
+      sources: [src],
+      closest: [],
+    })
+    expect(next[0]).toEqual({
+      question: "q",
+      answer: "full answer",
+      sources: [src],
+      closest: [],
+      draft: false,
+    })
+  })
+
+  it("finalize demotes weak-retrieval stories to closest, wiping drafted sources", () => {
+    // The no-answer fallback (#459): the sources shown while drafting must not
+    // survive as evidence — they come back only as closest matches.
+    const src = { n: 1, story_id: 7, title: "t", outlets: ["BBC"], corroboration: 0.8, contested: true }
+    let state = chatReducer([], { type: "ask", question: "q" })
+    state = chatReducer(state, { type: "sources", sources: [src] })
+    state = chatReducer(state, {
+      type: "finalize",
+      answer: "I do not have enough local evidence for that question.",
+      sources: [],
+      closest: [src],
+    })
+    expect(state[0].sources).toEqual([])
+    expect(state[0].closest).toEqual([src])
+    expect(state[0].draft).toBe(false)
   })
 
   it("fail ends draft with offline message", () => {
@@ -172,7 +202,7 @@ describe("chatReducer", () => {
     const first = msg({ question: "old", answer: "kept" })
     let state = chatReducer([first], { type: "ask", question: "new" })
     state = chatReducer(state, { type: "delta", text: "typing" })
-    state = chatReducer(state, { type: "finalize", answer: "done", sources: [] })
+    state = chatReducer(state, { type: "finalize", answer: "done", sources: [], closest: [] })
     expect(state[0]).toEqual(first)
   })
 })
@@ -200,6 +230,12 @@ describe("parseChatStorage", () => {
     expect(parsed).toHaveLength(2)
     expect(parsed[1].answer).toBe("partial")
     expect(parsed[1].draft).toBe(false)
+  })
+
+  it("defaults closest for transcripts saved before #459", () => {
+    const legacy = [{ question: "q", answer: "a", sources: [], draft: false }]
+    const parsed = parseChatStorage(JSON.stringify(legacy))
+    expect(parsed[0].closest).toEqual([])
   })
 
   it("keeps only the newest MAX_CHAT_MESSAGES entries", () => {

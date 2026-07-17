@@ -113,6 +113,8 @@ export interface BrainAsk {
   answer: string
   context_digest: string | null
   sources: BrainSource[]
+  /** Weak-retrieval fallback (#459): retrieved stories shown separately, never as evidence. */
+  closest_matches?: BrainSource[]
 }
 
 /** One prior transcript turn sent with an ask (#444) — anchors follow-ups. */

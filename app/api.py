@@ -641,6 +641,19 @@ def _checked_ask_answer(
     return answer
 
 
+def _ask_payload(answer: str, digest: str | None, sources: list[dict]) -> dict:
+    """Final ask response with the item-3 split (#413): a no-answer fallback
+    means retrieval looked off-topic, so nothing may pose as the answer's
+    sources — the retrieved stories move to `closest_matches` instead."""
+    no_answer = answer.strip() == qa.NO_LOCAL_EVIDENCE_ANSWER
+    return {
+        "answer": answer,
+        "context_digest": digest,
+        "sources": [] if no_answer else sources,
+        "closest_matches": sources if no_answer else [],
+    }
+
+
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -655,11 +668,9 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     200; only a bad request is a 422.
     """
     if gate.ram_free_mb() < settings.qa_min_free_mb:
-        return {
-            "answer": "Brain busy — the box is loaded right now, try again in a moment.",
-            "context_digest": None,
-            "sources": [],
-        }
+        return _ask_payload(
+            "Brain busy — the box is loaded right now, try again in a moment.", None, []
+        )
     history = [h.model_dump() for h in req.history]
     qa_context = qa.build_qa_context(session, question=req.question, history=history)
     try:
@@ -669,18 +680,10 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
             keep_alive="0",
         )
     except Exception:
-        return {
-            "answer": "The brain is offline right now.",
-            "context_digest": None,
-            "sources": [],
-        }
+        return _ask_payload("The brain is offline right now.", None, [])
     answer = raw.get("answer") if isinstance(raw, dict) else None
     if not isinstance(answer, str) or not answer.strip():
-        return {
-            "answer": "The brain is not working right now.",
-            "context_digest": None,
-            "sources": [],
-        }
+        return _ask_payload("The brain is not working right now.", None, [])
     stories = qa_context.get("stories") or []
     sources = _ask_sources(stories)
     answer = _deechoed_answer(answer, qa_context=qa_context, question=req.question, history=history)
@@ -691,11 +694,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         stories=stories,
         n_sources=len(sources),
     )
-    return {
-        "answer": answer,
-        "context_digest": context.input_digest(qa_context),
-        "sources": sources,
-    }
+    return _ask_payload(answer, context.input_digest(qa_context), sources)
 
 
 @app.post("/brain/ask/stream")
@@ -706,11 +705,9 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
         if gate.ram_free_mb() < settings.qa_min_free_mb:
             yield _sse(
                 "final",
-                {
-                    "answer": "Brain busy — the box is loaded right now, try again in a moment.",
-                    "context_digest": None,
-                    "sources": [],
-                },
+                _ask_payload(
+                    "Brain busy — the box is loaded right now, try again in a moment.", None, []
+                ),
             )
             return
         history = [h.model_dump() for h in req.history]
@@ -728,14 +725,7 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
                 chunks.append(chunk)
                 yield _sse("delta", {"text": chunk})
         except Exception:
-            yield _sse(
-                "final",
-                {
-                    "answer": "The brain is offline right now.",
-                    "context_digest": None,
-                    "sources": [],
-                },
-            )
+            yield _sse("final", _ask_payload("The brain is offline right now.", None, []))
             return
         answer = "".join(chunks).strip()
         if not answer:
@@ -751,14 +741,7 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
                 stories=stories,
                 n_sources=len(sources),
             )
-        yield _sse(
-            "final",
-            {
-                "answer": answer,
-                "context_digest": digest,
-                "sources": sources,
-            },
-        )
+        yield _sse("final", _ask_payload(answer, digest, sources))
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

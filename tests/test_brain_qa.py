@@ -162,12 +162,15 @@ _FALLBACK_STORY = {
     "contested": False,
     "corroboration": 0.9,
     "sensor": {},
+    "retrieval": "semantic",
+    "relevance": 0.7,
 }
 
 
 def test_no_evidence_answer_when_stories_exist():
     # The robotic "The retrieved story is: ..." template is gone (#446): an
-    # unrepairable draft yields the honest no-evidence sentence instead.
+    # unrepairable draft with plausibly relevant retrieval yields the honest
+    # no-evidence sentence — the stories stay visible as sources.
     assert qa.build_no_evidence_answer([_FALLBACK_STORY]) == qa.NO_EVIDENCE_ANSWER
     assert not hasattr(qa, "build_cited_fallback_answer")
 
