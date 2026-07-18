@@ -9,7 +9,9 @@ import app.api as api
 from app.brain import qa
 
 
-def test_strip_markdown_removes_emphasis_and_lists():
+def test_strip_markdown_removes_markers_but_keeps_pointer_lines():
+    # #484: markers go, layout stays — flattening bullets into run-on prose
+    # was the wall-of-text screenshot.
     raw = (
         "**The Event:** A cycle of retaliation.\n"
         "* **Iran:** strikes on infrastructure [2]\n"
@@ -19,13 +21,17 @@ def test_strip_markdown_removes_emphasis_and_lists():
     )
     out = qa.strip_markdown(raw)
     assert "*" not in out and "#" not in out
-    assert "The Event: A cycle of retaliation." in out
-    assert "Iran: strikes on infrastructure [2]" in out
-    assert "Escalation continues." in out
+    assert out.splitlines() == [
+        "The Event: A cycle of retaliation.",
+        "Iran: strikes on infrastructure [2]",
+        "The Gulf: attacks on facilities",
+        "Conclusion",
+        "Escalation continues.",
+    ]
 
 
 def test_strip_markdown_keeps_paragraphs_and_citations():
-    raw = "First paragraph [1].\n\nSecond _paragraph_ [2]."
+    raw = "First paragraph [1].\n\n\nSecond _paragraph_ [2]."
     assert qa.strip_markdown(raw) == "First paragraph [1].\n\nSecond paragraph [2]."
 
 
@@ -41,9 +47,13 @@ def test_prompt_bans_markdown_and_input_talk():
     assert "NEVER describe or mention your input in ANY words" in prompt
     assert "Never use markdown" in prompt
     assert "local reporting shows" in prompt
+    #: Layout rule (#484): short paragraphs, compound questions part by part.
+    assert "SHORT paragraphs separated by blank lines" in prompt
+    assert "each part answered in its own paragraph" in prompt
     #: The stream/text prompt inherits the same shared rules.
     text = qa.build_qa_text_prompt({"stories": []}, "q")
     assert "Never use markdown" in text
+    assert "SHORT paragraphs separated by blank lines" in text
 
 
 def test_checked_answer_strips_markdown(monkeypatch):
