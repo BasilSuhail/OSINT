@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 import {
   answerLines,
   groupByOrigin,
+  groupByVoice,
+  singleVoiceCaveat,
   OFFLINE_ANSWER,
   askHistory,
   MAX_CHAT_MESSAGES,
@@ -341,6 +343,43 @@ describe("answerLines", () => {
     expect(answerLines("Nothing new tonight.", [])).toEqual([
       [{ type: "text", text: "Nothing new tonight." }],
     ])
+  })
+})
+
+describe("groupByVoice", () => {
+  const member = (outlet_class?: string) => ({ outlet_class })
+
+  it("orders classes mainstream, regional, state, independent", () => {
+    const groups = groupByVoice([
+      member("independent"),
+      member("state"),
+      member("mainstream"),
+      member("regional"),
+      member("state"),
+    ])
+    expect(groups.map((g) => g.voice)).toEqual(["mainstream", "regional", "state", "independent"])
+    expect(groups[2].members).toHaveLength(2)
+  })
+
+  it("defaults unlabeled members to mainstream and puts unknown classes last", () => {
+    const groups = groupByVoice([member(undefined), member("weird"), member("state")])
+    expect(groups.map((g) => g.voice)).toEqual(["mainstream", "state", "weird"])
+  })
+
+  it("empty input yields no groups", () => {
+    expect(groupByVoice([])).toEqual([])
+  })
+})
+
+describe("singleVoiceCaveat", () => {
+  it("flags a story only one class tells", () => {
+    const groups = groupByVoice([{ outlet_class: "state" }, { outlet_class: "state" }])
+    expect(singleVoiceCaveat(groups)).toBe("single-voice coverage — only state outlets tell this")
+  })
+
+  it("stays silent with two or more classes", () => {
+    const groups = groupByVoice([{ outlet_class: "state" }, { outlet_class: "mainstream" }])
+    expect(singleVoiceCaveat(groups)).toBeNull()
   })
 })
 

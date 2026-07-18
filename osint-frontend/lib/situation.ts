@@ -181,6 +181,42 @@ export function groupByOrigin<T extends { origin_country: string | null }>(
     })
 }
 
+//: Fixed voice order for the story card's per-class view (#488).
+export const VOICE_ORDER = ["mainstream", "regional", "state", "independent"] as const
+
+export interface VoiceGroup<T> {
+  voice: string
+  members: T[]
+}
+
+/** Members bucketed by outlet class in fixed VOICE_ORDER (#488); classes the
+ *  registry doesn't know come last, unlabeled members count as mainstream. */
+export function groupByVoice<T extends { outlet_class?: string }>(members: T[]): VoiceGroup<T>[] {
+  const buckets = new Map<string, T[]>()
+  for (const m of members) {
+    const key = m.outlet_class || "mainstream"
+    const list = buckets.get(key) ?? []
+    list.push(m)
+    buckets.set(key, list)
+  }
+  const known: VoiceGroup<T>[] = VOICE_ORDER.filter((v) => buckets.has(v)).map((voice) => ({
+    voice,
+    members: buckets.get(voice) as T[],
+  }))
+  const rest: VoiceGroup<T>[] = [...buckets.keys()]
+    .filter((k) => !(VOICE_ORDER as readonly string[]).includes(k))
+    .sort()
+    .map((voice) => ({ voice, members: buckets.get(voice) as T[] }))
+  return [...known, ...rest]
+}
+
+/** Single-voice caveat (#488): non-null when one class tells the story alone —
+ *  mirrors the prompt's "state-only is never confirmed" rule. */
+export function singleVoiceCaveat(groups: VoiceGroup<unknown>[]): string | null {
+  if (groups.length !== 1) return null
+  return `single-voice coverage — only ${groups[0].voice} outlets tell this`
+}
+
 const HISTORY_MAX = 3
 //: Matches the backend AskExchange answer cap headroom (#444).
 const HISTORY_ANSWER_CHARS = 2000

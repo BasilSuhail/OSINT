@@ -11,7 +11,7 @@
 import useSWR from "swr"
 import { confirmedClaims, fetchStoryDetail, type StoryDetail } from "@/lib/analytics"
 import { countryName } from "@/lib/countryName"
-import { groupByOrigin } from "@/lib/situation"
+import { groupByOrigin, groupByVoice, singleVoiceCaveat } from "@/lib/situation"
 import { contestedVerdict, storyVerdict } from "@/lib/verdicts"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 
@@ -73,6 +73,54 @@ function TrustRead({ detail }: { detail: StoryDetail }) {
           ))}
         </p>
       ) : null}
+    </div>
+  )
+}
+
+//: Per-class label colors (#488) — state stands out, independent reads green.
+const VOICE_COLORS: Record<string, string> = {
+  mainstream: "text-neutral-300",
+  regional: "text-cyan-300/70",
+  state: "text-amber-300/80",
+  independent: "text-emerald-300/70",
+}
+
+function Voices({ detail }: { detail: StoryDetail }) {
+  const groups = groupByVoice(detail.members)
+  if (groups.length === 0) return null
+  const caveat = singleVoiceCaveat(groups)
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-3">
+      <SectionLabel>voices — how framings differ</SectionLabel>
+      {caveat ? <p className="mb-2 text-[11px] text-amber-300/80">{caveat}</p> : null}
+      <div className="flex flex-col gap-2">
+        {groups.map((g) => (
+          <div key={g.voice}>
+            <p
+              className={`font-mono text-[10px] uppercase tracking-wide ${
+                VOICE_COLORS[g.voice] ?? "text-neutral-400"
+              }`}
+            >
+              {g.voice} ×{g.members.length}
+            </p>
+            <ul className="border-l-2 border-neutral-800 pl-3">
+              {g.members.slice(0, 2).map((m, i) => (
+                <li key={i} className="py-0.5 text-[12px] leading-snug text-neutral-300">
+                  <span className="font-mono text-[9px] uppercase tracking-wide text-neutral-500">
+                    {m.outlet}
+                  </span>{" "}
+                  — {m.title}
+                </li>
+              ))}
+              {g.members.length > 2 ? (
+                <li className="py-0.5 text-[10px] text-neutral-600">
+                  +{g.members.length - 2} more
+                </li>
+              ) : null}
+            </ul>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -161,6 +209,7 @@ export function StoryDetailCard() {
 
             <div className="mt-3 flex flex-col gap-3">
               <ContestedTelling detail={data} />
+              <Voices detail={data} />
               <TrustRead detail={data} />
             </div>
 

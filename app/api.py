@@ -282,10 +282,16 @@ def story_members(
     join similarity. Fetched lazily when a story row is expanded.
     """
     from app.db_models import StoryMemberRow
-    from app.sources.rss_registry import content_owner_map, load_feed_configs, outlet_country_map
+    from app.sources.rss_registry import (
+        content_owner_map,
+        load_feed_configs,
+        outlet_class_map,
+        outlet_country_map,
+    )
 
     owners = content_owner_map()
     origins = outlet_country_map()
+    classes = outlet_class_map()
     pretty = {cfg.source: cfg.pretty_name for cfg in load_feed_configs()}
 
     rows = session.execute(
@@ -301,6 +307,7 @@ def story_members(
             "outlet": pretty.get(event.source, event.source),
             "owner": owners.get(event.source, event.source),
             "origin_country": origins.get(event.source),
+            "outlet_class": classes.get(event.source, "mainstream"),
             "occurred_at": event.occurred_at.isoformat(),
             "similarity": member.similarity,
         }
@@ -317,7 +324,12 @@ def story_detail(
     read — gist, corroboration evidence, contested-telling groups, sensor
     verdicts, and every member article with outlet + origin country."""
     from app.db_models import StoryDisagreementRow, StoryMemberRow
-    from app.sources.rss_registry import content_owner_map, load_feed_configs, outlet_country_map
+    from app.sources.rss_registry import (
+        content_owner_map,
+        load_feed_configs,
+        outlet_class_map,
+        outlet_country_map,
+    )
 
     story = session.get(StoryRow, story_id)
     if story is None:
@@ -344,6 +356,7 @@ def story_detail(
 
     owners = content_owner_map()
     origins = outlet_country_map()
+    classes = outlet_class_map()
     pretty = {cfg.source: cfg.pretty_name for cfg in load_feed_configs()}
     members = [
         {
@@ -352,6 +365,7 @@ def story_detail(
             "outlet": pretty.get(event.source, event.source),
             "owner": owners.get(event.source, event.source),
             "origin_country": origins.get(event.source),
+            "outlet_class": classes.get(event.source, "mainstream"),
             "occurred_at": event.occurred_at.isoformat(),
             "similarity": member.similarity,
         }

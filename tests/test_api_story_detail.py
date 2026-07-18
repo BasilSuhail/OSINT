@@ -132,6 +132,20 @@ def test_story_detail_aggregates_everything():
     app.dependency_overrides.clear()
 
 
+def test_story_members_carry_outlet_class():
+    # Voices UI (#488): every member names its outlet class; slugs the registry
+    # does not know (legacy sources) fall back to mainstream.
+    client, sid = _client_and_story()
+    members = client.get(f"/stories/{sid}/members").json()
+    assert len(members) == 3
+    assert all(
+        m["outlet_class"] in {"mainstream", "state", "regional", "independent"} for m in members
+    )
+    detail = client.get(f"/stories/{sid}/detail").json()
+    assert all("outlet_class" in m for m in detail["members"])
+    app.dependency_overrides.clear()
+
+
 def test_story_detail_unknown_id_is_404():
     client, _ = _client_and_story()
     assert client.get("/stories/999999/detail").status_code == 404
