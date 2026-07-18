@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any
@@ -378,6 +379,56 @@ def _payload_text(payload: Any) -> str:
     return " ".join(vals)
 
 
+#: Member headlines / keywords carried per selected story (#482).
+_STORY_DETAILS: int = 3
+_STORY_KEYWORDS: int = 8
+
+
+def _member_details(
+    session: Session, story_ids: list[int]
+) -> dict[int, tuple[list[str], list[str]]]:
+    """story_id → (member headlines, top keywords by frequency) (#482).
+
+    Only called for the selected context stories, so the model finally sees
+    the cluster's own article titles and keywords — the level where places,
+    bases, and names live that a one-line gist compresses away.
+    """
+    headlines: dict[int, list[str]] = {sid: [] for sid in story_ids}
+    counts: dict[int, Counter[str]] = {sid: Counter() for sid in story_ids}
+    rows = session.execute(
+        select(StoryMemberRow.story_id, EventRow.keywords, EventRow.payload)
+        .join(EventRow, EventRow.id == StoryMemberRow.event_id)
+        .where(StoryMemberRow.story_id.in_(story_ids))
+    ).all()
+    for story_id, keywords, payload in rows:
+        title = None
+        if isinstance(payload, dict):
+            title = payload.get("title") or payload.get("headline")
+        if isinstance(title, str) and title.strip():
+            headlines[story_id].append(title.strip())
+        counts[story_id].update(str(k) for k in (keywords or []))
+    return {
+        sid: (headlines[sid], [k for k, _ in counts[sid].most_common(_STORY_KEYWORDS)])
+        for sid in story_ids
+    }
+
+
+def _distinct_headlines(headlines: list[str], story_title: str | None) -> list[str]:
+    """Up to _STORY_DETAILS member headlines that add something beyond the
+    story title — duplicates (case-insensitive) collapse."""
+    seen = {(story_title or "").strip().lower()}
+    distinct: list[str] = []
+    for headline in headlines:
+        key = headline.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        distinct.append(headline)
+        if len(distinct) >= _STORY_DETAILS:
+            break
+    return distinct
+
+
 def _member_texts(session: Session, story_ids: list[int]) -> dict[int, str]:
     texts: dict[int, list[str]] = {sid: [] for sid in story_ids}
     rows = session.execute(
@@ -647,6 +698,7 @@ def build_qa_stories(
     from app.sources.rss_registry import load_feed_configs
 
     pretty = {cfg.source: cfg.pretty_name for cfg in load_feed_configs()}
+    details = _member_details(session, story_ids)
 
     out: list[dict[str, Any]] = []
     for i, (story, corro) in enumerate(rows, 1):
@@ -662,6 +714,7 @@ def build_qa_stories(
             .all()
         )
         div = divs.get(story.id)
+        headlines, keywords = details.get(story.id, ([], []))
         out.append(
             {
                 "n": i,
@@ -671,6 +724,10 @@ def build_qa_stories(
                 #: bare `age_h: 47.8` as YEARS ("the data is 47.8 years old").
                 "age": f"{_age_hours(story.last_seen, now)} hours ago",
                 "gist": gists[story.id].gist if story.id in gists else None,
+                #: Member specifics (#482): the cluster's own headlines and
+                #: keywords — where places, bases, and names actually live.
+                "details": _distinct_headlines(headlines, story.title),
+                "keywords": keywords,
                 "corroboration": round(float(corro.score), 3) if corro else None,
                 "outlet_count": story.outlet_count,
                 "owner_count": story.owner_count,
@@ -798,7 +855,8 @@ def build_qa_prompt(
         "corroboration score (how many INDEPENDENT outlets tell it), a contested flag "
         "(do tellers disagree sharply), sensor verdicts (machine-confirmed claims), and "
         '"age" — how long ago the story last moved, always in hours '
-        "(e.g. '3.3 hours ago').\n\n"
+        "(e.g. '3.3 hours ago'), \"details\" — headlines from the cluster's own "
+        'member articles, and "keywords" from those articles.\n\n'
         "Rules:\n"
         "- Write like a sharp, neutral analyst talking to a person: plain "
         "conversational English, direct and specific, no boilerplate.\n"
@@ -816,6 +874,9 @@ def build_qa_prompt(
         "it, lead with it in the first sentence.\n"
         "- Direct yes/no questions get a direct opening — yes, no, or unclear, "
         "with its qualifier — then the evidence.\n"
+        "- When the question asks for specifics — where, who, which base, how "
+        "many — mine the stories' details and keywords for names and places "
+        "before saying something is not known.\n"
         "- Opinion or judgement questions (who is right, who is the bad guy): do "
         "not take sides. Say the data supports no judgement, then lay out what "
         "each side says or emphasizes, and leave the conclusion to the reader.\n"
