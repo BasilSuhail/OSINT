@@ -39,7 +39,7 @@ def test_stories_carry_age_hours():
 def test_prompt_carries_voice_verdict_and_freshness_rules():
     prompt = qa.build_qa_prompt({"stories": []}, "has iran fought back?")
     assert "how long ago the story last moved, always in hours" in prompt
-    assert "never say 'the context'" in prompt
+    assert "NEVER describe or mention your input" in prompt
     assert "local reporting shows" in prompt
     assert "Direct yes/no questions get a direct opening" in prompt
     assert "Ages are ALWAYS hours" in prompt

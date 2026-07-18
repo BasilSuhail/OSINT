@@ -802,9 +802,14 @@ def build_qa_prompt(
         "Rules:\n"
         "- Write like a sharp, neutral analyst talking to a person: plain "
         "conversational English, direct and specific, no boilerplate.\n"
-        "- Speak as an analyst who read the local reporting — never say 'the "
-        "context', 'the provided context', or 'the available data'. Say 'local "
-        "reporting shows…' or 'no local reporting covers…' instead.\n"
+        "- Speak as an analyst who read the local reporting. NEVER describe or "
+        "mention your input in ANY words — no talk of context, provided text, "
+        "snippets, datasets, metadata, headline lists, or what 'the data' "
+        "contains. The reader sees only your answer: talk about the news "
+        "itself — 'local reporting shows…', 'no local reporting covers…'.\n"
+        "- Plain flowing sentences and paragraphs ONLY. Never use markdown: no "
+        "asterisks or bold, no bullet or numbered lists, no headers. The [n] "
+        "citations are the only bracketed markup allowed.\n"
         "- Answer THE question asked, freshly worded every time. Never repeat or "
         "rephrase an earlier answer from RECENT CONVERSATION.\n"
         "- If the question asks for a number, date, or name and the context has "
@@ -944,6 +949,26 @@ def story_support_texts(session: Session, stories: list[dict[str, Any]]) -> dict
         )
         for s in stories
     }
+
+
+#: `**bold**` / `*italic*` / `_emphasis_` spans — keep the words, drop markers.
+_MD_EMPHASIS_RE = re.compile(r"(\*{1,3}|_{1,3})(?=\S)(.+?)(?<=\S)\1")
+#: Bullet / numbered-list / header prefixes at line starts.
+_MD_LINE_RE = re.compile(r"^\s*(?:[*+-]|\d+[.)]|#{1,6})\s+", re.MULTILINE)
+
+
+def strip_markdown(answer: str) -> str:
+    """Deterministic plain-text guard (#480).
+
+    The prompt forbids markdown, but the live 2026-07-18 answer still shipped
+    `**bold**` and `*` bullets. Strip emphasis markers, flatten list/header
+    lines into flowing text, keep paragraph breaks. Citations [n] pass
+    through untouched.
+    """
+    text = _MD_EMPHASIS_RE.sub(r"\2", answer)
+    text = _MD_LINE_RE.sub("", text)
+    paragraphs = [" ".join(part.split()) for part in re.split(r"\n{2,}", text) if part.strip()]
+    return "\n\n".join(paragraphs)
 
 
 def trim_incomplete_tail(answer: str) -> str:
