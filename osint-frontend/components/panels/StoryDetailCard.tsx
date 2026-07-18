@@ -43,6 +43,16 @@ function ContestedTelling({ detail }: { detail: StoryDetail }) {
       <p className="mt-1 text-[12px] leading-snug text-neutral-400">
         {contestedVerdict({ divergence: detail.divergence, groups: detail.divergence_groups })}
       </p>
+      {detail.divergence_contrast && Object.keys(detail.divergence_contrast).length > 0 ? (
+        <div className="mt-2 space-y-0.5">
+          {Object.entries(detail.divergence_contrast).map(([code, terms]) => (
+            <p key={code} className="text-[11px] leading-snug text-neutral-500">
+              <span className="text-neutral-300">{countryName(code)}</span> alone says:{" "}
+              {terms.join(", ")}
+            </p>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -146,9 +156,26 @@ function Tellers({ detail }: { detail: StoryDetail }) {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
+                    {m.sentiment ? ` · ${m.sentiment}` : ""}
                   </span>
                   <br />
-                  {m.title}
+                  {m.url ? (
+                    <a
+                      href={m.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-neutral-100 hover:underline"
+                    >
+                      {m.title} ↗
+                    </a>
+                  ) : (
+                    m.title
+                  )}
+                  {m.summary ? (
+                    <p className="mt-0.5 text-[11px] leading-snug text-neutral-500">
+                      {m.summary}
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>
