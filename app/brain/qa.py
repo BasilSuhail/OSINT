@@ -667,7 +667,9 @@ def build_qa_stories(
                 "n": i,
                 "story_id": story.id,
                 "title": story.title,
-                "age_h": _age_hours(story.last_seen, now),
+                #: Unit spelled out in the value (#475) — the audit's 4b read a
+                #: bare `age_h: 47.8` as YEARS ("the data is 47.8 years old").
+                "age": f"{_age_hours(story.last_seen, now)} hours ago",
                 "gist": gists[story.id].gist if story.id in gists else None,
                 "corroboration": round(float(corro.score), 3) if corro else None,
                 "outlet_count": story.outlet_count,
@@ -795,7 +797,8 @@ def build_qa_prompt(
         '"stories" list selected by local question-driven retrieval; each story has a '
         "corroboration score (how many INDEPENDENT outlets tell it), a contested flag "
         "(do tellers disagree sharply), sensor verdicts (machine-confirmed claims), and "
-        "age_h — hours since the story last moved.\n\n"
+        '"age" — how long ago the story last moved, always in hours '
+        "(e.g. '3.3 hours ago').\n\n"
         "Rules:\n"
         "- Write like a sharp, neutral analyst talking to a person: plain "
         "conversational English, direct and specific, no boilerplate.\n"
@@ -826,9 +829,13 @@ def build_qa_prompt(
         "the context shows it.\n"
         "- Say when a claim is sensor-confirmed; mark heavy sensor-unconfirmed "
         "claims as unverified.\n"
-        "- Questions about how old or fresh the data is: answer from as_of and "
-        "the stories' age_h — the newest story's age is how fresh local "
-        "reporting is.\n"
+        "- Questions about how old or fresh the data is: lead with the newest "
+        'story\'s "age" value. Ages are ALWAYS hours — never convert them to '
+        "days or years.\n"
+        "- Time-window questions ('anything new in the last few hours?'): only "
+        "stories whose age falls inside the asked window count as new — cite "
+        "the newest first; if every story is older, say nothing new happened "
+        "inside that window and give the newest story's age.\n"
         '- CONTEXT.coverage shows per-country local feed coverage (events, share, "sources", '
         'independent "owners", "thin" flag). When the answer centers on a country whose '
         "coverage is thin, say local coverage is thin (few sources/owners) before any "

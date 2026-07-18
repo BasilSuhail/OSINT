@@ -49,7 +49,7 @@ def test_run_audit_collects_answer_aids():
     row = rows[0]
     assert row["question"] == "is the war back on?"
     assert row["unsupported_claims"] == 1  # the aliens sentence
-    assert row["sources"][0]["age_h"] == 0.0  # joined from the recomputed context
+    assert row["sources"][0]["age"] == "0.0 hours ago"  # joined from the recomputed context
     assert row["trace"]["method"] in {"semantic", "keyword"}
     assert row["trace"]["intents"] == ["conflict"]
 
@@ -59,7 +59,9 @@ def test_build_sheet_has_grade_cells_per_question():
         {
             "question": "q one?",
             "answer": "line one\nline two [1]",
-            "sources": [{"n": 1, "story_id": 5, "title": "T", "outlets": ["BBC"], "age_h": 2.1}],
+            "sources": [
+                {"n": 1, "story_id": 5, "title": "T", "outlets": ["BBC"], "age": "2.1 hours ago"}
+            ],
             "closest_matches": [],
             "unsupported_claims": 0,
             "trace": {"method": "semantic", "intents": [], "candidates": 3, "intent_rejected": []},
@@ -80,7 +82,7 @@ def test_build_sheet_has_grade_cells_per_question():
     assert "## 1. q one?" in sheet
     assert "## 2. q two?" in sheet
     assert "line one line two [1]" in sheet  # newlines flattened
-    assert "[1] BBC (2.1h)" in sheet
+    assert "[1] BBC (2.1 hours ago)" in sheet
     assert "- closest_matches: [1] C" in sheet
     assert sheet.count("| ? | ? | ? | ? |") == 2
     assert "| accuracy | citation | bias | refusal |" in sheet
