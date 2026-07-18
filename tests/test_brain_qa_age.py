@@ -33,16 +33,17 @@ def test_stories_carry_age_hours():
 
     out = qa.build_qa_stories(session, now=asked, question="war border")
 
-    assert out[0]["age_h"] == 5.0
+    assert out[0]["age"] == "5.0 hours ago"  # unit in the value (#475)
 
 
 def test_prompt_carries_voice_verdict_and_freshness_rules():
     prompt = qa.build_qa_prompt({"stories": []}, "has iran fought back?")
-    assert "age_h — hours since the story last moved" in prompt
+    assert "how long ago the story last moved, always in hours" in prompt
     assert "never say 'the context'" in prompt
     assert "local reporting shows" in prompt
     assert "Direct yes/no questions get a direct opening" in prompt
-    assert "how old or fresh the data is" in prompt
+    assert "Ages are ALWAYS hours" in prompt
+    assert "inside the asked window" in prompt
     #: text prompt inherits every rule.
     text = qa.build_qa_text_prompt({"stories": []}, "has iran fought back?")
     assert "Direct yes/no questions get a direct opening" in text

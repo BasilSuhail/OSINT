@@ -70,14 +70,14 @@ def run_audit(
         trace: dict[str, Any] = {}
         qa_context = qa.build_qa_context(session, now=now, question=question, trace=trace)
         stories = qa_context.get("stories") or []
-        ages = {s["story_id"]: s.get("age_h") for s in stories}
+        ages = {s["story_id"]: s.get("age") for s in stories}
         claims = qa.check_claims(body.get("answer"), qa.story_support_texts(session, stories))
         rows.append(
             {
                 "question": question,
                 "answer": str(body.get("answer") or ""),
                 "sources": [
-                    {**s, "age_h": ages.get(s.get("story_id"))} for s in (body.get("sources") or [])
+                    {**s, "age": ages.get(s.get("story_id"))} for s in (body.get("sources") or [])
                 ],
                 "closest_matches": body.get("closest_matches") or [],
                 "unsupported_claims": claims["unsupported"],
@@ -93,8 +93,8 @@ def _source_line(items: list[dict[str, Any]]) -> str:
     parts = []
     for s in items:
         outlets = ", ".join(s.get("outlets") or []) or str(s.get("title") or "")
-        age = s.get("age_h")
-        parts.append(f"[{s.get('n')}] {outlets}" + (f" ({age}h)" if age is not None else ""))
+        age = s.get("age")
+        parts.append(f"[{s.get('n')}] {outlets}" + (f" ({age})" if age is not None else ""))
     return " · ".join(parts)
 
 
