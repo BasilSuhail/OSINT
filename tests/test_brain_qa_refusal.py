@@ -72,7 +72,7 @@ def _ask(monkeypatch, story, answers):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {"stories": [story]},
+        lambda session, question=None, history=None, trace=None: {"stories": [story]},
     )
     calls: list[str] = []
     replies = iter(answers)
@@ -116,7 +116,7 @@ def test_retry_failure_keeps_refusal(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {"stories": [RELEVANT_STORY]},
+        lambda session, question=None, history=None, trace=None: {"stories": [RELEVANT_STORY]},
     )
     calls: list[str] = []
 
@@ -145,7 +145,7 @@ def test_stream_endpoint_derefuses_too(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {"stories": [RELEVANT_STORY]},
+        lambda session, question=None, history=None, trace=None: {"stories": [RELEVANT_STORY]},
     )
     monkeypatch.setattr(
         api.client,

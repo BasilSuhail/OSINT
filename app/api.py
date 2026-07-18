@@ -684,7 +684,14 @@ def _checked_ask_answer(
     return answer
 
 
-def _ask_payload(answer: str, digest: str | None, sources: list[dict]) -> dict:
+def _ask_payload(
+    answer: str,
+    digest: str | None,
+    sources: list[dict],
+    *,
+    claims: list[dict] | None = None,
+    reasoning: dict | None = None,
+) -> dict:
     """Final ask response with the item-3 split (#413): a no-answer fallback
     means retrieval looked off-topic, so nothing may pose as the answer's
     sources — the retrieved stories move to `closest_matches` instead."""
@@ -694,7 +701,26 @@ def _ask_payload(answer: str, digest: str | None, sources: list[dict]) -> dict:
         "context_digest": digest,
         "sources": [] if no_answer else sources,
         "closest_matches": sources if no_answer else [],
+        #: (source)/(thinking) chip fuel (#476): per-sentence claim mapping —
+        #: an unsupported sentence is the brain's own analysis — plus the
+        #: retrieval reasoning the thinking popup shows.
+        "claims": claims or [],
+        "reasoning": reasoning,
     }
+
+
+def _answer_annotations(
+    session: Session, answer: str, stories: list[dict], trace: dict
+) -> tuple[list[dict], dict]:
+    """Chip fuel for a final answer (#476): sentence→story claim mapping and
+    a compact retrieval-reasoning summary for the thinking popup."""
+    claims = qa.check_claims(answer, qa.story_support_texts(session, stories))["claims"]
+    reasoning = {
+        "method": trace.get("method"),
+        "intents": trace.get("intents") or [],
+        "terms": trace.get("terms") or [],
+    }
+    return claims, reasoning
 
 
 def _sse(event: str, data: dict) -> str:
@@ -713,7 +739,8 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     if gate.ram_free_mb() < settings.qa_min_free_mb:
         return _ask_payload(qa.BRAIN_BUSY_ANSWER, None, [])
     history = [h.model_dump() for h in req.history]
-    qa_context = qa.build_qa_context(session, question=req.question, history=history)
+    trace: dict = {}
+    qa_context = qa.build_qa_context(session, question=req.question, history=history, trace=trace)
     prompt = qa.build_qa_prompt(qa_context, req.question, history=history)
     try:
         answer = _extracted_answer(
@@ -744,7 +771,10 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         stories=stories,
         n_sources=len(sources),
     )
-    return _ask_payload(answer, context.input_digest(qa_context), sources)
+    claims, reasoning = _answer_annotations(session, answer, stories, trace)
+    return _ask_payload(
+        answer, context.input_digest(qa_context), sources, claims=claims, reasoning=reasoning
+    )
 
 
 @app.post("/brain/ask/stream")
@@ -756,7 +786,10 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
             yield _sse("final", _ask_payload(qa.BRAIN_BUSY_ANSWER, None, []))
             return
         history = [h.model_dump() for h in req.history]
-        qa_context = qa.build_qa_context(session, question=req.question, history=history)
+        trace: dict = {}
+        qa_context = qa.build_qa_context(
+            session, question=req.question, history=history, trace=trace
+        )
         stories = qa_context.get("stories") or []
         sources = _ask_sources(stories)
         digest = context.input_digest(qa_context)
@@ -800,7 +833,10 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
                 stories=stories,
                 n_sources=len(sources),
             )
-        yield _sse("final", _ask_payload(answer, digest, sources))
+        claims, reasoning = _answer_annotations(session, answer, stories, trace)
+        yield _sse(
+            "final", _ask_payload(answer, digest, sources, claims=claims, reasoning=reasoning)
+        )
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

@@ -109,12 +109,29 @@ export interface BrainSource {
   contested: boolean
 }
 
+/** One answer sentence mapped to the stories that back it (#476). */
+export interface AskClaim {
+  text: string
+  cited: number[]
+  supported: boolean
+  matched_story: number | null
+}
+
+/** Compact retrieval reasoning shown in the (thinking) popup (#476). */
+export interface AskReasoning {
+  method: string | null
+  intents: string[]
+  terms: string[]
+}
+
 export interface BrainAsk {
   answer: string
   context_digest: string | null
   sources: BrainSource[]
   /** Weak-retrieval fallback (#459): retrieved stories shown separately, never as evidence. */
   closest_matches?: BrainSource[]
+  claims?: AskClaim[]
+  reasoning?: AskReasoning | null
 }
 
 /** One prior transcript turn sent with an ask (#444) — anchors follow-ups. */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  answerLines,
   groupByOrigin,
   OFFLINE_ANSWER,
   askHistory,
@@ -11,13 +12,24 @@ import {
   splitRecent,
   type ChatMessage,
 } from "@/lib/situation"
+import type { AskClaim } from "@/lib/apiClient"
 
 const msg = (over: Partial<ChatMessage> = {}): ChatMessage => ({
   question: "q",
   answer: "a",
   sources: [],
   closest: [],
+  claims: [],
+  reasoning: null,
   draft: false,
+  ...over,
+})
+
+const claim = (over: Partial<AskClaim> = {}): AskClaim => ({
+  text: "t",
+  cited: [],
+  supported: true,
+  matched_story: null,
   ...over,
 })
 
@@ -123,6 +135,8 @@ describe("chatReducer", () => {
       answer: "",
       sources: [],
       closest: [],
+      claims: [],
+      reasoning: null,
       draft: true,
     })
   })
@@ -150,17 +164,22 @@ describe("chatReducer", () => {
   it("finalize replaces answer and sources and ends draft", () => {
     const state = chatReducer([], { type: "ask", question: "q" })
     const src = { n: 1, story_id: 7, title: "t", outlets: ["BBC"], corroboration: 0.8, contested: true }
+    const claims = [claim({ text: "full answer", supported: false })]
     const next = chatReducer(state, {
       type: "finalize",
       answer: "full answer",
       sources: [src],
       closest: [],
+      claims,
+      reasoning: { method: "semantic", intents: [], terms: [] },
     })
     expect(next[0]).toEqual({
       question: "q",
       answer: "full answer",
       sources: [src],
       closest: [],
+      claims,
+      reasoning: { method: "semantic", intents: [], terms: [] },
       draft: false,
     })
   })
@@ -176,6 +195,8 @@ describe("chatReducer", () => {
       answer: "I do not have enough local evidence for that question.",
       sources: [],
       closest: [src],
+      claims: [],
+      reasoning: null,
     })
     expect(state[0].sources).toEqual([])
     expect(state[0].closest).toEqual([src])
@@ -202,7 +223,14 @@ describe("chatReducer", () => {
     const first = msg({ question: "old", answer: "kept" })
     let state = chatReducer([first], { type: "ask", question: "new" })
     state = chatReducer(state, { type: "delta", text: "typing" })
-    state = chatReducer(state, { type: "finalize", answer: "done", sources: [], closest: [] })
+    state = chatReducer(state, {
+      type: "finalize",
+      answer: "done",
+      sources: [],
+      closest: [],
+      claims: [],
+      reasoning: null,
+    })
     expect(state[0]).toEqual(first)
   })
 })
@@ -232,10 +260,12 @@ describe("parseChatStorage", () => {
     expect(parsed[1].draft).toBe(false)
   })
 
-  it("defaults closest for transcripts saved before #459", () => {
+  it("defaults newer fields for transcripts saved before #459/#476", () => {
     const legacy = [{ question: "q", answer: "a", sources: [], draft: false }]
     const parsed = parseChatStorage(JSON.stringify(legacy))
     expect(parsed[0].closest).toEqual([])
+    expect(parsed[0].claims).toEqual([])
+    expect(parsed[0].reasoning).toBeNull()
   })
 
   it("keeps only the newest MAX_CHAT_MESSAGES entries", () => {
@@ -279,6 +309,38 @@ describe("askHistory", () => {
     const messages = [finalized("q", "x".repeat(5000))]
     const [entry] = askHistory(messages)
     expect(entry.answer.length).toBeLessThanOrEqual(2000)
+  })
+})
+
+describe("answerLines", () => {
+  it("turns [n] citations into source segments", () => {
+    const [line] = answerLines("Strikes resumed [1][2]. Calm elsewhere.", [])
+    expect(line).toEqual([
+      { type: "text", text: "Strikes resumed " },
+      { type: "source", n: 1 },
+      { type: "source", n: 2 },
+      { type: "text", text: ". Calm elsewhere." },
+    ])
+  })
+
+  it("marks the line carrying an unsupported claim with a thinking segment", () => {
+    const claims = [
+      claim({ text: "Strikes resumed [1].", supported: true, matched_story: 1 }),
+      claim({ text: "My read is escalation continues.", supported: false }),
+    ]
+    const lines = answerLines(
+      "Strikes resumed [1].\n\nMy read is escalation continues.",
+      claims,
+    )
+    expect(lines[0].some((s) => s.type === "thinking")).toBe(false)
+    expect(lines[1]).toEqual([]) // blank line = paragraph break
+    expect(lines[2][lines[2].length - 1]).toEqual({ type: "thinking", claim: 1 })
+  })
+
+  it("keeps plain lines as single text segments", () => {
+    expect(answerLines("Nothing new tonight.", [])).toEqual([
+      [{ type: "text", text: "Nothing new tonight." }],
+    ])
   })
 })
 
