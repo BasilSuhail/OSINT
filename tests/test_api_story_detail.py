@@ -146,6 +146,97 @@ def test_story_members_carry_outlet_class():
     app.dependency_overrides.clear()
 
 
+def test_story_drilldown_links_summaries_and_contrast():
+    # #492: members expose the article URL + payload summary + sentiment, and
+    # the detail names WHAT each origin bloc says that the others don't.
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, future=True)
+    with factory() as s:
+        story = StoryRow(
+            title="Iranian attack on Jordan base",
+            first_seen=NOW - timedelta(hours=6),
+            last_seen=NOW,
+            member_count=3,
+            outlet_count=3,
+            owner_count=3,
+            method_version="stories-v1.0",
+        )
+        s.add(story)
+        s.flush()
+        sid = story.id
+        seeds = [
+            (
+                "rss-bbc-world",
+                "Two US troops killed after Iranian attack",
+                "Soldiers killed and one missing after missile barrage.",
+            ),
+            (
+                "rss-guardian-world",
+                "US troops killed in Iranian attack",
+                "Missile barrage killed soldiers at the base.",
+            ),
+            (
+                "rss-aljazeera",
+                "Iran suggests MoU suspended amid strikes",
+                "Tehran frames the attack as retaliation; MoU suspended.",
+            ),
+        ]
+        for i, (source, title, summary) in enumerate(seeds):
+            ev = EventRow(
+                source=source,
+                source_event_id=f"d{i}",
+                occurred_at=NOW - timedelta(hours=i),
+                fetched_at=NOW,
+                category="conflict",
+                payload={
+                    "title": title,
+                    "summary": summary,
+                    "source_url": f"https://example.org/a{i}",
+                    "sentiment_label": "negative",
+                },
+            )
+            s.add(ev)
+            s.flush()
+            s.add(StoryMemberRow(event_id=ev.id, story_id=sid, similarity=0.9))
+        s.add(
+            StoryDisagreementRow(
+                story_id=sid,
+                divergence=0.7,
+                components={"groups": {"GB": 2, "QA": 1}},
+                method_version="disagreement-v1.0",
+                computed_at=NOW,
+            )
+        )
+        s.commit()
+
+    def override():
+        session = factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_session] = override
+    body = TestClient(app).get(f"/stories/{sid}/detail").json()
+
+    members = body["members"]
+    assert all(m["url"].startswith("https://example.org/") for m in members)
+    assert all(m["summary"] for m in members)
+    assert all(m["sentiment"] == "negative" for m in members)
+
+    contrast = body["divergence_contrast"]
+    #: GB bloc (BBC + Guardian) alone talks about killed troops; QA bloc
+    #: (Al Jazeera) alone talks about the MoU suspension. "attack" appears in
+    #: both blocs' texts, so it is distinctive for neither.
+    assert "mou" in contrast["QA"]
+    assert "killed" in contrast["GB"]
+    assert "attack" not in contrast["GB"] and "attack" not in contrast["QA"]
+    app.dependency_overrides.clear()
+
+
 def test_story_detail_unknown_id_is_404():
     client, _ = _client_and_story()
     assert client.get("/stories/999999/detail").status_code == 404

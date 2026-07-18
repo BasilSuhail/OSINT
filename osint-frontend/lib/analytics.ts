@@ -93,6 +93,10 @@ export interface StoryMember {
   origin_country: string | null
   /** Outlet class (#477/#488): mainstream | state | regional | independent. */
   outlet_class: string
+  /** Drilldown depth (#492): straight from the RSS payload. */
+  url: string | null
+  summary: string | null
+  sentiment: string | null
   occurred_at: string
   similarity: number
 }
@@ -113,6 +117,8 @@ export interface StoryDetail {
   corroboration_components: Record<string, unknown> | null
   divergence: number | null
   divergence_groups: Record<string, number> | null
+  /** Per-bloc distinctive wording (#492) — what each country says that others don't. */
+  divergence_contrast?: Record<string, string[]> | null
   sensor_checks: Record<string, string>
   members: StoryMember[]
 }

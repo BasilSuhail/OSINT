@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -271,6 +272,36 @@ def stories_top(
     ]
 
 
+def _bloc_contrast(members: list[dict]) -> dict[str, list[str]]:
+    """What each origin-country bloc says that no other bloc does (#492).
+
+    Deterministic: content terms (retrieval's stopword/term machinery) from
+    each bloc's titles + summaries, minus every term any other bloc also
+    uses — the actual wording difference behind the divergence score, not
+    just who diverges. Empty when fewer than two blocs tell the story.
+    """
+    blocs: dict[str, Counter[str]] = {}
+    for m in members:
+        country = m.get("origin_country") or "??"
+        text = f"{m.get('title') or ''} {m.get('summary') or ''}".lower()
+        terms = {t for t in qa._TERM_RE.findall(text) if t not in qa._QUESTION_STOPWORDS}
+        blocs.setdefault(country, Counter()).update(terms)
+    if len(blocs) < 2:
+        return {}
+    out: dict[str, list[str]] = {}
+    for country, counts in blocs.items():
+        others: set[str] = set()
+        for other_country, other_counts in blocs.items():
+            if other_country != country:
+                others |= set(other_counts)
+        #: Stable order: strongest first, ties alphabetical.
+        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        distinct = [t for t, _ in ranked if t not in others][:5]
+        if distinct:
+            out[country] = distinct
+    return out
+
+
 @app.get("/stories/{story_id}/members")
 def story_members(
     story_id: int,
@@ -308,6 +339,10 @@ def story_members(
             "owner": owners.get(event.source, event.source),
             "origin_country": origins.get(event.source),
             "outlet_class": classes.get(event.source, "mainstream"),
+            "url": (event.payload or {}).get("source_url") or (event.payload or {}).get("link"),
+            "summary": (event.payload or {}).get("summary")
+            or (event.payload or {}).get("description"),
+            "sentiment": (event.payload or {}).get("sentiment_label"),
             "occurred_at": event.occurred_at.isoformat(),
             "similarity": member.similarity,
         }
@@ -366,6 +401,10 @@ def story_detail(
             "owner": owners.get(event.source, event.source),
             "origin_country": origins.get(event.source),
             "outlet_class": classes.get(event.source, "mainstream"),
+            "url": (event.payload or {}).get("source_url") or (event.payload or {}).get("link"),
+            "summary": (event.payload or {}).get("summary")
+            or (event.payload or {}).get("description"),
+            "sentiment": (event.payload or {}).get("sentiment_label"),
             "occurred_at": event.occurred_at.isoformat(),
             "similarity": member.similarity,
         }
@@ -395,6 +434,7 @@ def story_detail(
         if disagreement
         else None,
         "sensor_checks": checks,
+        "divergence_contrast": _bloc_contrast(members) if disagreement else None,
         "members": members,
     }
 
