@@ -865,9 +865,12 @@ def build_qa_prompt(
         "snippets, datasets, metadata, headline lists, or what 'the data' "
         "contains. The reader sees only your answer: talk about the news "
         "itself — 'local reporting shows…', 'no local reporting covers…'.\n"
-        "- Plain flowing sentences and paragraphs ONLY. Never use markdown: no "
-        "asterisks or bold, no bullet or numbered lists, no headers. The [n] "
-        "citations are the only bracketed markup allowed.\n"
+        "- Plain flowing sentences ONLY. Never use markdown: no asterisks or "
+        "bold, no bullet or numbered lists, no headers. The [n] citations are "
+        "the only bracketed markup allowed.\n"
+        "- Format for the eye: SHORT paragraphs separated by blank lines, one "
+        "idea per paragraph. A compound question gets each part answered in "
+        "its own paragraph, in the order asked.\n"
         "- Answer THE question asked, freshly worded every time. Never repeat or "
         "rephrase an earlier answer from RECENT CONVERSATION.\n"
         "- If the question asks for a number, date, or name and the context has "
@@ -1019,17 +1022,26 @@ _MD_LINE_RE = re.compile(r"^\s*(?:[*+-]|\d+[.)]|#{1,6})\s+", re.MULTILINE)
 
 
 def strip_markdown(answer: str) -> str:
-    """Deterministic plain-text guard (#480).
+    """Deterministic plain-text guard (#480, layout-preserving since #484).
 
-    The prompt forbids markdown, but the live 2026-07-18 answer still shipped
-    `**bold**` and `*` bullets. Strip emphasis markers, flatten list/header
-    lines into flowing text, keep paragraph breaks. Citations [n] pass
-    through untouched.
+    Markdown characters go, layout stays: emphasis markers stripped, list and
+    header markers removed but each item KEEPS its own line — flattening them
+    into run-on prose was the #484 wall of text. Blank lines survive as
+    paragraph breaks (runs collapse to one); whitespace inside lines is
+    tidied. Citations [n] pass through untouched.
     """
     text = _MD_EMPHASIS_RE.sub(r"\2", answer)
     text = _MD_LINE_RE.sub("", text)
-    paragraphs = [" ".join(part.split()) for part in re.split(r"\n{2,}", text) if part.strip()]
-    return "\n\n".join(paragraphs)
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.split())
+        if line:
+            lines.append(line)
+        elif lines and lines[-1] != "":
+            lines.append("")
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
 
 
 def trim_incomplete_tail(answer: str) -> str:

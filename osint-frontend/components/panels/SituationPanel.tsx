@@ -134,7 +134,17 @@ function ChatEntry({ m }: { m: ChatMessage }) {
   return (
     <div className="py-2 text-sm">
       <p className="text-neutral-500">{m.question}</p>
-      <p className={m.draft ? "italic text-neutral-400" : "text-neutral-200"}>{m.answer || "…"}</p>
+      <p
+        className={
+          // whitespace-pre-line keeps the answer's paragraph breaks and
+          // pointer lines (#484) — a plain <p> collapsed them into a wall.
+          m.draft
+            ? "whitespace-pre-line italic text-neutral-400"
+            : "whitespace-pre-line text-neutral-200"
+        }
+      >
+        {m.answer || "…"}
+      </p>
       {m.draft && m.answer ? (
         <p className="mt-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
           drafting — verifying sources…
