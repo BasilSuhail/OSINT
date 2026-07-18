@@ -1,5 +1,5 @@
 import { format, isSameDay, subDays } from "date-fns"
-import type { AskExchange, BrainSource } from "./apiClient"
+import type { AskClaim, AskExchange, AskReasoning, BrainSource } from "./apiClient"
 
 /** One ask-the-brain exchange in the Situation chat transcript (#439). */
 export interface ChatMessage {
@@ -8,6 +8,9 @@ export interface ChatMessage {
   sources: BrainSource[]
   /** Weak-retrieval fallback (#459): near-misses shown separately, never as evidence. */
   closest: BrainSource[]
+  /** Chip fuel (#476): sentence→story mapping + retrieval reasoning. */
+  claims: AskClaim[]
+  reasoning: AskReasoning | null
   draft: boolean
 }
 
@@ -15,7 +18,14 @@ export type ChatAction =
   | { type: "ask"; question: string }
   | { type: "delta"; text: string }
   | { type: "sources"; sources: BrainSource[] }
-  | { type: "finalize"; answer: string; sources: BrainSource[]; closest: BrainSource[] }
+  | {
+      type: "finalize"
+      answer: string
+      sources: BrainSource[]
+      closest: BrainSource[]
+      claims: AskClaim[]
+      reasoning: AskReasoning | null
+    }
   | { type: "fail" }
   | { type: "clear" }
   | { type: "restore"; messages: ChatMessage[] }
@@ -68,6 +78,41 @@ export function dayMarkers<T extends { last_seen: string }>(
   })
 }
 
+/** One renderable piece of an answer line (#476). */
+export type AnswerSegment =
+  | { type: "text"; text: string }
+  | { type: "source"; n: number }
+  | { type: "thinking"; claim: number }
+
+const CITATION_RE = /\[(\d+)\]/g
+
+/**
+ * Answer → lines of segments for chip rendering (#476): each [n] becomes a
+ * clickable (source) chip; a line carrying an unsupported claim (the brain's
+ * own analysis) gets a trailing (thinking) chip. Empty lines mark paragraph
+ * breaks.
+ */
+export function answerLines(answer: string, claims: AskClaim[]): AnswerSegment[][] {
+  const unsupported = claims
+    .map((claim, index) => ({ claim, index }))
+    .filter(({ claim }) => !claim.supported && claim.text)
+  return answer.split("\n").map((line) => {
+    const segments: AnswerSegment[] = []
+    let last = 0
+    for (const match of line.matchAll(CITATION_RE)) {
+      const at = match.index ?? 0
+      if (at > last) segments.push({ type: "text", text: line.slice(last, at) })
+      segments.push({ type: "source", n: Number(match[1]) })
+      last = at + match[0].length
+    }
+    if (last < line.length) segments.push({ type: "text", text: line.slice(last) })
+    for (const { claim, index } of unsupported) {
+      if (line.includes(claim.text)) segments.push({ type: "thinking", claim: index })
+    }
+    return segments
+  })
+}
+
 function patchLast(state: ChatMessage[], patch: (last: ChatMessage) => ChatMessage): ChatMessage[] {
   if (state.length === 0) return state
   return [...state.slice(0, -1), patch(state[state.length - 1])]
@@ -78,7 +123,15 @@ export function chatReducer(state: ChatMessage[], action: ChatAction): ChatMessa
     case "ask":
       return [
         ...state,
-        { question: action.question, answer: "", sources: [], closest: [], draft: true },
+        {
+          question: action.question,
+          answer: "",
+          sources: [],
+          closest: [],
+          claims: [],
+          reasoning: null,
+          draft: true,
+        },
       ]
     case "delta":
       return patchLast(state, (m) => ({ ...m, answer: `${m.answer}${action.text}` }))
@@ -90,6 +143,8 @@ export function chatReducer(state: ChatMessage[], action: ChatAction): ChatMessa
         answer: action.answer,
         sources: action.sources,
         closest: action.closest,
+        claims: action.claims,
+        reasoning: action.reasoning,
         draft: false,
       }))
     case "fail":
@@ -158,8 +213,12 @@ export function parseChatStorage(raw: string | null): ChatMessage[] {
   )
   if (!valid) return []
   //: A draft persisted mid-stream must not reload stuck on "drafting".
-  //: Transcripts saved before #459 lack `closest` — default it.
-  return (data as ChatMessage[])
-    .slice(-MAX_CHAT_MESSAGES)
-    .map((m) => ({ ...m, closest: m.closest ?? [], draft: false }))
+  //: Transcripts saved before #459/#476 lack the newer fields — default them.
+  return (data as ChatMessage[]).slice(-MAX_CHAT_MESSAGES).map((m) => ({
+    ...m,
+    closest: m.closest ?? [],
+    claims: m.claims ?? [],
+    reasoning: m.reasoning ?? null,
+    draft: false,
+  }))
 }

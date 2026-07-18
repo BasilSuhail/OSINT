@@ -19,6 +19,7 @@ import {
 import { fetchTopStories, type StoryRow } from "@/lib/analytics"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import {
+  answerLines,
   askHistory,
   chatReducer,
   dayMarkers,
@@ -94,7 +95,7 @@ function useBrainChat() {
     dispatch({ type: "ask", question })
     setPending(true)
     try {
-      const { answer, sources, closest_matches } = await streamBrainAsk(
+      const { answer, sources, closest_matches, claims, reasoning } = await streamBrainAsk(
         question,
         {
           onDelta: (text) => dispatch({ type: "delta", text }),
@@ -102,11 +103,28 @@ function useBrainChat() {
         },
         history,
       )
-      dispatch({ type: "finalize", answer, sources, closest: closest_matches ?? [] })
+      dispatch({
+        type: "finalize",
+        answer,
+        sources,
+        closest: closest_matches ?? [],
+        claims: claims ?? [],
+        reasoning: reasoning ?? null,
+      })
     } catch {
       try {
-        const { answer, sources, closest_matches } = await fetchBrainAsk(question, history)
-        dispatch({ type: "finalize", answer, sources, closest: closest_matches ?? [] })
+        const { answer, sources, closest_matches, claims, reasoning } = await fetchBrainAsk(
+          question,
+          history,
+        )
+        dispatch({
+          type: "finalize",
+          answer,
+          sources,
+          closest: closest_matches ?? [],
+          claims: claims ?? [],
+          reasoning: reasoning ?? null,
+        })
       } catch {
         dispatch({ type: "fail" })
       }
@@ -130,21 +148,77 @@ function sourceSpans(items: BrainSource[]) {
   ))
 }
 
-function ChatEntry({ m }: { m: ChatMessage }) {
+const CHIP_BASE =
+  "mx-0.5 align-baseline text-[11px] underline decoration-dotted underline-offset-2"
+
+function ChatEntry({ m, onOpenStory }: { m: ChatMessage; onOpenStory: (id: string) => void }) {
+  //: Which (thinking) chip's analysis panel is open, by claim index (#476).
+  const [openThinking, setOpenThinking] = useState<number | null>(null)
+  const storyFor = (n: number) =>
+    m.sources.find((s) => s.n === n) ?? m.closest.find((s) => s.n === n)
   return (
     <div className="py-2 text-sm">
       <p className="text-neutral-500">{m.question}</p>
-      <p
-        className={
-          // whitespace-pre-line keeps the answer's paragraph breaks and
-          // pointer lines (#484) — a plain <p> collapsed them into a wall.
-          m.draft
-            ? "whitespace-pre-line italic text-neutral-400"
-            : "whitespace-pre-line text-neutral-200"
-        }
-      >
-        {m.answer || "…"}
-      </p>
+      {m.draft ? (
+        // whitespace-pre-line keeps paragraph breaks (#484); chips arrive with
+        // the verified final, never on the unchecked draft.
+        <p className="whitespace-pre-line italic text-neutral-400">{m.answer || "…"}</p>
+      ) : (
+        <div className="text-neutral-200">
+          {answerLines(m.answer, m.claims).map((segments, i) =>
+            segments.length === 0 ? (
+              <div key={i} className="h-2" />
+            ) : (
+              <p key={i} className="leading-relaxed">
+                {segments.map((seg, j) => {
+                  if (seg.type === "text") return <span key={j}>{seg.text}</span>
+                  if (seg.type === "source") {
+                    const story = storyFor(seg.n)
+                    return (
+                      <button
+                        key={j}
+                        onClick={story ? () => onOpenStory(String(story.story_id)) : undefined}
+                        title={story ? story.outlets.join(", ") || story.title : undefined}
+                        className={`${CHIP_BASE} text-sky-300/80 hover:text-sky-200`}
+                      >
+                        (source)
+                      </button>
+                    )
+                  }
+                  return (
+                    <button
+                      key={j}
+                      onClick={() =>
+                        setOpenThinking(openThinking === seg.claim ? null : seg.claim)
+                      }
+                      className={`${CHIP_BASE} italic text-neutral-500 hover:text-neutral-300`}
+                    >
+                      (thinking)
+                    </button>
+                  )
+                })}
+              </p>
+            ),
+          )}
+        </div>
+      )}
+      {openThinking !== null && m.claims[openThinking] ? (
+        <div className="mt-1 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2 text-[11px] leading-snug">
+          <p className="mb-1 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
+            the brain&apos;s own analysis — no local story directly backs this sentence
+          </p>
+          <p className="text-neutral-300">{m.claims[openThinking].text}</p>
+          {m.reasoning ? (
+            <p className="mt-1 text-neutral-500">
+              retrieval: {m.reasoning.method ?? "—"}
+              {m.reasoning.intents.length > 0
+                ? ` · intents: ${m.reasoning.intents.join(", ")}`
+                : ""}
+              {m.reasoning.terms.length > 0 ? ` · terms: ${m.reasoning.terms.join(", ")}` : ""}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {m.draft && m.answer ? (
         <p className="mt-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
           drafting — verifying sources…
@@ -283,7 +357,7 @@ export function SituationPanel() {
             </div>
             <div className="divide-y divide-neutral-800/60">
               {messages.map((m, i) => (
-                <ChatEntry key={i} m={m} />
+                <ChatEntry key={i} m={m} onOpenStory={openStory} />
               ))}
             </div>
           </section>

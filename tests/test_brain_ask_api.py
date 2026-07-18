@@ -128,7 +128,7 @@ def test_ask_returns_sources_and_strips_bad_citations(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {
+        lambda session, question=None, history=None, trace=None: {
             "stories": [
                 {
                     "n": 1,
@@ -158,7 +158,7 @@ def test_ask_repairs_uncited_story_answer(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {
+        lambda session, question=None, history=None, trace=None: {
             "stories": [
                 {
                     "n": 1,
@@ -189,7 +189,7 @@ def test_ask_falls_back_to_cited_story_after_failed_repair(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {
+        lambda session, question=None, history=None, trace=None: {
             "stories": [
                 {
                     "n": 1,
@@ -232,7 +232,7 @@ def test_ask_threads_question_into_context_retrieval(monkeypatch):
     captured = {}
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
 
-    def _context(session, question=None, history=None):
+    def _context(session, question=None, history=None, trace=None):
         captured["question"] = question
         return {"stories": []}
 
@@ -251,7 +251,7 @@ def test_ask_stream_returns_sources_delta_and_final(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {
+        lambda session, question=None, history=None, trace=None: {
             "stories": [
                 {
                     "n": 1,
@@ -289,7 +289,7 @@ def test_ask_stream_falls_back_when_uncited(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {
+        lambda session, question=None, history=None, trace=None: {
             "stories": [
                 {
                     "n": 1,
@@ -340,7 +340,9 @@ def test_ask_uses_qa_model_and_evicts(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(
-        api.qa, "build_qa_context", lambda session, question=None, history=None: {"stories": []}
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None, history=None, trace=None: {"stories": []},
     )
     captured = {}
 
@@ -369,7 +371,9 @@ def test_ask_stream_uses_qa_model_and_evicts(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(
-        api.qa, "build_qa_context", lambda session, question=None, history=None: {"stories": []}
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None, history=None, trace=None: {"stories": []},
     )
     captured = {}
 
@@ -395,7 +399,7 @@ def test_ask_no_evidence_fallback_for_wrong_topic(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {
+        lambda session, question=None, history=None, trace=None: {
             "stories": [
                 {
                     "n": 1,
@@ -433,7 +437,7 @@ def test_ask_stream_no_evidence_fallback_for_wrong_topic(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {
+        lambda session, question=None, history=None, trace=None: {
             "stories": [
                 {
                     "n": 1,
@@ -516,7 +520,7 @@ def test_ask_salvages_uncited_grounded_answer(monkeypatch):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {
+        lambda session, question=None, history=None, trace=None: {
             "stories": [
                 {
                     "n": 1,
@@ -576,7 +580,9 @@ def test_ask_regenerates_when_answer_echoes_history(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(
-        api.qa, "build_qa_context", lambda session, question=None, history=None: _ECHO_STORIES
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None, history=None, trace=None: _ECHO_STORIES,
     )
     calls = iter(
         [
@@ -611,7 +617,9 @@ def test_ask_keeps_echoing_answer_when_retry_fails(monkeypatch):
     client = _client()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(
-        api.qa, "build_qa_context", lambda session, question=None, history=None: _ECHO_STORIES
+        api.qa,
+        "build_qa_context",
+        lambda session, question=None, history=None, trace=None: _ECHO_STORIES,
     )
     echoing = {
         "answer": (

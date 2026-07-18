@@ -150,7 +150,7 @@ def _ask_with_fallback(monkeypatch, stories):
     monkeypatch.setattr(
         api.qa,
         "build_qa_context",
-        lambda session, question=None, history=None: {"stories": stories},
+        lambda session, question=None, history=None, trace=None: {"stories": stories},
     )
     #: Uncited nonsense from draft AND repair → salvage fails → fallback.
     monkeypatch.setattr(
