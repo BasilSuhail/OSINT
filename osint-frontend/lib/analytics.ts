@@ -91,6 +91,8 @@ export interface StoryMember {
   outlet: string
   owner: string
   origin_country: string | null
+  /** Outlet class (#477/#488): mainstream | state | regional | independent. */
+  outlet_class: string
   occurred_at: string
   similarity: number
 }
