@@ -655,8 +655,10 @@ def _checked_ask_answer(
     stories: list[dict],
     n_sources: int,
 ) -> str:
-    #: Truncation guard first (#474): a trimmed fragment must not keep a
-    #: citation the surviving text no longer earns.
+    #: Plain-text guard (#480) before the truncation guard (#474): flatten
+    #: markdown first so the trim sees real sentences; a trimmed fragment must
+    #: not keep a citation the surviving text no longer earns.
+    answer = qa.strip_markdown(answer)
     answer = qa.trim_incomplete_tail(answer)
     answer = qa.strip_bad_citations(answer, n_sources)
     if not qa.citation_compliant(answer, n_sources):
