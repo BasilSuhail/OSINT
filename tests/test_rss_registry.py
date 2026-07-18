@@ -110,9 +110,33 @@ def test_roster_widened_beyond_anglosphere() -> None:
 
 def test_build_rss_fetchers_returns_one_instance_per_slug() -> None:
     fetchers = build_rss_fetchers()
-    configs = load_feed_configs()
+    #: Parked feeds (#490) get no fetcher — compare against the enabled set.
+    configs = load_feed_configs(enabled_only=True)
     assert set(fetchers.keys()) == {c.source for c in configs}
     # Every fetcher's config matches its slug.
     for slug, fetcher in fetchers.items():
         assert fetcher.config.source == slug
         assert fetcher.name == slug
+
+
+def test_parked_feeds_leave_schedule_but_keep_metadata() -> None:
+    """#490: nhk-world and rt-news are parked (dead URL / network-blocked).
+
+    They must vanish from the fetch/schedule paths but keep resolving in the
+    metadata maps so their historical events rows stay labeled.
+    """
+    parked = {"rss-nhk-world", "rss-rt-news"}
+    assert parked.isdisjoint(feed_cadence_map())
+    assert parked.isdisjoint(build_rss_fetchers())
+    assert parked.isdisjoint({c.source for c in load_feed_configs(enabled_only=True)})
+    # default listing + maps keep them
+    assert parked <= {c.source for c in load_feed_configs()}
+    assert parked <= set(content_owner_map())
+    assert parked <= set(outlet_country_map())
+
+
+def test_revived_feeds_use_live_urls() -> None:
+    """#490: kyiv-independent and tribune-pk moved to verified-live URLs."""
+    urls = {c.source: c.url for c in load_feed_configs(enabled_only=True)}
+    assert urls["rss-kyiv-independent"] == "https://kyivindependent.com/feed/rss/"
+    assert urls["rss-tribune-pk"] == "https://tribune.com.pk/feed/latest"

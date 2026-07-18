@@ -21,19 +21,26 @@ if TYPE_CHECKING:
 _FEEDS_PATH = Path(__file__).parent / "rss_feeds.json"
 
 
-def load_feed_configs() -> list[RssFeedConfig]:
+def load_feed_configs(*, enabled_only: bool = False) -> list[RssFeedConfig]:
     """Read ``rss_feeds.json`` and produce one ``RssFeedConfig`` per entry.
 
     The cadence_min field is consumed by the beat-schedule generator in
     ``app.tasks`` — not by the fetcher itself — so it lives alongside
     the per-feed metadata but is exposed as a tuple-of-dicts via
     ``feed_cadence_map`` for the scheduler.
+
+    ``enabled_only`` (#490) is for the fetch/schedule paths: parked feeds
+    (``"enabled": false`` — dead URL or network-blocked) are skipped there,
+    but stay in the default listing so pretty names, owners, and classes keep
+    resolving for their historical events rows.
     """
     from app.sources.rss_news_fetcher import RssFeedConfig
 
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
     out: list[RssFeedConfig] = []
     for entry in raw:
+        if enabled_only and entry.get("enabled") is False:
+            continue
         out.append(
             RssFeedConfig(
                 source=entry["source"],
@@ -84,9 +91,16 @@ def outlet_class_map() -> dict[str, str]:
 
 
 def feed_cadence_map() -> dict[str, int]:
-    """Source slug → cadence in minutes. Drives ``app.tasks`` beat schedule."""
+    """Source slug → cadence in minutes. Drives ``app.tasks`` beat schedule.
+
+    Parked feeds (#490) are excluded — a dead URL must not burn a fetch slot
+    every cycle."""
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
-    return {entry["source"]: int(entry.get("cadence_min", 60)) for entry in raw}
+    return {
+        entry["source"]: int(entry.get("cadence_min", 60))
+        for entry in raw
+        if entry.get("enabled") is not False
+    }
 
 
 def build_rss_fetchers() -> dict[str, RssNewsFetcher]:
@@ -99,7 +113,7 @@ def build_rss_fetchers() -> dict[str, RssNewsFetcher]:
     from app.sources.rss_news_fetcher import RssNewsFetcher
 
     out: dict[str, RssNewsFetcher] = {}
-    for cfg in load_feed_configs():
+    for cfg in load_feed_configs(enabled_only=True):
         cls = type(
             f"RssFeed_{cfg.source.replace('-', '_')}",
             (RssNewsFetcher,),

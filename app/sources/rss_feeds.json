@@ -118,7 +118,8 @@
     "cadence_min": 60,
     "owner": "nhk",
     "country": "JP",
-    "class": "mainstream"
+    "class": "mainstream",
+    "enabled": false
   },
   {
     "source": "rss-rt-news",
@@ -128,7 +129,8 @@
     "cadence_min": 60,
     "owner": "russian-state",
     "country": "RU",
-    "class": "state"
+    "class": "state",
+    "enabled": false
   },
   {
     "source": "rss-tass-en",
@@ -162,7 +164,7 @@
   },
   {
     "source": "rss-tribune-pk",
-    "url": "https://tribune.com.pk/feed",
+    "url": "https://tribune.com.pk/feed/latest",
     "default_country": "PK",
     "pretty_name": "Express Tribune",
     "cadence_min": 60,
@@ -242,7 +244,7 @@
   },
   {
     "source": "rss-kyiv-independent",
-    "url": "https://kyivindependent.com/feed/",
+    "url": "https://kyivindependent.com/feed/rss/",
     "default_country": "UA",
     "pretty_name": "Kyiv Independent",
     "cadence_min": 60,
