@@ -639,6 +639,14 @@ def _derefused_answer(
     return answer
 
 
+def _extracted_answer(raw: object) -> str | None:
+    """Usable answer string from a model response, else None (#474)."""
+    answer = raw.get("answer") if isinstance(raw, dict) else None
+    if isinstance(answer, str) and answer.strip():
+        return answer
+    return None
+
+
 def _checked_ask_answer(
     *,
     answer: str,
@@ -647,6 +655,9 @@ def _checked_ask_answer(
     stories: list[dict],
     n_sources: int,
 ) -> str:
+    #: Truncation guard first (#474): a trimmed fragment must not keep a
+    #: citation the surviving text no longer earns.
+    answer = qa.trim_incomplete_tail(answer)
     answer = qa.strip_bad_citations(answer, n_sources)
     if not qa.citation_compliant(answer, n_sources):
         #: Grounded-but-uncited drafts keep their prose with the citation
@@ -698,22 +709,26 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     200; only a bad request is a 422.
     """
     if gate.ram_free_mb() < settings.qa_min_free_mb:
-        return _ask_payload(
-            "Brain busy — the box is loaded right now, try again in a moment.", None, []
-        )
+        return _ask_payload(qa.BRAIN_BUSY_ANSWER, None, [])
     history = [h.model_dump() for h in req.history]
     qa_context = qa.build_qa_context(session, question=req.question, history=history)
+    prompt = qa.build_qa_prompt(qa_context, req.question, history=history)
     try:
-        raw = client.generate_json(
-            qa.build_qa_prompt(qa_context, req.question, history=history),
-            model=settings.qa_model,
-            keep_alive="0",
+        answer = _extracted_answer(
+            client.generate_json(prompt, model=settings.qa_model, keep_alive="0")
         )
     except Exception:
-        return _ask_payload("The brain is offline right now.", None, [])
-    answer = raw.get("answer") if isinstance(raw, dict) else None
-    if not isinstance(answer, str) or not answer.strip():
-        return _ask_payload("The brain is not working right now.", None, [])
+        return _ask_payload(qa.BRAIN_OFFLINE_ANSWER, None, [])
+    if answer is None:
+        #: One retry on unusable output (#474) — 3/12 audit answers died here.
+        try:
+            answer = _extracted_answer(
+                client.generate_json(prompt, model=settings.qa_model, keep_alive="0")
+            )
+        except Exception:
+            answer = None
+    if answer is None:
+        return _ask_payload(qa.BRAIN_NOT_WORKING_ANSWER, None, [])
     stories = qa_context.get("stories") or []
     sources = _ask_sources(stories)
     answer = _deechoed_answer(answer, qa_context=qa_context, question=req.question, history=history)
@@ -736,12 +751,7 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
 
     def gen() -> Iterator[str]:
         if gate.ram_free_mb() < settings.qa_min_free_mb:
-            yield _sse(
-                "final",
-                _ask_payload(
-                    "Brain busy — the box is loaded right now, try again in a moment.", None, []
-                ),
-            )
+            yield _sse("final", _ask_payload(qa.BRAIN_BUSY_ANSWER, None, []))
             return
         history = [h.model_dump() for h in req.history]
         qa_context = qa.build_qa_context(session, question=req.question, history=history)
@@ -758,12 +768,23 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
                 chunks.append(chunk)
                 yield _sse("delta", {"text": chunk})
         except Exception:
-            yield _sse("final", _ask_payload("The brain is offline right now.", None, []))
+            yield _sse("final", _ask_payload(qa.BRAIN_OFFLINE_ANSWER, None, []))
             return
         answer = "".join(chunks).strip()
         if not answer:
-            answer = "The brain is not working right now."
-        else:
+            #: One non-stream retry when the stream produced nothing (#474).
+            try:
+                retried = _extracted_answer(
+                    client.generate_json(
+                        qa.build_qa_prompt(qa_context, req.question, history=history),
+                        model=settings.qa_model,
+                        keep_alive="0",
+                    )
+                )
+            except Exception:
+                retried = None
+            answer = retried if retried is not None else qa.BRAIN_NOT_WORKING_ANSWER
+        if answer != qa.BRAIN_NOT_WORKING_ANSWER:
             answer = _deechoed_answer(
                 answer, qa_context=qa_context, question=req.question, history=history
             )

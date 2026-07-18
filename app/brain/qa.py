@@ -212,6 +212,16 @@ NO_EVIDENCE_ANSWER = (
 #: so nothing retrieved may be presented as the answer's sources — the API
 #: moves them to a separate closest-matches list instead.
 NO_LOCAL_EVIDENCE_ANSWER = "I do not have enough local evidence for that question."
+#: Operational messages (#474) — the API's typed failure answers. Not model
+#: output: exempt from claim checks and never treated as content.
+BRAIN_BUSY_ANSWER = "Brain busy — the box is loaded right now, try again in a moment."
+BRAIN_OFFLINE_ANSWER = "The brain is offline right now."
+BRAIN_NOT_WORKING_ANSWER = "The brain is not working right now."
+OPERATIONAL_ANSWERS: tuple[str, ...] = (
+    BRAIN_BUSY_ANSWER,
+    BRAIN_OFFLINE_ANSWER,
+    BRAIN_NOT_WORKING_ANSWER,
+)
 #: A semantic pick (cosine vs the question) below this is a weak match.
 SEMANTIC_RELEVANT_MIN: float = 0.55
 #: A keyword pick matching less than this fraction of question terms is weak.
@@ -936,6 +946,28 @@ def story_support_texts(session: Session, stories: list[dict[str, Any]]) -> dict
     }
 
 
+def trim_incomplete_tail(answer: str) -> str:
+    """Drop a truncated trailing fragment (#474).
+
+    The audit shipped "…the chances are high. The stories consistently report
+    that Iran and the United States are [1]" — a token-limit cut mid-sentence.
+    A sentence whose text (citations aside) does not end in terminal
+    punctuation is a fragment: trim it when at least one complete sentence
+    remains; a lone fragment stays untouched (something beats nothing, and the
+    citation chain still vets it).
+    """
+    text = answer.strip()
+    if not text:
+        return answer
+    sentences = _SENTENCE_RE.split(text)
+    while len(sentences) > 1:
+        tail = _CITATION_RE.sub("", sentences[-1]).strip()
+        if tail.endswith((".", "!", "?", "…", '"', "'")):
+            break
+        sentences.pop()
+    return " ".join(sentences)
+
+
 def check_claims(answer: str | None, support_texts: dict[int, str]) -> dict[str, Any]:
     """Sentence-level claim check (#413 item 4): a [n] citation only proves a
     story was in context; this maps each answer sentence to the stories that
@@ -946,9 +978,15 @@ def check_claims(answer: str | None, support_texts: dict[int, str]) -> dict[str,
     cited stories are checked first, then the whole context, so a right claim
     with the wrong citation stays visible as cited ≠ matched_story. Sentences
     with fewer than _CLAIM_MIN_TERMS content terms are uncheckable and
-    skipped; canned answers carry no claims.
+    skipped; canned and operational answers carry no claims (#474 — the audit
+    once counted "The brain is not working right now." as an unsupported claim).
     """
-    canned = (REFUSAL_ANSWER, NO_EVIDENCE_ANSWER, NO_LOCAL_EVIDENCE_ANSWER)
+    canned = (
+        REFUSAL_ANSWER,
+        NO_EVIDENCE_ANSWER,
+        NO_LOCAL_EVIDENCE_ANSWER,
+        *OPERATIONAL_ANSWERS,
+    )
     if not answer or answer.strip() in canned:
         return {"claims": [], "unsupported": 0}
     claims: list[dict[str, Any]] = []
