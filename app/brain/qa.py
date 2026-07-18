@@ -413,6 +413,21 @@ def _member_details(
     }
 
 
+def _story_voices(
+    sources: list[str], class_of: dict[str, str], pretty: dict[str, str]
+) -> dict[str, list[str]]:
+    """A story's outlets grouped by class (#477): mainstream / state /
+    regional / independent, capped per class. Lets the model say who tells
+    the story instead of counting volume as proof."""
+    voices: dict[str, list[str]] = {}
+    for slug in sources:
+        names = voices.setdefault(class_of.get(slug, "mainstream"), [])
+        name = pretty.get(slug, slug)
+        if name not in names and len(names) < _MAX_OUTLETS:
+            names.append(name)
+    return voices
+
+
 def _distinct_headlines(headlines: list[str], story_title: str | None) -> list[str]:
     """Up to _STORY_DETAILS member headlines that add something beyond the
     story title — duplicates (case-insensitive) collapse."""
@@ -695,9 +710,10 @@ def build_qa_stories(
     ).scalars():
         sensors.setdefault(c.story_id, {})[c.claim_type] = c.verdict
 
-    from app.sources.rss_registry import load_feed_configs
+    from app.sources.rss_registry import load_feed_configs, outlet_class_map
 
     pretty = {cfg.source: cfg.pretty_name for cfg in load_feed_configs()}
+    class_of = outlet_class_map()
     details = _member_details(session, story_ids)
 
     out: list[dict[str, Any]] = []
@@ -708,7 +724,6 @@ def build_qa_stories(
                 .join(StoryMemberRow, StoryMemberRow.event_id == EventRow.id)
                 .where(StoryMemberRow.story_id == story.id)
                 .distinct()
-                .limit(_MAX_OUTLETS)
             )
             .scalars()
             .all()
@@ -734,7 +749,11 @@ def build_qa_stories(
                 "divergence": round(div, 3) if div is not None else None,
                 "contested": bool(div is not None and div >= CONTESTED_THRESHOLD),
                 "sensor": sensors.get(story.id, {}),
-                "sources": [pretty.get(s, s) for s in srcs],
+                "sources": [pretty.get(s, s) for s in srcs[:_MAX_OUTLETS]],
+                #: Who tells this story, by outlet class (#477) — the model can
+                #: compare mainstream vs state vs regional vs independent
+                #: framings instead of treating coverage volume as proof.
+                "voices": _story_voices(srcs, class_of, pretty),
                 "retrieval": retrieval_meta.get(story.id, ("fill", None))[0],
                 "relevance": retrieval_meta.get(story.id, ("fill", None))[1],
             }
@@ -856,7 +875,9 @@ def build_qa_prompt(
         "(do tellers disagree sharply), sensor verdicts (machine-confirmed claims), and "
         '"age" — how long ago the story last moved, always in hours '
         "(e.g. '3.3 hours ago'), \"details\" — headlines from the cluster's own "
-        'member articles, and "keywords" from those articles.\n\n'
+        'member articles, "keywords" from those articles, and "voices" — the '
+        "story's outlets grouped by class: mainstream, state, regional, "
+        "independent.\n\n"
         "Rules:\n"
         "- Write like a sharp, neutral analyst talking to a person: plain "
         "conversational English, direct and specific, no boilerplate.\n"
@@ -896,6 +917,12 @@ def build_qa_prompt(
         "established fact. Prefer corroborated stories.\n"
         "- Call out contested stories as disputed and name who says what when "
         "the context shows it.\n"
+        "- Compare voices: when a story's outlet classes diverge, say what "
+        "mainstream, state, regional, or independent voices each emphasize. A "
+        "claim only state media carries is never confirmed — say so. Coverage "
+        "volume is not proof.\n"
+        "- Label claims by status where it matters: confirmed, reported, "
+        "contested, denied, inferred, or unknown.\n"
         "- Say when a claim is sensor-confirmed; mark heavy sensor-unconfirmed "
         "claims as unverified.\n"
         "- Questions about how old or fresh the data is: lead with the newest "

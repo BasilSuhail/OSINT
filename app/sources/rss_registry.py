@@ -70,6 +70,19 @@ def outlet_country_map() -> dict[str, str]:
     return {entry["source"]: entry["country"] for entry in raw}
 
 
+def outlet_class_map() -> dict[str, str]:
+    """Source slug → outlet class (#477): mainstream, state, regional, or
+    independent.
+
+    First-pass ownership-based labels — transparent bias, not a truth ranking:
+    "state" means state-owned/controlled or government-aligned editorial line,
+    "independent" the non-MSM/alt outlets, "regional" national outlets outside
+    the global wire circle. Unmapped slugs count as mainstream.
+    """
+    raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
+    return {entry["source"]: entry.get("class") or "mainstream" for entry in raw}
+
+
 def feed_cadence_map() -> dict[str, int]:
     """Source slug → cadence in minutes. Drives ``app.tasks`` beat schedule."""
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
