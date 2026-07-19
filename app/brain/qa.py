@@ -924,8 +924,14 @@ def build_qa_prompt(
         "cited the same way. They are measurements, not reporting: state them "
         "plainly, never as 'reported' or 'contested'. When the question asks "
         "about a hazard and a sensor answers it, lead with the reading.\n"
-        "- CONTEXT.sensors is ordered largest first. If the question asks what "
-        "was biggest, the answer is the first reading in that list \u2014 never a "
+        '- Each sensor reading carries a "match": "place" or "magnitude" '
+        'means it answers the question asked; "largest" means it is only '
+        'context. NEVER cite a "largest" reading as confirming a named event '
+        "\u2014 a quake in another country confirms nothing. If no reading "
+        "matches the event asked about, say the sensors hold no reading for it "
+        "and answer from the stories.\n"
+        "- CONTEXT.sensors is ordered by relevance, then size. If the question asks what "
+        "was biggest, the answer is the largest reading listed \u2014 never a "
         "smaller one, and never a story's number when a reading says it plainly.\n"
         "- CONTEXT.sensor_totals gives the full count per hazard for the window "
         "while CONTEXT.sensors lists only the largest few. Quote the total when "

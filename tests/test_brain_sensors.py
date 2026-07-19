@@ -265,3 +265,118 @@ def test_aftershocks_from_one_feed_are_not_collapsed(db_session):
     db_session.commit()
     out = sensors.build_qa_sensors(db_session, question="earthquakes?")
     assert len(out) == 4
+
+
+# --- #513: retrieval must answer the question asked, not just rank by size ---
+
+
+def test_place_in_question_surfaces_its_reading_over_bigger_ones(db_session):
+    """The reported bug (#513).
+
+    Asked about a Peru earthquake, retrieval returned Mexico, Papua New Guinea,
+    New Caledonia, the Philippines and New Zealand — the six biggest — while the
+    actual USGS reading for Peru sat outside the cap. The model then cited a New
+    Zealand reading as confirmation of a Peru event.
+    """
+    for i in range(8):
+        _quake(db_session, magnitude=7.0 - i / 10, place=f"Elsewhere {i}", eid=f"big-{i}")
+    _quake(db_session, magnitude=5.5, place="2 km WSW of Sicaya, Peru", eid="peru")
+    db_session.commit()
+    out = sensors.build_qa_sensors(db_session, question="tell me about the earthquake in Peru")
+    assert any("Peru" in e["headline"] for e in out)
+    # It leads: the question was about Peru, not about the biggest quake.
+    assert "Peru" in out[0]["headline"]
+
+
+def test_magnitude_in_question_tolerates_revision(db_session):
+    """News reports 5.1, USGS revises to 5.5 — one event, two numbers."""
+    for i in range(8):
+        _quake(db_session, magnitude=7.0 - i / 10, place=f"Elsewhere {i}", eid=f"b-{i}")
+    _quake(db_session, magnitude=5.5, place="Sicaya, Peru", eid="rev")
+    db_session.commit()
+    out = sensors.build_qa_sensors(db_session, question="was there a 5.1 magnitude earthquake?")
+    assert "Sicaya" in out[0]["headline"]
+
+
+def test_open_question_still_ranks_by_size(db_session):
+    _quake(db_session, magnitude=5.5, place="Sicaya, Peru", eid="small")
+    _quake(db_session, magnitude=7.1, place="Big One", eid="big")
+    db_session.commit()
+    out = sensors.build_qa_sensors(db_session, question="any big earthquakes?")
+    assert "Big One" in out[0]["headline"]
+
+
+def test_unmatched_place_still_returns_readings(db_session):
+    """A place we hold nothing for must not empty the block.
+
+    The model needs to be able to say the sensors recorded nothing there, which
+    it cannot do if it is handed no readings at all.
+    """
+    _quake(db_session, magnitude=6.0, place="Chile", eid="cl")
+    db_session.commit()
+    out = sensors.build_qa_sensors(db_session, question="any earthquake in Iceland?")
+    assert len(out) == 1
+
+
+def test_readings_declare_why_they_were_selected(db_session):
+    """The model must be able to tell a matching reading from a filler one.
+
+    Without this it cited an unrelated reading as confirmation of a named event.
+    """
+    for i in range(8):
+        _quake(db_session, magnitude=7.0 - i / 10, place=f"Elsewhere {i}", eid=f"f-{i}")
+    _quake(db_session, magnitude=5.5, place="Sicaya, Peru", eid="pe")
+    db_session.commit()
+    out = sensors.build_qa_sensors(db_session, question="earthquake in Peru")
+    assert out[0]["match"] == "place"
+    assert all(e["match"] == "largest" for e in out[1:])
+
+
+def test_same_magnitude_in_different_countries_is_two_events(db_session):
+    """Magnitude alone must not merge readings (#513).
+
+    A window holding several M5.5 quakes paired them across continents, so the
+    genuine Peru pair never matched and the sensor block listed Peru twice.
+    """
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            EventRow(
+                source="usgs-quake",
+                source_event_id="pe-usgs",
+                occurred_at=now - timedelta(hours=1),
+                category="hazard",
+                severity=0.4,
+                country="PE",
+                keywords=[],
+                payload={"magnitude": 5.5, "place": "2 km WSW of Sicaya, Peru"},
+            ),
+            EventRow(
+                source="gdacs",
+                source_event_id="pe-gdacs",
+                occurred_at=now - timedelta(hours=2),
+                category="hazard",
+                severity=0.4,
+                country="PE",
+                keywords=[],
+                payload={"magnitude": 5.5, "event_type": "EQ"},
+            ),
+            EventRow(
+                source="gdacs",
+                source_event_id="nz-gdacs",
+                occurred_at=now - timedelta(hours=3),
+                category="hazard",
+                severity=0.4,
+                country="NZ",
+                keywords=[],
+                payload={"magnitude": 5.5, "event_type": "EQ"},
+            ),
+        ]
+    )
+    db_session.commit()
+    out = sensors.build_qa_sensors(db_session, question="any earthquakes?")
+    headlines = [e["headline"] for e in out]
+    # The Peru pair collapses to one; New Zealand survives as its own event.
+    assert len([h for h in headlines if "Peru" in h or "Sicaya" in h]) == 1
+    assert any("New Zealand" in h for h in headlines)
+    assert len(out) == 2
