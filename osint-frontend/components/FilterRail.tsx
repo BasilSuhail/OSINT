@@ -353,8 +353,8 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
   return (
     <div
       className={cn(
-        "pointer-events-none absolute inset-y-0 z-20 flex items-stretch",
-        isLeft ? "left-0" : "right-0",
+        "pointer-events-none absolute bottom-3 top-3 z-20 flex items-stretch gap-2",
+        isLeft ? "left-3" : "right-3",
       )}
       onMouseLeave={requestClose}
       onMouseEnter={() => {
@@ -373,7 +373,7 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
           aria-hidden
           className={cn(
             "pointer-events-auto absolute inset-y-0 z-10 w-4",
-            isLeft ? "left-0" : "right-0",
+            isLeft ? "-left-3" : "-right-3",
           )}
           onMouseEnter={requestOpen}
           onPointerEnter={requestOpen}
@@ -386,8 +386,8 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
        *  and have the panel slide out without precision-aiming the edge. */}
       <div
         className={cn(
-          "pointer-events-auto flex w-11 flex-col items-center gap-2 bg-neutral-950/70 py-3 backdrop-blur-sm",
-          isLeft ? "order-first border-r border-neutral-800" : "order-last border-l border-neutral-800",
+          "pointer-events-auto flex w-11 flex-col items-center gap-2 rounded-2xl border border-white/10 bg-neutral-950/85 py-3 shadow-2xl shadow-black/60 backdrop-blur-xl",
+          isLeft ? "order-first" : "order-last",
         )}
         onMouseEnter={requestOpen}
         onPointerEnter={requestOpen}
@@ -462,8 +462,7 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
       {open && (
         <div
           className={cn(
-            "pointer-events-auto flex w-[280px] flex-col gap-4 overflow-y-auto bg-neutral-950 p-4",
-            isLeft ? "border-r border-neutral-800" : "border-l border-neutral-800",
+            "pointer-events-auto flex w-[280px] flex-col gap-4 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/85 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl",
           )}
         >
           <div className="flex items-center justify-between">

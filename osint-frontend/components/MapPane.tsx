@@ -79,8 +79,8 @@ interface ClusterMarker {
 /** Sources dense enough that a single dot per event would flood the map, so we
  *  cluster them into proportional circles: news + GDELT pile up at city
  *  centroids. Sparse hazards (quakes, GDACS, EONET) stay individual with their
- *  own icon + footprint. NASA FIRMS (100k+ thermal pixels, no footprint) lives
- *  on the globe, not here — the map's fires are the GDACS/EONET wildfire events. */
+ *  own icon + footprint. NASA FIRMS never reaches the map at all since #494 —
+ *  the map's fires are the GDACS/EONET wildfire events. */
 function isClusterable(ev: VisibleEvent): boolean {
   const source = (ev.source ?? "").toLowerCase()
   if (ev.category === "news") return true
@@ -710,8 +710,9 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
-      {/* Source icons/toggles live in the left filter rail. */}
-      <FilterRail side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
+      {/* Source icons/toggles live in the filter rail, docked right — the
+       *  left edge belongs to the floating deck and detail panels (#503). */}
+      <FilterRail side="right" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
     </div>
   )
