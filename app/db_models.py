@@ -240,7 +240,14 @@ class StoryRow(Base):
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Current best account — the newest member headline, refreshed as the story
+    #: develops (#516). Until then this was frozen at whichever outlet published
+    #: first, so a story stayed titled by its earliest, least-informed report.
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    #: The headline that opened the cluster, never overwritten. Kept so the
+    #: change stays auditable, and because the drift between first and current
+    #: framing is itself a signal — casualty escalation, narrative shift.
+    first_title: Mapped[str | None] = mapped_column(Text, nullable=True)
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     member_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
