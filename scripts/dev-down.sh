@@ -32,7 +32,10 @@ pkill -f "uvicorn app.api:app" 2>/dev/null || true
 
 echo "→ stopping stores"
 if docker info >/dev/null 2>&1; then
-  docker compose stop >/dev/null
+  # --profile app so a containerised backend (#530) is stopped too. Without
+  # it `make stop` stopped the stores, left api/worker/beat running, and looked
+  # like it had worked.
+  docker compose --profile app stop >/dev/null
 else
   echo "Docker is not reachable; stores are already stopped or Docker Desktop is closed."
 fi

@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: start stop off up down down-soft clean-dev logs data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: start stop off up up-docker down-docker down down-soft clean-dev logs data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 start:  ## Start the full local app (Docker stores + backend + frontend)
 	@bash scripts/dev-up.sh
@@ -21,6 +21,20 @@ clean-dev:  ## Stop stale frontend/build processes and clear generated Next cach
 	@bash scripts/dev-clean.sh
 
 up: start  ## Alias for make start
+
+up-docker:  ## Start stores + backend IN CONTAINERS (no host worker/beat/api)
+	@# Deliberately separate from `make up` (#530). dev-up.sh spawns celery
+	@# worker, beat and uvicorn on the host; running both would give two beats
+	@# firing every scheduled job twice and two APIs on port 8000. Pick one.
+	@echo "Building backend image and starting the containerised stack..."
+	@docker compose --profile app up -d --build
+	@echo "Backend is in Docker. The frontend still runs on the host:"
+	@echo "  cd osint-frontend && pnpm dev"
+
+down-docker:  ## Stop the containerised backend, leaving stores and data alone
+	@docker compose --profile app stop migrate api worker beat >/dev/null 2>&1 || true
+	@docker compose --profile app rm -f migrate api worker beat >/dev/null 2>&1 || true
+	@echo "Containerised backend stopped. Stores still running; data untouched."
 
 down:  ## Fully stop and teardown docker runtime (data preserved in $OSINT_DATA_DIR)
 	@bash scripts/dev-down.sh

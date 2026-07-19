@@ -1,0 +1,20 @@
+# Keep the build context small and the image free of host state.
+.git
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+osint-frontend
+node_modules
+data
+backups
+logs
+scratch
+docs
+tests
+celerybeat-schedule*
+.env
+.env.*
+*.md
