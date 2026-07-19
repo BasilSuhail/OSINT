@@ -1,8 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
-import { useEvents } from "@/app/providers"
-import { worldStats } from "@/lib/worldStats"
+import { useWorldStats } from "@/lib/queries"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 
 const regionNames =
@@ -94,11 +92,14 @@ function Sparkline({ points }: { points: number[] }) {
  *  countries ranked by frequency (ACLED-style). Rows are clickable and lock
  *  the pane to that country's detail (#252). */
 export function WorldStatusPanel() {
-  const events = useEvents()
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
 
-  const stats = useMemo(() => worldStats(events), [events])
-  const maxCount = stats.topCountries[0]?.count ?? 1
+  //: Counted in Postgres, not in the browser (#499). The old buffer-derived
+  //: figures reported CLIENT_LIMITS.eventBuffer (7500) rather than the data.
+  const { stats, isLoading } = useWorldStats()
+  const topCountries = stats?.top_countries ?? []
+  const spark = stats?.spark ?? []
+  const maxCount = topCountries[0]?.count ?? 1
 
   return (
     <div className="flex h-full w-full flex-col gap-3 overflow-y-auto bg-neutral-950 p-3">
@@ -108,15 +109,15 @@ export function WorldStatusPanel() {
           All events worldwide · <span className="text-emerald-400">live</span>
         </h2>
         <div className="flex items-end gap-2">
-          <StatCell value={stats.total.toLocaleString()} label="Events" accent />
-          <StatCell value={stats.activeCountries.toLocaleString()} label="Countries" />
-          <StatCell value={stats.activeSources.toLocaleString()} label="Sources" />
+          <StatCell value={(stats?.total ?? 0).toLocaleString()} label="Events" accent />
+          <StatCell value={(stats?.countries ?? 0).toLocaleString()} label="Countries" />
+          <StatCell value={(stats?.sources ?? 0).toLocaleString()} label="Sources" />
         </div>
         <div className="mt-4">
           <span className="mb-1 block font-mono text-[9px] uppercase tracking-widest text-neutral-500">
             ↑ Events over time
           </span>
-          <Sparkline points={stats.spark} />
+          <Sparkline points={spark} />
         </div>
       </section>
 
@@ -125,11 +126,13 @@ export function WorldStatusPanel() {
         <h2 className="mb-3 text-[13px] font-semibold text-neutral-100">
           Highest frequency of events
         </h2>
-        {stats.topCountries.length === 0 ? (
-          <p className="py-6 text-center text-xs text-neutral-600">No events in view.</p>
+        {topCountries.length === 0 ? (
+          <p className="py-6 text-center text-xs text-neutral-600">
+            {isLoading ? "Counting…" : "No events in view."}
+          </p>
         ) : (
           <ul className="-mx-2 flex-1 overflow-y-auto">
-            {stats.topCountries.map(({ country, count }) => (
+            {topCountries.map(({ country, count }) => (
               <li key={country} className="border-b border-neutral-800/60 last:border-0">
                 <button
                   type="button"

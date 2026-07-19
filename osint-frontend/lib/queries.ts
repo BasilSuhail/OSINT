@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { useEvents } from "@/app/providers"
-import { CLIENT_LIMITS, fetchEvents, fetchScores as apiFetchScores } from "./apiClient"
+import {
+  CLIENT_LIMITS,
+  fetchEvents,
+  fetchEventStats,
+  fetchScores as apiFetchScores,
+  type EventStats,
+} from "./apiClient"
 import { sourceKeyForEvent, type EventRow, type HazardTypeKey, type ScoreRow } from "./types"
 import { hazardKind } from "./hazardSymbols"
 import { isPersistentActiveHazard } from "./hazardActivity"
@@ -105,6 +111,20 @@ export function useEventsInWindow(useStore: FilterStore): WindowState {
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }
   }, [allEvents, sources, hazardTypes, severity, countries, keyword, windowLengthMs, windowEndOffsetMs])
+}
+
+/** Server-side world stats for the status panel (#499).
+ *
+ *  Replaces aggregating the client buffer: the buffer is capped, so counting it
+ *  reported the cap. Polls on the same 60s cadence as the scores query; the
+ *  payload is a couple of dozen integers regardless of how much data is behind
+ *  it. Returns undefined until the first response lands. */
+export function useWorldStats(days = 30): { stats: EventStats | undefined; isLoading: boolean } {
+  const { data, isLoading } = useSWR(["event-stats", days], () => fetchEventStats(days), {
+    refreshInterval: 60_000,
+    revalidateOnFocus: false,
+  })
+  return { stats: data, isLoading }
 }
 
 async function fetchScores(): Promise<ScoreRow[]> {

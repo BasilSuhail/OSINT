@@ -402,3 +402,127 @@ def test_stream_emits_keepalive_ticks():
                 break
     assert ": keepalive" in body
     assert "data: 3" in body
+
+
+def _seed_stats(session):
+    """Events spread across countries, sources and time for /events/stats."""
+    now = datetime.now(UTC)
+    rows = [
+        EventRow(
+            source="gdelt",
+            source_event_id=f"s-us-{i}",
+            occurred_at=now - timedelta(hours=i),
+            category="geopolitical",
+            country="US",
+            keywords=[],
+            payload={},
+        )
+        for i in range(5)
+    ]
+    rows += [
+        EventRow(
+            source="rss-bbc-world",
+            source_event_id=f"s-gb-{i}",
+            occurred_at=now - timedelta(hours=i),
+            category="news",
+            country="GB",
+            keywords=[],
+            payload={},
+        )
+        for i in range(3)
+    ]
+    # Non-renderable: excluded from the stats by default.
+    rows += [
+        EventRow(
+            source="nasa-firms",
+            source_event_id=f"s-fire-{i}",
+            occurred_at=now - timedelta(hours=i),
+            category="hazard",
+            country="AU",
+            keywords=[],
+            payload={},
+        )
+        for i in range(50)
+    ]
+    rows.append(
+        EventRow(
+            source="opensky-adsb",
+            source_event_id="s-air-1",
+            occurred_at=now,
+            category="tracking",
+            country="FR",
+            keywords=[],
+            payload={"aircraft_count": 4000},
+        )
+    )
+    # Outside the requested window.
+    rows.append(
+        EventRow(
+            source="gdelt",
+            source_event_id="s-old",
+            occurred_at=now - timedelta(days=90),
+            category="geopolitical",
+            country="BR",
+            keywords=[],
+            payload={},
+        )
+    )
+    session.add_all(rows)
+    session.commit()
+
+
+def _stats_client(db_session):
+    _seed_stats(db_session)
+    app.dependency_overrides[get_session] = lambda: db_session
+    return TestClient(app)
+
+
+def test_stats_counts_only_renderable_sources(db_session):
+    client = _stats_client(db_session)
+    body = client.get("/events/stats?days=30").json()
+    # 5 gdelt + 3 rss; the 50 FIRMS rows and the opensky aggregate do not count.
+    assert body["total"] == 8
+    assert body["countries"] == 2
+    assert body["sources"] == 2
+
+
+def test_stats_honours_the_day_window(db_session):
+    client = _stats_client(db_session)
+    body = client.get("/events/stats?days=1").json()
+    assert body["total"] == 8  # the 90-day-old row stays out
+    wide = client.get("/events/stats?days=365").json()
+    assert wide["total"] == 9
+    assert wide["countries"] == 3
+
+
+def test_stats_ranks_top_countries(db_session):
+    client = _stats_client(db_session)
+    body = client.get("/events/stats?days=30").json()
+    assert body["top_countries"][0] == {"country": "US", "count": 5}
+    assert body["top_countries"][1] == {"country": "GB", "count": 3}
+    assert all(row["country"] not in {"AU", "FR"} for row in body["top_countries"])
+
+
+def test_stats_exclude_param_overrides_the_default(db_session):
+    client = _stats_client(db_session)
+    body = client.get("/events/stats?days=30&exclude=gdelt").json()
+    # Explicit exclude replaces the default, so FIRMS and opensky come back.
+    assert body["total"] == 54
+    assert {"country": "AU", "count": 50} in body["top_countries"]
+
+
+def test_stats_spark_has_fixed_buckets_summing_to_total(db_session):
+    client = _stats_client(db_session)
+    body = client.get("/events/stats?days=30").json()
+    assert len(body["spark"]) == 24
+    assert sum(body["spark"]) == body["total"]
+
+
+def test_stats_empty_window_is_zeroed_not_missing(db_session):
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+    body = client.get("/events/stats?days=30").json()
+    assert body["total"] == 0
+    assert body["countries"] == 0
+    assert body["top_countries"] == []
+    assert body["spark"] == [0] * 24
