@@ -106,6 +106,8 @@ def run_backtest(
         leads,
         registry_hash=registry_hash,
         method_version=DIVERGENCE_METHOD_VERSION,
+        registry_size=len(events),
+        unscorable=unscorable,
     )
     return metrics, leads, rendered, unscorable
 
