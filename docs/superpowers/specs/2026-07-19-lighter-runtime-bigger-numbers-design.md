@@ -69,8 +69,17 @@ per-hour flight-density rows instead: `source="opensky-adsb"`, `category="flight
 observation count carried in `payload`, `occurred_at` at the hour boundary. Roughly 190k
 rows/day becomes roughly 4k/day.
 
-`app/divergence/config.py` is the only consumer and treats opensky as a sensor rate, not as
-individual aircraft, so the aggregate preserves its input.
+**Correction (2026-07-19, during implementation).** This section originally claimed the
+aggregate "preserves the signal divergence actually uses". That was wrong. `classify_side`
+does tag opensky `physical`, but `daily_side_counts` matches rows by `country`, and every
+one of the 10.2M raw rows had `country = NULL` — verified. The feed reached no consumer at
+all; it was write-only. Aggregation therefore loses nothing, and country attribution makes
+the feed usable for the first time.
+
+Making flight *density* a real divergence signal is a further step: `daily_side_counts`
+counts rows, so per-country-hourly rows contribute a constant regardless of traffic.
+Weighting by `payload["aircraft_count"]` changes frozen scoring and needs a
+`DIVERGENCE_METHOD_VERSION` bump — tracked separately as #497.
 
 A migration collapses the existing 10,072,097 raw rows into hourly rollups and then deletes
 the raw rows.
@@ -79,9 +88,13 @@ the raw rows.
 rollups; assert the rollup reproduces divergence's current inputs; only then delete raw.
 The delete is one-way.
 
-Win: database 7.2 GB → roughly 1 GB. The every-2-minutes ingest job stops writing 190k
-rows/day, freeing Celery CPU on the Mac. Aggregate queries over `events` stop scanning 10M
-rows, which is what makes PR 3 cheap.
+Cadence drops from every 2 minutes to hourly: `on_conflict_do_update` refreshes the
+hour-keyed row, so the extra 29 polls per hour only ever overwrote each other.
+
+Measured after implementation: database **7,221 MB → 363 MB**, opensky **10.66M rows →
+96 rows per hour**, and the 30-day stats query **80.5 s → 337 ms** — now including every
+source rather than excluding opensky. PR 3 needs no materialised rollup, as the ordering
+predicted.
 
 ### PR 3 — Server-side stats
 
