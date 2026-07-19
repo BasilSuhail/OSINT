@@ -139,7 +139,17 @@ function EventMarker({
       <div
         style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer", opacity: ev.opacity }}
         className="relative grid place-items-center"
+        title={ev.ongoing ? "Ongoing — still live in its source feed, older than the window" : undefined}
       >
+        {/* Ongoing hazards are the only markers allowed outside the time
+         *  window, so they say so rather than passing as current events (#340). */}
+        {ev.ongoing && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-[4px] rounded-full border border-dashed"
+            style={{ borderColor: `${hazardColor(ev)}cc` }}
+          />
+        )}
         {(() => {
           const kind = hazardKind(ev)
           const iconKey = hazardIcon(kind)
