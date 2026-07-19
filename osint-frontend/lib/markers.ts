@@ -29,8 +29,6 @@ export function markerStyle(ev: EventRow): MarkerStyle {
       const map: Record<string, number> = { green: 7, orange: 10, red: 13 }
       return { shape: "diamond", size: map[level] ?? 8, color }
     }
-    case "FIRMS":
-      return { shape: "dot", size: 4, color }
     case "EONET":
       return { shape: "diamond", size: 8, color }
     case "GDELT": {
@@ -55,7 +53,3 @@ export function markerStyle(ev: EventRow): MarkerStyle {
   }
 }
 
-/** Globe point altitude from severity (0 .. 0.5 radius units). */
-export function pointAltitude(severity: number): number {
-  return clamp(severity, 0, 1) * 0.5
-}

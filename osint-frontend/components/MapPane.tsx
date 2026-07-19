@@ -254,7 +254,7 @@ function WorldAggregateChip({
 }
 
 export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount, onSelectEvent, selectedEventId }: MapPaneProps) {
-  const { events, windowEnd, total } = useEventsInWindow(useStore, "map")
+  const { events, windowEnd, total } = useEventsInWindow(useStore)
   const { byCountry } = useLatestScores()
   const scoredGeo = useScoredGeo(byCountry)
   const { centroids } = useCountriesGeo()
@@ -701,7 +701,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       )}
 
       {/* Source icons/toggles live in the left filter rail. */}
-      <FilterRail pane="map" side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
+      <FilterRail side="left" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
     </div>
   )

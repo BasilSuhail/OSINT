@@ -42,12 +42,6 @@ async function fetchCyberEvents(): Promise<EventRow[]> {
   return fetchEvents({ sources: ["abuse-ch-urlhaus", "abuse-ch-feodo"], limit: CLIENT_LIMITS.cyberEvents })
 }
 
-/** NASA FIRMS (100k+ rows) is globe-only; the globe caps at 1500 points, so a
- *  small capped pull keeps the fire layer alive without flooding the buffer. */
-async function fetchFirmsEvents(): Promise<EventRow[]> {
-  return fetchEvents({ sources: ["nasa-firms"], limit: CLIENT_LIMITS.firmsEvents })
-}
-
 /** Sparse but high-value hazard sources. NASA FIRMS alone emits ~50k rows in
  *  the 30-day window, so the `occurred_at`-ordered firehose budget (5000) is
  *  consumed by fire detections before GDACS floods / cyclones / droughts or
@@ -83,7 +77,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   })
 
   // Dedicated hazard poll so sparse GDACS / USGS / EONET events are never
-  // starved out of the firehose budget by NASA FIRMS volume (#206).
+  // starved out of the firehose budget by higher-volume feeds (#206).
   useSWR(isApiConfigured ? "events-hazard" : null, fetchHazardEvents, {
     refreshInterval: 60_000,
     revalidateOnFocus: false,
@@ -92,11 +86,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   // High-volume feeds pulled separately + capped so they can't flood the buffer.
   useSWR(isApiConfigured ? "events-cyber" : null, fetchCyberEvents, {
-    refreshInterval: 120_000,
-    revalidateOnFocus: false,
-    onSuccess: (rows) => buffer.ingest(rows),
-  })
-  useSWR(isApiConfigured ? "events-firms" : null, fetchFirmsEvents, {
     refreshInterval: 120_000,
     revalidateOnFocus: false,
     onSuccess: (rows) => buffer.ingest(rows),

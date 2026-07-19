@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { useEvents } from "@/app/providers"
 import { CLIENT_LIMITS, fetchEvents, fetchScores as apiFetchScores } from "./apiClient"
-import { paneForEvent, sourceKeyForEvent, type EventRow, type HazardTypeKey, type Pane, type ScoreRow } from "./types"
+import { sourceKeyForEvent, type EventRow, type HazardTypeKey, type ScoreRow } from "./types"
 import { hazardKind } from "./hazardSymbols"
 import { isPersistentActiveHazard } from "./hazardActivity"
 import { eventMatchesCountry } from "./countryMatching"
@@ -25,15 +25,11 @@ export interface WindowState {
 }
 
 /**
- * Computes the set of events visible in a pane's time window, honouring all
+ * Computes the set of events visible in the map's time window, honouring all
  * filters in the supplied store. Owns the scrubber clock: when `playing`, the
  * window end advances toward real-time at `speed`x.
- *
- * When `pane` is supplied, events whose source does not belong to that pane
- * are dropped (e.g. satellite/NASA-derived events live on the globe; the rest
- * on the flat map). This keeps the two panes from rendering duplicate markers.
  */
-export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowState {
+export function useEventsInWindow(useStore: FilterStore): WindowState {
   const allEvents = useEvents()
 
   const sources = useStore((s) => s.sources)
@@ -78,7 +74,6 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
     for (const ev of allEvents) {
       const sk = sourceKeyForEvent(ev)
       if (!sk || !sources[sk]) continue
-      if (pane && paneForEvent(ev) !== pane) continue
       // Hazards are filtered by disaster TYPE, not their lump-sum source: hide
       // just the volcanoes / cyclones / quakes the user muted. Unknown ("other")
       // hazards always pass so nothing silently disappears.
@@ -109,7 +104,7 @@ export function useEventsInWindow(useStore: FilterStore, pane?: Pane): WindowSta
       })
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }
-  }, [allEvents, sources, hazardTypes, severity, countries, keyword, windowLengthMs, windowEndOffsetMs, pane])
+  }, [allEvents, sources, hazardTypes, severity, countries, keyword, windowLengthMs, windowEndOffsetMs])
 }
 
 async function fetchScores(): Promise<ScoreRow[]> {
