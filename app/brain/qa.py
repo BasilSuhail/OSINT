@@ -18,7 +18,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.brain import client, context, embeddings, enrich
+from app.brain import client, context, embeddings, enrich, sensors
 from app.db_models import (
     EventRow,
     PredictionRow,
@@ -850,15 +850,21 @@ def build_qa_context(
     filled in place with the retrieval explanation and stays OUT of the
     returned context — the model never sees it and the digest is unchanged."""
     snapshot = context.build_snapshot(session, now=now)
+    stories = build_qa_stories(session, now=now, question=question, history=history, trace=trace)
+    sensor_rows = sensors.build_qa_sensors(
+        session, question=question, now=now, start_n=len(stories) + 1
+    )
     return {
         **snapshot,
         "latest_composite": _latest_composite(session),
         "most_contested": _most_contested(session),
         "scoreboard": _scoreboard(session),
         "coverage": build_coverage_bias(session, now=now),
-        "stories": build_qa_stories(
-            session, now=now, question=question, history=history, trace=trace
-        ),
+        "stories": stories,
+        #: Instrument readings the question named outright (#507). Numbered
+        #: after the stories so the model sees one citable list, not two.
+        "sensors": sensor_rows,
+        "sensor_totals": sensors.build_sensor_summary(session, question=question, now=now),
     }
 
 
@@ -913,6 +919,19 @@ def build_qa_prompt(
         "- When a claim rests on a story, cite it as [n] using that story's number.\n"
         "- Every non-refusal answer that uses any story MUST include at least one valid "
         "[n] citation from the numbered stories list.\n"
+        "- CONTEXT.sensors are direct instrument readings (seismometers, disaster "
+        "feeds, threat feeds), numbered in the same sequence as the stories and "
+        "cited the same way. They are measurements, not reporting: state them "
+        "plainly, never as 'reported' or 'contested'. When the question asks "
+        "about a hazard and a sensor answers it, lead with the reading.\n"
+        "- CONTEXT.sensors is ordered largest first. If the question asks what "
+        "was biggest, the answer is the first reading in that list \u2014 never a "
+        "smaller one, and never a story's number when a reading says it plainly.\n"
+        "- CONTEXT.sensor_totals gives the full count per hazard for the window "
+        "while CONTEXT.sensors lists only the largest few. Quote the total when "
+        "asked how many, and do not claim the listed readings are all of them.\n"
+        "- A hazard with no sensor reading and no story means the sensors "
+        "recorded none in the window. Say that plainly rather than refusing.\n"
         "- A single-source or low-corroboration claim is 'reported', never "
         "established fact. Prefer corroborated stories.\n"
         "- Call out contested stories as disputed and name who says what when "
@@ -1040,6 +1059,33 @@ def story_support_texts(session: Session, stories: list[dict[str, Any]]) -> dict
         )
         for s in stories
     }
+
+
+def sensor_support_texts(sensors: list[dict[str, Any]]) -> dict[int, str]:
+    """Sensor number → lowercased support text (#507).
+
+    A reading's headline already carries its magnitude, kind and place, which
+    is the whole of what it claims — there is no body text to mine.
+    """
+    return {
+        int(s["n"]): " ".join(
+            str(part).lower()
+            for part in (s.get("headline"), s.get("kind"), s.get("country"))
+            if part
+        )
+        for s in sensors
+    }
+
+
+def support_texts(
+    session: Session,
+    stories: list[dict[str, Any]],
+    sensors: list[dict[str, Any]] | None = None,
+) -> dict[int, str]:
+    """Combined ground truth for claim checking across both source kinds."""
+    texts = story_support_texts(session, stories)
+    texts.update(sensor_support_texts(sensors or []))
+    return texts
 
 
 #: `**bold**` / `*italic*` / `_emphasis_` spans — keep the words, drop markers.
@@ -1208,13 +1254,24 @@ def build_citation_repair_prompt(qa_context: dict[str, Any], question: str, answ
     )
 
 
-def has_relevant_evidence(stories: list[dict[str, Any]]) -> bool:
-    """Does any retrieved story plausibly relate to the question? (#413 item 3)
+def has_relevant_evidence(
+    stories: list[dict[str, Any]],
+    sensors: list[dict[str, Any]] | None = None,
+) -> bool:
+    """Does any retrieved evidence plausibly relate to the question? (#413 item 3)
 
     Judged from retrieval provenance: a semantic pick needs a decent cosine,
     a keyword pick a decent term-match fraction. "fill" padding (loudness
     order, no match signal) never counts as evidence.
+
+    Sensor readings (#507) always count. They are only ever retrieved when the
+    question names their hazard outright, so their relevance is the selection
+    itself — and without this, "were there big earthquakes?" retrieves no
+    *stories*, trips the no-evidence branch and refuses despite holding the
+    readings that answer it.
     """
+    if sensors:
+        return True
     for story in stories:
         relevance = story.get("relevance")
         if relevance is None:

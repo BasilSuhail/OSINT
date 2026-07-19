@@ -61,6 +61,37 @@ def _load_geometries() -> tuple[STRtree, list[str]]:
     return tree, isos
 
 
+@lru_cache(maxsize=1)
+def _names_by_iso() -> dict[str, str]:
+    """ISO alpha-2 → plain country name, from the same Natural Earth file.
+
+    Needed because raw codes reach the language model as evidence: handed "PG"
+    it wrote "PG (likely Papua New Guinea)", guessing in the user's face
+    instead of stating a fact it was given (#507).
+    """
+    with _DATA_PATH.open() as fh:
+        document = json.load(fh)
+    names: dict[str, str] = {}
+    for feature in document.get("features", []):
+        props = feature.get("properties") or {}
+        iso = props.get("ISO_A2")
+        if not isinstance(iso, str) or len(iso) != 2 or iso == "-9":
+            iso = props.get("ISO_A2_EH")
+            if not isinstance(iso, str) or len(iso) != 2 or iso == "-9":
+                continue
+        name = props.get("ADMIN") or props.get("SOVEREIGNT")
+        if isinstance(name, str) and name:
+            names.setdefault(iso.upper(), name)
+    return names
+
+
+def country_name(iso: str | None) -> str | None:
+    """Plain name for an ISO alpha-2 code, or None when unknown."""
+    if not iso or len(iso) != 2:
+        return None
+    return _names_by_iso().get(iso.upper())
+
+
 _TREE, _ISOS = _load_geometries()
 _GEOMS_BY_INDEX = list(_TREE.geometries)
 

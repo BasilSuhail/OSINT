@@ -720,8 +720,13 @@ class AskRequest(BaseModel):
     history: list[AskExchange] = Field(default_factory=list, max_length=3)
 
 
-def _ask_sources(stories: list[dict]) -> list[dict]:
-    return [
+def _ask_sources(stories: list[dict], sensors: list[dict] | None = None) -> list[dict]:
+    """Numbered sources for the answer: stories first, then sensor readings.
+
+    Sensors (#507) carry `story_id: None` — an instrument record has no story
+    to open, so its (source) chip is a label rather than a link.
+    """
+    out = [
         {
             "n": s["n"],
             "story_id": s["story_id"],
@@ -732,6 +737,18 @@ def _ask_sources(stories: list[dict]) -> list[dict]:
         }
         for s in stories
     ]
+    out.extend(
+        {
+            "n": e["n"],
+            "story_id": None,
+            "title": e["headline"],
+            "outlets": [e["source"]],
+            "corroboration": None,
+            "contested": False,
+        }
+        for e in (sensors or [])
+    )
+    return out
 
 
 def _deechoed_answer(
@@ -768,6 +785,7 @@ def _derefused_answer(
     qa_context: dict,
     question: str,
     stories: list[dict],
+    sensors: list[dict] | None = None,
 ) -> str:
     """One regeneration when the model refuses despite relevant evidence (#467).
 
@@ -776,7 +794,7 @@ def _derefused_answer(
     the refusal: refusal beats invention. The retry output goes through the
     same citation check chain as any draft.
     """
-    if answer.strip() != qa.REFUSAL_ANSWER or not qa.has_relevant_evidence(stories):
+    if answer.strip() != qa.REFUSAL_ANSWER or not qa.has_relevant_evidence(stories, sensors):
         return answer
     try:
         raw = client.generate_json(
@@ -863,11 +881,15 @@ def _ask_payload(
 
 
 def _answer_annotations(
-    session: Session, answer: str, stories: list[dict], trace: dict
+    session: Session,
+    answer: str,
+    stories: list[dict],
+    trace: dict,
+    sensors: list[dict] | None = None,
 ) -> tuple[list[dict], dict]:
-    """Chip fuel for a final answer (#476): sentence→story claim mapping and
+    """Chip fuel for a final answer (#476): sentence→source claim mapping and
     a compact retrieval-reasoning summary for the thinking popup."""
-    claims = qa.check_claims(answer, qa.story_support_texts(session, stories))["claims"]
+    claims = qa.check_claims(answer, qa.support_texts(session, stories, sensors))["claims"]
     reasoning = {
         "method": trace.get("method"),
         "intents": trace.get("intents") or [],
@@ -912,10 +934,11 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     if answer is None:
         return _ask_payload(qa.BRAIN_NOT_WORKING_ANSWER, None, [])
     stories = qa_context.get("stories") or []
-    sources = _ask_sources(stories)
+    sensors = qa_context.get("sensors") or []
+    sources = _ask_sources(stories, sensors)
     answer = _deechoed_answer(answer, qa_context=qa_context, question=req.question, history=history)
     answer = _derefused_answer(
-        answer, qa_context=qa_context, question=req.question, stories=stories
+        answer, qa_context=qa_context, question=req.question, stories=stories, sensors=sensors
     )
     answer = _checked_ask_answer(
         answer=answer,
@@ -924,7 +947,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         stories=stories,
         n_sources=len(sources),
     )
-    claims, reasoning = _answer_annotations(session, answer, stories, trace)
+    claims, reasoning = _answer_annotations(session, answer, stories, trace, sensors)
     return _ask_payload(
         answer, context.input_digest(qa_context), sources, claims=claims, reasoning=reasoning
     )
@@ -944,7 +967,8 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
             session, question=req.question, history=history, trace=trace
         )
         stories = qa_context.get("stories") or []
-        sources = _ask_sources(stories)
+        sensors = qa_context.get("sensors") or []
+        sources = _ask_sources(stories, sensors)
         digest = context.input_digest(qa_context)
         yield _sse("sources", {"context_digest": digest, "sources": sources})
         chunks: list[str] = []
@@ -977,7 +1001,11 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
                 answer, qa_context=qa_context, question=req.question, history=history
             )
             answer = _derefused_answer(
-                answer, qa_context=qa_context, question=req.question, stories=stories
+                answer,
+                qa_context=qa_context,
+                question=req.question,
+                stories=stories,
+                sensors=sensors,
             )
             answer = _checked_ask_answer(
                 answer=answer,
@@ -986,7 +1014,7 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
                 stories=stories,
                 n_sources=len(sources),
             )
-        claims, reasoning = _answer_annotations(session, answer, stories, trace)
+        claims, reasoning = _answer_annotations(session, answer, stories, trace, sensors)
         yield _sse(
             "final", _ask_payload(answer, digest, sources, claims=claims, reasoning=reasoning)
         )

@@ -177,7 +177,11 @@ function ChatEntry({ m, onOpenStory }: { m: ChatMessage; onOpenStory: (id: strin
                     return (
                       <button
                         key={j}
-                        onClick={story ? () => onOpenStory(String(story.story_id)) : undefined}
+                        onClick={
+                          story && story.story_id !== null
+                            ? () => onOpenStory(String(story.story_id))
+                            : undefined
+                        }
                         title={story ? story.outlets.join(", ") || story.title : undefined}
                         className={`${CHIP_BASE} text-sky-300/80 hover:text-sky-200`}
                       >
