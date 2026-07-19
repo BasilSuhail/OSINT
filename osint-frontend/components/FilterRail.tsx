@@ -177,19 +177,11 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
   const reset = useStore((s) => s.reset)
 
   const [countryOpen, setCountryOpen] = useState(false)
-  const [tab, setTab] = useState<"filters" | "events">("filters")
 
-  /** Filtered + windowed events that would actually appear on the map — same
-   *  pipeline the map markers use, so the list and the dots always agree.
-   *  Sorted by severity desc by default. */
-  const { events: visibleEvents, total: visibleTotal } = useEventsInWindow(useStore)
-  const sortedVisible = useMemo(
-    () =>
-      [...visibleEvents]
-        .sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0))
-        .slice(0, 300),
-    [visibleEvents],
-  )
+  /** Windowed count for the rail header — the same pipeline the map markers
+   *  use, so the header and the dots always agree. The event *list* left with
+   *  the EVENTS tab (#510); reading events is the situation list's job. */
+  const { total: visibleTotal } = useEventsInWindow(useStore)
 
   /** Source toggles, minus the hazard sources (USGS / GDACS / EONET) — those
    *  are filtered by disaster type instead, below. */
@@ -481,27 +473,6 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
             </button>
           </div>
 
-          {/* Tabs */}
-          <div className="flex rounded-md border border-neutral-800 bg-neutral-900 p-0.5">
-            {(["filters", "events"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={cn(
-                  "flex-1 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors",
-                  tab === t
-                    ? "bg-neutral-800 text-neutral-100"
-                    : "text-neutral-500 hover:text-neutral-300",
-                )}
-              >
-                {t === "filters" ? "Filters" : `Events (${visibleTotal.toLocaleString()})`}
-              </button>
-            ))}
-          </div>
-
-          {tab === "filters" && (
-          <>
           {/* Source toggles — every source on by default; click one to hide it
            *  (e.g. mute the quakes when they crowd the map). Select-all /
            *  clear-all flip them in one go. */}
@@ -788,13 +759,6 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
                   <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500">
                     Top matches
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setTab("events")}
-                    className="font-mono text-[9px] uppercase tracking-widest text-emerald-400 hover:text-emerald-300"
-                  >
-                    See all →
-                  </button>
                 </div>
                 {keywordPreview.map((ev) => {
                   const sev = typeof ev.severity === "number" ? ev.severity : 0
@@ -840,112 +804,7 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
             <RotateCcw className="h-3.5 w-3.5" />
             Reset filters
           </Button>
-          </>
-          )}
 
-          {tab === "events" && (
-            <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-2">
-              {/* Compact filter bar: severity range + country chip + keyword.
-               *  Live-narrows the list below as you type / drag. Source toggles
-               *  live in the Filters tab — keeps this strip slim. */}
-              <div className="flex flex-col gap-2 px-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                    Severity
-                  </span>
-                  <span className="font-mono text-[10px] tabular-nums text-neutral-400">
-                    {severity[0].toFixed(2)} – {severity[1].toFixed(2)}
-                  </span>
-                </div>
-                <Slider
-                  value={severity}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  onValueChange={(v) => {
-                    if (Array.isArray(v)) setSeverity([v[0], v[1]])
-                  }}
-                  aria-label="Severity range (events tab)"
-                />
-
-                {countries.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {countries.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => toggleCountry(c)}
-                        className="flex items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-300 hover:bg-neutral-700"
-                      >
-                        {countryFlagEmoji(c)} {c}
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="font-mono text-[10px] text-neutral-600">
-                    Tip: switch to Filters tab to pick countries.
-                  </p>
-                )}
-
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
-                  <Input
-                    value={keyword}
-                    onChange={(e) => setKeyword(e.target.value)}
-                    placeholder="Type to narrow the list…"
-                    className="h-8 border-neutral-700 bg-neutral-900 pl-8 font-mono text-xs text-neutral-200 placeholder:text-neutral-600"
-                  />
-                </div>
-              </div>
-
-              <p className="px-1 pb-1.5 font-mono text-[10px] text-neutral-500">
-                Top {Math.min(sortedVisible.length, 300).toLocaleString()} by severity. Same filter set as the map.
-              </p>
-              <div className="flex-1 overflow-y-auto">
-                {sortedVisible.length === 0 ? (
-                  <p className="px-2 py-6 text-center text-xs text-neutral-600">
-                    No events match the current filters.
-                  </p>
-                ) : (
-                  <ul className="flex flex-col gap-0.5">
-                    {sortedVisible.map((ev) => {
-                      const sev = typeof ev.severity === "number" ? ev.severity : 0
-                      const flag = ev.country ? countryFlagEmoji(ev.country) : ""
-                      const when = formatDistanceToNowStrict(new Date(ev.occurred_at), {
-                        addSuffix: false,
-                      })
-                      return (
-                        <li key={ev.id}>
-                          <div
-                            className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-[11px] hover:bg-neutral-900"
-                            title={`${ev.source} · ${when} ago · sev ${sev.toFixed(2)}`}
-                          >
-                            <span
-                              className="inline-block h-3 w-1 shrink-0 rounded-sm"
-                              style={{ backgroundColor: severityBarColor(sev) }}
-                            />
-                            <span className="w-7 shrink-0 font-mono text-[10px] uppercase text-neutral-400">
-                              {ev.source.split("-")[0].slice(0, 5)}
-                            </span>
-                            <span className="w-7 shrink-0 text-center" aria-label={ev.country ?? ""}>
-                              {flag || "—"}
-                            </span>
-                            <span className="flex-1 truncate text-neutral-200">
-                              {eventListTitle(ev)}
-                            </span>
-                            <span className="w-10 shrink-0 text-right font-mono text-[10px] tabular-nums text-neutral-500">
-                              {when}
-                            </span>
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
