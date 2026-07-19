@@ -26,10 +26,15 @@ from app.backtest.registry import load_registry
 from app.backtest.report import render_report
 from app.db import session_scope
 from app.divergence.aggregate import daily_side_counts
-from app.divergence.config import DIVERGENCE_METHOD_VERSION
+from app.divergence.config import DIVERGENCE_METHOD_VERSION, ROLLING_WINDOW_DAYS
 from app.divergence.scoring import DivergenceSeries, compute_divergence_series, detect_lead
 
-_LOOKBACK_DAYS = 45
+#: Days of series before the event. Since #526 a z-score needs a full
+#: ROLLING_WINDOW_DAYS baseline before it exists at all, so the warmup has to sit
+#: IN ADDITION to the span we actually analyse — otherwise the baseline eats the
+#: lookback and clips MAX_LEAD_LOOKBACK_DAYS down to roughly 17.
+_ANALYSIS_LOOKBACK_DAYS = 45
+_LOOKBACK_DAYS = _ANALYSIS_LOOKBACK_DAYS + ROLLING_WINDOW_DAYS
 _LOOKAHEAD_DAYS = 15
 
 

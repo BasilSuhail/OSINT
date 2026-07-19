@@ -5,7 +5,12 @@ from __future__ import annotations
 from typing import Final, Literal
 
 #: Bumped together with any change to weights/thresholds. Never edited in place.
-DIVERGENCE_METHOD_VERSION: Final[str] = "div.v1"
+#:
+#: v2 (#526): z-scores require a full ROLLING_WINDOW_DAYS baseline. v1 scored
+#: from as few as two prior points, whose near-zero standard deviation made
+#: ordinary days read as 3-5 sigma — phantom spikes that dominated the
+#: lead-time gate's result.
+DIVERGENCE_METHOD_VERSION: Final[str] = "div.v2"
 
 #: Trailing window for the rolling z-score baseline, in days.
 ROLLING_WINDOW_DAYS: Final[int] = 28

@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.backtest.run import run_backtest
 
 
-def _stub_series(*_args, **_kwargs):
-    days = [date(2024, 1, 1) + timedelta(days=i) for i in range(61)]
-    physical = [1 + (idx % 2) for idx in range(61)]
-    narrative = [1 + (idx % 2) for idx in range(61)]
-    physical[30 - 3] = 20
-    narrative[30] = 20
+def _stub_series(_session, _country, start, end):
+    """Derived from the requested window, so it cannot drift out of step with
+    the runner's lookback the way a hardcoded 61 days did (#526)."""
+    span = (end - start).days + 1
+    days = [start + timedelta(days=i) for i in range(span)]
+    physical = [1 + (i % 2) for i in range(span)]
+    narrative = [1 + (i % 2) for i in range(span)]
+    spike = span - 31
+    physical[spike - 3] = 20
+    narrative[spike] = 20
     return days, physical, narrative
 
 
 def _stub_volume(country, start, end, **_kwargs):
-    """Narrative volume with a spike on day 30, matching _stub_series."""
-    return {start + timedelta(days=i): (20 if i == 30 else 1 + (i % 2)) for i in range(61)}
+    """Narrative volume matching _stub_series across the requested window."""
+    span = (end - start).days + 1
+    spike = span - 31
+    return {start + timedelta(days=i): (20 if i == spike else 1 + (i % 2)) for i in range(span)}
 
 
 def test_run_backtest_detects_lead(db_session, tmp_path, monkeypatch) -> None:
@@ -99,3 +105,17 @@ def test_backfill_is_skipped_when_the_window_is_already_present(db_session, monk
     # Default stays the refresh contract: without the flag, the source is asked.
     backfill_event(db_session, event, [src])
     assert src.calls == 2
+
+
+def test_lookback_leaves_room_for_the_full_lead_window():
+    """Warmup must not eat the span being analysed (#526).
+
+    A z-score needs a full ROLLING_WINDOW_DAYS baseline before it exists, so a
+    45-day lookback would leave only ~17 usable days and silently clip
+    MAX_LEAD_LOOKBACK_DAYS to less than its configured 21.
+    """
+    from app.backtest import run as run_mod
+    from app.divergence.config import MAX_LEAD_LOOKBACK_DAYS, ROLLING_WINDOW_DAYS
+
+    usable_before_event = run_mod._LOOKBACK_DAYS - ROLLING_WINDOW_DAYS
+    assert usable_before_event >= MAX_LEAD_LOOKBACK_DAYS
