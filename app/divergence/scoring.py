@@ -53,15 +53,22 @@ def rolling_z(values: list[float], window: int) -> list[float]:
 
     For index i:
         z[i] = (values[i] - mean(prev)) / stdev(prev)
-    where prev is up to the last `window` values strictly before i.
+    where prev is the last `window` values strictly before i.
 
-    Returns 0.0 for warmup (< 2 prior points) or zero-variance prior windows
-    to avoid NaN/inf and keep the series numerically stable.
+    Returns 0.0 until a FULL baseline exists, and for zero-variance prior
+    windows, to avoid NaN/inf and keep the series numerically stable.
+
+    The full-baseline requirement is not fastidiousness (#526). Scoring from two
+    prior points gave their near-zero standard deviation the last word, so an
+    ordinary day read as 3-5 sigma; since `detect_lead` takes the FIRST spike it
+    locked onto that phantom every time. Three unrelated events in the lead-time
+    gate — Japan, Indonesia, Venezuela — all reported an identical -58 day lead
+    from exactly this, and the run's headline median was three copies of it.
     """
     out: list[float] = []
     for i, v in enumerate(values):
         prev = values[max(0, i - window) : i]
-        if len(prev) < 2:
+        if len(prev) < window:
             out.append(0.0)
             continue
         mean = statistics.fmean(prev)
