@@ -21,6 +21,9 @@ export interface VisibleEvent extends EventRow {
   age: number
   opacity: number
   occurredMs: number
+  /** Rendered outside the time window because its source still publishes it
+   *  as live. Drives the map's "ongoing" treatment (#340). */
+  ongoing: boolean
 }
 
 export interface WindowState {
@@ -76,6 +79,20 @@ export function useEventsInWindow(useStore: FilterStore): WindowState {
     const kw = keyword.trim().toLowerCase()
     const countrySet = new Set(countries)
 
+    //: Newest fetched_at per source. A hazard that has ended drops out of its
+    //: upstream feed and stops being re-upserted, which is the only signal that
+    //: distinguishes it from one that is still running — its `is_current` flag
+    //: never changes (#340). Measured per source so one stalled feed cannot
+    //: expire another's events.
+    const feedLatest = new Map<string, number>()
+    for (const ev of allEvents) {
+      if (!ev.source || !ev.fetched_at) continue
+      const t = +new Date(ev.fetched_at)
+      if (!Number.isFinite(t)) continue
+      const seen = feedLatest.get(ev.source)
+      if (seen === undefined || t > seen) feedLatest.set(ev.source, t)
+    }
+
     const visible: VisibleEvent[] = []
     for (const ev of allEvents) {
       const sk = sourceKeyForEvent(ev)
@@ -96,7 +113,11 @@ export function useEventsInWindow(useStore: FilterStore): WindowState {
       const occurredMs = +new Date(ev.occurred_at)
       // Only active, stateful hazards are persistent. Closed GDACS cyclones /
       // volcanoes and point-in-time hazards should obey the scrubber window.
-      const isPersistentHazard = isPersistentActiveHazard(ev, windowEnd)
+      const isPersistentHazard = isPersistentActiveHazard(
+        ev,
+        windowEnd,
+        ev.source ? feedLatest.get(ev.source) : undefined,
+      )
       const age = windowLengthMs > 0 ? (windowEnd - occurredMs) / windowLengthMs : 0
       if (!isPersistentHazard) {
         if (occurredMs > windowEnd || occurredMs < windowStart) continue
@@ -107,6 +128,9 @@ export function useEventsInWindow(useStore: FilterStore): WindowState {
         age: isPersistentHazard ? 0 : age,
         opacity: isPersistentHazard ? 1 : Math.max(0.1, 1 - age),
         occurredMs,
+        //: Only flag it "ongoing" when persistence is what kept it visible —
+        //: a live hazard inside the window is just a normal marker.
+        ongoing: isPersistentHazard && (occurredMs < windowStart || occurredMs > windowEnd),
       })
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }

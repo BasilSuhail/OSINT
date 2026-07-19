@@ -59,3 +59,43 @@ describe("isPersistentActiveHazard", () => {
     expect(isPersistentActiveHazard(row({ source: "usgs-quake" }), NOW)).toBe(false)
   })
 })
+
+/** #340: GDACS/EONET only publish events while they are live, and the fetcher
+ *  drops non-current ones at ingest, so a stored row's `is_current` flag can
+ *  never be falsified. Feed presence — is the source still re-upserting this
+ *  row? — is the only signal that separates "ongoing" from "ended". */
+describe("isPersistentActiveHazard feed presence", () => {
+  const ongoing = { is_current: true }
+  const FEED_LATEST = Date.parse("2026-06-27T11:50:00Z")
+
+  it("keeps a hazard the feed is still republishing", () => {
+    const ev = row({ payload: ongoing, fetched_at: "2026-06-27T11:45:00Z" })
+    expect(isPersistentActiveHazard(ev, NOW, FEED_LATEST)).toBe(true)
+  })
+
+  it("expires a hazard that has dropped out of the feed", () => {
+    // Flag still says current — it always will — but the source stopped
+    // republishing it days ago, so the event has ended.
+    const ev = row({ payload: ongoing, fetched_at: "2026-06-24T09:00:00Z" })
+    expect(isPersistentActiveHazard(ev, NOW, FEED_LATEST)).toBe(false)
+  })
+
+  it("tolerates missed polls inside the grace window", () => {
+    const ev = row({ payload: ongoing, fetched_at: "2026-06-27T09:30:00Z" })
+    expect(isPersistentActiveHazard(ev, NOW, FEED_LATEST)).toBe(true)
+  })
+
+  it("falls back to the flag when feed freshness is unknown", () => {
+    // No fetched_at, or no observed feed activity for the source: refuse to
+    // hide data on the strength of missing evidence.
+    expect(isPersistentActiveHazard(row({ payload: ongoing }), NOW, FEED_LATEST)).toBe(true)
+    expect(
+      isPersistentActiveHazard(row({ payload: ongoing, fetched_at: "2026-06-24T09:00:00Z" }), NOW),
+    ).toBe(true)
+  })
+
+  it("never resurrects a hazard the flag already closed", () => {
+    const ev = row({ payload: { is_current: false }, fetched_at: "2026-06-27T11:49:00Z" })
+    expect(isPersistentActiveHazard(ev, NOW, FEED_LATEST)).toBe(false)
+  })
+})
