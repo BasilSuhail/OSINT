@@ -66,6 +66,9 @@ def run_backtest(
                 session,
                 event,
                 sources,
+                # The gate re-runs constantly; refetching stored windows cost
+                # ~5 minutes an event and made a rerun a 90-minute wait (#522).
+                skip_if_covered=True,
                 lookback_days=_LOOKBACK_DAYS,
                 lookahead_days=_LOOKAHEAD_DAYS,
             )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from app.backtest.run import run_backtest
 
@@ -41,3 +41,61 @@ def test_run_backtest_detects_lead(db_session, tmp_path, monkeypatch) -> None:
     assert leads[0].lead_days == 3
     assert "Lead-Time Gate" in md
     assert metrics.n_events == 1
+
+
+def test_backfill_is_skipped_when_the_window_is_already_present(db_session, monkeypatch):
+    """Re-running must not refetch 60 days of quakes per event (#522).
+
+    The gate is meant to be run repeatedly — new thresholds, new anchors — and
+    re-fetching every window each time cost ~5 minutes per event, turning a
+    rerun into a 90-minute wait.
+    """
+    from datetime import date as _date
+
+    from app.backtest.backfill import backfill_event
+    from app.backtest.registry import RegistryEvent
+    from app.db_models import EventRow
+
+    event = RegistryEvent(
+        id="pe-x",
+        country="PE",
+        date=_date(2026, 5, 1),
+        domain="hazard",
+        source_url="http://x",
+        notes="n",
+    )
+
+    class _Counting:
+        name = "usgs"
+
+        def __init__(self):
+            self.calls = 0
+
+        def fetch_range(self, country, start, end):
+            self.calls += 1
+            return []
+
+    src = _Counting()
+    # Nothing stored yet: the source is consulted.
+    backfill_event(db_session, event, [src], skip_if_covered=True)
+    assert src.calls == 1
+
+    # A sensor row inside the window means the window is already covered.
+    db_session.add(
+        EventRow(
+            source="usgs-quake",
+            source_event_id="seed-1",
+            occurred_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+            category="hazard",
+            country="PE",
+            keywords=[],
+            payload={"magnitude": 6.1},
+        )
+    )
+    db_session.commit()
+    backfill_event(db_session, event, [src], skip_if_covered=True)
+    assert src.calls == 1, "already-backfilled window must not be refetched"
+
+    # Default stays the refresh contract: without the flag, the source is asked.
+    backfill_event(db_session, event, [src])
+    assert src.calls == 2
