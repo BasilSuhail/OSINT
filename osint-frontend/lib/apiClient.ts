@@ -120,7 +120,9 @@ export async function fetchBrainNarrative(): Promise<BrainNarrative> {
 
 export interface BrainSource {
   n: number
-  story_id: number
+  /** null for sensor readings (#507): an instrument record has no story to
+   *  open, so a (source) chip backed by one is a label, not a link. */
+  story_id: number | null
   title: string
   outlets: string[]
   corroboration: number | null
