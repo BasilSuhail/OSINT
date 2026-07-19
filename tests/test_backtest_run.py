@@ -7,28 +7,26 @@ from datetime import UTC, datetime, timedelta
 from app.backtest.run import run_backtest
 
 
-def _stub_series(_session, _country, start, end):
-    """Derived from the requested window, so it cannot drift out of step with
-    the runner's lookback the way a hardcoded 61 days did (#526)."""
+def _stub_intensity(_session, _country, start, end):
+    """Daily physical intensity, derived from the requested window so it cannot
+    drift out of step with the runner's lookback (#526). Values are magnitudes
+    since #528, not row counts."""
     span = (end - start).days + 1
     days = [start + timedelta(days=i) for i in range(span)]
-    physical = [1 + (i % 2) for i in range(span)]
-    narrative = [1 + (i % 2) for i in range(span)]
-    spike = span - 31
-    physical[spike - 3] = 20
-    narrative[spike] = 20
-    return days, physical, narrative
+    physical = [4.0 + (i % 2) * 0.1 for i in range(span)]
+    physical[span - 34] = 7.2
+    return days, physical
 
 
 def _stub_volume(country, start, end, **_kwargs):
-    """Narrative volume matching _stub_series across the requested window."""
+    """Narrative volume spiking three days after the physical peak."""
     span = (end - start).days + 1
     spike = span - 31
-    return {start + timedelta(days=i): (20 if i == spike else 1 + (i % 2)) for i in range(span)}
+    return {start + timedelta(days=i): (900 if i == spike else 100 + (i % 2)) for i in range(span)}
 
 
 def test_run_backtest_detects_lead(db_session, tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr("app.backtest.run.daily_side_counts", _stub_series)
+    monkeypatch.setattr("app.backtest.run.daily_physical_intensity", _stub_intensity)
     reg = tmp_path / "events.yaml"
     reg.write_text(
         "events:\n"

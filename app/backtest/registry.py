@@ -26,6 +26,10 @@ class RegistryEvent:
     domain: str
     source_url: str
     notes: str
+    #: What outlets would call this event, used to scope the narrative query so
+    #: it measures coverage of THIS event rather than a country's whole news
+    #: output (#528). Optional so older registries still load.
+    topic: str | None = None
 
 
 def _serialize_events(events: list[dict[str, Any]]) -> str:
@@ -64,6 +68,7 @@ def load_registry(path: str) -> tuple[list[RegistryEvent], str]:
                 domain=str(item["domain"]),
                 source_url=str(item["source_url"]),
                 notes=str(item["notes"]),
+                topic=str(item["topic"]) if item.get("topic") else None,
             )
         )
     return events, content_hash
