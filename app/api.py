@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import sqlalchemy as sa
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -162,6 +163,104 @@ def event_coverage(
         .limit(limit)
     )
     return [_source_coverage_dict(r) for r in session.execute(stmt)]
+
+
+def _epoch_seconds(session: Session, column):
+    """Seconds-since-epoch for a timestamp column, per dialect.
+
+    Postgres and SQLite spell this differently and neither expression parses on
+    the other, so the branch belongs here rather than in the caller.
+    """
+    if session.bind is not None and session.bind.dialect.name == "sqlite":
+        return func.strftime("%s", column) * 1.0
+    return func.extract("epoch", column)
+
+
+#: Sources the dashboard cannot render, excluded from headline stats by default.
+#: FIRMS lost its only renderer with the globe (#494); opensky is a per-country
+#: hourly aggregate since #496 and was never drawn. Counting either would inflate
+#: the header with events the user can neither see nor click.
+NON_RENDERABLE_SOURCES: tuple[str, ...] = ("nasa-firms", "opensky-adsb")
+
+#: Sparkline resolution. Matches WORLD_STATS_SPARK_BUCKETS on the frontend.
+STATS_SPARK_BUCKETS = 24
+
+#: How many countries the ranked list returns. Matches WORLD_STATS_TOP_N.
+STATS_TOP_N = 12
+
+
+@app.get("/events/stats")
+def event_stats(
+    session: Session = Depends(get_session),
+    days: int = Query(default=30, ge=0, le=365),
+    exclude: str | None = Query(default=None),
+) -> dict:
+    """Headline counts for the world-status panel, aggregated in Postgres.
+
+    The panel used to derive these from the client's event buffer, so the
+    numbers described the buffer cap (7,500) rather than the data. Counting
+    here keeps the figures true at constant browser memory.
+
+    `exclude` replaces the `NON_RENDERABLE_SOURCES` default when supplied.
+    """
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    skipped = (
+        [s.strip() for s in exclude.split(",") if s.strip()]
+        if exclude is not None
+        else list(NON_RENDERABLE_SOURCES)
+    )
+
+    def _windowed(stmt):
+        stmt = stmt.where(EventRow.occurred_at >= cutoff)
+        if skipped:
+            stmt = stmt.where(EventRow.source.notin_(skipped))
+        return stmt
+
+    totals = session.execute(
+        _windowed(
+            select(
+                func.count(EventRow.id),
+                func.count(func.distinct(EventRow.country)),
+                func.count(func.distinct(EventRow.source)),
+            )
+        )
+    ).one()
+
+    top = session.execute(
+        _windowed(
+            select(EventRow.country, func.count(EventRow.id).label("count"))
+            .where(EventRow.country.is_not(None))
+            .group_by(EventRow.country)
+        )
+        .order_by(func.count(EventRow.id).desc(), EventRow.country)
+        .limit(STATS_TOP_N)
+    ).all()
+
+    # Bucket oldest→newest across the requested window, counted in the database.
+    # Pulling the timestamps into Python would ship one row per event on every
+    # poll — the exact cost this endpoint exists to remove.
+    spark = [0] * STATS_SPARK_BUCKETS
+    span = (datetime.now(UTC) - cutoff).total_seconds()
+    if span > 0:
+        epoch = _epoch_seconds(session, EventRow.occurred_at)
+        bucket = func.cast(
+            func.floor((epoch - cutoff.timestamp()) / (span / STATS_SPARK_BUCKETS)),
+            sa.Integer,
+        )
+        rows = session.execute(
+            _windowed(select(bucket.label("bucket"), func.count(EventRow.id))).group_by("bucket")
+        ).all()
+        for idx, count in rows:
+            spark[min(max(int(idx), 0), STATS_SPARK_BUCKETS - 1)] += count
+
+    return {
+        "total": totals[0],
+        "countries": totals[1],
+        "sources": totals[2],
+        "top_countries": [{"country": c, "count": n} for c, n in top],
+        "spark": spark,
+    }
 
 
 @app.get("/health")

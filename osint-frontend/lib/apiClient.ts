@@ -45,6 +45,25 @@ export async function fetchEvents(params: EventQuery = {}): Promise<EventRow[]> 
   return (await res.json()) as EventRow[]
 }
 
+/** Headline world stats, aggregated in Postgres (#499).
+ *
+ *  These used to be derived from the client's event buffer, which meant the
+ *  header reported the buffer cap (7500) rather than the data. The server
+ *  counts instead, so the figures stay true at constant browser memory. */
+export interface EventStats {
+  total: number
+  countries: number
+  sources: number
+  top_countries: { country: string; count: number }[]
+  spark: number[]
+}
+
+export async function fetchEventStats(days = 30): Promise<EventStats> {
+  const res = await fetch(`${API_BASE}/events/stats?days=${days}`)
+  if (!res.ok) throw new Error(`GET /events/stats ${res.status}`)
+  return (await res.json()) as EventStats
+}
+
 export interface ScoreQuery {
   scoreName?: string
   since?: string
