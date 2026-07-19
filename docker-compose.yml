@@ -41,3 +41,138 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- application (#530) -------------------------------------------------
+  # api, worker and beat share one image and differ only by command.
+
+  migrate:
+    # Profile-gated (#530). scripts/dev-up.sh runs a bare `docker compose up -d`,
+    # which starts every service without a profile — and it ALSO spawns celery
+    # worker, beat and uvicorn on the host. Ungated, that means two beats firing
+    # every scheduled job twice, two workers on one queue, and two APIs fighting
+    # for port 8000. `make up` keeps its host-process behaviour; `make up-docker`
+    # opts into the containerised stack.
+    profiles: ["app"]
+    build: .
+    image: osint-backend:local
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    # Every setting from .env, so containerised fetchers keep their API
+    # credentials. Without this FRED, FIRMS and ACLED would run with empty keys
+    # and fail quietly — the exact silent-empty-result failure this project has
+    # been bitten by repeatedly.
+    env_file: &backend_env_file
+      - .env
+    environment: &backend_env
+      # In a container `localhost` is the container, so the stores are reached
+      # by their compose service names.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-osint}
+      POSTGRES_USER: ${POSTGRES_USER:-osint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Ollama stays on the host: containerising it on macOS loses GPU
+      # acceleration and would make the brain materially slower.
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      DATA_DIR: /data
+      # .env carries ABSOLUTE host paths for these (/Users/...), which do not
+      # exist inside a container. The data directory is mounted at /data, so
+      # the container equivalents are known and set explicitly here —
+      # `environment:` wins over `env_file:`.
+      ACLED_CSV_DIR: /data/private/acled
+      EMDAT_CSV_PATH: /data/private/emdat.csv
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000}
+    # macOS Docker Desktop fakes bind-mount ownership, so the image's own uid
+    # works there. On Linux — including the Pi target — uid 10001 cannot write
+    # to a data directory owned by the host user, so set DOCKER_UID/DOCKER_GID
+    # to your own ids there (`id -u` / `id -g`).
+    user: &backend_user "${DOCKER_UID:-10001}:${DOCKER_GID:-10001}"
+    volumes: &backend_volumes
+      - ${OSINT_DATA_DIR:-./data}:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    profiles: ["app"]
+    # Ceiling, not a reservation (api is a read API; measured 158 MB on the host). Without one a leaking worker can take
+    # the whole Docker VM down with it — and on an 8 GB Pi sharing RAM with a
+    # 4B model, that is the difference between a slow app and an OOM.
+    mem_limit: 512m
+    build: .
+    image: osint-backend:local
+    restart: unless-stopped
+    command:
+      ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: *backend_env_file
+    environment: *backend_env
+    user: *backend_user
+    volumes: *backend_volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      # Schema first: three services racing `alembic upgrade head` on boot is
+      # how you get a half-applied migration.
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    profiles: ["app"]
+    # Ceiling, not a reservation (measured 655 MB; fetchers hold shapely geometry and pyarrow). Without one a leaking worker can take
+    # the whole Docker VM down with it — and on an 8 GB Pi sharing RAM with a
+    # 4B model, that is the difference between a slow app and an OOM.
+    mem_limit: 1500m
+    build: .
+    image: osint-backend:local
+    restart: unless-stopped
+    # Threads pool, not prefork: macOS fork-safety segfaults under prefork
+    # (#437). Concurrency stays low to leave headroom on Pi-class hardware.
+    command:
+      ["celery", "-A", "app.celery_app", "worker",
+       "--pool", "threads", "--concurrency", "4", "--loglevel", "INFO"]
+    env_file: *backend_env_file
+    environment: *backend_env
+    user: *backend_user
+    volumes: *backend_volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  beat:
+    profiles: ["app"]
+    # Ceiling, not a reservation (measured 72 MB; it only schedules). Without one a leaking worker can take
+    # the whole Docker VM down with it — and on an 8 GB Pi sharing RAM with a
+    # 4B model, that is the difference between a slow app and an OOM.
+    mem_limit: 256m
+    build: .
+    image: osint-backend:local
+    restart: unless-stopped
+    # Schedule state lives on the mounted data volume so a recreated container
+    # does not re-fire every cron entry it thinks it missed.
+    command:
+      ["celery", "-A", "app.celery_app", "beat",
+       "--loglevel", "INFO", "--schedule", "/data/celerybeat-schedule"]
+    env_file: *backend_env_file
+    environment: *backend_env
+    user: *backend_user
+    volumes: *backend_volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
