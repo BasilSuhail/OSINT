@@ -8,8 +8,10 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 
 from httpx import Client, ConnectError, HTTPError, ReadTimeout
+from sqlalchemy import select
 
 from app.backtest.registry import RegistryEvent
+from app.db_models import EventRow
 from app.models import Event
 from app.persistence import upsert_events
 from app.sources.gdelt_parser import parse_csv_body
@@ -116,15 +118,55 @@ def backfill_event(
     *,
     lookback_days: int = 45,
     lookahead_days: int = 15,
+    skip_if_covered: bool = False,
 ) -> int:
-    """Fetch + upsert the historical window for one registry event."""
+    """Fetch + upsert the historical window for one registry event.
+
+    With `skip_if_covered`, a window that already holds a sensor row for the
+    country is left alone and no request is made. Off by default so the refresh
+    contract stays the plain behaviour; `run_backtest` turns it on because it
+    re-runs constantly (#522).
+
+    Note the check is presence, not completeness: a window interrupted midway
+    through a previous backfill stays partial. Force a refetch by leaving
+    `skip_if_covered` off or deleting the window's rows.
+    """
     if lookback_days < 0 or lookahead_days < 0:
         raise ValueError("lookback_days/lookahead_days must be non-negative")
 
     start = event.date - timedelta(days=lookback_days)
     end = event.date + timedelta(days=lookahead_days)
+
+    # Already covered? Then skip the network entirely. The gate is meant to be
+    # re-run — new thresholds, new anchors, new method versions — and refetching
+    # 60 days of quakes per event each time cost ~5 minutes an event, which made
+    # a rerun a 90-minute wait instead of a few minutes (#522).
+    if skip_if_covered and _window_is_covered(session, event.country, start, end):
+        return 0
+
     inserted = 0
     for src in sources:
         events = src.fetch_range(event.country, start, end)
         inserted += upsert_events(events, session)
     return inserted
+
+
+def _window_is_covered(session, country: str, start: date, end: date) -> bool:
+    """Is there already a sensor row for this country inside this window?
+
+    Presence, not completeness: the physical side is sparse by nature — plenty
+    of real windows hold a single quake — so demanding "enough" rows would
+    refetch forever. The cost is that a partially backfilled window is treated
+    as done; see `backfill_event` for how to force one.
+    """
+    stmt = (
+        select(EventRow.id)
+        .where(
+            EventRow.country == country.upper(),
+            EventRow.category == "hazard",
+            EventRow.occurred_at >= datetime(start.year, start.month, start.day, tzinfo=UTC),
+            EventRow.occurred_at <= datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=UTC),
+        )
+        .limit(1)
+    )
+    return session.execute(stmt).first() is not None
