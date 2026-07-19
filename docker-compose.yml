@@ -101,6 +101,10 @@ services:
 
   api:
     profiles: ["app"]
+    # Ceiling, not a reservation (api is a read API; measured 158 MB on the host). Without one a leaking worker can take
+    # the whole Docker VM down with it — and on an 8 GB Pi sharing RAM with a
+    # 4B model, that is the difference between a slow app and an OOM.
+    mem_limit: 512m
     build: .
     image: osint-backend:local
     restart: unless-stopped
@@ -127,6 +131,10 @@ services:
 
   worker:
     profiles: ["app"]
+    # Ceiling, not a reservation (measured 655 MB; fetchers hold shapely geometry and pyarrow). Without one a leaking worker can take
+    # the whole Docker VM down with it — and on an 8 GB Pi sharing RAM with a
+    # 4B model, that is the difference between a slow app and an OOM.
+    mem_limit: 1500m
     build: .
     image: osint-backend:local
     restart: unless-stopped
@@ -147,6 +155,10 @@ services:
 
   beat:
     profiles: ["app"]
+    # Ceiling, not a reservation (measured 72 MB; it only schedules). Without one a leaking worker can take
+    # the whole Docker VM down with it — and on an 8 GB Pi sharing RAM with a
+    # 4B model, that is the difference between a slow app and an OOM.
+    mem_limit: 256m
     build: .
     image: osint-backend:local
     restart: unless-stopped

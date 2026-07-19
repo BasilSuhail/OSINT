@@ -3,32 +3,45 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: start stop off up up-docker down-docker down down-soft clean-dev logs data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: up down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
-start:  ## Start the full local app (Docker stores + backend + frontend)
+# ── The three commands ──────────────────────────────────────────────────────
+# Everything else below is either an alias kept for muscle memory or a
+# single-purpose analysis task.
+
+up:  ## Start everything: Docker stores, backend, frontend, Ollama
 	@bash scripts/dev-up.sh
 
-stop:  ## Stop the full local app (frontend + backend + Docker stores; keeps data)
+down:  ## Stop everything, keep all data
 	@bash scripts/dev-down.sh
 
-down-soft: stop  ## Alias for a no-teardown stop
+clear:  ## Remove regenerable junk: build caches, __pycache__, logs, Docker cruft
+	@bash scripts/dev-clear.sh
+
+# ── Aliases (same behaviour, older names) ───────────────────────────────────
+start: up  ## Alias for make up
 	@:
 
-off: stop  ## Stop the app, then quit Docker Desktop on macOS
+stop: down  ## Alias for make down
+	@:
+
+down-soft: down  ## Alias for make down
+	@:
+
+clean-dev: clear  ## Alias for make clear
+	@:
+
+off:  ## Stop everything, then quit Docker Desktop on macOS
 	@bash scripts/dev-off.sh
 
-clean-dev:  ## Stop stale frontend/build processes and clear generated Next cache
-	@bash scripts/dev-clean.sh
+# ── Containerised backend (opt-in; see #530) ────────────────────────────────
+# Deliberately NOT wired into `make up`: dev-up.sh runs the worker, beat and
+# API on the host, and running both would give two beats firing every
+# scheduled job twice and two APIs on port 8000. Pick one or the other.
 
-up: start  ## Alias for make start
-
-up-docker:  ## Start stores + backend IN CONTAINERS (no host worker/beat/api)
-	@# Deliberately separate from `make up` (#530). dev-up.sh spawns celery
-	@# worker, beat and uvicorn on the host; running both would give two beats
-	@# firing every scheduled job twice and two APIs on port 8000. Pick one.
-	@echo "Building backend image and starting the containerised stack..."
+up-docker:  ## Start stores + backend IN CONTAINERS (host backend must be down)
 	@docker compose --profile app up -d --build
-	@echo "Backend is in Docker. The frontend still runs on the host:"
+	@echo "Backend is in Docker. Frontend still runs on the host:"
 	@echo "  cd osint-frontend && pnpm dev"
 
 down-docker:  ## Stop the containerised backend, leaving stores and data alone
@@ -36,13 +49,8 @@ down-docker:  ## Stop the containerised backend, leaving stores and data alone
 	@docker compose --profile app rm -f migrate api worker beat >/dev/null 2>&1 || true
 	@echo "Containerised backend stopped. Stores still running; data untouched."
 
-down:  ## Fully stop and teardown docker runtime (data preserved in $OSINT_DATA_DIR)
-	@bash scripts/dev-down.sh
-	@if docker info >/dev/null 2>&1; then \
-		docker compose down --timeout 5 >/dev/null; \
-	else \
-		echo "Docker is not reachable; store containers are already stopped." ; \
-	fi
+docker-prune: clear  ## Alias for make clear
+	@:
 
 logs:  ## Tail background app logs (Ctrl-C to stop tailing; stack keeps running)
 	@tail -n 40 -F logs/*.log
