@@ -27,9 +27,23 @@ describe("EventBuffer.ingest source filtering", () => {
     buf.ingest([
       row({ id: "1", source: "gdelt", category: "geopolitical" }),
       row({ id: "2", source: "rss-bbc-world", category: "news" }),
-      row({ id: "3", source: "nasa-firms", category: "hazard" }),
     ])
-    expect(buf.getSnapshot()).toHaveLength(3)
+    expect(buf.getSnapshot()).toHaveLength(2)
+  })
+
+  it("drops NASA FIRMS thermal pixels rather than tagging them GDACS", () => {
+    // FIRMS rows carry category "hazard". Once the globe (their only renderer)
+    // was removed in #494, sourceKeyForEvent must return null for them — if it
+    // fell through to the category fallback they would surface as GDACS and
+    // put ~390k fire pixels on the map.
+    const buf = new EventBuffer()
+    buf.ingest([
+      row({ id: "1", source: "nasa-firms", category: "hazard" }),
+      row({ id: "2", source: "gdacs", category: "hazard" }),
+    ])
+    const snap = buf.getSnapshot()
+    expect(snap).toHaveLength(1)
+    expect(snap[0]?.source).toBe("gdacs")
   })
 
   it("drops the opensky-adsb aviation firehose (no source toggle)", () => {

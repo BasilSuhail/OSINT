@@ -524,10 +524,11 @@ by hand with `make enrich`. Stored 30 days, then pruned.
 good and bad look like, and what to actually do with it. No statistics
 degree required.*
 
-The right pane is a deck of six cards (swipe, or click for fullscreen):
-**briefing** (the landing card, explained below), **console** (the raw event
-feed as it arrives), **globe** (where things are happening), and the three
-analytical cards — stories, coverage, scoreboard.
+The right pane is a deck of five cards (swipe, or click for fullscreen):
+**situation**, **briefing** (the landing card, explained below), **console**
+(the raw event feed as it arrives), and the three analytical cards — stories,
+coverage, scoreboard. Geography lives in the map on the left; the 3D globe was
+removed in #494 because its WebGL context was the tab's largest memory holder.
 
 ### 4.0 Briefing — "just tell me what matters today"
 
@@ -692,7 +693,7 @@ OSINT/
 │   │   ├── queries.ts            data hooks (windowing, filters, latest scores)
 │   │   ├── realtime.ts           EventSource SSE buffer + reconnect/poll fallback
 │   │   └── types.ts              EventRow / ScoreRow / IngestHealthRow types
-│   ├── components/             panes: MapPane, GlobePane, DashboardSection, FilterRail, ui/
+│   ├── components/             panes: MapPane, DashboardSection, FilterRail, ui/
 │   ├── stores/                 zustand filter store
 │   └── public/                 static assets
 │

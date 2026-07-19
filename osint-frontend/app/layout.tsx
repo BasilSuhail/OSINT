@@ -5,7 +5,7 @@ import { RealtimeProvider } from "./providers"
 export const metadata: Metadata = {
   title: "OSINT World Monitor · LIVE",
   description:
-    "Real-time open-source intelligence dashboard. Flat world map and 3D globe, independently filterable and scrubbable through time.",
+    "Real-time open-source intelligence dashboard. A filterable world map, scrubbable through time.",
 }
 
 export const viewport: Viewport = {

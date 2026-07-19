@@ -29,12 +29,10 @@ import { useEventsInWindow } from "@/lib/queries"
 import {
   HAZARD_SOURCE_KEYS,
   HAZARD_TYPE_FILTERS,
-  paneForEvent,
-  sourceFiltersForPane,
+  SOURCE_FILTERS,
   sourceKeyForEvent,
   type EventRow,
   type HazardTypeKey,
-  type Pane,
   type SourceKey,
 } from "@/lib/types"
 import { hazardKind } from "@/lib/hazardSymbols"
@@ -137,7 +135,6 @@ const SOURCE_ICONS: Record<SourceKey, LucideIcon> = {
   EMDAT: AlertTriangle,
   USGS: Activity,
   GDACS: AlertTriangle,
-  FIRMS: Flame,
   EONET: Mountain,
   yfinance: TrendingUp,
   FRED: Landmark,
@@ -157,22 +154,18 @@ const HAZARD_TYPE_ICONS: Record<HazardTypeKey, LucideIcon> = {
 }
 
 interface FilterRailProps {
-  pane: Pane
   side: "left" | "right"
   useStore: FilterStore
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterRailProps) {
+export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailProps) {
   const allEvents = useEvents()
   const sources = useStore((s) => s.sources)
   const severity = useStore((s) => s.severity)
   const countries = useStore((s) => s.countries)
   const keyword = useStore((s) => s.keyword)
-  const showSatellites = useStore((s) => s.showSatellites)
-  const satelliteGroup = useStore((s) => s.satelliteGroup)
-  const showCelestial = useStore((s) => s.showCelestial)
   const toggleSource = useStore((s) => s.toggleSource)
   const setAllSources = useStore((s) => s.setAllSources)
   const hazardTypes = useStore((s) => s.hazardTypes)
@@ -181,20 +174,15 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
   const setSeverity = useStore((s) => s.setSeverity)
   const toggleCountry = useStore((s) => s.toggleCountry)
   const setKeyword = useStore((s) => s.setKeyword)
-  const toggleSatellites = useStore((s) => s.toggleSatellites)
-  const setSatelliteGroup = useStore((s) => s.setSatelliteGroup)
-  const toggleCelestial = useStore((s) => s.toggleCelestial)
   const reset = useStore((s) => s.reset)
-
-  const isGlobe = pane === "globe"
 
   const [countryOpen, setCountryOpen] = useState(false)
   const [tab, setTab] = useState<"filters" | "events">("filters")
 
-  /** Filtered + windowed events that would actually appear on this pane —
-   *  same pipeline the map/globe markers use, so the list and the dots
-   *  always agree. Sorted by severity desc by default. */
-  const { events: visibleEvents, total: visibleTotal } = useEventsInWindow(useStore, pane)
+  /** Filtered + windowed events that would actually appear on the map — same
+   *  pipeline the map markers use, so the list and the dots always agree.
+   *  Sorted by severity desc by default. */
+  const { events: visibleEvents, total: visibleTotal } = useEventsInWindow(useStore)
   const sortedVisible = useMemo(
     () =>
       [...visibleEvents]
@@ -203,20 +191,19 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
     [visibleEvents],
   )
 
-  /** Source toggles for this pane, minus the hazard sources (USGS / GDACS /
-   *  EONET) — those are filtered by disaster type instead, below. */
+  /** Source toggles, minus the hazard sources (USGS / GDACS / EONET) — those
+   *  are filtered by disaster type instead, below. */
   const paneFilters = useMemo(
-    () => sourceFiltersForPane(pane).filter((f) => !HAZARD_SOURCE_KEYS.includes(f.key)),
-    [pane],
+    () => SOURCE_FILTERS.filter((f) => !HAZARD_SOURCE_KEYS.includes(f.key)),
+    [],
   )
 
-  /** Disaster types are only relevant on the map pane (hazards live there). */
-  const showHazardTypes = pane === "map"
-
-  /** Pane-scoped events: only counts what would actually appear on this pane. */
+  /** Events that could appear on the map: anything with a known source key.
+   *  sourceKeyForEvent returns null for feeds with no renderer (NASA FIRMS,
+   *  aviation), so they never reach the counts. */
   const paneEvents = useMemo(() => {
-    return allEvents.filter((ev) => paneForEvent(ev) === pane)
-  }, [allEvents, pane])
+    return allEvents.filter((ev) => sourceKeyForEvent(ev) !== null)
+  }, [allEvents])
 
   /** Live count of pane-scoped events per source — drives the per-row badges. */
   const sourceCounts = useMemo(() => {
@@ -305,12 +292,11 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
 
   const activeCount =
     paneFilters.filter((f) => !sources[f.key]).length +
-    (showHazardTypes ? HAZARD_TYPE_FILTERS.filter((h) => !hazardTypes[h.key]).length : 0) +
+    HAZARD_TYPE_FILTERS.filter((h) => !hazardTypes[h.key]).length +
     (severity[0] > 0 || severity[1] < 1 ? 1 : 0) +
     (countries.length > 0 ? 1 : 0) +
     (keyword.trim() ? 1 : 0) +
-    (isGlobe && !showSatellites ? 1 : 0) +
-    (isGlobe && !showCelestial ? 1 : 0)
+    0
 
   const isLeft = side === "left"
 
@@ -449,8 +435,7 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
         })}
         {/* Disaster-type quick toggles (map pane) — same set as the expanded
          *  Disasters section, so the collapsed strip shows every filter too. */}
-        {showHazardTypes &&
-          HAZARD_TYPE_FILTERS.map((h) => {
+        {HAZARD_TYPE_FILTERS.map((h) => {
             const Icon = HAZARD_TYPE_ICONS[h.key]
             const on = hazardTypes[h.key]
             return (
@@ -471,32 +456,6 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
               </button>
             )
           })}
-        {isGlobe && (
-          <button
-            type="button"
-            aria-label={`Satellites ${showSatellites ? "on" : "off"}`}
-            onClick={toggleSatellites}
-            className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full transition-opacity"
-              style={{ backgroundColor: "#22d3ee", opacity: showSatellites ? 1 : 0.25 }}
-            />
-          </button>
-        )}
-        {isGlobe && (
-          <button
-            type="button"
-            aria-label={`Sun & Moon ${showCelestial ? "on" : "off"}`}
-            onClick={toggleCelestial}
-            className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full transition-opacity"
-              style={{ backgroundColor: "#fde68a", opacity: showCelestial ? 1 : 0.25 }}
-            />
-          </button>
-        )}
       </div>
 
       {/* Expanded panel */}
@@ -510,7 +469,7 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
               <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                {isLeft ? "Map" : "Globe"} · {paneTotal.toLocaleString()} pane / {visibleTotal.toLocaleString()} in window
+                Map · {paneTotal.toLocaleString()} pane / {visibleTotal.toLocaleString()} in window
               </span>
             </div>
             <button
@@ -608,69 +567,12 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
                 </button>
               )
             })}
-            {isGlobe && (
-              <>
-                <button
-                  type="button"
-                  onClick={toggleSatellites}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
-                    showSatellites
-                      ? "border-cyan-800 bg-cyan-950/30 text-cyan-100"
-                      : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
-                  )}
-                >
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: "#22d3ee", opacity: showSatellites ? 1 : 0.3 }}
-                  />
-                  <span className="flex-1">Live satellites</span>
-                  <span className="font-mono text-[10px] uppercase text-neutral-500">TLE</span>
-                </button>
-                {showSatellites && (
-                  <div className="flex flex-wrap gap-1 pl-1">
-                    {(["stations", "visual", "active"] as const).map((g) => (
-                      <button
-                        key={g}
-                        type="button"
-                        onClick={() => setSatelliteGroup(g)}
-                        className={cn(
-                          "rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors",
-                          satelliteGroup === g
-                            ? "border-cyan-600 bg-cyan-950/40 text-cyan-200"
-                            : "border-neutral-800 text-neutral-500 hover:border-neutral-700 hover:text-neutral-300",
-                        )}
-                      >
-                        {g}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={toggleCelestial}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
-                    showCelestial
-                      ? "border-amber-800 bg-amber-950/20 text-amber-100"
-                      : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
-                  )}
-                >
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: "#fde68a", opacity: showCelestial ? 1 : 0.3 }}
-                  />
-                  <span className="flex-1">Sun &amp; Moon</span>
-                  <span className="font-mono text-[10px] uppercase text-neutral-500">EPH</span>
-                </button>
-              </>
-            )}
           </div>
 
           {/* Disaster types — replaces the single GDACS "multi-hazard" switch so
            *  each disaster (earthquake / cyclone / flood / volcano / drought /
            *  wildfire) can be hidden on its own. */}
-          {showHazardTypes && (
+          {(
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between px-0.5">
                 <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
@@ -999,7 +901,7 @@ export function FilterRail({ pane, side, useStore, open, onOpenChange }: FilterR
               </div>
 
               <p className="px-1 pb-1.5 font-mono text-[10px] text-neutral-500">
-                Top {Math.min(sortedVisible.length, 300).toLocaleString()} by severity. Same filter set as the {isLeft ? "map" : "globe"}.
+                Top {Math.min(sortedVisible.length, 300).toLocaleString()} by severity. Same filter set as the map.
               </p>
               <div className="flex-1 overflow-y-auto">
                 {sortedVisible.length === 0 ? (

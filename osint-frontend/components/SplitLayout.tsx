@@ -7,7 +7,6 @@ import { useConfigured } from "@/app/providers"
 import type { VisibleEvent } from "@/lib/queries"
 import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
-import { useRightPaneStore } from "@/stores/rightPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { CardDeck, type DeckCard } from "./CardDeck"
@@ -27,10 +26,6 @@ const RightPane = dynamic(() => import("./RightPane").then((m) => m.RightPane), 
   ssr: false,
   loading: () => <PaneSkeleton label="status" />,
 })
-const GlobePane = dynamic(() => import("./GlobePane").then((m) => m.GlobePane), {
-  ssr: false,
-  loading: () => <PaneSkeleton label="globe" />,
-})
 
 function PaneSkeleton({ label }: { label: string }) {
   return (
@@ -47,11 +42,8 @@ export function SplitLayout() {
   const isNarrow = useMediaQuery("(max-width: 900px)")
 
   const [leftRailOpen, setLeftRailOpen] = useState(false)
-  const [rightRailOpen, setRightRailOpen] = useState(false)
-  const [focused, setFocused] = useState<"left" | "right">("left")
   const [activePane, setActivePane] = useState<"left" | "right">("left")
   const [, setLeftCount] = useState(0)
-  const [, setRightCount] = useState(0)
 
   // Selections drive the right pane's entity-lock mode (#252). The clicked
   // event id also expands its hazard footprint on the map.
@@ -77,17 +69,15 @@ export function SplitLayout() {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return
       if (e.key === "[") {
         setLeftRailOpen((o) => !o)
-      } else if (e.key === "]") {
-        setRightRailOpen((o) => !o)
       } else if (e.key === " ") {
         e.preventDefault()
-        const store = focused === "left" ? useLeftPaneStore : useRightPaneStore
-        store.getState().togglePlaying()
+        //: The map is the only scrubbable surface now that the globe is gone.
+        useLeftPaneStore.getState().togglePlaying()
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [focused])
+  }, [])
 
   // Selecting anything locks the right pane to that entity; on the narrow
   // single-column layout, reveal the right pane so the detail is visible.
@@ -107,31 +97,14 @@ export function SplitLayout() {
   )
 
   // The right pane as a card deck (#328): console keeps its world-status /
-  // entity surface, the globe rides as its own lazy card (WebGL mounts on
-  // first visit, then stays warm and pauses while off-screen), and the
-  // analytical pages fill the rest.
+  // entity surface and the analytical pages fill the rest. The globe card was
+  // removed in #494 — its WebGL context was the tab's largest memory holder.
   const deckCards: DeckCard[] = [
     //: fill — the panel is its own scroll surface (live list + transcript) with
     //: a fixed ask-box footer; the deck's non-fill outer scroll would defeat it.
     { key: "situation", title: "situation", fill: true, content: <SituationPanel /> },
     { key: "briefing", title: "briefing", content: <BriefingPanel /> },
     { key: "console", title: "console", fill: true, content: <RightPane /> },
-    {
-      key: "globe",
-      title: "globe",
-      fill: true,
-      lazy: true,
-      content: (isActive: boolean) => (
-        <GlobePane
-          useStore={useRightPaneStore}
-          railOpen={rightRailOpen}
-          onRailOpenChange={setRightRailOpen}
-          onCount={setRightCount}
-          onSelectEvent={onSelectEvent}
-          active={isActive}
-        />
-      ),
-    },
     { key: "stories", title: "stories", content: <StoriesPanel /> },
     { key: "scoreboard", title: "scoreboard", content: <ScoreboardPanel /> },
     { key: "coverage", title: "coverage", content: <CoveragePanel /> },
@@ -154,10 +127,7 @@ export function SplitLayout() {
                 <button
                   key={p}
                   type="button"
-                  onClick={() => {
-                    setActivePane(p)
-                    setFocused(p)
-                  }}
+                  onClick={() => setActivePane(p)}
                   className={
                     "rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors " +
                     (activePane === p
@@ -173,7 +143,6 @@ export function SplitLayout() {
             <div
               className="h-full w-full"
               style={{ display: activePane === "left" ? "block" : "none" }}
-              onMouseEnter={() => setFocused("left")}
             >
               <MapPane
                 useStore={useLeftPaneStore}
@@ -188,7 +157,6 @@ export function SplitLayout() {
             <div
               className="relative h-full w-full"
               style={{ display: activePane === "right" ? "block" : "none" }}
-              onMouseEnter={() => setFocused("right")}
             >
               {storyDetailOpen ? <StoryDetailCard /> : <CardDeck cards={deckCards} />}
             </div>
@@ -197,11 +165,7 @@ export function SplitLayout() {
           <div className="relative h-full w-full">
           <PanelGroup orientation="horizontal" className="h-full w-full">
             <Panel id="map" defaultSize={70} minSize={20}>
-              <div
-                className="h-full w-full"
-                onMouseEnter={() => setFocused("left")}
-                onFocusCapture={() => setFocused("left")}
-              >
+              <div className="h-full w-full">
                 <MapPane
                   useStore={useLeftPaneStore}
                   railOpen={leftRailOpen}
@@ -225,11 +189,7 @@ export function SplitLayout() {
               minSize={12}
               onResize={(size) => setDeckWidthPx(size.inPixels)}
             >
-              <div
-                className="relative h-full w-full"
-                onMouseEnter={() => setFocused("right")}
-                onFocusCapture={() => setFocused("right")}
-              >
+              <div className="relative h-full w-full">
                 <CardDeck cards={deckCards} />
               </div>
             </Panel>

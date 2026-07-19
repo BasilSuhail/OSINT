@@ -15,7 +15,6 @@ export type SourceKey =
   | "EMDAT"
   | "USGS"
   | "GDACS"
-  | "FIRMS"
   | "yfinance"
   | "FRED"
   | "EONET"
@@ -118,12 +117,7 @@ export interface SourceCoverageRow {
   latest_fetched_at: string | null
 }
 
-/** Which pane a source renders on. NASA / satellite-derived feeds belong on
- *  the globe; everything else (geopolitical, markets, ground-sensor hazards,
- *  news) belongs on the flat map. Keeps the two panes from duplicating. */
-export type Pane = "map" | "globe"
-
-/** The five toggleable source filters, mapped to a category + colour + pane. */
+/** The toggleable source filters, mapped to a category + colour. */
 export interface SourceFilterDef {
   key: SourceKey
   label: string
@@ -132,29 +126,21 @@ export interface SourceFilterDef {
   color: string
   /** maplibre-friendly hex */
   hex: string
-  /** which pane this source renders on */
-  pane: Pane
 }
 
 export const SOURCE_FILTERS: SourceFilterDef[] = [
-  { key: "GDELT", label: "Geopolitical events", category: "geopolitical", color: "rgb(163,163,163)", hex: "#a3a3a3", pane: "map" },
-  { key: "ACLED", label: "Conflict events", category: "geopolitical", color: "rgb(244,63,94)", hex: "#f43f5e", pane: "map" },
-  { key: "yfinance", label: "Market drawdowns", category: "market", color: "rgb(34,197,94)", hex: "#22c55e", pane: "map" },
-  { key: "FRED", label: "Macro indicators", category: "market", color: "rgb(59,130,246)", hex: "#3b82f6", pane: "map" },
-  { key: "USGS", label: "Earthquakes", category: "hazard", color: "rgb(239,68,68)", hex: "#ef4444", pane: "map" },
-  { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316", pane: "map" },
-  { key: "EMDAT", label: "Disaster records", category: "hazard", color: "rgb(14,165,233)", hex: "#0ea5e9", pane: "map" },
-  { key: "FIRMS", label: "Active fires (satellite)", category: "weather", color: "rgb(234,179,8)", hex: "#eab308", pane: "globe" },
-  { key: "EONET", label: "Natural events (NASA)", category: "hazard", color: "rgb(217,70,239)", hex: "#d946ef", pane: "map" },
-  { key: "NEWS", label: "News (RSS)", category: "news", color: "rgb(56,189,248)", hex: "#38bdf8", pane: "map" },
-  { key: "CYBER", label: "Cyber threats", category: "cyber", color: "rgb(168,85,247)", hex: "#a855f7", pane: "map" },
-  { key: "POLYMARKET", label: "Prediction markets", category: "market", color: "rgb(16,185,129)", hex: "#10b981", pane: "map" },
+  { key: "GDELT", label: "Geopolitical events", category: "geopolitical", color: "rgb(163,163,163)", hex: "#a3a3a3" },
+  { key: "ACLED", label: "Conflict events", category: "geopolitical", color: "rgb(244,63,94)", hex: "#f43f5e" },
+  { key: "yfinance", label: "Market drawdowns", category: "market", color: "rgb(34,197,94)", hex: "#22c55e" },
+  { key: "FRED", label: "Macro indicators", category: "market", color: "rgb(59,130,246)", hex: "#3b82f6" },
+  { key: "USGS", label: "Earthquakes", category: "hazard", color: "rgb(239,68,68)", hex: "#ef4444" },
+  { key: "GDACS", label: "Multi-hazard alerts", category: "hazard", color: "rgb(249,115,22)", hex: "#f97316" },
+  { key: "EMDAT", label: "Disaster records", category: "hazard", color: "rgb(14,165,233)", hex: "#0ea5e9" },
+  { key: "EONET", label: "Natural events (NASA)", category: "hazard", color: "rgb(217,70,239)", hex: "#d946ef" },
+  { key: "NEWS", label: "News (RSS)", category: "news", color: "rgb(56,189,248)", hex: "#38bdf8" },
+  { key: "CYBER", label: "Cyber threats", category: "cyber", color: "rgb(168,85,247)", hex: "#a855f7" },
+  { key: "POLYMARKET", label: "Prediction markets", category: "market", color: "rgb(16,185,129)", hex: "#10b981" },
 ]
-
-/** Source filters scoped to a single pane. */
-export function sourceFiltersForPane(pane: Pane): SourceFilterDef[] {
-  return SOURCE_FILTERS.filter((f) => f.pane === pane)
-}
 
 /** GDACS / USGS / EONET all carry the "hazard" category but lump many distinct
  *  disasters together. These are the source keys whose events are filtered by
@@ -182,14 +168,6 @@ export const HAZARD_TYPE_FILTERS: HazardTypeDef[] = [
   { key: "VO", label: "Volcanoes", hex: "#d946ef" },
   { key: "DR", label: "Droughts", hex: "#a16207" },
 ]
-
-/** Which pane should render this event. Returns null if the source is unknown. */
-export function paneForEvent(ev: EventRow): Pane | null {
-  const sk = sourceKeyForEvent(ev)
-  if (!sk) return null
-  const def = SOURCE_FILTERS.find((f) => f.key === sk)
-  return def?.pane ?? null
-}
 
 /** Resolve a marker colour from an event's source / category. */
 export function colorForEvent(ev: EventRow): string {
@@ -235,7 +213,12 @@ export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
   if (src.includes("USGS")) return "USGS"
   if (src.includes("GDACS")) return "GDACS"
   if (src === "EONET") return "EONET"
-  if (src.includes("FIRMS")) return "FIRMS"
+  // NASA FIRMS thermal pixels (~390k rows) lost their only renderer when the
+  // globe was deleted (#494). This must stay ABOVE the category fallback:
+  // FIRMS rows carry category "hazard", so falling through would tag them
+  // GDACS and flood the map. null drops them at the buffer boundary instead.
+  // The map's fires remain the GDACS / EONET wildfire events.
+  if (src.includes("FIRMS")) return null
   if (src.includes("YF") || src.includes("YFINANCE")) return "yfinance"
   if (src === "FRED") return "FRED"
   if (src.startsWith("ABUSE-CH-")) return "CYBER"
@@ -251,8 +234,6 @@ export function sourceKeyForEvent(ev: EventRow): SourceKey | null {
       return "CYBER"
     case "geopolitical":
       return "GDELT"
-    case "weather":
-      return "FIRMS"
     case "hazard":
       return "GDACS"
     default:

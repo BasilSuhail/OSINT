@@ -65,9 +65,6 @@ jobs:
       # dependency-review workflow; Dependabot keeps patching. Re-add when
       # pnpm supports npm's bulk advisory endpoint.
 
-      - name: Ephemeris unit tests (node --test)
-        run: node --test --experimental-strip-types lib/ephemeris.test.mts
-
       - name: Unit tests (vitest)
         run: pnpm test
 

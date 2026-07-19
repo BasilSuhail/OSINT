@@ -31,11 +31,10 @@ Additional endpoints: `GET /health`, `GET /ingest-health`, `GET /stream` (SSE fo
 
 | Page | What it shows | Data |
 |---|---|---|
-| `/space` | 3D globe with satellite orbits + asteroids | CelesTrak TLE + NASA NEO (fetchers not yet built) |
 
 ## Versions
 
-- `v0-prompt.md` — current spec: dual-pane map + globe, filters, time scrubber, live fades. Inspired by WorldMonitor / Shadowbroker / Palantir.
+- `v0-prompt.md` — original spec: dual-pane map + globe, filters, time scrubber, live fades. Inspired by WorldMonitor / Shadowbroker / Palantir. The globe half was removed in #494; the map is now the only geographic surface.
 - `v0-prompt-v1-simple.md` — archived first draft: single-page world map + articles, no globe.
 
 ## Setup
