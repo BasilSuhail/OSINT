@@ -181,3 +181,68 @@ def test_paces_calls_to_respect_the_published_limit(monkeypatch):
     narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
     narrative.fetch_daily_volume("PE", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
     assert any(s >= narrative.MIN_INTERVAL_S - 0.01 for s in slept)
+
+
+def test_query_uses_the_country_name_not_the_iso_code(monkeypatch):
+    """GDELT's sourcecountry: operator takes a name (#520).
+
+    The gate sent `sourcecountry:jp` and GDELT returned nothing for Japan, the
+    Philippines, Russia, China and Chile — five of the largest news markets in
+    the world. Same failure class #518 fixed, reintroduced one layer up: a
+    malformed query that yields an empty result.
+    """
+    seen: dict = {}
+
+    def fake_get(url, params, timeout):
+        seen.update(params)
+        return httpx.Response(200, text=_CSV)
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
+    assert seen["query"] == "sourcecountry:japan"
+
+
+def test_unmappable_country_raises_rather_than_sending_the_code(monkeypatch):
+    """Sending the raw code is what produced silent empty windows."""
+
+    def fake_get(url, params, timeout):  # pragma: no cover - must not be reached
+        raise AssertionError("should not call GDELT with an unmappable country")
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    with pytest.raises(narrative.NarrativeUnavailableError):
+        narrative.fetch_daily_volume("ZZ", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
+
+
+def test_explicit_query_still_wins(monkeypatch):
+    seen: dict = {}
+
+    def fake_get(url, params, timeout):
+        seen.update(params)
+        return httpx.Response(200, text=_CSV)
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    narrative.fetch_daily_volume(
+        "JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None, query="theme:DISASTER"
+    )
+    assert seen["query"] == "theme:DISASTER"
+
+
+def test_cache_key_changes_with_the_query(tmp_path, monkeypatch):
+    """A changed query must not reuse data fetched by the old one (#520).
+
+    The cache is keyed by country and window, so the entries fetched with the
+    buggy `sourcecountry:jp` token would otherwise be served forever — a fixed
+    bug that keeps returning its own wrong answers.
+    """
+    calls = {"n": 0}
+
+    def fake_get(url, params, timeout):
+        calls["n"] += 1
+        return httpx.Response(200, text=_CSV)
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=tmp_path)
+    narrative.fetch_daily_volume(
+        "JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=tmp_path, query="theme:DISASTER"
+    )
+    assert calls["n"] == 2

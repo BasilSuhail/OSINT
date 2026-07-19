@@ -24,6 +24,7 @@ on a rate-limited public API being reachable.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import time
@@ -31,6 +32,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
+
+from app.enrichment.country import country_name
 
 _ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
 _TIMEOUT_S = 90.0
@@ -94,8 +97,15 @@ def daily_series(counts: dict[date, int], start: date, end: date) -> tuple[list[
     return days, values
 
 
-def _cache_path(cache_dir: Path, country: str, start: date, end: date) -> Path:
-    return cache_dir / f"{country.upper()}_{start:%Y%m%d}_{end:%Y%m%d}.json"
+def _cache_path(cache_dir: Path, country: str, start: date, end: date, query: str) -> Path:
+    """Cache key includes the query.
+
+    Keying on country and window alone meant a corrected query kept being served
+    the data its broken predecessor fetched — a fixed bug still returning its
+    own wrong answers (#520).
+    """
+    token = hashlib.sha256(query.encode("utf-8")).hexdigest()[:8]
+    return cache_dir / f"{country.upper()}_{start:%Y%m%d}_{end:%Y%m%d}_{token}.json"
 
 
 def _looks_like_error(body: str) -> str | None:
@@ -153,13 +163,25 @@ def fetch_daily_volume(
     with no narrative data cannot be scored, and pretending otherwise is what
     made the gate report FAIL on missing data.
     """
-    path = _cache_path(cache_dir, country, start, end) if cache_dir else None
+    if query is None:
+        # GDELT's sourcecountry: operator takes a country NAME. Sending the ISO
+        # code returned nothing for Japan, the Philippines, Russia, China and
+        # Chile — five of the largest news markets there are (#520).
+        name = country_name(country)
+        if not name:
+            raise NarrativeUnavailableError(
+                f"{country} {start}..{end}: no country name for ISO {country!r}; "
+                "refusing to send the raw code, which GDELT answers with silence"
+            )
+        query = f"sourcecountry:{name.lower()}"
+
+    path = _cache_path(cache_dir, country, start, end, query) if cache_dir else None
     if path is not None and path.exists():
         cached = json.loads(path.read_text())
         return {date.fromisoformat(k): int(v) for k, v in cached.items()}
 
     params = {
-        "query": query or f"sourcecountry:{country.lower()}",
+        "query": query,
         "mode": "timelinevolraw",
         "format": "csv",
         "startdatetime": f"{start:%Y%m%d}000000",
