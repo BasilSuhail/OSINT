@@ -73,6 +73,7 @@ def select_anchors(
                 "country": country,
                 "date": day,
                 "domain": "hazard",
+                "topic": "earthquake",
                 "source_url": props.get("url") or _USGS_URL,
                 "notes": f"M{magnitude} {place}",
             }

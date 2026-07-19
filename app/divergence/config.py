@@ -10,7 +10,11 @@ from typing import Final, Literal
 #: from as few as two prior points, whose near-zero standard deviation made
 #: ordinary days read as 3-5 sigma — phantom spikes that dominated the
 #: lead-time gate's result.
-DIVERGENCE_METHOD_VERSION: Final[str] = "div.v2"
+#: v3 (#528): the physical side became the day's strongest event on the
+#: magnitude scale rather than a count of rows, and the narrative side became
+#: coverage of the event rather than a country's entire news output. Both sides
+#: were previously too blunt to see the thing being measured.
+DIVERGENCE_METHOD_VERSION: Final[str] = "div.v3"
 
 #: Trailing window for the rolling z-score baseline, in days.
 ROLLING_WINDOW_DAYS: Final[int] = 28
@@ -20,7 +24,9 @@ TAU_P: Final[float] = 1.5
 TAU_N: Final[float] = 1.5
 
 #: log1p ceilings (the count that reads as "fully saturated") per side.
-LOG_CEILING_PHYSICAL: Final[float] = 200.0
+#: The physical side is now a magnitude (#528), so the ceiling is a magnitude:
+#: 200 was chosen when the value was a count of events per day.
+LOG_CEILING_PHYSICAL: Final[float] = 10.0
 LOG_CEILING_NARRATIVE: Final[float] = 300.0
 
 #: How far before a narrative spike we look for a physical spike, in days.

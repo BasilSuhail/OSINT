@@ -25,7 +25,7 @@ from app.backtest.narrative import (
 from app.backtest.registry import load_registry
 from app.backtest.report import render_report
 from app.db import session_scope
-from app.divergence.aggregate import daily_side_counts
+from app.divergence.aggregate import daily_physical_intensity
 from app.divergence.config import DIVERGENCE_METHOD_VERSION, ROLLING_WINDOW_DAYS
 from app.divergence.scoring import DivergenceSeries, compute_divergence_series, detect_lead
 
@@ -80,16 +80,14 @@ def run_backtest(
             session.commit()
         start = event.date - timedelta(days=_LOOKBACK_DAYS)
         end = event.date + timedelta(days=_LOOKAHEAD_DAYS)
-        # Physical side from our own sensor rows; narrative side from GDELT's
-        # daily volume timeline (#518). Counting local gdelt rows gave a series
-        # of near-zeros — the live feed holds ~2 weeks, while a window is 60
-        # days — so every event scored "no narrative spike" and the gate failed
-        # on missing data rather than on evidence.
-        days, physical, _unused_local_narrative = daily_side_counts(
-            session, event.country, start, end
-        )
+        # Physical side is the day's strongest event, not a row count (#528):
+        # counting rows made a M7.3 worth the same as a M2.1, so a disaster
+        # barely moved the series. Narrative side is GDELT's daily volume
+        # timeline (#518), scoped to the event's topic (#528) because a
+        # country's whole news output cannot notice one earthquake.
+        days, physical = daily_physical_intensity(session, event.country, start, end)
         try:
-            volume = fetch_volume(event.country, start, end, cache_dir=cache_dir)
+            volume = fetch_volume(event.country, start, end, cache_dir=cache_dir, topic=event.topic)
         except NarrativeUnavailableError as exc:
             # Unscorable, not negative. Counting it as "no lead" would let a
             # fetch failure masquerade as a refutation of the claim.

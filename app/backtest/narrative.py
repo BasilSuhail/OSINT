@@ -56,6 +56,31 @@ _COUNT_SERIES = "article count"
 
 DEFAULT_CACHE_DIR = Path("data/backtest_cache")
 
+#: Words outlets actually use for a topic. Scoping the query to the event is the
+#: difference between asking "did this country's news spike?" and "did coverage
+#: of this event spike?" — Japan runs ~1,300 articles a day and a M6 earthquake
+#: adds perhaps thirty, so the country-wide question can only ever answer no
+#: (#528).
+TOPIC_TERMS: dict[str, tuple[str, ...]] = {
+    "earthquake": ("earthquake", "quake", "tremor", "seismic", "aftershock"),
+    "flood": ("flood", "flooding", "inundation"),
+    "cyclone": ("cyclone", "hurricane", "typhoon", "storm"),
+    "wildfire": ("wildfire", "bushfire", "blaze"),
+    "volcano": ("volcano", "volcanic", "eruption"),
+    "drought": ("drought",),
+}
+
+
+def build_query(country_name: str, topic: str | None) -> str:
+    """GDELT query for a country, optionally narrowed to a topic."""
+    scope = f"sourcecountry:{country_name.lower()}"
+    if not topic:
+        return scope
+    terms = TOPIC_TERMS.get(topic.lower(), (topic.lower(),))
+    if len(terms) == 1:
+        return f"{scope} {terms[0]}"
+    return f"{scope} ({' OR '.join(terms)})"
+
 
 class NarrativeUnavailableError(RuntimeError):
     """The narrative series could not be fetched, so the window is unscorable."""
@@ -156,6 +181,7 @@ def fetch_daily_volume(
     *,
     cache_dir: Path | None = DEFAULT_CACHE_DIR,
     query: str | None = None,
+    topic: str | None = None,
 ) -> dict[date, int]:
     """Daily article volume for one country over one window.
 
@@ -173,7 +199,7 @@ def fetch_daily_volume(
                 f"{country} {start}..{end}: no country name for ISO {country!r}; "
                 "refusing to send the raw code, which GDELT answers with silence"
             )
-        query = f"sourcecountry:{name.lower()}"
+        query = build_query(name, topic)
 
     path = _cache_path(cache_dir, country, start, end, query) if cache_dir else None
     if path is not None and path.exists():

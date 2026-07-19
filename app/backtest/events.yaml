@@ -3,131 +3,153 @@ events:
   country: MX
   date: 2026-07-17
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000t1cc
   notes: M6 90 km SW of Puerto Madero, Mexico
 - id: ph-20260714-m6.2
   country: PH
   date: 2026-07-14
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000t0d0
   notes: M6.2 32 km WSW of Sarangani, Philippines
 - id: pg-20260713-m6.4
   country: PG
   date: 2026-07-13
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000szzy
   notes: M6.4 191 km SE of Lorengau, Papua New Guinea
 - id: jp-20260703-m6.1
   country: JP
   date: 2026-07-03
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us6000t9sj
   notes: M6.1 136 km NNE of Hirara, Japan
 - id: id-20260703-m6.2
   country: ID
   date: 2026-07-03
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us6000t9r5
   notes: M6.2 58 km W of Tobelo, Indonesia
 - id: af-20260627-m6.1
   country: AF
   date: 2026-06-27
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us6000t8pa
   notes: M6.1 43 km SSW of Jurm, Afghanistan
 - id: ve-20260624-m7.5
   country: VE
   date: 2026-06-24
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us6000t7zp
   notes: M7.5 20 km ESE of Yumare, Venezuela
 - id: ru-20260619-m6.6
   country: RU
   date: 2026-06-19
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000sui3
   notes: M6.6 148 km ESE of Petropavlovsk-Kamchatsky, Russia
 - id: cn-20260616-m6.3
   country: CN
   date: 2026-06-16
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000stbz
   notes: M6.3 262 km SSE of Dunhuang, China
 - id: nz-20260610-m6
   country: NZ
   date: 2026-06-10
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000srxn
   notes: M6 Auckland Islands, New Zealand region
 - id: cu-20260608-m6.1
   country: CU
   date: 2026-06-08
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000srjx
   notes: M6.1 99 km WNW of Mantua, Cuba
 - id: ph-20260608-m6.5
   country: PH
   date: 2026-06-08
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000srcg
   notes: M6.5 18 km SW of Balangonan, Philippines
 - id: it-20260601-m6.2
   country: IT
   date: 2026-06-01
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000spxm
   notes: M6.2 23 km WSW of San Lucido, Italy
 - id: cl-20260531-m6
   country: CL
   date: 2026-05-31
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000spqc
   notes: M6 33 km NW of Valparaíso, Chile
 - id: jp-20260515-m6.7
   country: JP
   date: 2026-05-15
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us6000sxwq
   notes: M6.7 41 km ESE of Ōfunato, Japan
 - id: id-20260514-m6.2
   country: ID
   date: 2026-05-14
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us6000sxqf
   notes: M6.2 268 km WSW of Tual, Indonesia
 - id: ph-20260504-m6
   country: PH
   date: 2026-05-04
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000si2z
   notes: M6 10 km WSW of Nena, Philippines
 - id: ph-20260404-m6
   country: PH
   date: 2026-04-04
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us6000smj4
   notes: M6 95 km SE of Sarangani, Philippines
 - id: id-20260402-m6.3
   country: ID
   date: 2026-04-02
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us6000slwy
   notes: M6.3 109 km WNW of Ternate, Indonesia
 - id: pe-20260401-m6
   country: PE
   date: 2026-04-01
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000s9cg
   notes: M6 19 km SE of Picota, Peru
 - id: vu-20260330-m7.3
   country: VU
   date: 2026-03-30
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000s8q0
   notes: M7.3 51 km ENE of Luganville, Vanuatu
 - id: jp-20260326-m6.5
   country: JP
   date: 2026-03-26
   domain: hazard
+  topic: earthquake
   source_url: https://earthquake.usgs.gov/earthquakes/eventpage/us7000s7u4
   notes: M6.5 123 km E of Yamada, Japan

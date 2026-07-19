@@ -246,3 +246,67 @@ def test_cache_key_changes_with_the_query(tmp_path, monkeypatch):
         "JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=tmp_path, query="theme:DISASTER"
     )
     assert calls["n"] == 2
+
+
+def test_topic_scopes_the_query_to_the_event(monkeypatch):
+    """Total national volume drowns the event (#528).
+
+    Japan publishes ~1,300 articles a day; a M6 earthquake adds perhaps thirty.
+    Asking whether a country's whole news output spiked is not the question —
+    the question is whether coverage OF THIS EVENT spiked.
+    """
+    seen: dict = {}
+
+    def fake_get(url, params, timeout):
+        seen.update(params)
+        return httpx.Response(200, text=_CSV)
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    narrative.fetch_daily_volume(
+        "JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None, topic="earthquake"
+    )
+    assert "sourcecountry:japan" in seen["query"]
+    assert "earthquake" in seen["query"]
+
+
+def test_topic_synonyms_are_expanded(monkeypatch):
+    """Outlets write "quake" and "tremor" as often as "earthquake"."""
+    seen: dict = {}
+
+    def fake_get(url, params, timeout):
+        seen.update(params)
+        return httpx.Response(200, text=_CSV)
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    narrative.fetch_daily_volume(
+        "JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None, topic="earthquake"
+    )
+    assert " OR " in seen["query"]
+    assert "quake" in seen["query"]
+
+
+def test_no_topic_keeps_the_country_wide_query(monkeypatch):
+    seen: dict = {}
+
+    def fake_get(url, params, timeout):
+        seen.update(params)
+        return httpx.Response(200, text=_CSV)
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
+    assert seen["query"] == "sourcecountry:japan"
+
+
+def test_topic_changes_the_cache_key(tmp_path, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_get(url, params, timeout):
+        calls["n"] += 1
+        return httpx.Response(200, text=_CSV)
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=tmp_path)
+    narrative.fetch_daily_volume(
+        "JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=tmp_path, topic="earthquake"
+    )
+    assert calls["n"] == 2
