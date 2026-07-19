@@ -1,8 +1,14 @@
-"""Guardrail test for the frozen gate registry payload."""
+"""Guardrail test for the frozen gate registry payload.
+
+The hash changed once, in #518, when the registry stopped being a single
+placeholder ("frozen starter event for backtest smoke run") and became 22 real
+M6.0+ anchors. Changing it must stay a deliberate, reviewed act: a sample that
+can drift silently is a sample that can be tuned until the gate passes.
+"""
 
 from app.backtest.registry import verify_frozen
 
-FROZEN_HASH = "74607ce70c7c3569ead5463cdeff5d97f0972723c5fd17d37d5e878485c8c389"
+FROZEN_HASH = "d78f59d15b547301093d488f93dbceb351a4940cbc71b6a7017fa9ca6e781d98"
 
 
 def test_registry_is_frozen() -> None:
