@@ -117,3 +117,54 @@ def test_beat_schedule_has_stories_entry() -> None:
 
     entry = celery_app.conf.beat_schedule["stories-cluster-30min"]
     assert entry["task"] == "app.tasks.cluster_stories"
+
+
+def test_title_follows_the_story_as_it_develops(db_session: Session) -> None:
+    """A story's title must not stay frozen at its first report (#516).
+
+    Story 12662 in production entered at 12:31 as "leaves at least one dead"
+    and was still titled that at 18:26, while eight outlets had converged on
+    five or six deaths. The title is what the situation list shows and what the
+    brain cites, so the earliest and least-informed account was winning.
+    """
+    db_session.add(_news(1, "Earthquake in Peru leaves at least one dead", "rss-a", 0))
+    db_session.commit()
+    _run(db_session)
+
+    story = db_session.execute(select(StoryRow)).scalars().one()
+    assert story.title == "Earthquake in Peru leaves at least one dead"
+    assert story.first_title == "Earthquake in Peru leaves at least one dead"
+
+    # Two outlets follow with a corrected toll.
+    db_session.add_all(
+        [
+            _news(2, "Earthquake in Peru leaves at least five dead", "rss-b", 20),
+            _news(3, "At least five killed in central Peru earthquake", "rss-c", 40),
+        ]
+    )
+    db_session.commit()
+    _run(db_session)
+
+    #: The task commits through its own Session; expire so this one re-reads.
+    db_session.expire_all()
+    story = db_session.execute(select(StoryRow)).scalars().one()
+    assert story.member_count == 3
+    # Newest member wins: the latest report supersedes the first.
+    assert story.title == "At least five killed in central Peru earthquake"
+    # The original survives, so the drift stays auditable and measurable.
+    assert story.first_title == "Earthquake in Peru leaves at least one dead"
+
+
+def test_first_title_is_never_overwritten(db_session: Session) -> None:
+    db_session.add(_news(1, "Blast reported near port", "rss-a", 0))
+    db_session.commit()
+    _run(db_session)
+    db_session.add(_news(2, "Blast near port kills three, officials say", "rss-b", 30))
+    db_session.commit()
+    _run(db_session)
+    _run(db_session)
+
+    db_session.expire_all()
+    story = db_session.execute(select(StoryRow)).scalars().one()
+    assert story.first_title == "Blast reported near port"
+    assert story.title == "Blast near port kills three, officials say"

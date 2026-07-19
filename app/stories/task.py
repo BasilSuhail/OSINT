@@ -102,7 +102,9 @@ def _cluster_stories_inner(*, now: datetime | None = None) -> dict[str, Any]:
             ).scalars()
             event_ids = list(members)
             sources = session.execute(
-                select(EventRow.source, EventRow.occurred_at).where(EventRow.id.in_(event_ids))
+                select(EventRow.source, EventRow.occurred_at, EventRow.payload).where(
+                    EventRow.id.in_(event_ids)
+                )
             ).all()
             story = session.get(StoryRow, story_id)
             if story is not None and sources:
@@ -110,6 +112,21 @@ def _cluster_stories_inner(*, now: datetime | None = None) -> dict[str, Any]:
                 story.outlet_count = len({s.source for s in sources})
                 story.owner_count = len({owner_map.get(s.source, s.source) for s in sources})
                 story.last_seen = max(s.occurred_at for s in sources)
+                # The newest member's headline becomes the story's title (#516).
+                # A developing story's latest report supersedes its first: the
+                # Peru quake stayed titled "at least one dead" for six hours
+                # while eight outlets converged on five or six.
+                #
+                # Newest rather than consensus deliberately. Consensus needs a
+                # definition of independent corroboration, which is WS-C's job;
+                # "most recent" is explainable and auditable today, and
+                # first_title keeps the original for comparison either way.
+                newest = max(sources, key=lambda s: s.occurred_at)
+                newest_title = (newest.payload or {}).get("title")
+                if newest_title:
+                    story.title = newest_title
+                if not story.first_title:
+                    story.first_title = story.title
 
         session.commit()
 

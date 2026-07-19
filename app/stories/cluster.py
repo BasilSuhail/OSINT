@@ -103,6 +103,7 @@ def cluster_articles(
                 {
                     "method_version": METHOD_VERSION,
                     "title": article["title"],
+                    "first_title": article["title"],
                     "first_seen": article["occurred_at"],
                     "last_seen": article["occurred_at"],
                     "member_count": 1,
