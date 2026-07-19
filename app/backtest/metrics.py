@@ -9,9 +9,11 @@ from datetime import date
 from app.divergence.config import MAX_LEAD_LOOKBACK_DAYS, TAU_P
 from app.divergence.scoring import DivergenceSeries, detect_lead
 
-#: Frozen pass bar for the phase-1 gate.
-_MIN_LEAD_DAYS = 1
-_MAJORITY = 0.5
+#: Frozen pass bar for the phase-1 gate. Public because the report prints it:
+#: an artifact that states a verdict without stating the bar it was judged
+#: against cannot be checked by anyone reading it later (#524).
+MIN_LEAD_DAYS = 1
+MAJORITY_SHARE = 0.5
 
 
 @dataclass(frozen=True)
@@ -59,12 +61,14 @@ def false_positive_rate(
 def summarize(leads: list[EventLead], fp_rate: float) -> GateMetrics:
     """Apply the frozen pass bar to per-event lead decisions."""
     valid_leads = [lead.lead_days for lead in leads if lead.lead_days is not None]
-    leading = [lead for lead in valid_leads if lead >= _MIN_LEAD_DAYS]
+    leading = [lead for lead in valid_leads if lead >= MIN_LEAD_DAYS]
     n_events = len(leads)
     pct_events_leading = len(leading) / n_events if n_events else 0.0
     median_lead = statistics.median(valid_leads) if valid_leads else None
     passes = (
-        median_lead is not None and median_lead >= _MIN_LEAD_DAYS and pct_events_leading > _MAJORITY
+        median_lead is not None
+        and median_lead >= MIN_LEAD_DAYS
+        and pct_events_leading > MAJORITY_SHARE
     )
     return GateMetrics(
         median_lead=median_lead,
