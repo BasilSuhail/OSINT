@@ -14,11 +14,30 @@ cd "$ROOT"
 human() { du -sh "$1" 2>/dev/null | awk '{print $1}'; }
 
 echo "→ frontend build cache"
+# The dev server MUST be stopped first. Deleting .next underneath a running
+# Turbopack leaves it writing into a directory that no longer exists, and the
+# cache it rebuilds references .sst files that were never written:
+#   Failed to open SST file .next/dev/cache/turbopack/.../00000223.sst
+#   thread 'tokio-runtime-worker' panicked
+# The page then serves 500 until the cache is deleted again with the server
+# down. scripts/dev-clean.sh stopped Next before cleaning; this script did not,
+# and reintroduced exactly that failure.
+frontend_pids="$(pgrep -f 'next-server|osint-frontend.*pnpm dev' 2>/dev/null || true)"
+if [ -n "$frontend_pids" ]; then
+  echo "  stopping the frontend first (deleting .next under a live Turbopack corrupts its cache)"
+  echo "$frontend_pids" | while read -r pid; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
+  sleep 2
+fi
 if [ -d osint-frontend/.next ]; then
   echo "  removing osint-frontend/.next ($(human osint-frontend/.next))"
   rm -rf osint-frontend/.next
 else
   echo "  already clean"
+fi
+if [ -n "$frontend_pids" ]; then
+  echo "  frontend was stopped — run 'make up' to bring it back"
 fi
 
 echo "→ python caches"
