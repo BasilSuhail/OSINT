@@ -1,8 +1,8 @@
 "use client"
 
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useState } from "react"
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { useConfigured } from "@/app/providers"
 import type { VisibleEvent } from "@/lib/queries"
 import { useMediaQuery } from "@/lib/useMediaQuery"
@@ -10,6 +10,7 @@ import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { CardDeck, type DeckCard } from "./CardDeck"
+import { FloatingPanel } from "./FloatingPanel"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
@@ -26,6 +27,10 @@ const RightPane = dynamic(() => import("./RightPane").then((m) => m.RightPane), 
   ssr: false,
   loading: () => <PaneSkeleton label="status" />,
 })
+
+/** Deck and detail share one width so the pop-out lines up with the deck
+ *  without measuring anything at runtime (#503). */
+const PANEL_WIDTH = "clamp(320px, 28vw, 460px)"
 
 function PaneSkeleton({ label }: { label: string }) {
   return (
@@ -44,14 +49,13 @@ export function SplitLayout() {
   const [leftRailOpen, setLeftRailOpen] = useState(false)
   const [activePane, setActivePane] = useState<"left" | "right">("left")
   const [, setLeftCount] = useState(0)
+  //: Transient "let me see the map" gesture, not a stored preference (#503).
+  const [deckCollapsed, setDeckCollapsed] = useState(false)
 
   // Selections drive the right pane's entity-lock mode (#252). The clicked
   // event id also expands its hazard footprint on the map.
   //: Story pop-out (#448): a second card left of the deck, same width.
   const storyDetailOpen = useStoryDetailStore((s) => s.storyId !== null)
-  //: The pop-out overlay is EXACTLY the deck's current pixel width — fed by
-  //: the deck panel's onResize (fires on mount and on every drag).
-  const [deckWidthPx, setDeckWidthPx] = useState<number | null>(null)
   const entity = useRightPaneModeStore((s) => s.entity)
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
@@ -69,6 +73,9 @@ export function SplitLayout() {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return
       if (e.key === "[") {
         setLeftRailOpen((o) => !o)
+      } else if (e.key === "]") {
+        //: `]` used to toggle the right rail, which left with the globe (#494).
+        setDeckCollapsed((c) => !c)
       } else if (e.key === " ") {
         e.preventDefault()
         //: The map is the only scrubbable surface now that the globe is gone.
@@ -140,10 +147,7 @@ export function SplitLayout() {
               ))}
             </div>
 
-            <div
-              className="h-full w-full"
-              style={{ display: activePane === "left" ? "block" : "none" }}
-            >
+            <div className="absolute inset-0 z-0">
               <MapPane
                 useStore={useLeftPaneStore}
                 railOpen={leftRailOpen}
@@ -155,59 +159,84 @@ export function SplitLayout() {
               />
             </div>
             <div
-              className="relative h-full w-full"
+              className="absolute inset-x-2 bottom-2 top-20 z-30"
               style={{ display: activePane === "right" ? "block" : "none" }}
             >
-              {storyDetailOpen ? <StoryDetailCard /> : <CardDeck cards={deckCards} />}
+              <FloatingPanel className="h-full w-full">
+                {storyDetailOpen ? <StoryDetailCard /> : <CardDeck cards={deckCards} />}
+              </FloatingPanel>
             </div>
           </div>
         ) : (
-          <div className="relative h-full w-full">
-          <PanelGroup orientation="horizontal" className="h-full w-full">
-            <Panel id="map" defaultSize={70} minSize={20}>
-              <div className="h-full w-full">
-                <MapPane
-                  useStore={useLeftPaneStore}
-                  railOpen={leftRailOpen}
-                  onRailOpenChange={setLeftRailOpen}
-                  onSelectCountry={onSelectCountry}
-                  onCount={setLeftCount}
-                  onSelectEvent={onSelectEvent}
-                  selectedEventId={selectedEventId}
-                />
-              </div>
-            </Panel>
-
-            <PanelResizeHandle className="group relative w-px bg-neutral-800 outline-none">
-              <span className="absolute inset-y-0 -left-1 -right-1 z-30 transition-colors group-data-[resize-handle-state=drag]:bg-emerald-500/20 group-data-[resize-handle-state=hover]:bg-emerald-500/10" />
-              <span className="absolute left-1/2 top-1/2 z-30 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-700 transition-colors group-hover:bg-emerald-500" />
-            </PanelResizeHandle>
-
-            <Panel
-              id="deck"
-              defaultSize={30}
-              minSize={12}
-              onResize={(size) => setDeckWidthPx(size.inPixels)}
-            >
-              <div className="relative h-full w-full">
-                <CardDeck cards={deckCards} />
-              </div>
-            </Panel>
-          </PanelGroup>
-
-          {storyDetailOpen ? (
-            //: Overlay, not a Panel — inserting a third panel makes the group
-            //: normalize and SHRINK the deck. Pinned to the deck's left edge at
-            //: the deck's exact pixel width; map and deck never move.
-            <div
-              className="absolute inset-y-0 z-40 p-1.5"
-              style={{ right: deckWidthPx ?? "30%", width: deckWidthPx ?? "30%" }}
-            >
-              <div className="h-full w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
-                <StoryDetailCard />
-              </div>
+          //: Layered stage (#503): the map is the base layer and fills the
+          //: viewport; everything else floats above it. No panel group, no
+          //: resize handle — those are what made the console read as boxed.
+          <div
+            className="relative h-full w-full"
+            //: Total width occupied by floating panels on the left edge,
+            //: published to descendants so map-level overlays (the scrubber)
+            //: stop short of them instead of sliding underneath. Counts the
+            //: detail card too when it is open, and collapses to 0 with the deck.
+            style={
+              {
+                "--panel-width": deckCollapsed
+                  ? "0px"
+                  : storyDetailOpen
+                    ? `calc(${PANEL_WIDTH} * 2 + 0.5rem)`
+                    : PANEL_WIDTH,
+              } as React.CSSProperties
+            }
+          >
+            <div className="absolute inset-0 z-0">
+              <MapPane
+                useStore={useLeftPaneStore}
+                railOpen={leftRailOpen}
+                onRailOpenChange={setLeftRailOpen}
+                onSelectCountry={onSelectCountry}
+                onCount={setLeftCount}
+                onSelectEvent={onSelectEvent}
+                selectedEventId={selectedEventId}
+              />
             </div>
-          ) : null}
+
+            {/* With a fixed deck width the pop-out's position is arithmetic
+             *  rather than plumbing the panel's measured pixels. */}
+            {storyDetailOpen && !deckCollapsed ? (
+              <FloatingPanel
+                className="absolute bottom-3 top-3 z-30"
+                style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
+              >
+                <StoryDetailCard />
+              </FloatingPanel>
+            ) : null}
+
+            {/* Collapse handle rides the outer edge of whatever is showing,
+             *  tracked by --panel-width. It cannot live inside the deck: that
+             *  header row already has the card title on the left and the expand
+             *  control on the right. */}
+            <button
+              type="button"
+              onClick={() => setDeckCollapsed((c) => !c)}
+              title={deckCollapsed ? "Show panel (])" : "Hide panel (])"}
+              style={{ left: `calc(var(--panel-width) + 1rem)` }}
+              className="absolute top-1/2 z-30 -translate-y-1/2 rounded-l-md rounded-r-xl border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100"
+            >
+              {deckCollapsed ? (
+                <ChevronRight size={16} aria-hidden />
+              ) : (
+                <ChevronLeft size={16} aria-hidden />
+              )}
+              <span className="sr-only">{deckCollapsed ? "Show panel" : "Hide panel"}</span>
+            </button>
+
+            {deckCollapsed ? null : (
+              <FloatingPanel
+                className="absolute bottom-3 left-3 top-3 z-30"
+                style={{ width: PANEL_WIDTH }}
+              >
+                <CardDeck cards={deckCards} />
+              </FloatingPanel>
+            )}
           </div>
         )}
       </div>

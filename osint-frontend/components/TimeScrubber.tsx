@@ -34,7 +34,7 @@ export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
   const windowStart = windowEnd - windowLengthMs
 
   return (
-    <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex h-11 min-h-[44px] items-center gap-3 border-t border-neutral-800 bg-neutral-950/85 px-3 backdrop-blur-md">
+    <div className="pointer-events-auto absolute bottom-3 left-[calc(var(--panel-width,0px)+1.5rem)] right-20 z-20 flex h-11 min-h-[44px] items-center gap-3 rounded-2xl border border-white/10 bg-neutral-950/85 px-3 shadow-2xl shadow-black/60 backdrop-blur-xl">
       <button
         type="button"
         onClick={togglePlaying}
