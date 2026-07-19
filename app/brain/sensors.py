@@ -28,7 +28,7 @@ from sqlalchemy import Float, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db_models import EventRow
-from app.enrichment.country import country_name
+from app.enrichment.country import country_from_text, country_name
 
 #: How far back sensor retrieval looks. Matches the story window: an answer
 #: should not mix last week's quakes with today's headlines.
@@ -125,6 +125,32 @@ def _kind_filter(kinds: frozenset[str]):
     return or_(*clauses)
 
 
+def _row_country(row: EventRow) -> str | None:
+    """Country of a reading, from the column or failing that its place text.
+
+    USGS files "58 km WSW of Puerto Madero, Mexico" with no country column, so
+    comparing the column alone left such rows matching anything: the Peru
+    reading paired with an unrelated country-less M5.5 and the real Peru pair
+    never met (#513).
+    """
+    if row.country:
+        return row.country
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    text = payload.get("place") or payload.get("eventname") or payload.get("title")
+    return country_from_text(str(text)) if text else None
+
+
+def _row_magnitude(row: EventRow) -> float | None:
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    magnitude = payload.get("magnitude")
+    if magnitude is None:
+        return row.severity
+    try:
+        return float(magnitude)
+    except (TypeError, ValueError):
+        return row.severity
+
+
 def _magnitude_key():
     """Ordering key for "biggest first".
 
@@ -200,10 +226,14 @@ def _deduplicated(rows: list[EventRow]) -> list[EventRow]:
     apart between the two feeds. Any window wide enough to catch that would
     also swallow genuinely distinct events.
 
+    Country must agree when both rows carry one. Magnitude alone is not enough:
+    a window holding several M5.5 readings paired them across continents, so
+    the genuine Peru pair never matched each other and the block listed Peru
+    twice (#513).
+
     The residual risk is two different quakes of identical magnitude, to one
-    decimal, reported by two different feeds inside the same window being read
-    as one. GDACS only publishes major events, so such a collision is far rarer
-    than the double-reporting this prevents.
+    decimal, in the same country, from two feeds, inside the same window. That
+    is rare enough to accept against the double-reporting this prevents.
     """
     kept: list[EventRow] = []
     for row in rows:
@@ -222,6 +252,12 @@ def _deduplicated(rows: list[EventRow]) -> list[EventRow]:
                 continue
             if round(float(other_magnitude), 1) != round(float(magnitude), 1):
                 continue
+            # Same magnitude in two different countries is two earthquakes.
+            # Without this, a pool holding several M5.5s paired them across
+            # continents: the Peru pair mismatched against unrelated readings
+            # and both survived, so the block listed Peru twice (#513).
+            if _row_country(other) != _row_country(row):
+                continue
             match = other
             break
         if match is None:
@@ -232,6 +268,46 @@ def _deduplicated(rows: list[EventRow]) -> list[EventRow]:
         if len(str(payload.get("place") or "")) > len(match_place):
             kept[kept.index(match)] = row
     return kept
+
+
+#: Magnitude gap still treated as the same event. Initial reports get revised —
+#: the Peru quake in #513 was carried as 5.1 by newsrooms and 5.5 by USGS — so a
+#: question quoting one number must still reach the reading holding the other.
+_MAGNITUDE_TOLERANCE = 0.6
+
+_NUMBER_RE = re.compile(r"\b(\d(?:\.\d)?)\b")
+
+
+def question_magnitudes(question: str | None) -> list[float]:
+    """Magnitudes a question quotes. Richter only ever reads 0-9.9 here, so a
+    bare number in a hazard question is a magnitude and not a count."""
+    if not question:
+        return []
+    return [float(m.group(1)) for m in _NUMBER_RE.finditer(question)]
+
+
+def _match_reason(row: EventRow, iso: str | None, magnitudes: list[float]) -> str | None:
+    """Why this reading answers the question, or None if it merely exists.
+
+    Place is checked against both the row's country and its free-text place:
+    USGS files "2 km WSW of Sicaya, Peru" with no country at all, so matching
+    on the column alone would miss the very reading the question asks for.
+    """
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    if iso:
+        name = (country_name(iso) or "").lower()
+        place = str(payload.get("place") or payload.get("eventname") or "").lower()
+        if row.country == iso or (name and name in place):
+            return "place"
+    magnitude = payload.get("magnitude")
+    if magnitude is not None and magnitudes:
+        try:
+            value = float(magnitude)
+        except (TypeError, ValueError):
+            return None
+        if any(abs(value - asked) <= _MAGNITUDE_TOLERANCE for asked in magnitudes):
+            return "magnitude"
+    return None
 
 
 def build_qa_sensors(
@@ -262,16 +338,32 @@ def build_qa_sensors(
             .where(EventRow.occurred_at >= cutoff, predicate)
             # "Big earthquakes" wants the largest, not the newest.
             .order_by(_magnitude_key().desc().nullslast(), EventRow.occurred_at.desc())
-            # Over-fetch: cross-feed duplicates are collapsed below, and the cap
-            # must count distinct events rather than rows.
-            .limit(limit * 3)
+            # Over-fetch well past the cap: cross-feed duplicates are collapsed
+            # below, and a reading matching the question's place can sit far
+            # down the magnitude ranking — the Peru quake in #513 was tenth.
+            .limit(limit * 25)
         )
         .scalars()
         .all()
     )
 
+    # Rank by whether the reading answers THIS question, then by size. Selecting
+    # purely by magnitude returned the six biggest quakes on earth for a
+    # question about Peru, and the model cited a New Zealand reading as
+    # confirmation of the Peru event (#513).
+    iso = country_from_text(question)
+    magnitudes = question_magnitudes(question)
+    reasons = {id(row): _match_reason(row, iso, magnitudes) for row in rows}
+    ranked = sorted(
+        _deduplicated(rows),
+        key=lambda row: (
+            0 if reasons.get(id(row)) == "place" else 1 if reasons.get(id(row)) else 2,
+            -(_row_magnitude(row) or 0.0),
+        ),
+    )
+
     out: list[dict[str, Any]] = []
-    for row in _deduplicated(rows)[:limit]:
+    for row in ranked[:limit]:
         kind = _kind_of(row)
         out.append(
             {
@@ -279,6 +371,10 @@ def build_qa_sensors(
                 "kind": kind,
                 "source": row.source,
                 "headline": _headline(row, kind),
+                #: Why this reading is here. The model must be able to tell a
+                #: reading that answers the question from one included only to
+                #: fill the block, or it cites the filler as confirmation (#513).
+                "match": reasons.get(id(row)) or "largest",
                 #: Hours, matching the story "age" field the prompt already
                 #: teaches the model to read. An ISO timestamp costs three
                 #: times the tokens and gets misread as a date to convert.

@@ -17,6 +17,7 @@ can swap to the 50 m or 10 m dataset by replacing the data file.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -83,6 +84,30 @@ def _names_by_iso() -> dict[str, str]:
         if isinstance(name, str) and name:
             names.setdefault(iso.upper(), name)
     return names
+
+
+@lru_cache(maxsize=1)
+def _iso_by_name() -> dict[str, str]:
+    """Lowercased country name → ISO alpha-2, the inverse of _names_by_iso."""
+    return {name.lower(): iso for iso, name in _names_by_iso().items()}
+
+
+def country_from_text(text: str | None) -> str | None:
+    """First country named in free text, as ISO alpha-2, or None.
+
+    Whole-name match only. Substring matching would find "Chad" inside
+    "chadwick" and "Oman" inside "Romania"; a question naming a country almost
+    always names it in full.
+    """
+    if not text:
+        return None
+    lowered = text.lower()
+    for name, iso in _iso_by_name().items():
+        if len(name) < 4:
+            continue
+        if re.search(rf"\b{re.escape(name)}\b", lowered):
+            return iso
+    return None
 
 
 def country_name(iso: str | None) -> str | None:
