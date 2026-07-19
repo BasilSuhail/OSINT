@@ -102,7 +102,7 @@ Per-source dedup-key recipe:
 | FRED series obs | `f"{series_id}:{date}"` |
 | FinBERT-on-RSS | sha256 of `(rss_guid + model_version)` |
 | ACLED | ACLED `event_id_cnty` |
-| OpenSky state | `f"{icao24}:{time_position}"` |
+| OpenSky density | `f"{iso_country}\|{hour}"` |
 | AISStream | `f"{mmsi}:{timestamp}"` |
 | USGS Quake | USGS event `id` |
 | NASA FIRMS | sha256 of `(lat,lon,acq_date,acq_time,satellite)` |
@@ -169,7 +169,7 @@ Beat is declarative. All schedules live in `app/tasks.py` so they are auditable.
 | `eonet` | every 30 min | `slow` | hazard |
 | `rss-*` × 25 | hourly, staggered by feed index | `slow` | news |
 | `uk-police` | daily 06:00 UTC | `slow` | news/crime |
-| `opensky-adsb` | every 2 min | `fast` | tracking |
+| `opensky-adsb` | hourly | `fast` | tracking |
 | `abuse-ch-urlhaus` | every 15 min | `slow` | cyber |
 | `abuse-ch-feodo` | every 15 min, offset +3 m | `slow` | cyber |
 | `polymarket` | every 30 min | `slow` | market |

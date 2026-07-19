@@ -1,17 +1,26 @@
-"""OpenSky public ADS-B aircraft state fetcher.
+"""OpenSky public ADS-B flight-density fetcher.
 
-OpenSky Network publishes a free no-key endpoint at
-``/api/states/all`` returning every aircraft broadcasting ADS-B in
-the last ~10 s. Rate-limited per anonymous IP — 10 s is the floor
-on the cadence; we poll every ~2 min to stay polite.
+OpenSky Network publishes a free no-key endpoint at ``/api/states/all``
+returning every aircraft broadcasting ADS-B in the last ~10 s.
 
-Each state row is normalised to one canonical ``Event`` with
-``category = Category.TRACKING``. The full OpenSky tuple is stashed
-in ``payload`` for replay. Severity is 0 — aviation activity isn't
-stress; it's situational awareness. The dashboard renders these in
-their own colour band via the existing source-key path.
+Until #496 each state vector was stored as its own ``Event``. That cost
+~190k rows/day — 96% of the events table, roughly 6.5 GB — and fed nothing:
+the rows carried no ``country``, and ``daily_side_counts`` only ever matches
+rows by country, so divergence silently skipped every one of them. The
+dashboard did not render them either.
 
-See issue #160.
+The fetcher now aggregates. Each poll resolves every aircraft to an ISO
+country and emits one ``Event`` per country per hour, carrying aircraft
+counts in ``payload``. ``source_event_id`` is keyed to the hour, so the
+upsert refreshes an existing row rather than appending — an hour of polling
+costs one row per country, whatever the cadence.
+
+Severity is 0: aviation activity isn't stress, it's situational awareness.
+
+Note that divergence still counts *rows*, so this feed contributes a constant
+per country until scoring learns to weight by ``aircraft_count`` — see #497.
+
+See issues #160, #496.
 """
 
 from __future__ import annotations
@@ -21,6 +30,7 @@ from typing import Any, Final
 
 import httpx
 
+from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.sources.base import Fetcher
 
@@ -46,8 +56,8 @@ _IDX_VERTICAL_RATE: Final[int] = 11
 _IDX_GEO_ALT: Final[int] = 13
 
 
-def _state_to_event(state: list[Any], fetched_at: datetime) -> Event | None:
-    """Normalise one OpenSky state vector to an ``Event``. None on bad data."""
+def _aircraft_position(state: list[Any]) -> tuple[str, float, float, bool] | None:
+    """Pull ``(icao24, lat, lon, on_ground)`` from one state vector, or None."""
     if not state or len(state) < 14:
         return None
     icao24 = state[_IDX_ICAO24]
@@ -60,50 +70,63 @@ def _state_to_event(state: list[Any], fetched_at: datetime) -> Event | None:
         lon_f = float(lon)
     except (TypeError, ValueError):
         return None
-    time_pos = state[_IDX_TIME_POSITION]
-    if isinstance(time_pos, int):
-        occurred_at = datetime.fromtimestamp(time_pos, tz=UTC)
-    else:
-        occurred_at = fetched_at
-    callsign = (state[_IDX_CALLSIGN] or "").strip() if state[_IDX_CALLSIGN] else None
-    origin = state[_IDX_ORIGIN_COUNTRY] or None
+    return str(icao24), lat_f, lon_f, bool(state[_IDX_ON_GROUND])
 
-    payload = {
-        "icao24": str(icao24),
-        "callsign": callsign,
-        "origin_country": origin,
-        "baro_altitude_m": state[_IDX_BARO_ALT],
-        "geo_altitude_m": state[_IDX_GEO_ALT],
-        "on_ground": bool(state[_IDX_ON_GROUND]),
-        "velocity_m_s": state[_IDX_VELOCITY],
-        "true_track_deg": state[_IDX_TRUE_TRACK],
-        "vertical_rate_m_s": state[_IDX_VERTICAL_RATE],
-    }
 
-    return Event(
-        source="opensky-adsb",
-        source_event_id=f"{icao24}|{int(occurred_at.timestamp())}",
-        occurred_at=occurred_at,
-        fetched_at=fetched_at,
-        category=Category.TRACKING,
-        severity=0.0,
-        confidence=None,
-        keywords=["adsb", "aircraft", "tracking"],
-        country=None,  # origin_country is free-text, not ISO; left null
-        lat=lat_f,
-        lon=lon_f,
-        payload=payload,
-    )
+def _hour_floor(moment: datetime) -> datetime:
+    """Truncate to the top of the hour, in UTC."""
+    return moment.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
 
 
 def parse_opensky_body(body: dict[str, Any], *, fetched_at: datetime) -> list[Event]:
-    """Pure transformation: OpenSky JSON → list of canonical Events."""
+    """Pure transformation: OpenSky JSON → per-country hourly density Events.
+
+    Aircraft over open water (or anywhere the 110 m Natural Earth set does not
+    resolve) are dropped: without a country they cannot reach any consumer.
+    """
     states = body.get("states") or []
-    out: list[Event] = []
+    hour = _hour_floor(fetched_at)
+
+    # icao24 sets, so an airframe repeated within one response counts once.
+    airborne: dict[str, set[str]] = {}
+    grounded: dict[str, set[str]] = {}
     for state in states:
-        ev = _state_to_event(state, fetched_at=fetched_at)
-        if ev is not None:
-            out.append(ev)
+        parsed = _aircraft_position(state)
+        if parsed is None:
+            continue
+        icao24, lat, lon, on_ground = parsed
+        iso = country_for(lat, lon)
+        if iso is None:
+            continue
+        bucket = grounded if on_ground else airborne
+        bucket.setdefault(iso, set()).add(icao24)
+
+    out: list[Event] = []
+    for iso in sorted(set(airborne) | set(grounded)):
+        up = airborne.get(iso, set())
+        down = grounded.get(iso, set())
+        distinct = up | down
+        out.append(
+            Event(
+                source="opensky-adsb",
+                source_event_id=f"{iso}|{hour:%Y-%m-%dT%H}",
+                occurred_at=hour,
+                fetched_at=fetched_at,
+                category=Category.TRACKING,
+                severity=0.0,
+                confidence=None,
+                keywords=["adsb", "aircraft", "flight-density"],
+                country=iso,
+                lat=None,  # a country aggregate has no single position
+                lon=None,
+                payload={
+                    "aircraft_count": len(distinct),
+                    "airborne_count": len(up - down),
+                    "on_ground_count": len(down),
+                    "sampled_at": fetched_at.isoformat(),
+                },
+            )
+        )
     return out
 
 

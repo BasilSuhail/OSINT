@@ -440,12 +440,13 @@ app.conf.beat_schedule = {
         "args": ["uk-police"],
         "schedule": crontab(hour=6, minute=0),
     },
-    # OpenSky public ADS-B is rate-limited per anonymous IP at 10 s; we
-    # poll every 2 min to stay polite to the upstream source.
-    "opensky-adsb-2min": {
+    # OpenSky ADS-B is aggregated to one row per country per hour (#496), and
+    # the hour-keyed upsert means extra polls within an hour only refresh the
+    # same rows. Polling every 2 min bought nothing but CPU, so: hourly.
+    "opensky-adsb-hourly": {
         "task": "app.tasks.run_fetcher",
         "args": ["opensky-adsb"],
-        "schedule": crontab(minute="*/2"),
+        "schedule": crontab(minute=12),
     },
     # abuse.ch cyber-threat feeds. Refresh upstream every ~5 min; we
     # poll every 15 min to be polite. Two slots offset by 3 min so

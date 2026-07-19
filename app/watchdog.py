@@ -44,7 +44,7 @@ CORE_SOURCE_CADENCE_MIN: dict[str, int] = {
     "nasa-firms": 60,
     "eonet": 30,
     "uk-police": 1440,
-    "opensky-adsb": 2,
+    "opensky-adsb": 60,
     "abuse-ch-urlhaus": 15,
     "abuse-ch-feodo": 15,
     "polymarket": 30,
