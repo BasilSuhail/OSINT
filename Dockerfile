@@ -27,25 +27,27 @@ ENV PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH"
 
+# The user is created BEFORE anything is installed, and everything below runs
+# as that user. Creating it afterwards and running `chown -R` cost a 507 MB
+# layer — chown rewrites every file in the 482 MB virtualenv, and Docker stores
+# the rewritten copies as a new layer.
+RUN useradd --create-home --uid 10001 osint \
+    && mkdir -p /app \
+    && chown osint:osint /app
+USER osint
 WORKDIR /app
 
 # Dependencies first, in their own layer: application code changes on every
 # commit, the lockfile rarely, so this keeps rebuilds to seconds.
-COPY pyproject.toml uv.lock ./
+COPY --chown=osint:osint pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
-COPY alembic.ini ./
-COPY migrations ./migrations
-COPY app ./app
+COPY --chown=osint:osint alembic.ini ./
+COPY --chown=osint:osint migrations ./migrations
+COPY --chown=osint:osint app ./app
 
 # Install the project itself now that its source is present.
 RUN uv sync --frozen --no-dev
-
-# Runs unprivileged. The bind-mounted data directory is chowned by compose's
-# user mapping; nothing in the image needs write access to its own filesystem.
-RUN useradd --create-home --uid 10001 osint \
-    && chown -R osint:osint /app
-USER osint
 
 EXPOSE 8000
 

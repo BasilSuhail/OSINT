@@ -72,3 +72,6 @@ celerybeat-schedule*
 
 # Local strategy scratch (not tracked)
 POSITIONING-SCRATCH.md
+
+# Local .env backups may contain live credentials — never committable.
+.env.backup-*
