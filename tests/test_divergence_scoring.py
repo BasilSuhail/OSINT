@@ -108,3 +108,67 @@ def test_detect_lead_ignores_the_warmup_phantom():
     result = detect_lead(series)
     assert result.narrative_spike_day != days[2], "warmup phantom must not be the spike"
     assert result.lead_days is None or result.lead_days > 0
+
+
+# --- #544: the detector must be able to see both directions ---
+
+
+def _series(narrative_spike_idx: int, physical_spike_idx: int, span: int = 90):
+    """Two flat-ish series with one spike each, at chosen positions."""
+    from datetime import date, timedelta
+
+    days = [date(2026, 5, 1) + timedelta(days=i) for i in range(span)]
+    physical = [4.0 + (i % 3) * 0.1 for i in range(span)]
+    narrative = [100.0 + (i % 5) for i in range(span)]
+    physical[physical_spike_idx] = 40.0
+    narrative[narrative_spike_idx] = 5000.0
+    return compute_divergence_series(days, physical, narrative)
+
+
+def test_physical_before_narrative_is_a_positive_lead():
+    series = _series(narrative_spike_idx=70, physical_spike_idx=66)
+    assert detect_lead(series).lead_days == 4
+
+
+def test_narrative_before_physical_is_a_negative_lead():
+    """The case the old detector could not see at all (#544).
+
+    It searched only backward from the narrative spike, so an event where
+    coverage moved first reported nothing — and every result it did produce was
+    positive by construction.
+    """
+    series = _series(narrative_spike_idx=66, physical_spike_idx=70)
+    assert detect_lead(series).lead_days == -4
+
+
+def test_picks_the_nearest_physical_spike_either_side():
+    from datetime import date, timedelta
+
+    span = 90
+    days = [date(2026, 5, 1) + timedelta(days=i) for i in range(span)]
+    physical = [4.0 + (i % 3) * 0.1 for i in range(span)]
+    narrative = [100.0 + (i % 5) for i in range(span)]
+    narrative[70] = 5000.0
+    physical[60] = 40.0  # 10 days before
+    physical[72] = 40.0  # 2 days after — nearer
+    series = compute_divergence_series(days, physical, narrative)
+    assert detect_lead(series).lead_days == -2
+
+
+def test_physical_spikes_beyond_the_window_are_ignored():
+    from app.divergence.config import MAX_LEAD_LOOKBACK_DAYS
+
+    series = _series(narrative_spike_idx=80, physical_spike_idx=80 - (MAX_LEAD_LOOKBACK_DAYS + 5))
+    assert detect_lead(series).lead_days is None
+
+
+def test_no_narrative_spike_means_no_measurement():
+    from datetime import date, timedelta
+
+    span = 90
+    days = [date(2026, 5, 1) + timedelta(days=i) for i in range(span)]
+    physical = [4.0 + (i % 3) * 0.1 for i in range(span)]
+    physical[70] = 40.0
+    narrative = [100.0 + (i % 5) for i in range(span)]
+    series = compute_divergence_series(days, physical, narrative)
+    assert detect_lead(series).lead_days is None

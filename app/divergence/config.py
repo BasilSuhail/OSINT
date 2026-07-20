@@ -14,7 +14,10 @@ from typing import Final, Literal
 #: magnitude scale rather than a count of rows, and the narrative side became
 #: coverage of the event rather than a country's entire news output. Both sides
 #: were previously too blunt to see the thing being measured.
-DIVERGENCE_METHOD_VERSION: Final[str] = "div.v3"
+#: v4 (#544): detect_lead searches both sides of the narrative spike. Searching
+#: only backward meant a positive lead was the only possible result, so the
+#: measurement could not distinguish a real effect from the detector's own bias.
+DIVERGENCE_METHOD_VERSION: Final[str] = "div.v4"
 
 #: Trailing window for the rolling z-score baseline, in days.
 ROLLING_WINDOW_DAYS: Final[int] = 28
