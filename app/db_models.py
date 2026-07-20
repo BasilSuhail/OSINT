@@ -531,3 +531,61 @@ class StoryGistRow(Base):
         UniqueConstraint("story_id", "method_version", name="story_gist_unique"),
         Index("story_gist_created_idx", "created_at"),
     )
+
+
+class GdeltDailyVolumeRow(Base):
+    """Daily per-country narrative volume from GDELT's raw exports (#555).
+
+    An aggregate, never the rows it was built from. Raw GDELT events are pruned
+    at ~30 days by ``app.housekeeping``, so a multi-year raw backfill would
+    delete itself; counts are small enough to keep forever — a year is roughly
+    200 countries x 365 days. Not retention-managed for that reason.
+
+    ``events`` counts coded event rows, ``mentions`` sums GDELT's NumMentions.
+    Both are kept because the DOC API series this has to be comparable with
+    measures article volume, and which of the two tracks it is a measured
+    question, not an assumed one.
+    """
+
+    __tablename__ = "gdelt_daily_volume"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    country: Mapped[str] = mapped_column(String(2), nullable=False)
+    day: Mapped[datetime] = mapped_column(Date, nullable=False)
+    events: Mapped[int] = mapped_column(Integer, nullable=False)
+    mentions: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("country", "day", "method_version", name="gdelt_daily_volume_unique"),
+        Index("gdelt_daily_volume_lookup_idx", "country", "day"),
+    )
+
+
+class GdeltArchiveDayRow(Base):
+    """Ledger of which archive days have been walked (#555).
+
+    Without it a country with no coverage on a day is indistinguishable from a
+    day that was never downloaded, and the gate cannot tell a quiet narrative
+    from a missing one — the mistake ``app/backtest/narrative.py`` was written
+    to stop repeating.
+
+    A day counts as ingested only when nearly all of its 96 files landed;
+    ``files_missing`` is kept so a thin day can be found and re-walked.
+    """
+
+    __tablename__ = "gdelt_archive_day"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    day: Mapped[datetime] = mapped_column(Date, nullable=False)
+    files_ok: Mapped[int] = mapped_column(Integer, nullable=False)
+    files_missing: Mapped[int] = mapped_column(Integer, nullable=False)
+    method_version: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("day", "method_version", name="gdelt_archive_day_unique"),)
