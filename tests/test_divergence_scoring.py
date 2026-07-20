@@ -172,3 +172,40 @@ def test_no_narrative_spike_means_no_measurement():
     narrative = [100.0 + (i % 5) for i in range(span)]
     series = compute_divergence_series(days, physical, narrative)
     assert detect_lead(series).lead_days is None
+
+
+# --- #548: thresholds must be overridable so the result can be stress-tested ---
+
+
+def test_detect_lead_accepts_explicit_thresholds():
+    """A finding that only holds at one threshold is a threshold artefact.
+
+    The frozen TAU values stay the default; a sweep needs to vary them without
+    editing frozen config.
+    """
+    series = _series(narrative_spike_idx=70, physical_spike_idx=66)
+    # The synthetic spike is 5000 against a near-flat baseline, so its z-score
+    # runs into the thousands — the bar has to be genuinely unreachable.
+    strict = detect_lead(series, tau_physical=1e9, tau_narrative=1e9)
+    assert strict.lead_days is None, "nothing should clear an unreachable threshold"
+
+
+def test_default_thresholds_are_the_frozen_ones():
+    from app.divergence.config import TAU_N, TAU_P
+
+    series = _series(narrative_spike_idx=70, physical_spike_idx=66)
+    assert detect_lead(series) == detect_lead(series, tau_physical=TAU_P, tau_narrative=TAU_N)
+
+
+def test_lowering_the_threshold_can_find_more_spikes():
+    from datetime import date, timedelta
+
+    span = 90
+    days = [date(2026, 5, 1) + timedelta(days=i) for i in range(span)]
+    physical = [4.0 + (i % 3) * 0.1 for i in range(span)]
+    narrative = [100.0 + (i % 5) for i in range(span)]
+    physical[66] = 8.0  # a modest bump, not a huge spike
+    narrative[70] = 400.0
+    series = compute_divergence_series(days, physical, narrative)
+    lenient = detect_lead(series, tau_physical=0.5, tau_narrative=0.5)
+    assert lenient.lead_days is not None

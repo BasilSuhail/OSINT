@@ -100,7 +100,12 @@ def compute_divergence_series(
     )
 
 
-def detect_lead(series: DivergenceSeries) -> LeadResult:
+def detect_lead(
+    series: DivergenceSeries,
+    *,
+    tau_physical: float | None = None,
+    tau_narrative: float | None = None,
+) -> LeadResult:
     """Find the first narrative spike and the nearest physical spike either side.
 
     Searches symmetrically on purpose (#544). Looking only backward meant a
@@ -116,7 +121,13 @@ def detect_lead(series: DivergenceSeries) -> LeadResult:
     A positive lead means the physical spike came first; negative means the
     narrative did.
     """
-    n_idx = next((i for i, z in enumerate(series.narrative_z) if z >= TAU_N), None)
+    # Thresholds default to the frozen config values; they are overridable so
+    # the result can be swept across thresholds without editing frozen
+    # parameters (#548). A finding that holds only at TAU=1.5 is an artefact of
+    # TAU=1.5, and there is no way to know which without varying it.
+    tau_p = TAU_P if tau_physical is None else tau_physical
+    tau_n = TAU_N if tau_narrative is None else tau_narrative
+    n_idx = next((i for i, z in enumerate(series.narrative_z) if z >= tau_n), None)
     if n_idx is None:
         return LeadResult(
             physical_spike_day=None,
@@ -133,7 +144,7 @@ def detect_lead(series: DivergenceSeries) -> LeadResult:
             max(0, n_idx - MAX_LEAD_LOOKBACK_DAYS),
             min(len(series.days), n_idx + MAX_LEAD_LOOKBACK_DAYS + 1),
         )
-        if i != n_idx and series.physical_z[i] >= TAU_P
+        if i != n_idx and series.physical_z[i] >= tau_p
     ]
     p_idx = min(candidates, key=lambda i: (abs(i - n_idx), i)) if candidates else None
     if p_idx is None:
