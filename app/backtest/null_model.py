@@ -73,6 +73,8 @@ def null_lead_distribution(
     *,
     trials: int = DEFAULT_TRIALS,
     seed: int | None = 0,
+    tau_physical: float | None = None,
+    tau_narrative: float | None = None,
 ) -> list[int]:
     """Lead values the detector produces on rotated narrative series.
 
@@ -97,7 +99,11 @@ def null_lead_distribution(
     for _ in range(trials):
         shift = rng.randint(MIN_SHIFT_DAYS, usable)
         rotated = circular_shift(narrative, shift)
-        result = detect_lead(compute_divergence_series(days, physical, rotated))
+        result = detect_lead(
+            compute_divergence_series(days, physical, rotated),
+            tau_physical=tau_physical,
+            tau_narrative=tau_narrative,
+        )
         if result.lead_days is not None:
             leads.append(result.lead_days)
     return leads
