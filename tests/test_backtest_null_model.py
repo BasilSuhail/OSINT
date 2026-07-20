@@ -85,3 +85,79 @@ def test_flat_series_produce_no_spurious_leads():
     flat_physical = [4.0] * 80
     flat_narrative = [100.0] * 80
     assert null_lead_rate(days, flat_physical, flat_narrative, trials=15) == 0.0
+
+
+# --- #544: compare distributions, not pass rates ---
+
+
+def test_null_leads_returns_the_distribution_not_just_a_rate():
+    """A median of +4 days means nothing without the median chance produces."""
+    from app.backtest.null_model import null_lead_distribution
+
+    days = _days(90)
+    physical = [4.0 + (i % 3) * 0.1 for i in range(90)]
+    narrative = [100.0 + (i % 5) for i in range(90)]
+    physical[66] = 40.0
+    narrative[70] = 5000.0
+    leads = null_lead_distribution(days, physical, narrative, trials=30, seed=1)
+    assert isinstance(leads, list)
+    assert all(isinstance(v, int) for v in leads)
+
+
+def test_null_distribution_is_deterministic_for_a_seed():
+    from app.backtest.null_model import null_lead_distribution
+
+    days = _days(90)
+    physical = [4.0 + (i % 3) * 0.1 for i in range(90)]
+    narrative = [100.0 + (i % 5) for i in range(90)]
+    physical[66] = 40.0
+    narrative[70] = 5000.0
+    a = null_lead_distribution(days, physical, narrative, trials=20, seed=3)
+    b = null_lead_distribution(days, physical, narrative, trials=20, seed=3)
+    assert a == b
+
+
+def test_null_distribution_spans_both_directions():
+    """A symmetric detector on rotated data should produce leads of both signs.
+
+    If the null only ever came back positive, the detector would still be
+    biased and the baseline would be worthless.
+    """
+    from app.backtest.null_model import null_lead_distribution
+
+    days = _days(120)
+    physical = [4.0 + (i % 4) * 0.1 for i in range(120)]
+    narrative = [100.0 + (i % 6) for i in range(120)]
+    for i in (30, 55, 80, 100):
+        physical[i] = 40.0
+    for i in (35, 60, 95):
+        narrative[i] = 5000.0
+    leads = null_lead_distribution(days, physical, narrative, trials=120, seed=5)
+    assert leads, "expected the null to produce measurements"
+    assert any(v < 0 for v in leads), "a symmetric detector must be able to report negative leads"
+
+
+def test_permutation_p_value_is_small_when_observed_beats_the_null():
+    """The statistic the thesis needs: how often does chance do this well?"""
+    from app.backtest.null_model import permutation_p_value
+
+    observed = [4, 5, 6, 4, 5]  # consistently positive
+    null = [0, -1, 1, -2, 0, 1, -1, 0]  # centred on zero
+    p = permutation_p_value(observed, null)
+    assert 0.0 <= p <= 1.0
+    assert p < 0.2
+
+
+def test_permutation_p_value_is_large_when_observed_matches_the_null():
+    from app.backtest.null_model import permutation_p_value
+
+    observed = [1, 4, 4, 3, 5]
+    null = [1, 4, 4, 3, 5, 2, 4, 3, 5, 4]
+    assert permutation_p_value(observed, null) > 0.2
+
+
+def test_p_value_is_one_when_there_is_nothing_to_compare():
+    from app.backtest.null_model import permutation_p_value
+
+    assert permutation_p_value([], [1, 2]) == 1.0
+    assert permutation_p_value([1, 2], []) == 1.0

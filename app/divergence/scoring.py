@@ -101,7 +101,21 @@ def compute_divergence_series(
 
 
 def detect_lead(series: DivergenceSeries) -> LeadResult:
-    """Find the first narrative spike and nearest prior physical spike."""
+    """Find the first narrative spike and the nearest physical spike either side.
+
+    Searches symmetrically on purpose (#544). Looking only backward meant a
+    positive lead was the only result the detector could produce: in spiky,
+    autocorrelated series some prior physical spike is nearly always inside the
+    lookback, so it reported "sensors led" whenever it reported anything, and
+    the case the claim must be tested against — coverage moving first — was
+    invisible.
+
+    That bias is why the v3 run produced nine leads, all positive, at exactly
+    the rate a rotated control produced them.
+
+    A positive lead means the physical spike came first; negative means the
+    narrative did.
+    """
     n_idx = next((i for i, z in enumerate(series.narrative_z) if z >= TAU_N), None)
     if n_idx is None:
         return LeadResult(
@@ -110,14 +124,18 @@ def detect_lead(series: DivergenceSeries) -> LeadResult:
             lead_days=None,
         )
     narrative_day = series.days[n_idx]
-    p_idx = next(
-        (
-            i
-            for i in range(n_idx - 1, max(-1, n_idx - MAX_LEAD_LOOKBACK_DAYS) - 1, -1)
-            if series.physical_z[i] >= TAU_P
-        ),
-        None,
-    )
+    # Nearest physical spike on either side, ties going to the earlier one so a
+    # simultaneous pair still reads as "physical first" rather than flipping on
+    # floating-point noise.
+    candidates = [
+        i
+        for i in range(
+            max(0, n_idx - MAX_LEAD_LOOKBACK_DAYS),
+            min(len(series.days), n_idx + MAX_LEAD_LOOKBACK_DAYS + 1),
+        )
+        if i != n_idx and series.physical_z[i] >= TAU_P
+    ]
+    p_idx = min(candidates, key=lambda i: (abs(i - n_idx), i)) if candidates else None
     if p_idx is None:
         return LeadResult(
             physical_spike_day=None,

@@ -9,6 +9,8 @@ measurements, and nothing in the report said so (#524).
 
 from __future__ import annotations
 
+import statistics
+
 from app.backtest.metrics import MAJORITY_SHARE, MIN_LEAD_DAYS, EventLead, GateMetrics
 
 #: Below this many measured leads the median is an anecdote, not a statistic.
@@ -24,6 +26,8 @@ def render_report(
     registry_size: int | None = None,
     unscorable: list[tuple[str, str]] | None = None,
     null_rate: float | None = None,
+    null_leads: list[int] | None = None,
+    p_value: float | None = None,
 ) -> str:
     """Render a markdown audit artifact for the lead-time gate."""
     unscorable = unscorable or []
@@ -58,6 +62,18 @@ def render_report(
         lines += [
             f"- **Chance rate (narrative series rotated): {null_rate:.0%}**",
             f"- Observed minus chance: {observed - null_rate:+.0%}",
+            "",
+            (
+                f"- Null median lead: {statistics.median(null_leads):+.1f} days"
+                if null_leads
+                else "- Null median lead: n/a"
+            ),
+            (
+                f"- **Permutation p-value: {p_value:.3f}** — share of chance runs "
+                "producing a lead at least this long"
+                if p_value is not None
+                else ""
+            ),
             "",
             "The chance rate re-runs the same detector with each event's narrative "
             "series rotated, which breaks its timing against the physical side "

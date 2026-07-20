@@ -20,6 +20,7 @@ against a chance rate of X%", which is a claim that can be examined.
 from __future__ import annotations
 
 import random
+import statistics
 from datetime import date
 
 from app.divergence.config import MAX_LEAD_LOOKBACK_DAYS
@@ -46,6 +47,60 @@ def circular_shift(values: list[float], shift: int) -> list[float]:
     if offset == 0:
         return list(values)
     return values[-offset:] + values[:-offset]
+
+
+def permutation_p_value(observed: list[int], null: list[int]) -> float:
+    """Share of null leads at least as large as the observed median.
+
+    The question a supervisor will ask: how often does chance produce a lead
+    this long? A pass rate could not answer it — 47% observed against 48%
+    chance says the rates match, but says nothing about magnitudes.
+
+    Returns 1.0 when either side is empty: no comparison is possible, and the
+    safe reading of "no evidence" is "no effect shown".
+    """
+    if not observed or not null:
+        return 1.0
+    observed_median = statistics.median(observed)
+    at_least_as_extreme = sum(1 for value in null if value >= observed_median)
+    return at_least_as_extreme / len(null)
+
+
+def null_lead_distribution(
+    days: list[date],
+    physical: list[float],
+    narrative: list[float],
+    *,
+    trials: int = DEFAULT_TRIALS,
+    seed: int | None = 0,
+) -> list[int]:
+    """Lead values the detector produces on rotated narrative series.
+
+    The distribution, not a pass rate (#544). "Median lead +4 days" is only
+    interpretable against the median chance produces on the same data, and a
+    rate throws away the magnitudes that carry the argument.
+
+    With a symmetric detector the null should contain leads of both signs. If it
+    came back all-positive, the detector would still be biased and the baseline
+    worthless — there is a test asserting exactly that.
+    """
+    if not days or trials <= 0:
+        return []
+
+    span = len(days)
+    usable = span - MIN_SHIFT_DAYS
+    if usable <= MIN_SHIFT_DAYS:
+        return []
+
+    rng = random.Random(seed)
+    leads: list[int] = []
+    for _ in range(trials):
+        shift = rng.randint(MIN_SHIFT_DAYS, usable)
+        rotated = circular_shift(narrative, shift)
+        result = detect_lead(compute_divergence_series(days, physical, rotated))
+        if result.lead_days is not None:
+            leads.append(result.lead_days)
+    return leads
 
 
 def null_lead_rate(

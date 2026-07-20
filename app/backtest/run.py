@@ -22,7 +22,12 @@ from app.backtest.narrative import (
     daily_series,
     fetch_daily_volume,
 )
-from app.backtest.null_model import DEFAULT_TRIALS, null_lead_rate
+from app.backtest.null_model import (
+    DEFAULT_TRIALS,
+    null_lead_distribution,
+    null_lead_rate,
+    permutation_p_value,
+)
 from app.backtest.registry import load_registry
 from app.backtest.report import render_report
 from app.db import session_scope
@@ -65,6 +70,7 @@ def run_backtest(
     fetch_volume = volume_fetcher or fetch_daily_volume
     unscorable: list[tuple[str, str]] = []
     null_rates: list[float] = []
+    null_leads: list[int] = []
     leads: list[EventLead] = []
     series_list: list[DivergenceSeries] = []
     narrative_days: set[date] = set()
@@ -102,6 +108,11 @@ def run_backtest(
         # Same detector, narrative side rotated: what this event would score by
         # chance (#538). Without it a pass rate has no reference point.
         null_rates.append(null_lead_rate(days, physical, narrative_counts, trials=null_trials))
+        # Magnitudes, not just the rate (#544): "+4 days median" is only
+        # interpretable against the leads chance produces on the same series.
+        null_leads.extend(
+            null_lead_distribution(days, physical, narrative_counts, trials=null_trials)
+        )
         lead = lead_for_series(event.id, series)
         leads.append(lead)
         narrative_day = detect_lead(series).narrative_spike_day
@@ -118,6 +129,10 @@ def run_backtest(
         registry_size=len(events),
         unscorable=unscorable,
         null_rate=(sum(null_rates) / len(null_rates)) if null_rates else None,
+        null_leads=null_leads,
+        p_value=permutation_p_value(
+            [lead.lead_days for lead in leads if lead.lead_days is not None], null_leads
+        ),
     )
     return metrics, leads, rendered, unscorable
 
