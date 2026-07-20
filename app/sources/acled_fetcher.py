@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import glob
 import hashlib
+import json
 import math
 import re
 from collections.abc import Iterable
@@ -342,6 +343,64 @@ def parse_acled_csv(
     )
 
 
+#: Where the parse cache lives. One small JSON keyed by absolute path; the
+#: value is a cheap content signature, not the parsed data.
+_PARSE_STATE_PATH = Path(settings.data_dir) / "acled_parse_state.json"
+
+
+def file_signature(path: Path) -> str:
+    """Cheap identity for a file: size and modification time.
+
+    Deliberately not a content hash. These are 104 MB spreadsheets and reading
+    them to decide whether to read them defeats the purpose. Size plus mtime
+    catches every realistic case here — the files are replaced wholesale when a
+    new ACLED export is downloaded.
+    """
+    stat = path.stat()
+    return f"{stat.st_size}:{int(stat.st_mtime)}"
+
+
+def unchanged_since_last_parse(path: Path, *, state_path: Path | None = None) -> bool:
+    """Has this file already been parsed in its current form?
+
+    The hourly ACLED task spent 107 seconds at 100% CPU writing 0 rows, because
+    it re-read every .xlsx through pandas each run even though nothing had
+    changed since June (#538). openpyxl expanding those sheets into DataFrames
+    was a large part of a 2.68 GB worker peak.
+
+    Records the signature as a side effect, so the first sight of a file returns
+    False and parses it, and the next run skips it. Any doubt — missing file,
+    unreadable or corrupt cache — returns False: re-parsing costs CPU, wrongly
+    skipping costs data.
+    """
+    state_file = state_path or _PARSE_STATE_PATH
+    try:
+        signature = file_signature(path)
+    except OSError:
+        return False
+
+    state: dict[str, str] = {}
+    if state_file.exists():
+        try:
+            loaded = json.loads(state_file.read_text())
+            if isinstance(loaded, dict):
+                state = {str(k): str(v) for k, v in loaded.items()}
+        except (json.JSONDecodeError, OSError):
+            state = {}
+
+    key = str(path.resolve())
+    already_seen = state.get(key) == signature
+
+    if not already_seen:
+        state[key] = signature
+        try:
+            state_file.parent.mkdir(parents=True, exist_ok=True)
+            state_file.write_text(json.dumps(state, indent=0, sort_keys=True))
+        except OSError:
+            pass  # an unwritable cache means we re-parse next time, nothing worse
+    return already_seen
+
+
 def parse_acled_excel(
     path: Path, *, fetched_at: datetime, source_name: str = "acled-excel"
 ) -> list[Event]:
@@ -444,7 +503,15 @@ class AcledFetcher(Fetcher):
             return []
         all_events: list[Event] = []
         for path in paths:
+            # Skip exports we have already parsed in their current form (#538).
+            # These are 104 MB spreadsheets and the beat runs hourly; re-reading
+            # them cost 107 seconds at 100% CPU to write 0 rows, every hour,
+            # because the files had not changed since June.
+            if unchanged_since_last_parse(path):
+                continue
             all_events.extend(parse_acled_file(path, fetched_at=fetched_at))
+        if not all_events:
+            return []
         since_date = (fetched_at - timedelta(days=self.lookback_days)).date()
         since = datetime.combine(since_date, datetime.min.time(), tzinfo=UTC)
         return _recent(all_events, since=since, limit=self.limit)
