@@ -15,20 +15,28 @@ from datetime import date
 import httpx
 import pytest
 
-from app.backtest import narrative
+from app.backtest import narrative, pacing
 
 
 @pytest.fixture(autouse=True)
-def _no_real_waiting(monkeypatch):
+def _no_real_waiting(monkeypatch, tmp_path):
     """Unit tests must not actually observe GDELT's 5s pacing.
 
     Without this the suite spent 3.5 minutes asleep, which is the opposite of a
-    gate meant to be re-run constantly. Tests that assert pacing patch sleep
-    themselves and record the durations instead.
+    gate meant to be re-run constantly. Pacing state also goes to a tmp path so
+    a test run never inherits — or leaves behind — a real cooldown (#559).
+    Tests that assert pacing install their own recording pacer.
     """
-    monkeypatch.setattr(narrative.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(narrative, "_LAST_CALL_AT", 0.0)
-    monkeypatch.setattr(narrative, "_BACKOFF_S", 0.0)
+    monkeypatch.setattr(
+        narrative,
+        "_pacer",
+        lambda: pacing.Pacer(
+            state_path=tmp_path / "pacing.json",
+            min_interval_s=0.0,
+            cooldown_s=0.0,
+            sleep_fn=lambda _s: None,
+        ),
+    )
 
 
 _CSV = (
@@ -151,7 +159,6 @@ def test_retries_a_rate_limit_then_succeeds(monkeypatch):
         return httpx.Response(200, text=_CSV)
 
     monkeypatch.setattr(narrative.httpx, "get", fake_get)
-    monkeypatch.setattr(narrative.time, "sleep", lambda _s: None)
     counts = narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
     assert counts[date(2026, 6, 1)] == 1317
     assert calls["n"] == 2
@@ -162,25 +169,63 @@ def test_gives_up_after_repeated_rate_limits(monkeypatch):
         return httpx.Response(200, text="Please limit requests to one every 5 seconds")
 
     monkeypatch.setattr(narrative.httpx, "get", fake_get)
-    monkeypatch.setattr(narrative.time, "sleep", lambda _s: None)
     with pytest.raises(narrative.NarrativeUnavailableError):
         narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
 
 
-def test_paces_calls_to_respect_the_published_limit(monkeypatch):
+def test_paces_calls_to_respect_the_published_limit(monkeypatch, tmp_path):
     """One request every five seconds is GDELT's stated rule."""
     slept: list[float] = []
+    now = [1000.0]
 
     def fake_get(url, params, timeout):
         return httpx.Response(200, text=_CSV)
 
+    def fake_sleep(seconds):
+        slept.append(seconds)
+        now[0] += seconds
+
     monkeypatch.setattr(narrative.httpx, "get", fake_get)
-    monkeypatch.setattr(narrative.time, "sleep", lambda s: slept.append(s))
-    narrative._LAST_CALL_AT = 0.0
-    monkeypatch.setattr(narrative.time, "monotonic", lambda: 1000.0)
+    monkeypatch.setattr(
+        narrative,
+        "_pacer",
+        lambda: pacing.Pacer(
+            state_path=tmp_path / "pacing.json",
+            min_interval_s=5.0,
+            time_fn=lambda: now[0],
+            sleep_fn=fake_sleep,
+        ),
+    )
     narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
     narrative.fetch_daily_volume("PE", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
-    assert any(s >= narrative.MIN_INTERVAL_S - 0.01 for s in slept)
+    assert any(s >= 5.0 - 0.01 for s in slept)
+
+
+def test_a_refusal_makes_the_next_process_wait(monkeypatch, tmp_path):
+    """The #559 fix: a 429 must outlive the call that earned it.
+
+    Two separate pacers over one state file stand in for two runs. The second
+    must not fire immediately just because it is new.
+    """
+    state = tmp_path / "pacing.json"
+    now = [1000.0]
+    slept: list[float] = []
+
+    def make_pacer():
+        return pacing.Pacer(
+            state_path=state,
+            min_interval_s=5.0,
+            cooldown_s=60.0,
+            time_fn=lambda: now[0],
+            sleep_fn=lambda s: (slept.append(s), now.__setitem__(0, now[0] + s)),
+        )
+
+    monkeypatch.setattr(narrative.httpx, "get", lambda url, params, timeout: httpx.Response(429))
+    monkeypatch.setattr(narrative, "_pacer", make_pacer)
+    with pytest.raises(narrative.NarrativeUnavailableError):
+        narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
+
+    assert make_pacer().cooldown_remaining() > 0
 
 
 def test_query_uses_the_country_name_not_the_iso_code(monkeypatch):
