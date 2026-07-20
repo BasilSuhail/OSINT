@@ -22,6 +22,7 @@ from app.backtest.narrative import (
     daily_series,
     fetch_daily_volume,
 )
+from app.backtest.null_model import DEFAULT_TRIALS, null_lead_rate
 from app.backtest.registry import load_registry
 from app.backtest.report import render_report
 from app.db import session_scope
@@ -46,6 +47,7 @@ def run_backtest(
     sources: list[BackfillSource] | None = None,
     cache_dir: Path | None = DEFAULT_CACHE_DIR,
     volume_fetcher: Callable[..., dict[date, int]] | None = None,
+    null_trials: int = DEFAULT_TRIALS,
 ) -> tuple[GateMetrics, list[EventLead], str, list[tuple[str, str]]]:
     """Run the phase-1 lead-time gate against a frozen event registry.
 
@@ -62,6 +64,7 @@ def run_backtest(
     # Injectable so tests and offline reruns never touch a rate-limited API.
     fetch_volume = volume_fetcher or fetch_daily_volume
     unscorable: list[tuple[str, str]] = []
+    null_rates: list[float] = []
     leads: list[EventLead] = []
     series_list: list[DivergenceSeries] = []
     narrative_days: set[date] = set()
@@ -96,6 +99,9 @@ def run_backtest(
         _, narrative_counts = daily_series(volume, start, end)
         series = compute_divergence_series(days, physical, narrative_counts)
         series_list.append(series)
+        # Same detector, narrative side rotated: what this event would score by
+        # chance (#538). Without it a pass rate has no reference point.
+        null_rates.append(null_lead_rate(days, physical, narrative_counts, trials=null_trials))
         lead = lead_for_series(event.id, series)
         leads.append(lead)
         narrative_day = detect_lead(series).narrative_spike_day
@@ -111,6 +117,7 @@ def run_backtest(
         method_version=DIVERGENCE_METHOD_VERSION,
         registry_size=len(events),
         unscorable=unscorable,
+        null_rate=(sum(null_rates) / len(null_rates)) if null_rates else None,
     )
     return metrics, leads, rendered, unscorable
 

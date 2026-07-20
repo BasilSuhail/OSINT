@@ -23,6 +23,7 @@ def render_report(
     method_version: str,
     registry_size: int | None = None,
     unscorable: list[tuple[str, str]] | None = None,
+    null_rate: float | None = None,
 ) -> str:
     """Render a markdown audit artifact for the lead-time gate."""
     unscorable = unscorable or []
@@ -51,6 +52,18 @@ def render_report(
         f"- Events leading ≥ {MIN_LEAD_DAYS} day: {metrics.pct_events_leading:.0%}",
         f"- False-positive rate: {metrics.false_positive_rate:.0%}",
     ]
+
+    if null_rate is not None:
+        observed = metrics.pct_events_leading
+        lines += [
+            f"- **Chance rate (narrative series rotated): {null_rate:.0%}**",
+            f"- Observed minus chance: {observed - null_rate:+.0%}",
+            "",
+            "The chance rate re-runs the same detector with each event's narrative "
+            "series rotated, which breaks its timing against the physical side "
+            "while preserving its values and autocorrelation. A pass rate only "
+            "means something measured against it.",
+        ]
 
     if len(measured) < MIN_CREDIBLE_LEADS:
         lines += [
