@@ -123,6 +123,11 @@ def extract_numerals(text: str) -> set[float]:
     return found
 
 
+def format_figure(value: float) -> str:
+    """A figure as a human would write it — 5 not 5.0, 5.1 kept."""
+    return str(int(value)) if value.is_integer() else str(value)
+
+
 def unsupported_numerals(gist: str, titles: list[str]) -> list[float]:
     """Figures the gist asserts that none of its headlines carry.
 

@@ -42,7 +42,7 @@ def build_gist_prompt(titles: list[str], *, rejected: list[float] | None = None)
     headlines = "\n".join(f"- {t}" for t in titles if t)
     correction = ""
     if rejected:
-        figures = ", ".join(_format_figure(v) for v in rejected)
+        figures = ", ".join(numerals.format_figure(v) for v in rejected)
         correction = (
             "\n\nYour previous answer stated figures the headlines do not carry: "
             f"{figures}. Use only numbers that appear in the headlines below, or "
@@ -58,10 +58,6 @@ def build_gist_prompt(titles: list[str], *, rejected: list[float] | None = None)
         f"{correction}\n\n"
         f"HEADLINES:\n{headlines}"
     )
-
-
-def _format_figure(value: float) -> str:
-    return str(int(value)) if value.is_integer() else str(value)
 
 
 def parse_gist(raw: dict[str, Any]) -> dict[str, str]:

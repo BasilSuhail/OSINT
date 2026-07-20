@@ -96,5 +96,10 @@ def test_unsupported_passes_a_gist_with_no_figures():
     )
 
 
+def test_format_figure_drops_the_trailing_zero_but_keeps_decimals():
+    assert numerals.format_figure(5.0) == "5"
+    assert numerals.format_figure(5.1) == "5.1"
+
+
 def test_unsupported_flags_every_figure_when_headlines_are_empty():
     assert numerals.unsupported_numerals("Seven dead.", []) == [7.0]
