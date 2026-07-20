@@ -2,7 +2,9 @@
 
 Timely first-look from the 1.5b model on idle windows; complements the nightly
 4b claim extraction. No-fabrication: the gist describes only the supplied
-headlines. The tags are fixed enums so a small model stays reliable and the
+headlines, and since #514 that is enforced for figures rather than merely asked
+for — a gist carrying a number its headlines lack is retried once and then
+dropped. The tags are fixed enums so a small model stays reliable and the
 values are filterable — anything off-enum is coerced to a safe fallback.
 """
 
@@ -17,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.brain import client, embeddings, gate
+from app.brain import client, embeddings, gate, numerals
 from app.db import get_engine
 from app.db_models import EventRow, StoryGistRow, StoryMemberRow, StoryRow
 from app.settings import settings
@@ -36,17 +38,30 @@ MAX_TITLES: int = 5
 DEFAULT_BATCH_LIMIT: int = 20
 
 
-def build_gist_prompt(titles: list[str]) -> str:
+def build_gist_prompt(titles: list[str], *, rejected: list[float] | None = None) -> str:
     headlines = "\n".join(f"- {t}" for t in titles if t)
+    correction = ""
+    if rejected:
+        figures = ", ".join(_format_figure(v) for v in rejected)
+        correction = (
+            "\n\nYour previous answer stated figures the headlines do not carry: "
+            f"{figures}. Use only numbers that appear in the headlines below, or "
+            "write the gist without numbers.\n"
+        )
     return (
         "You summarize a news story for an OSINT dashboard. Below are the "
         "headlines of the outlets telling one story. Using ONLY these headlines "
         "(invent nothing), return a JSON object with exactly these keys:\n"
         '  "gist": one short plain-English sentence, what this story is.\n'
         '  "category": one of conflict, economy, disaster, politics, other.\n'
-        '  "escalating": one of yes, no, unclear — is the situation intensifying?\n\n'
+        '  "escalating": one of yes, no, unclear — is the situation intensifying?'
+        f"{correction}\n\n"
         f"HEADLINES:\n{headlines}"
     )
+
+
+def _format_figure(value: float) -> str:
+    return str(int(value)) if value.is_integer() else str(value)
 
 
 def parse_gist(raw: dict[str, Any]) -> dict[str, str]:
@@ -84,6 +99,23 @@ def _titles_for(session: Session, story_id: int) -> list[str]:
     return [(p or {}).get("title") or "" for p in payloads]
 
 
+def _grounded_gist(titles: list[str]) -> dict[str, str] | None:
+    """A gist whose figures all appear in `titles`, or None after one retry.
+
+    The gist is what the Q&A model quotes, so a casualty figure the sources do
+    not carry must never be stored (#514). The retry names the offending
+    figures — a small model corrects far more often when told what was wrong.
+    """
+    parsed = parse_gist(client.generate_json(build_gist_prompt(titles)))
+    invented = numerals.unsupported_numerals(parsed["gist"], titles)
+    if not invented:
+        return parsed
+    parsed = parse_gist(client.generate_json(build_gist_prompt(titles, rejected=invented)))
+    if numerals.unsupported_numerals(parsed["gist"], titles):
+        return None
+    return parsed
+
+
 def _insert_gist_if_absent(session: Session, *, story_id: int, parsed: dict[str, str]) -> bool:
     values = {
         "story_id": story_id,
@@ -119,6 +151,7 @@ def _enrich_body(*, now: datetime | None = None, batch_limit: int | None = None)
         "enriched": 0,
         "skipped_existing": 0,
         "failed": 0,
+        "rejected_numeric": 0,
         "embedded": 0,
         "embed_skipped": 0,
         "embed_failed": 0,
@@ -161,11 +194,16 @@ def _enrich_body(*, now: datetime | None = None, batch_limit: int | None = None)
             if not titles:
                 continue
             try:
-                raw = client.generate_json(build_gist_prompt(titles))
+                parsed = _grounded_gist(titles)
             except Exception:
                 counters["failed"] += 1
                 continue
-            if _insert_gist_if_absent(session, story_id=story_id, parsed=parse_gist(raw)):
+            if parsed is None:
+                #: Invented a figure twice running (#514). Nothing is stored, so
+                #: the story is simply picked up again on a later pass.
+                counters["rejected_numeric"] += 1
+                continue
+            if _insert_gist_if_absent(session, story_id=story_id, parsed=parsed):
                 counters["enriched"] += 1
             else:
                 counters["skipped_existing"] += 1
