@@ -334,12 +334,17 @@ def parse_acled_response(body: dict[str, Any], *, fetched_at: datetime) -> list[
 
 
 def parse_acled_csv(
-    body: str, *, fetched_at: datetime, source_name: str = "acled-csv"
+    body: str,
+    *,
+    fetched_at: datetime,
+    source_name: str = "acled-csv",
+    since: datetime | None = None,
 ) -> list[Event]:
     return _records_to_events(
         csv.DictReader(body.splitlines()),
         fetched_at=fetched_at,
         source_name=source_name,
+        since=since,
     )
 
 
@@ -402,35 +407,51 @@ def unchanged_since_last_parse(path: Path, *, state_path: Path | None = None) ->
 
 
 def parse_acled_excel(
-    path: Path, *, fetched_at: datetime, source_name: str = "acled-excel"
+    path: Path,
+    *,
+    fetched_at: datetime,
+    source_name: str = "acled-excel",
+    since: datetime | None = None,
 ) -> list[Event]:
-    sheets = pd.read_excel(path, sheet_name=None, engine="openpyxl")
+    # One sheet at a time. `sheet_name=None` loads the entire workbook into
+    # memory before a single row is examined; per-sheet reads keep the peak to
+    # the largest sheet instead of their sum (#546).
+    book = pd.ExcelFile(path, engine="openpyxl")
     events: list[Event] = []
-    for sheet_name, frame in sheets.items():
+    for sheet_name in book.sheet_names:
+        frame = book.parse(sheet_name)
         frame = frame.dropna(how="all")
         if frame.empty:
+            del frame
             continue
         frame = frame.where(pd.notna(frame), None)
         records = frame.to_dict(orient="records")
+        del frame  # the DataFrame is dead once records exist; release it now
         events.extend(
             _records_to_events(
                 records,
                 fetched_at=fetched_at,
+                since=since,
                 source_name=f"{source_name}:{sheet_name}",
             )
         )
+        del records
+    book.close()
     return events
 
 
-def parse_acled_file(path: Path, *, fetched_at: datetime) -> list[Event]:
+def parse_acled_file(
+    path: Path, *, fetched_at: datetime, since: datetime | None = None
+) -> list[Event]:
     if path.suffix.lower() == ".csv":
         return parse_acled_csv(
             path.read_text(encoding="utf-8-sig"),
             fetched_at=fetched_at,
             source_name=path.name,
+            since=since,
         )
     if path.suffix.lower() == ".xlsx":
-        return parse_acled_excel(path, fetched_at=fetched_at, source_name=path.name)
+        return parse_acled_excel(path, fetched_at=fetched_at, source_name=path.name, since=since)
     return []
 
 
@@ -447,8 +468,23 @@ def _local_paths() -> list[Path]:
 
 
 def _records_to_events(
-    records: Iterable[dict[str, Any]], *, fetched_at: datetime, source_name: str
+    records: Iterable[dict[str, Any]],
+    *,
+    fetched_at: datetime,
+    source_name: str,
+    since: datetime | None = None,
 ) -> list[Event]:
+    """Convert records to events, discarding anything older than `since`.
+
+    The filter belongs here rather than after the fact (#546). One 12.1 MB
+    export produced 253,172 Event objects and 1,054 MB of RSS; twelve files
+    accumulated roughly 3.1 GB, all of it then reduced to at most 500 events
+    inside the lookback window. Building objects only to drop them is what put
+    the worker above its container ceiling.
+
+    An event whose date cannot be read is KEPT. Dropping it would turn a parsing
+    problem into silently missing data.
+    """
     events: list[Event] = []
     for record in records:
         if not isinstance(record, dict):
@@ -460,8 +496,11 @@ def _records_to_events(
                 fetched_at=fetched_at,
                 source_name=source_name,
             )
-        if event is not None:
-            events.append(event)
+        if event is None:
+            continue
+        if since is not None and event.occurred_at < since:
+            continue
+        events.append(event)
     return events
 
 
@@ -501,6 +540,11 @@ class AcledFetcher(Fetcher):
         paths = [path for path in _local_paths() if path.exists()]
         if not paths:
             return []
+        # Compute the window BEFORE parsing so out-of-window events are never
+        # built (#546), rather than materialising a quarter-million objects per
+        # file and discarding almost all of them afterwards.
+        since_date = (fetched_at - timedelta(days=self.lookback_days)).date()
+        since = datetime.combine(since_date, datetime.min.time(), tzinfo=UTC)
         all_events: list[Event] = []
         for path in paths:
             # Skip exports we have already parsed in their current form (#538).
@@ -509,11 +553,9 @@ class AcledFetcher(Fetcher):
             # because the files had not changed since June.
             if unchanged_since_last_parse(path):
                 continue
-            all_events.extend(parse_acled_file(path, fetched_at=fetched_at))
+            all_events.extend(parse_acled_file(path, fetched_at=fetched_at, since=since))
         if not all_events:
             return []
-        since_date = (fetched_at - timedelta(days=self.lookback_days)).date()
-        since = datetime.combine(since_date, datetime.min.time(), tzinfo=UTC)
         return _recent(all_events, since=since, limit=self.limit)
 
     def _fetch_api(self, *, fetched_at: datetime) -> list[Event]:
