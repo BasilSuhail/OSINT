@@ -69,3 +69,39 @@ def test_no_warning_when_the_sample_is_adequate():
         unscorable=[],
     )
     assert "too small" not in out.lower()
+
+
+def test_reports_the_chance_rate_beside_the_observed_one():
+    """A pass rate with no reference point cannot be interpreted (#538)."""
+    out = render_report(
+        _METRICS,
+        _LEADS,
+        registry_hash="abc",
+        method_version="div.v3",
+        registry_size=22,
+        unscorable=[],
+        null_rate=0.30,
+    )
+    assert "30%" in out
+    assert "Chance rate" in out
+
+
+def test_shows_the_gap_between_observed_and_chance():
+    out = render_report(
+        _METRICS,
+        _LEADS,
+        registry_hash="abc",
+        method_version="div.v3",
+        registry_size=22,
+        unscorable=[],
+        null_rate=0.30,
+    )
+    # observed 12.5% against chance 30% is a NEGATIVE gap and must read as one.
+    assert "-18%" in out or "-17%" in out
+
+
+def test_omits_the_chance_line_when_it_was_not_computed():
+    out = render_report(
+        _METRICS, _LEADS, registry_hash="abc", method_version="div.v3", registry_size=22
+    )
+    assert "Chance rate" not in out
