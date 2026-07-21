@@ -30,6 +30,7 @@ from app.db_models import (
     JobRunRow,
     PredictionRow,
     ScoreRow,
+    SourceQuarantineRow,
     StoryCorroborationRow,
     StoryGistRow,
     StoryRow,
@@ -129,6 +130,32 @@ def ingest_health(
         .limit(limit)
     )
     return [_ingest_health_dict(r) for r in session.execute(stmt).scalars()]
+
+
+@app.get("/ingest/quarantine")
+def ingest_quarantine(session: Session = Depends(get_session)) -> list[dict]:
+    """Sources being rested because they cannot currently succeed (#567).
+
+    An empty list is the healthy state. Each entry says what broke, how long it
+    has been broken, and when it will be tried again — a dead feed should be
+    visible, not merely absent from the success counts.
+    """
+    rows = session.execute(
+        select(SourceQuarantineRow).order_by(SourceQuarantineRow.retry_after)
+    ).scalars()
+    return [
+        {
+            "source": row.source,
+            "kind": row.kind,
+            "http_status": row.http_status,
+            "detail": row.detail,
+            "consecutive_failures": row.consecutive_failures,
+            "first_failed_at": row.first_failed_at.isoformat(),
+            "last_failed_at": row.last_failed_at.isoformat(),
+            "retry_after": row.retry_after.isoformat(),
+        }
+        for row in rows
+    ]
 
 
 @app.get("/events/coverage")

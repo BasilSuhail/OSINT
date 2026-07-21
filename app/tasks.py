@@ -73,6 +73,15 @@ def _record_failure(session: Session, *, source: str, exc: BaseException) -> Non
 def _run_fetcher_body(name: str) -> dict[str, Any]:
     """Plain-function task body — testable without Celery."""
     from app.fetcher_registry import get_fetcher
+    from app.ingest import quarantine
+
+    with session_scope() as session:
+        resting = quarantine.skip_reason(session, name)
+    if resting is not None:
+        # Cheap no-op: a dead feed costs one query per tick instead of six
+        # requests. The reason travels with the result so the skip is visible.
+        logger.info("skipping %s: %s", name, resting)
+        return {"skipped": True, "reason": resting}
 
     fetcher = get_fetcher(name)
     try:
@@ -80,11 +89,23 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
     except Exception as exc:
         with session_scope() as session:
             _record_failure(session, source=name, exc=exc)
+            quarantined = quarantine.record_failure(session, source=name, exc=exc)
+            detail = quarantined.detail if quarantined is not None else None
+            retry_at = quarantined.retry_after.isoformat() if quarantined is not None else None
+        if detail is not None:
+            # Deliberately not re-raised. `autoretry_for=(Exception,)` would
+            # spend five more requests on a URL that just answered 403, which
+            # is how one dead feed cost 420 requests in a week (#567). The
+            # failure is already recorded in ingest_failures and ingest_health,
+            # and the quarantine row says what broke and when it is next tried.
+            logger.warning("quarantined %s until %s: %s", name, retry_at, detail)
+            return {"failed": True, "quarantined": True, "retry_after": retry_at, "reason": detail}
         raise
 
     with session_scope() as session:
         inserted = upsert_events(events, session)
         _record_success(session, source=name)
+        quarantine.record_success(session, source=name)
     return {"fetched": len(events), "inserted": inserted}
 
 

@@ -589,3 +589,28 @@ class GdeltArchiveDayRow(Base):
     )
 
     __table_args__ = (UniqueConstraint("day", "method_version", name="gdelt_archive_day_unique"),)
+
+
+class SourceQuarantineRow(Base):
+    """A source that is being rested because it cannot currently succeed (#567).
+
+    One row per quarantined source, deleted the moment it answers again — the
+    absence of a row is the healthy state, so nothing has to be un-set.
+
+    Exists because a 403 or 404 is a statement about the resource while a
+    timeout is a statement about the moment, and retrying both on the same
+    schedule turned one dead feed into 420 failure rows in a week.
+    """
+
+    __tablename__ = "source_quarantine"
+
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    first_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    retry_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (Index("source_quarantine_retry_idx", "retry_after"),)
