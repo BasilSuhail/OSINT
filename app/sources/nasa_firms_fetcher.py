@@ -29,10 +29,19 @@ FIRMS_URL_TEMPLATE: Final[str] = (
 )
 FIRMS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
 
+#: VIIRS reports confidence as a single letter, MODIS as 0-100, and the words
+#: appear in some exports. Only the words were mapped, so `float("n")` raised
+#: and every VIIRS row was stored with severity NULL — 536,097 of them, which
+#: the composite then skipped entirely (#574). The value was read and kept in
+#: `payload.confidence_raw` the whole time, which is why the gap was invisible
+#: at every layer except the one that used it.
 _TEXT_CONFIDENCE_SEVERITY: Final[dict[str, float]] = {
     "low": 0.2,
+    "l": 0.2,
     "nominal": 0.5,
+    "n": 0.5,
     "high": 0.9,
+    "h": 0.9,
 }
 
 

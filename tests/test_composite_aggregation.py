@@ -55,7 +55,11 @@ class TestAggregate:
         )
         assert result == {("US", datetime(2026, 6, 1, tzinfo=UTC)): {"market": 0.4}}
 
-    def test_means_per_country_month_domain(self) -> None:
+    def test_takes_the_strongest_event_per_country_month_domain(self) -> None:
+        # Was the mean until #574. A country having a catastrophe during a busy
+        # month scored LOWER than a quiet country with one moderate event —
+        # measured 11x dilution on live US hazard data (mean 0.095, max 1.000).
+        # #528 already established this on the backtest side.
         result = aggregate_events_to_domain_signals(
             [
                 _event(country="US", category="market", severity=0.2),
@@ -66,9 +70,18 @@ class TestAggregate:
         )
         us = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
         gb = result[("GB", datetime(2026, 6, 1, tzinfo=UTC))]
-        assert us["market"] == pytest.approx(0.4)
+        assert us["market"] == pytest.approx(0.6)
         assert us["geopolitical"] == pytest.approx(0.5)
         assert gb["market"] == pytest.approx(0.9)
+
+    def test_a_swarm_of_small_events_cannot_outrank_one_severe_one(self) -> None:
+        # The reason the FIRMS fix is safe: 536,097 fire pixels, most of them
+        # nominal, would otherwise swamp ~1,000 USGS/GDACS rows about 500:1 and
+        # pin the hazard domain flat at the mean fire confidence.
+        swarm = [_event(country="US", category="hazard", severity=0.5) for _ in range(500)]
+        severe = [_event(country="US", category="hazard", severity=0.95)]
+        result = aggregate_events_to_domain_signals(swarm + severe)
+        assert result[("US", datetime(2026, 6, 1, tzinfo=UTC))]["hazard"] == pytest.approx(0.95)
 
     def test_splits_by_month(self) -> None:
         jun = datetime(2026, 6, 15, tzinfo=UTC)

@@ -15,6 +15,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import db
 from app.composite import task as composite_task
+from app.composite.config import DEFAULT_METHOD_VERSION
 from app.db_models import Base, EventRow, ScoreRow
 
 
@@ -87,7 +88,7 @@ class TestComputeCompositeBody:
             # Cold start: rolling z is 0, sigmoid(0) = 0.5
             assert 0.4 < scores[0].score_value < 0.6
             assert scores[0].country == "US"
-            assert scores[0].method_version == "v1.0"
+            assert scores[0].method_version == DEFAULT_METHOD_VERSION
             assert scores[0].score_name == "composite"
 
     def test_filters_non_composite_categories(self, global_sqlite_db: Engine) -> None:
