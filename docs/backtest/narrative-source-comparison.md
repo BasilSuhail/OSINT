@@ -1,98 +1,133 @@
-# Does archive-derived narrative volume track the DOC API series?
+# Can archive data replace the DOC API as the gate's narrative side?
 
-**Status: no verdict yet.** The instrument is built and one pass has run, but that
-pass compared two quantities that were never the same thing. The corrected run is
-blocked on GDELT's rate limiter. This document records what exists, what the first
-pass showed, and why its numbers must not be read as an answer.
+**Verdict: no, not for the hazard anchors the registry holds.** The DOC API is the
+only source that produces a topic-scoped narrative signal dense enough for spike
+detection. Its three-month window is therefore a real constraint on the analysis,
+not an obstacle that a historical backfill removes.
 
-Issue #557. Depends on #555.
+This contradicts #550 §1.1, which called the GDELT raw historical backfill "the
+single largest unlock". The backfill works and is cheap; what it yields is not a
+substitute for what the gate reads.
 
-## What is being decided
+Issues #557 and #555. Depends on #559.
 
-The lead-time gate's negative result — physical sensor spikes do not precede
-narrative spikes at better than chance — was measured against DOC API article
-volume. #555 produces daily counts from GDELT's raw export grid instead, which is
-what makes anchors older than the DOC API's three-month window scorable.
+## What the gate actually needs
 
-Before any gate result rests on the archive series, the two have to be shown to
-measure the same thing. If they do not, the archive does not extend the existing
-result backwards; it only baselines a new one.
+The gate compares when physical sensors spike against when the narrative spikes.
+The narrative side must be:
 
-## How it is measured
+1. **Topic-scoped.** #528 established that a country's whole news output cannot
+   notice one earthquake — an unscoped series is dominated by politics and
+   business and never moves for a hazard.
+2. **Dense enough to have variance.** `rolling_z` returns 0.0 for a zero-variance
+   prior window, so a series that sits at zero most days can never spike however
+   large the jump. A thin signal is not a quiet one; it is an undetectable one.
+3. **Long enough to reach the anchors.** The registry spans 2026-03-26 to
+   2026-07-17, and slow-onset anchors would reach back to 2025.
 
-`app/backtest/source_compare.py` reports two numbers per country:
+No single source satisfies all three.
 
-- **Spearman** on the daily series. The archive counts mentions in the thousands
-  where the DOC API counts articles in the tens, so only the ordering is
-  comparable and a rank correlation is the honest measure.
-- **Spike-day agreement** — the day each series first crosses `TAU_N`, found with
-  the gate's own log scaling, rolling window and threshold.
+## The three sources, measured
 
-The second is the one that matters. The gate does not consume volume; it consumes
-`detect_lead`'s first narrative spike. Two series can correlate at 0.95 and still
-disagree about the only day the gate reads.
+| source | topic-scoped | density | history | verdict |
+|---|---|---|---|---|
+| DOC API `timelinevolraw` | yes, via query terms | ~800 articles/day per country unscoped; hundreds scoped | ~3 months | **usable, but shallow** |
+| GDELT Events export (#555) | **no** — CAMEO codes political actions, there is no earthquake event type | ~5,000 mentions/day per country | years | unlimited but unscopable |
+| GDELT GKG export | yes, via themes | **~3 records/day per country** | years | too sparse to spike |
 
-## Why the first pass does not answer the question
+### Events cannot be topic-scoped at all
 
-The DOC side used the gate's existing query, `sourcecountry:<name>` — articles
-**published by** that country's outlets, on any subject. The archive side counts
-`ActionGeo` — events **located in** that country, reported by anyone in the world.
+GDELT's Events export codes political actions. A natural disaster appears only
+when someone acts about it. There is no earthquake event type to filter on, so an
+Events-derived series is whole-country volume — the exact thing #528 removed.
 
-Those are different measurements. Japanese coverage of a Peruvian earthquake counts
-toward Peru in the archive series and toward Japan in the DOC series. Disagreement
-between them is expected and says nothing about whether the archive can stand in.
+### GKG is topic-scoped but far too thin
 
-The like-for-like DOC scope is `locationcc:<FIPS>`, articles **about** places in the
-country. `scripts/compare_narrative_sources.py --scope location` is now the default
-and is what the real run must use.
+Measured against `jp-20260703-m6.1`, an M6.1 136 km NNE of Hirara. Sampling eight
+of each day's 96 files and counting GKG records carrying an earthquake theme whose
+locations include Japan:
 
-## First pass, for the record only
+| day | JP records | global |
+|---|---:|---:|
+| 2026-07-01 | 2 | 75 |
+| 2026-07-02 | 3 | 83 |
+| **2026-07-03 (the quake)** | **3** | 106 |
+| 2026-07-04 | 1 | 26 |
+| 2026-07-05 | 0 | 20 |
 
-2026-04-20 .. 2026-07-19, 91 days, 15 registry countries, DOC scope
-`sourcecountry`. **These numbers answer the wrong question.**
+Scaling the sample to a full day puts the anchor day at roughly nine records
+against six the day before. That is not a spike, and a series moving between zero
+and three cannot produce one: the rolling baseline has no variance to standardise
+against.
 
-| country | measure | spearman | DOC spike | archive spike | gap |
-|---|---|---:|---|---|---:|
-| AF | mentions | 0.098 | 2026-05-26 | 2026-06-09 | 14 |
-| AF | events | 0.072 | 2026-05-26 | 2026-06-09 | 14 |
-| CL | mentions | 0.538 | 2026-06-04 | 2026-06-26 | 22 |
-| CL | events | 0.484 | 2026-06-04 | 2026-06-26 | 22 |
-| CN | mentions | 0.549 | 2026-05-27 | 2026-07-17 | 51 |
-| CN | events | 0.524 | 2026-05-27 | 2026-07-17 | 51 |
-| MX | mentions | 0.682 | 2026-05-27 | 2026-06-11 | 15 |
-| MX | events | 0.667 | 2026-05-27 | 2026-07-10 | 44 |
-| PE | mentions | 0.386 | 2026-06-04 | 2026-05-22 | −13 |
-| PE | events | 0.380 | 2026-06-04 | 2026-05-22 | −13 |
-| PH | mentions | 0.711 | none | none | n/a |
-| PH | events | 0.687 | none | none | n/a |
-| RU | mentions | 0.563 | 2026-05-28 | 2026-05-20 | −8 |
-| RU | events | 0.572 | 2026-05-28 | 2026-05-29 | 1 |
+The global column does peak on the anchor day, which is consistent — the event was
+covered. It simply is not resolvable at country level in GKG.
 
-Eight of fifteen countries produced nothing: CU, ID, IT, JP, VE and VU returned
-HTTP 429, and NZ and PG returned an empty DOC window.
+GKG is also expensive: 5.5 MB zipped per file against 542 KB for Events, so the
+91-day window would cost roughly 48 GB of downloads to produce a series that
+cannot spike.
 
-Summary as measured: median Spearman 0.549 (mentions) and 0.524 (events) over
-seven countries; both sources spiked in six; **the same spike day in zero**; median
-absolute gap 15 days (mentions), 22 days (events).
+## Which DOC query is comparable — settled along the way
 
-## What blocks the corrected run
+The archive counts `ActionGeo`: events located in a country, reported by anyone.
+Three DOC scopes were tried against it.
 
-Rate limiting, the problem #550 §1.2 already describes. The DOC client honours the
-published one-call-per-five-seconds, but the limiter punishes burst volume across a
-longer window: fifteen paced calls tripped it, and a single probe minutes later was
-still refused. Responses are cached, so a re-run resumes rather than repeating.
+| query | result |
+|---|---|
+| `sourcecountry:<name>` | Wrong quantity. Articles **published by** that country's outlets, on any subject |
+| `locationcc:<FIPS>` | **Does not exist.** DOC 2.0 has no location operator — that is the GEO API. Verified live: empty window |
+| `"<name>"` quoted | Refused: *"The specified phrase is too short."* |
+| `<name>` unquoted | **Works** — articles about the country wherever published, 785/day for `peru` |
 
-Two options, neither tested: raise the inter-call interval well above five seconds
-for this script specifically, or fetch on a slow schedule and let the cache fill
-across several passes.
+`--scope mentions` sends the unquoted name and is the default.
 
-## What has to happen next
+Finding this exposed a defect in `narrative._looks_like_error`, fixed alongside: it
+matched a blocklist of four known phrases, so unfamiliar prose parsed as a valid
+but empty series. "The specified phrase is too short." reached the caller as "no
+daily rows parsed", pointing at the window when the query was at fault. It now
+recognises the CSV header and reports anything else as what GDELT said.
 
-1. Re-run with `--scope location` once the limiter clears, covering enough countries
-   to say something. Seven of fifteen is too thin regardless of scope.
-2. Report Spearman and spike-day agreement per country, and pick `mentions` or
-   `events`.
-3. State a verdict: may the archive series stand in for the DOC series, or does it
-   only baseline a new gate?
+## Partial comparison results
 
-A negative answer remains a perfectly good outcome, and should be recorded as one.
+Four of fifteen countries, 2026-04-20 .. 2026-07-19, `--scope mentions`, before
+GDELT's limiter stopped the sweep.
+
+| country | spearman (mentions) | DOC spike | archive spike | gap |
+|---|---:|---|---|---:|
+| AF | 0.473 | 2026-06-04 | 2026-06-09 | 5 |
+| CL | 0.560 | none | 2026-06-26 | n/a |
+| CU | 0.528 | 2026-05-20 | 2026-05-20 | **0** |
+| ID | 0.542 | 2026-05-21 | 2026-06-03 | 13 |
+
+Three countries with spikes on both sides: one exact agreement, gaps of 5 and 13
+days otherwise. Correlations sit near 0.5 — related but not interchangeable.
+
+Completing this sweep is no longer worth the rate-limit budget. Even perfect
+agreement on unscoped volume would not make the archive usable, because the gate
+needs a *topic-scoped* series and the archive cannot produce one.
+
+## What this means for the analysis
+
+The three-month DOC window is a property of the problem, not a gap to be filled.
+Two paths remain open, and neither is the historical backfill:
+
+1. **Accumulate live ingestion.** After three months of running, the DOC window
+   covers a usable range of anchors. Calendar-bound, no engineering.
+2. **Change the anchor class.** Slow-onset hazards — drought, flood, sustained
+   unrest — dominate a country's coverage for weeks rather than hours. An unscoped
+   whole-country series may be adequate there precisely because the hazard *is* the
+   news, which would make the Events archive usable after all. This is a
+   hypothesis, and it is cheap to test: the archive is already ingested for the
+   90-day window and #555's ingestion runs at roughly 4 seconds a day.
+
+The second is the more interesting result if it holds, and it inverts the
+handover's framing: the anchor class was the constraint all along, not the history.
+
+## What was built and kept
+
+- `app/backtest/gdelt_archive.py` (#555) — daily per-country volume from raw
+  exports. Still the right instrument for path 2 above.
+- `app/backtest/source_compare.py` (#557) — Spearman plus spike-day agreement,
+  using the gate's own scaling and threshold.
+- `app/backtest/pacing.py` (#559) — persistent rate-limit pacing, without which
+  none of the above measurements survived a second run.

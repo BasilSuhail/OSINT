@@ -136,13 +136,28 @@ def _cache_path(cache_dir: Path, country: str, start: date, end: date, query: st
     return cache_dir / f"{country.upper()}_{start:%Y%m%d}_{end:%Y%m%d}_{token}.json"
 
 
+#: The header every timelinevolraw CSV opens with, BOM and all.
+_CSV_HEADER_FIELDS = ("date", "series", "value")
+
+
 def _looks_like_error(body: str) -> str | None:
-    """GDELT reports failure as prose at HTTP 200. Return the reason, or None."""
-    head = body.strip()[:200].lower()
-    for marker in ("invalid format", "please limit requests", "error", "not recognized"):
-        if marker in head:
-            return body.strip()[:200]
-    return None
+    """GDELT reports failure as prose at HTTP 200. Return the reason, or None.
+
+    This recognises success rather than failure. The previous version matched a
+    list of four known phrases, so any prose GDELT had not said before parsed as
+    a valid but empty series — "The specified phrase is too short." reached the
+    caller as "no daily rows parsed", which sends the reader looking at the
+    window instead of the query.
+
+    A real response opens with the CSV header. Anything else is GDELT talking.
+    """
+    head = body.strip()
+    if not head:
+        return "empty response body"
+    first_line = head.splitlines()[0].lstrip("\ufeff").lower()
+    if all(field in first_line for field in _CSV_HEADER_FIELDS):
+        return None
+    return head[:200]
 
 
 def _retry_after_seconds(response: httpx.Response) -> float | None:

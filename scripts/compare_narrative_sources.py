@@ -21,7 +21,6 @@ from app.backtest import gdelt_archive, narrative, source_compare
 from app.backtest.registry import load_registry
 from app.db import session_scope
 from app.enrichment.country import country_name
-from app.sources.gdelt_cameo import FIPS_TO_ISO
 
 
 def _parse_date(text: str) -> date:
@@ -31,9 +30,6 @@ def _parse_date(text: str) -> date:
 #: The same registry the gate runs against, so the comparison covers exactly
 #: the countries whose result would change if the source were swapped.
 REGISTRY_PATH = "app/backtest/events.yaml"
-
-#: GDELT's location operator takes FIPS, not ISO — JP is "JA".
-ISO_TO_FIPS = {iso: fips for fips, iso in FIPS_TO_ISO.items()}
 
 
 def doc_query(country: str, scope: str) -> str:
@@ -45,17 +41,20 @@ def doc_query(country: str, scope: str) -> str:
     quantities, and comparing them measures nothing about whether the archive
     can stand in for the DOC series.
 
-    `location` is the like-for-like scope: articles *about* places in that
-    country, which is what ActionGeo counts.
+    `mentions` is the closest like-for-like available: a free-text search for
+    the country's name, which is articles *about* the country wherever they
+    were published.
+
+    There is no location operator to use instead. DOC 2.0 has none — that
+    belongs to the GEO API — and `locationcc:` was verified live to return an
+    empty window. The name must also go unquoted: GDELT answers a quoted
+    single word with "The specified phrase is too short."
     """
-    if scope == "location":
-        fips = ISO_TO_FIPS.get(country)
-        if not fips:
-            raise ValueError(f"no FIPS code for ISO {country!r}")
-        return f"locationcc:{fips}"
     name = country_name(country)
     if not name:
         raise ValueError(f"no country name for ISO {country!r}")
+    if scope == "mentions":
+        return name.lower()
     return f"sourcecountry:{name.lower()}"
 
 
@@ -78,12 +77,13 @@ def main() -> None:
     parser.add_argument("--end", type=_parse_date, required=True)
     parser.add_argument(
         "--scope",
-        choices=("location", "sourcecountry"),
-        default="location",
+        choices=("mentions", "sourcecountry"),
+        default="mentions",
         help=(
-            "which DOC series to compare against. 'location' is like-for-like "
-            "with the archive's ActionGeo counts and is the default; "
-            "'sourcecountry' reproduces what the gate uses today."
+            "which DOC series to compare against. 'mentions' is the "
+            "like-for-like scope — a free-text search for the country name, "
+            "articles about the country wherever published — and is the "
+            "default; 'sourcecountry' reproduces what the gate uses today."
         ),
     )
     args = parser.parse_args()
