@@ -95,7 +95,7 @@ class TestComputeScores:
     def test_method_version_default(self) -> None:
         signals = {("US", _bucket(2026, 6)): {"market": 0.0}}
         scores = compute_scores(signals)
-        assert scores[0].method_version == "v1.0"
+        assert scores[0].method_version == DEFAULT_METHOD_VERSION
 
     def test_method_version_override(self) -> None:
         signals = {("US", _bucket(2026, 6)): {"market": 0.0}}

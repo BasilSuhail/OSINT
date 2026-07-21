@@ -197,3 +197,53 @@ class TestFetcherHttp:
 def test_url_template_compiles() -> None:
     assert "{map_key}" in FIRMS_URL_TEMPLATE
     assert "{date}" in FIRMS_URL_TEMPLATE
+
+
+class TestViirsConfidenceEncoding:
+    """VIIRS sends l/n/h, not low/nominal/high (#574).
+
+    The map only carried the words, so `float("n")` raised and every row got
+    `severity=None` — 536,097 of them. The composite skips null severity, so
+    the largest sensor in the system contributed nothing to any analysis for
+    its entire life. The value was read and stored correctly the whole time
+    (`payload.confidence_raw` == "h"), which is why it stayed invisible.
+    """
+
+    def test_single_letter_codes_are_understood(self) -> None:
+        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+
+        assert _confidence_to_severity("l") is not None
+        assert _confidence_to_severity("n") is not None
+        assert _confidence_to_severity("h") is not None
+
+    def test_the_letters_rank_the_same_way_as_the_words(self) -> None:
+        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+
+        assert _confidence_to_severity("l") == _confidence_to_severity("low")
+        assert _confidence_to_severity("n") == _confidence_to_severity("nominal")
+        assert _confidence_to_severity("h") == _confidence_to_severity("high")
+
+    def test_confidence_still_orders_low_below_high(self) -> None:
+        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+
+        assert (
+            _confidence_to_severity("l")
+            < _confidence_to_severity("n")
+            < _confidence_to_severity("h")
+        )
+
+    def test_modis_numeric_confidence_still_works(self) -> None:
+        # MODIS reports 0-100 rather than a category; that path must survive.
+        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+
+        assert _confidence_to_severity("0") == 0.0
+        assert _confidence_to_severity("100") == 1.0
+
+    def test_an_unrecognised_encoding_still_returns_none(self) -> None:
+        # If NASA changes the encoding again this must fail loudly at the
+        # boundary rather than quietly becoming "no fire happened".
+        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+
+        assert _confidence_to_severity("bananas") is None
+        assert _confidence_to_severity("") is None
+        assert _confidence_to_severity(None) is None

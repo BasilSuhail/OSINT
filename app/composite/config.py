@@ -11,10 +11,16 @@ import math
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-#: Method version stamp emitted on every composite row produced by the
-#: default v1.0 configuration. Changes to weights or normalisation produce a
-#: new version (v1.1, v2.0, ...) — never an in-place edit.
-DEFAULT_METHOD_VERSION: str = "v1.0"
+#: Method version stamp emitted on every composite row. Changes to weights,
+#: normalisation or aggregation produce a new version — never an in-place edit.
+#:
+#: v2.0 (#574): the domain signal became the month's strongest event rather
+#: than the mean, and FIRMS severity started parsing at all. VIIRS reports
+#: confidence as l/n/h and only low/nominal/high were mapped, so all 536,097
+#: rows carried severity NULL and were skipped by the aggregator — 99.8% of the
+#: hazard domain absent from every score ever computed. Scores either side of
+#: this line are not comparable, hence the bump rather than an edit.
+DEFAULT_METHOD_VERSION: str = "v2.0"
 
 
 class WeightingConfig(BaseModel):
