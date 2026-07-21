@@ -18,7 +18,10 @@ costs one row per country, whatever the cadence.
 Severity is 0: aviation activity isn't stress, it's situational awareness.
 
 Note that divergence still counts *rows*, so this feed contributes a constant
-per country until scoring learns to weight by ``aircraft_count`` — see #497.
+per country. Divergence scoring excludes this source (#497): its severity is
+hard-coded 0.0, so it could never register on the magnitude axis the physical
+side uses. ``aircraft_count`` in the payload is the real signal and is waiting
+for an intensity of its own.
 
 See issues #160, #496.
 """
