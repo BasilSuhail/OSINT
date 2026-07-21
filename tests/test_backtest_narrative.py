@@ -355,3 +355,38 @@ def test_topic_changes_the_cache_key(tmp_path, monkeypatch):
         "JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=tmp_path, topic="earthquake"
     )
     assert calls["n"] == 2
+
+
+def test_unfamiliar_prose_at_http_200_is_reported_as_what_gdelt_said(monkeypatch):
+    """Observed live: a short free-text query earns prose, not a CSV (#557).
+
+    The old marker list did not carry this phrase, so it parsed as a valid but
+    empty series and surfaced as "no daily rows parsed" — which points the
+    reader at the window when the query was the problem.
+    """
+
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text="The specified phrase is too short.")
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    with pytest.raises(narrative.NarrativeUnavailableError) as excinfo:
+        narrative.fetch_daily_volume("PE", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
+    assert "too short" in str(excinfo.value)
+
+
+def test_a_real_csv_header_is_not_mistaken_for_prose(monkeypatch):
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text="﻿" + _CSV)
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    counts = narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
+    assert counts[date(2026, 6, 1)] == 1317
+
+
+def test_an_empty_body_is_reported_as_an_empty_body(monkeypatch):
+    def fake_get(url, params, timeout):
+        return httpx.Response(200, text="")
+
+    monkeypatch.setattr(narrative.httpx, "get", fake_get)
+    with pytest.raises(narrative.NarrativeUnavailableError):
+        narrative.fetch_daily_volume("JP", date(2026, 6, 1), date(2026, 6, 3), cache_dir=None)
