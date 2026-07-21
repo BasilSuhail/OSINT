@@ -31,16 +31,23 @@ docker compose up -d                     # stores: Postgres + Redis
 cd osint-frontend && pnpm install && cd ..
 ```
 
-### Daily driving
+### Daily driving — three commands
 
-| Want | Command |
-|------|---------|
-| Everything ON (stores, worker, beat, API, dashboard, Ollama) | `make up` |
-| Everything OFF, keep data | `make stop` |
-| OFF + quit Docker Desktop | `make off` |
-| Clean stale dev processes + Next cache | `make clean-dev` |
-| Restart after a code change | `make stop && make up` |
-| Watch the logs | `make logs` |
+There are only three you need. Everything else in the Makefile is either an
+alias kept for muscle memory or a one-shot analysis task.
+
+| Command | What it does |
+|---------|--------------|
+| `make up` | Start everything: Docker stores, worker, beat, API, dashboard, Ollama |
+| `make down` | Stop everything, keep all data |
+| `make clear` | Remove regenerable junk: build caches, `__pycache__`, logs, Docker cruft |
+
+Restart after a code change is `make down && make up`. `make clear` never
+touches your data — only things that rebuild themselves.
+
+Older names still work (`make stop`, `make clean-dev`, `make docker-prune`),
+and `make off` additionally quits Docker Desktop on macOS. `make logs` tails
+the background logs without stopping anything.
 
 Dashboard: **http://localhost:3000** · API health: `curl localhost:8000/health` → `{"status":"ok"}`.
 
@@ -86,11 +93,16 @@ green pulsing while working (with live progress), red while idle, red
 make data-size    # what is using disk
 make data-prune   # run retention now
 make data-reset   # ⚠️ delete ALL local data
+
+uv run python scripts/db_snapshot.py   # exact row counts, for docs
 ```
 
-Retention keeps the events table small (news ~3 d, hazards ~2 d — see `.env`);
-markets/macro and everything analytical (scores, labels, stories, journal)
-are kept long-term.
+Retention keeps the events table small — **~30 days** for news, hazard and
+GDELT raw events (`RETENTION_NEWS_DAYS`, `RETENTION_HAZARD_DAYS`,
+`RETENTION_GDELT_DAYS` in `.env`). Market and macro history is never deleted
+because it cannot be re-fetched, and everything analytical — scores, labels,
+stories, gists, journal, the GDELT daily-volume aggregate — is derived and
+kept long-term.
 
 <details><summary>Manual mode — one process per terminal</summary>
 
@@ -125,7 +137,7 @@ publish all of them. That is this chapter.
 ```text
    sensors (don't lie)             text (can lie)
  ┌──────────────────────┐      ┌──────────────────────┐
- │ USGS quakes          │      │ ~37 news feeds (RSS) │
+ │ USGS quakes          │      │ 44 news feeds (RSS)  │
  │ NASA FIRMS fires     │      │ GDELT world events   │
  │ GDACS disasters      │      └──────────┬───────────┘
  │ market prices        │                 │
@@ -266,7 +278,7 @@ Once `make up` runs, the scheduler fires these forever:
 | GDACS | multi-hazard alerts | official geojson feed | 15 min |
 | NASA FIRMS | active fires | official CSV endpoint | hourly |
 | EONET | natural events | NASA API | 30 min |
-| ~37 news feeds | world/regional news | RSS (published by the outlets) | hourly, staggered |
+| 44 news feeds | world/regional news | RSS (published by the outlets) | hourly, staggered |
 | EM-DAT / FRED | disasters / macro series | official APIs | daily |
 | ACLED | conflict events | manual drop-folder + opt-in API (see 3.3) | hourly check |
 | OpenSky | aircraft states | REST API | 2 min |
@@ -277,7 +289,46 @@ database rejects the same real-world record twice no matter how often it is
 re-fetched (Chapter 2.1). Per-source successes/failures land in
 `ingest_health`, which is what the dataset chips in the top bar read.
 
-### 3.2 GDELT — the two-path source
+**58 collectors in total**: 14 named fetchers plus 44 RSS feeds loaded from
+`app/sources/rss_feeds.json`.
+
+### 3.1b What is actually in there
+
+Snapshot of **2026-07-21** — 683,446 events across 53 active sources, 671 MB.
+Regenerate with `uv run python scripts/db_snapshot.py` rather than quoting
+these forever: retention prunes continuously, so every figure below moves.
+
+| source | rows | span held |
+|---|---:|---|
+| nasa-firms | 536,097 | rolling ~2 weeks |
+| opensky-adsb | 58,032 | rolling, hourly country rollups |
+| gdelt | 48,662 | rolling ~30 days |
+| abuse-ch-urlhaus | 20,440 | rolling ~30 days |
+| 44 RSS feeds | ~15,000 | rolling ~2 weeks |
+
+Derived on top: 14,944 stories · 20,681 story members · 6,744 embeddings ·
+4,451 gists · 53,421 scores · 582 journal predictions · 15,600 rows of GDELT
+daily volume across 93 ingested archive days.
+
+**"Span held" is not "span covered."** The events table is a rolling window,
+not an archive. GDELT's eleven years of history exists as monthly aggregate
+JSONs in `data/gdelt/` (§3.2) and the daily-volume table — never as raw rows,
+which retention would delete anyway. A source can vanish from this table
+entirely: `uk-police` published one month, and once that month aged past
+retention its rows went with it.
+
+> Every number here comes from `scripts/db_snapshot.py`, which counts rows.
+> An earlier version of this section was built from
+> `pg_stat_user_tables.n_live_tup` — an autovacuum estimate that reported
+> **18** rows in `predictions` against an actual **582**. Estimates are for
+> query planners, not documentation.
+
+The shape is lopsided on purpose. Fire pixels and aircraft states are cheap
+and high-volume; they are sensors. News is low-volume and expensive to reason
+about; it is narrative. The whole analytical question is whether the first
+moves before the second.
+
+### 3.2 GDELT — the three-path source
 
 GDELT publishes a whole family of data products (Event Database 1.0/2.0,
 Global Knowledge Graph, BigQuery mirrors, an Analysis Service, ngrams,
@@ -320,6 +371,37 @@ a finished cache makes re-runs instant. Missing days (GDELT has known gaps)
 are recorded in the checkpoint, not papered over; transient download errors
 retry three times, then fail the whole month loudly rather than write a
 partial one.
+
+#### The third path — daily narrative volume (#555)
+
+The analysis side needs a different thing from the two paths above: **how much
+coverage a country got on a day**, as a time series. The DOC API answers that
+directly but reaches back only about three months and is aggressively rate
+limited, so `scripts/gdelt_archive.py` walks the same 15-minute export grid and
+aggregates it instead:
+
+```bash
+uv run python scripts/gdelt_archive.py --start 2026-04-20 --end 2026-07-19
+```
+
+Roughly 4 seconds per day of history — 91 days took under 5 minutes.
+
+Two rules make it work. **Counts, not rows**: raw GDELT events are pruned at 30
+days, so a multi-year raw backfill would delete itself; `gdelt_daily_volume`
+holds one row per country-day and sits outside retention. And rows are bucketed
+by **the file's timestamp, not their own `Day` column** — a single export from
+2026-04-15 carries rows dated 2025-04-15, because `Day` is when the event
+happened and the file stamp is when GDELT saw it reported. Coverage timing is
+the thing being measured, so the file stamp is the correct clock.
+
+A second table records which days were actually walked. Without it, a country
+with no coverage on a day is indistinguishable from a day nobody downloaded,
+and the analysis cannot tell a quiet narrative from a missing one.
+
+What this path is **not** good for: topic-scoped questions. GDELT's Events
+export codes political actions, so there is no earthquake event type to filter
+on — the series is whole-country volume. See `docs/backtest/` for where that
+limitation bites.
 
 #### The exact links (verify it yourself)
 
@@ -379,17 +461,19 @@ whole thing is idempotent — run it twice, get the same database.
 
 ```text
 data/                        (one folder, bind-mounted, survives anything)
-├── postgres/    ~2.6 GB     the database — events dominate (~2.2 GB)
-├── private/     ~100 MB     ACLED drop-folder (gitignored)
-├── redis/        ~20 MB     queue state, ephemeral
-├── exports/       ~2 MB     panel.parquet + all reports the dashboard serves
-└── gdelt/         <1 MB     132 monthly checkpoint JSONs (11 years of GDELT)
+├── postgres/      1.1 GB    the database — 683k events, 671 MB of it
+├── private/       104 MB    ACLED drop-folder (gitignored)
+├── redis/          48 MB    queue state, ephemeral
+├── gdelt/         3.1 MB    monthly checkpoint JSONs (11 years of GDELT)
+├── exports/       2.9 MB    panel.parquet + all reports the dashboard serves
+└── backtest_cache/ 216 KB   cached GDELT DOC responses + rate-limit state
 ```
 
-Retention (03:00 UTC daily + `make data-prune`): news ~3 days, hazard/GDELT
-raw events ~2 days — the events table stays small because **everything
-analytical is derived and kept forever** (scores, labels, stories, journal,
-job runs). Backups: `make data-size` to inspect, snapshot script in
+Retention (03:00 UTC daily + `make data-prune`): **~30 days** for news, hazard
+and GDELT raw events, overridable per source in `.env`. The events table stays
+small because **everything analytical is derived and kept forever** (scores,
+labels, stories, gists, journal, job runs, the GDELT daily-volume aggregate),
+and because market/macro history is exempt — it cannot be re-fetched. Backups: `make data-size` to inspect, snapshot script in
 `scripts/`, and the whole folder is portable — point `OSINT_DATA_DIR` at an
 external disk and move it.
 
@@ -642,6 +726,19 @@ ordinary exam and the pre-registered onset exam). That negative is published
 on purpose — it is what makes every other number here credible, and the
 per-indicator decomposition (`make indicator-ranking`) shows where the
 recoverable signal lives for the next version.
+
+**The lead-time gate.** A second published negative, and a sharper one. The
+premise underneath this whole project is that physical sensors move before the
+news does. That was tested directly: for M6.0+ earthquakes, sensor spikes do
+**not** precede narrative spikes at a rate distinguishable from chance
+(p ≥ 0.50), and the result holds across every threshold from 1.0 to 2.5 — so it
+is not an artefact of where the line was drawn. Full working:
+`docs/backtest/f74fb156-report.md` and `docs/backtest/threshold-sensitivity.md`.
+
+Earthquakes may simply be the wrong anchor — a major quake is reported within
+minutes, so there may be no lead to find. Slow-onset hazards (drought, flood,
+sustained unrest) are where a sensor could plausibly lead coverage by days, and
+that is the open question rather than a settled failure.
 
 **What to do with it:** treat the dashboard as **monitoring, not prophecy**.
 The stories card tells you what's happening and how corroborated it is —
