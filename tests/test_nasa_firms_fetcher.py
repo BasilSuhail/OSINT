@@ -13,7 +13,7 @@ from app.models import Category
 from app.sources.nasa_firms_fetcher import (
     FIRMS_URL_TEMPLATE,
     NasaFirmsFetcher,
-    _confidence_to_severity,
+    confidence_to_severity,
     hash_event_id,
     parse_csv_body,
     row_to_event,
@@ -45,27 +45,27 @@ def _csv_row(
 
 class TestConfidenceToSeverity:
     def test_text_low(self) -> None:
-        assert _confidence_to_severity("low") == 0.2
+        assert confidence_to_severity("low") == 0.2
 
     def test_text_nominal(self) -> None:
-        assert _confidence_to_severity("nominal") == 0.5
+        assert confidence_to_severity("nominal") == 0.5
 
     def test_text_high(self) -> None:
-        assert _confidence_to_severity("HIGH") == 0.9
+        assert confidence_to_severity("HIGH") == 0.9
 
     def test_numeric(self) -> None:
-        assert _confidence_to_severity("80") == pytest.approx(0.8)
-        assert _confidence_to_severity("0") == 0.0
-        assert _confidence_to_severity("100") == 1.0
+        assert confidence_to_severity("80") == pytest.approx(0.8)
+        assert confidence_to_severity("0") == 0.0
+        assert confidence_to_severity("100") == 1.0
 
     def test_numeric_clamps(self) -> None:
-        assert _confidence_to_severity("150") == 1.0
-        assert _confidence_to_severity("-5") == 0.0
+        assert confidence_to_severity("150") == 1.0
+        assert confidence_to_severity("-5") == 0.0
 
     def test_unknown_returns_none(self) -> None:
-        assert _confidence_to_severity("garbage") is None
-        assert _confidence_to_severity("") is None
-        assert _confidence_to_severity(None) is None
+        assert confidence_to_severity("garbage") is None
+        assert confidence_to_severity("") is None
+        assert confidence_to_severity(None) is None
 
 
 class TestHashEventId:
@@ -210,40 +210,38 @@ class TestViirsConfidenceEncoding:
     """
 
     def test_single_letter_codes_are_understood(self) -> None:
-        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_to_severity
 
-        assert _confidence_to_severity("l") is not None
-        assert _confidence_to_severity("n") is not None
-        assert _confidence_to_severity("h") is not None
+        assert confidence_to_severity("l") is not None
+        assert confidence_to_severity("n") is not None
+        assert confidence_to_severity("h") is not None
 
     def test_the_letters_rank_the_same_way_as_the_words(self) -> None:
-        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_to_severity
 
-        assert _confidence_to_severity("l") == _confidence_to_severity("low")
-        assert _confidence_to_severity("n") == _confidence_to_severity("nominal")
-        assert _confidence_to_severity("h") == _confidence_to_severity("high")
+        assert confidence_to_severity("l") == confidence_to_severity("low")
+        assert confidence_to_severity("n") == confidence_to_severity("nominal")
+        assert confidence_to_severity("h") == confidence_to_severity("high")
 
     def test_confidence_still_orders_low_below_high(self) -> None:
-        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_to_severity
 
         assert (
-            _confidence_to_severity("l")
-            < _confidence_to_severity("n")
-            < _confidence_to_severity("h")
+            confidence_to_severity("l") < confidence_to_severity("n") < confidence_to_severity("h")
         )
 
     def test_modis_numeric_confidence_still_works(self) -> None:
         # MODIS reports 0-100 rather than a category; that path must survive.
-        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_to_severity
 
-        assert _confidence_to_severity("0") == 0.0
-        assert _confidence_to_severity("100") == 1.0
+        assert confidence_to_severity("0") == 0.0
+        assert confidence_to_severity("100") == 1.0
 
     def test_an_unrecognised_encoding_still_returns_none(self) -> None:
         # If NASA changes the encoding again this must fail loudly at the
         # boundary rather than quietly becoming "no fire happened".
-        from app.sources.nasa_firms_fetcher import _confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_to_severity
 
-        assert _confidence_to_severity("bananas") is None
-        assert _confidence_to_severity("") is None
-        assert _confidence_to_severity(None) is None
+        assert confidence_to_severity("bananas") is None
+        assert confidence_to_severity("") is None
+        assert confidence_to_severity(None) is None
