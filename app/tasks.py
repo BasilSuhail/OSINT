@@ -73,7 +73,7 @@ def _record_failure(session: Session, *, source: str, exc: BaseException) -> Non
 def _run_fetcher_body(name: str) -> dict[str, Any]:
     """Plain-function task body — testable without Celery."""
     from app.fetcher_registry import get_fetcher
-    from app.ingest import quarantine
+    from app.ingest import freshness, quarantine
 
     with session_scope() as session:
         resting = quarantine.skip_reason(session, name)
@@ -102,11 +102,33 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
             return {"failed": True, "quarantined": True, "retry_after": retry_at, "reason": detail}
         raise
 
+    # Freshness is checked here, on the live path only: backfills legitimately
+    # insert old rows and call upsert_events directly (#571).
+    fresh, stale = freshness.partition(events)
+
     with session_scope() as session:
-        inserted = upsert_events(events, session)
+        inserted = upsert_events(fresh, session)
         _record_success(session, source=name)
         quarantine.record_success(session, source=name)
-    return {"fetched": len(events), "inserted": inserted}
+        if stale:
+            # Recorded, never silently dropped. A feed that starts serving
+            # junk has to become visible, otherwise this trades one invisible
+            # problem for another. Health counters are deliberately untouched:
+            # the fetch itself succeeded, and marking the source failed would
+            # turn a data-quality signal into a false outage.
+            summary = freshness.summarize(stale)
+            logger.warning("%s: %s", name, summary)
+            session.add(
+                IngestFailureRow(
+                    source=name,
+                    error_class="StaleEventsRejected",
+                    error_message=summary,
+                )
+            )
+    result = {"fetched": len(events), "inserted": inserted}
+    if stale:
+        result["rejected_stale"] = len(stale)
+    return result
 
 
 @app.task(
