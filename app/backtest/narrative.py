@@ -27,12 +27,13 @@ import csv
 import hashlib
 import io
 import json
-import time
+import os
 from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
 
+from app.backtest import pacing
 from app.enrichment.country import country_name
 
 _ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -41,13 +42,11 @@ _TIMEOUT_S = 90.0
 #: GDELT publishes "one request every 5 seconds". A burst earns a rolling 429
 #: penalty that outlasts the burst by minutes, so the gate paces itself rather
 #: than discovering the limit the hard way mid-run.
-MIN_INTERVAL_S = 5.0
+#:
+#: Overridable so a sweep of many countries can be paced more conservatively
+#: than a single fetch without editing this module (#559).
+MIN_INTERVAL_S = float(os.environ.get("BACKTEST_GDELT_MIN_INTERVAL_S", 5.0))
 _RETRIES = 3
-_BACKOFF_S = 30.0
-
-#: Monotonic timestamp of the last outbound call, module-level because the
-#: limit is per-IP and therefore per-process, not per-caller.
-_LAST_CALL_AT = 0.0
 
 #: The series carrying this country's article count. The response also holds
 #: "Total Monitored Articles" — the whole GDELT corpus for the day, identical
@@ -55,6 +54,10 @@ _LAST_CALL_AT = 0.0
 _COUNT_SERIES = "article count"
 
 DEFAULT_CACHE_DIR = Path("data/backtest_cache")
+
+#: Pacing state lives beside the response cache: both describe the same
+#: conversation with GDELT, and both must outlive the process.
+PACING_STATE_PATH = DEFAULT_CACHE_DIR / "gdelt-pacing.json"
 
 #: Words outlets actually use for a topic. Scoping the query to the event is the
 #: difference between asking "did this country's news spike?" and "did coverage
@@ -142,23 +145,43 @@ def _looks_like_error(body: str) -> str | None:
     return None
 
 
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    """`Retry-After` in seconds, when the host sends a usable one."""
+    raw = response.headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:  # HTTP-date form; the default cooldown covers it
+        return None
+
+
+def _pacer() -> pacing.Pacer:
+    return pacing.Pacer(state_path=PACING_STATE_PATH, min_interval_s=MIN_INTERVAL_S)
+
+
 def _get_with_pacing(params: dict, country: str, start: date, end: date) -> str:
-    """One paced request, retrying a rate-limit refusal with backoff."""
-    global _LAST_CALL_AT
+    """One paced request, retrying a rate-limit refusal with backoff.
+
+    Pacing state is persisted (#559): a refusal widens the wait for every later
+    call, including calls made by a later process. The old in-process global
+    meant each resumed run opened with an immediate call and re-provoked the
+    limiter it was resuming because of.
+    """
+    pacer = _pacer()
     last_reason = "unknown"
     for attempt in range(_RETRIES):
-        wait = MIN_INTERVAL_S - (time.monotonic() - _LAST_CALL_AT)
-        if wait > 0:
-            time.sleep(wait)
+        pacer.wait_turn()
         try:
             response = httpx.get(_ENDPOINT, params=params, timeout=_TIMEOUT_S)
         except httpx.HTTPError as exc:  # network down, DNS, timeout
             raise NarrativeUnavailableError(f"{country} {start}..{end}: {exc}") from exc
         finally:
-            _LAST_CALL_AT = time.monotonic()
+            pacer.record_call()
 
         if response.status_code == 429:
             last_reason = "HTTP 429"
+            pacer.record_refusal(retry_after_s=_retry_after_seconds(response))
         elif response.status_code != 200:
             raise NarrativeUnavailableError(
                 f"{country} {start}..{end}: HTTP {response.status_code}"
@@ -166,12 +189,22 @@ def _get_with_pacing(params: dict, country: str, start: date, end: date) -> str:
         else:
             reason = _looks_like_error(response.text)
             if reason is None:
+                pacer.record_success()
                 return response.text
+            # Prose-at-200 is how GDELT says "slow down" as often as not.
             last_reason = f"GDELT said {reason!r}"
+            pacer.record_refusal()
 
-        if attempt < _RETRIES - 1:
-            time.sleep(_BACKOFF_S * (attempt + 1))
-    raise NarrativeUnavailableError(f"{country} {start}..{end}: {last_reason}")
+        if attempt == _RETRIES - 1:
+            break
+    raise NarrativeUnavailableError(
+        f"{country} {start}..{end}: {last_reason}"
+        + (
+            f"; pacing cooldown {pacer.cooldown_remaining():.0f}s before the next call"
+            if pacer.cooldown_remaining() > 0
+            else ""
+        )
+    )
 
 
 def fetch_daily_volume(
