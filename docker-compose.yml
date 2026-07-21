@@ -8,7 +8,15 @@ name: osint-local
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Pinned by digest so a rebuild months from now cannot silently land a
+    # different Postgres — a published result has to stay reproducible (#569).
+    # Tag kept alongside so the version is still readable at a glance.
+    #
+    # Refresh with: docker pull postgres:16-alpine &&
+    #   docker inspect --format '{{index .RepoDigests 0}}' postgres:16-alpine
+    # NOT with `docker manifest inspect -v`, whose Descriptor.digest is the
+    # platform manifest and does not resolve as image@sha256.
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     restart: unless-stopped
     # Docker's 64MB /dev/shm default starves parallel VACUUM/queries
     # ("could not resize shared memory segment ... No space left on device").
@@ -28,7 +36,8 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    # Pinned by digest — see the postgres note above (#569).
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
@@ -152,6 +161,20 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    # `restart: unless-stopped` only fires when a container EXITS. A worker
+    # that is alive and no longer consuming satisfies that policy forever, so
+    # it needs an actual liveness probe (#569).
+    #
+    # `-d celery@$$(hostname)` matters: `inspect ping` answers for every worker
+    # on the broker, so an untargeted probe passes even when THIS container is
+    # the dead one. Measured cost: 0.26s CPU per call (the rest is broadcast
+    # wait), ~0.4% of a core at this interval.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping -d celery@$$(hostname) -t 5 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
 
   beat:
     profiles: ["app"]
@@ -176,3 +199,19 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    # Beat has no `inspect`, so liveness is inferred from it still writing its
+    # schedule. The threshold is deliberately generous, and measured (#569):
+    # on a healthy stack `celerybeat-schedule` itself was 15 MINUTES stale
+    # (SQLite WAL mode leaves the main file alone) and the -wal file did not
+    # advance across a 45s sample either — beat syncs roughly every 3-4
+    # minutes. A short window here would restart-loop a perfectly healthy beat.
+    # The glob covers the main file and its -wal/-shm siblings; the freshest
+    # one wins. `-mmin` rather than `-newermt '-15 minutes'`: the relative form
+    # of -newermt is GNU-only and is rejected outright by bfs and busybox, so
+    # the probe would fail on anything but the exact base image.
+    healthcheck:
+      test: ["CMD-SHELL", "find /data/celerybeat-schedule* -mmin -15 | grep -q ."]
+      interval: 120s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
