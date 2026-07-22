@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: up down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: within-eval up down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 # ── The three commands ──────────────────────────────────────────────────────
 # Everything else below is either an alias kept for muscle memory or a
@@ -93,6 +93,9 @@ indicator-ranking:  ## Rank every dashboard indicator by measured predictive val
 
 onset-eval:  ## Run the pre-registered onset evaluation — the composite's real exam (#380)
 	.venv/bin/python -m app.onset.run
+
+within-eval:  ## Run the pre-registered within-country evaluation (#582)
+	.venv/bin/python -m app.within.run
 
 validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
 	.venv/bin/python -m app.validator.run
