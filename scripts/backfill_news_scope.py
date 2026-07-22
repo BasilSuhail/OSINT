@@ -39,9 +39,7 @@ def _read_batch(session: Session, after_id: int, batch_size: int = 500):
 
 
 def _classify(payload: dict, default_country: str | None) -> str:
-    text = " ".join(
-        [str(payload.get("title") or ""), str(payload.get("summary") or "")]
-    ).strip()
+    text = " ".join([str(payload.get("title") or ""), str(payload.get("summary") or "")]).strip()
     if not text:
         return "unknown"
     hit = city_for(text, country_hint=default_country)
