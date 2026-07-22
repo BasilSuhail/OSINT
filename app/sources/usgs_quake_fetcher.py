@@ -23,6 +23,7 @@ import httpx
 
 from app.enrichment.country import country_for
 from app.models import Category, Event
+from app.severity import scale
 from app.sources.base import Fetcher
 
 USGS_FEED_URL: Final[str] = (
@@ -71,10 +72,15 @@ def feature_to_event(feature: dict[str, Any], *, fetched_at: datetime) -> Event 
         return None
 
     alert = (properties.get("alert") or "").strip().lower() or None
+    # State why, not just what (#591). Deterministic — this is arithmetic over
+    # a published measurement, so the reason is exact and cannot hallucinate.
     if alert in _PAGER_ALERT_SEVERITY:
         severity = _PAGER_ALERT_SEVERITY[alert]
+        reason = f"USGS PAGER alert {alert!r} — impact estimate overrides magnitude"
     else:
         severity = _magnitude_to_severity(magnitude_f)
+        reason = f"M{magnitude_f:.1f} earthquake, scaled linearly from M3 to M10"
+    verdict = scale.Verdict(value=severity, rationale=reason, method="usgs-magnitude-v1")
 
     lon: float | None = None
     lat: float | None = None
@@ -93,6 +99,7 @@ def feature_to_event(feature: dict[str, Any], *, fetched_at: datetime) -> Event 
         "tsunami": properties.get("tsunami"),
         "felt": properties.get("felt"),
         "alert": alert,
+        **verdict.as_payload(),
     }
 
     country = country_for(lat, lon) if lat is not None and lon is not None else None

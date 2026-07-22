@@ -21,6 +21,7 @@ from xml.etree import ElementTree as ET
 import httpx
 
 from app.models import Category, Event
+from app.severity import scale
 from app.sources.base import Fetcher
 
 GDACS_FEED_URL: Final[str] = "https://www.gdacs.org/xml/rss.xml"
@@ -261,6 +262,15 @@ def item_to_event(item: ET.Element, *, fetched_at: datetime) -> Event | None:
         "from_date": _text(item.find("gdacs:fromdate", _NAMESPACES)),
         "to_date": _text(item.find("gdacs:todate", _NAMESPACES)),
         "link": _text(item.find("link")),
+        **(
+            scale.Verdict(
+                value=severity,
+                rationale=f"GDACS {alert_level or 'unknown'} alert for a {event_type} event",
+                method="gdacs-alert-v1",
+            ).as_payload()
+            if severity is not None
+            else {}
+        ),
     }
 
     return Event(

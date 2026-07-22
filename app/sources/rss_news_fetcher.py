@@ -56,6 +56,7 @@ from app.enrichment.ner import (
 )
 from app.enrichment.sentiment import SENTIMENT_METHOD_VERSION, score_text
 from app.models import Category, Event
+from app.severity import news as news_severity
 from app.sources.base import Fetcher
 
 RSS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
@@ -63,26 +64,6 @@ RSS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
 # Severity for news is a stable mid-band by default. Headlines do not carry
 # magnitudes the way USGS quakes do, and we do not run NLP at fetch time.
 # Bumping it higher for keyword hits keeps the colour scale meaningful.
-NEWS_DEFAULT_SEVERITY: Final[float] = 0.35
-NEWS_KEYWORD_SEVERITY: Final[float] = 0.65
-_HIGH_SEVERITY_KEYWORDS: Final[tuple[str, ...]] = (
-    "killed",
-    "dead",
-    "attack",
-    "explosion",
-    "shooting",
-    "stab",
-    "crash",
-    "earthquake",
-    "flood",
-    "fire",
-    "war",
-    "protest",
-    "strike",
-    "evacuated",
-    "wounded",
-)
-
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _HTML_IMG_SRC_RE = re.compile(r"""<img[^>]+src=["']([^"']+)["']""", re.IGNORECASE)
 
@@ -154,14 +135,6 @@ def _parse_published(entry: dict[str, Any]) -> datetime | None:
     return None
 
 
-def _severity_for(title: str, summary: str) -> float:
-    text = f"{title} {summary}".lower()
-    for kw in _HIGH_SEVERITY_KEYWORDS:
-        if kw in text:
-            return NEWS_KEYWORD_SEVERITY
-    return NEWS_DEFAULT_SEVERITY
-
-
 def entry_to_event(
     entry: dict[str, Any], *, config: RssFeedConfig, fetched_at: datetime
 ) -> Event | None:
@@ -178,7 +151,10 @@ def entry_to_event(
     guid = (entry.get("id") or entry.get("guid") or "").strip()
     source_event_id = guid or _hash_event_id(config.source, link or "", title)
 
-    severity = _severity_for(title, summary)
+    # Graded fallback on the ingest path (#591): separates fatal from violent
+    # from disruptive instead of flattening all three onto one value, and
+    # states its reason. The LLM batch pass upgrades it afterwards.
+    verdict = news_severity.keyword_verdict(title, summary)
 
     # Offline city pinpoint: scan title + summary for any of ~1.2 k known
     # populated places. When the feed declares a default country, prefer
@@ -235,6 +211,7 @@ def entry_to_event(
         "sentiment_label": sentiment.label if sentiment else None,
         "news_scope": news_scope,
         "entities": entities_to_payload(entities),
+        **verdict.as_payload(),
         "enrichment_meta": {
             "sentiment_model": SENTIMENT_METHOD_VERSION,
             "ner_model": NER_METHOD_VERSION if ner_available() else "none",
@@ -247,7 +224,7 @@ def entry_to_event(
         occurred_at=occurred_at,
         fetched_at=fetched_at,
         category=Category.NEWS,
-        severity=severity,
+        severity=verdict.value,
         confidence=None,
         keywords=["news", config.source, config.pretty_name.lower()],
         country=country,
