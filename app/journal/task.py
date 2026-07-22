@@ -6,11 +6,13 @@ beat task in `app.tasks` and by the `make journal` CLI.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.composite import degeneracy
 from app.composite.config import DEFAULT_METHOD_VERSION
 from app.db import get_engine
 from app.db_models import DisagreementPairRow, LabelRow, PredictionRow, ScoreRow
@@ -21,6 +23,8 @@ from app.journal.grade import grade_pending
 from app.labels.acled_loader import load_acled_weekly
 from app.panel.spine import coverage_windows
 from app.settings import settings
+
+logger = logging.getLogger(__name__)
 
 _SCORE_NAME = "composite"
 
@@ -52,7 +56,22 @@ def _journal_daily_inner() -> dict[str, Any]:
                 )
             ).scalars()
         ]
-        issued = upsert_predictions(predictions_from_scores(scores), session)
+        # Refuse to forecast from a score with no variance (#589). The live
+        # composite returns 0.5 for every country because retention deletes the
+        # history its rolling z-score needs (#586), and 501 of the 582
+        # predictions already issued carry that constant. A constant scores
+        # AUROC 0.5 by construction, so those rows cannot become a track record
+        # however long they run. This is a check rather than a flag: when the
+        # composite varies again, emission resumes with no code change.
+        refusal = degeneracy.describe(
+            [score["score_value"] for score in scores],
+            label=f"{_SCORE_NAME} {DEFAULT_METHOD_VERSION}",
+        )
+        if refusal is None:
+            issued = upsert_predictions(predictions_from_scores(scores), session)
+        else:
+            issued = 0
+            logger.warning("journal: not issuing composite predictions — %s", refusal)
 
         # WS-B forward exam (#374, pre-registered in docs/disagreement-exam.md):
         # divergence exposures ride the same journal — same hindcast guard,
@@ -91,6 +110,7 @@ def _journal_daily_inner() -> dict[str, Any]:
         total = session.execute(select(PredictionRow.id)).fetchall()
         return {
             "issued": issued,
+            "composite_refused": refusal,
             "issued_disagreement": issued_disagreement,
             "graded_now": graded,
             "total_predictions": len(total),
