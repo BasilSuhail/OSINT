@@ -296,3 +296,56 @@ class TestExportReports:
         resp = _client(db_session).get("/analytics/baselines")
         assert resp.status_code == 404
         assert "make baselines" in resp.json()["detail"]
+
+
+class TestCompositeMoversDegeneracy:
+    """/composite/movers says when its own numbers carry no information (#589).
+
+    The live composite returns 0.5 for every country because retention deletes
+    the history its rolling z-score needs (#586). Rendered without comment, a
+    flat index reads as a real measurement.
+    """
+
+    def _seed(self, session, values):
+        from app.db_models import ScoreRow
+
+        may = datetime(2026, 5, 1, tzinfo=UTC)
+        june = datetime(2026, 6, 1, tzinfo=UTC)
+        for country, value in values.items():
+            for bucket in (may, june):
+                session.add(
+                    ScoreRow(
+                        country=country,
+                        bucket_start=bucket,
+                        bucket_length=timedelta(days=31),
+                        score_name="composite",
+                        score_value=value,
+                        components={},
+                        method_version="v2.0",
+                    )
+                )
+        session.commit()
+
+    def test_a_flat_index_is_reported_as_degenerate(self, db_session):
+        self._seed(db_session, {"AA": 0.5, "BB": 0.5, "CC": 0.5})
+
+        body = _client(db_session).get("/composite/movers").json()
+
+        assert body["degenerate"] is not None
+        assert "no variance" in body["degenerate"]
+
+    def test_a_varying_index_is_not(self, db_session):
+        self._seed(db_session, {"AA": 0.2, "BB": 0.6, "CC": 0.9})
+
+        body = _client(db_session).get("/composite/movers").json()
+
+        assert body["degenerate"] is None
+
+    def test_the_existing_keys_are_untouched(self, db_session):
+        """Additive only — no existing consumer may break."""
+        self._seed(db_session, {"AA": 0.5, "BB": 0.5})
+
+        body = _client(db_session).get("/composite/movers").json()
+
+        assert set(body) >= {"latest_month", "global_mean", "movers"}
+        assert body["global_mean"] == 0.5
