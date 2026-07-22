@@ -45,7 +45,14 @@ _TEXT_CONFIDENCE_SEVERITY: Final[dict[str, float]] = {
 }
 
 
-def _confidence_to_severity(raw: str | None) -> float | None:
+def confidence_to_severity(raw: str | None) -> float | None:
+    """Map a raw FIRMS confidence to 0..1 severity, or None if unreadable.
+
+    Public because the #577 backfill applies the same mapping to rows this
+    fetcher stored before #574 fixed it — same reason `format_figure` moved out
+    of a private in #554. Two callers must agree on this mapping exactly, or
+    swept rows would disagree with freshly fetched ones.
+    """
     if raw is None:
         return None
     cleaned = raw.strip().lower()
@@ -99,7 +106,7 @@ def row_to_event(row: dict[str, str], *, fetched_at: datetime) -> Event | None:
     if occurred_at is None:
         return None
 
-    severity = _confidence_to_severity(confidence_raw)
+    severity = confidence_to_severity(confidence_raw)
 
     source_event_id = hash_event_id(lat_raw, lon_raw, acq_date, acq_time, satellite)
 
