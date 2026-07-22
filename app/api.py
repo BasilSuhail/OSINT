@@ -22,6 +22,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.brain import client, context, enrich, gate, qa
+from app.composite import degeneracy as composite_degeneracy
 from app.db import get_session_factory
 from app.db_models import (
     BrainNarrativeRow,
@@ -648,10 +649,18 @@ def composite_movers(
         ),
         key=lambda m: -abs(m["delta"]),
     )[:limit]
+    # Additive, so no existing consumer breaks: say when the numbers below
+    # carry no information. The live composite returns 0.5 for every country
+    # because retention deletes the history its rolling z-score needs (#586),
+    # and a flat index rendered without comment reads as a real measurement
+    # (#589).
     return {
         "latest_month": latest_month.strftime("%Y-%m-01"),
         "global_mean": sum(latest.values()) / len(latest) if latest else None,
         "movers": movers,
+        "degenerate": composite_degeneracy.describe(
+            list(latest.values()), label=f"composite {latest_month:%Y-%m}"
+        ),
     }
 
 
