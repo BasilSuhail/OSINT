@@ -127,3 +127,24 @@ class TestComputeCompositeBody:
         with _session_for(global_sqlite_db) as session:
             scores = session.execute(select(ScoreRow)).scalars().all()
             assert len(scores) == 1  # not duplicated
+
+
+class TestCeleryTaskDefault:
+    """The Celery entry point must not carry its own version literal (#584).
+
+    #574 bumped DEFAULT_METHOD_VERSION to v2.0 and updated the tests that had
+    hard-coded v1.0, but `app.tasks.compute_composite` kept a literal default and
+    passed it straight through. Every scheduled run then used v2.0 aggregation
+    while stamping the result v1.0, so the `scores` table holds rows from two
+    aggregation methods under one version label.
+    """
+
+    def test_task_default_tracks_the_constant(self):
+        import inspect
+
+        from app.composite.config import DEFAULT_METHOD_VERSION
+        from app.tasks import compute_composite
+
+        default = inspect.signature(compute_composite).parameters["method_version"].default
+
+        assert default == DEFAULT_METHOD_VERSION
