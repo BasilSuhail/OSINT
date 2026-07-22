@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.celery_app import app
 from app.cii.scoring import CII_METHOD_VERSION
+from app.composite.config import DEFAULT_METHOD_VERSION
 from app.db import session_scope
 from app.db_models import EventRow, IngestFailureRow, IngestHealthRow
 from app.persistence import upsert_events
@@ -152,8 +153,14 @@ def run_fetcher(name: str) -> dict[str, Any]:
     retry_jitter=True,
     max_retries=3,
 )
-def compute_composite(method_version: str = "v1.0") -> dict[str, Any]:
-    """Run the composite worker (read events, aggregate, normalise, score, upsert)."""
+def compute_composite(method_version: str = DEFAULT_METHOD_VERSION) -> dict[str, Any]:
+    """Run the composite worker (read events, aggregate, normalise, score, upsert).
+
+    The default reads the constant rather than carrying a literal. It was
+    "v1.0", and passed that through, so after #574 bumped the constant to v2.0
+    every scheduled run used v2.0 aggregation while stamping the result v1.0
+    (#584). The version now lives in exactly one place.
+    """
     if skipped := _skip_optional_heavy():
         return skipped
     from app.composite.task import _compute_composite_body
