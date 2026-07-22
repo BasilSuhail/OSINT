@@ -4,6 +4,17 @@
 
 The thesis is one specific claim: **a composite of three heterogeneous OSINT signal domains discriminates later instability events better than the best single-domain baseline.** The dashboard, the Pi, the maps — they are the system that lets that claim be measured.
 
+> **Status, plainly: the claim has been tested five times and failed every
+> time.** The composite does not discriminate better than the dumb baselines —
+> see §2.3. Separately, the *live* composite currently returns the constant
+> `0.5` for every country: retention holds 30 days while the rolling z-score
+> needs at least three monthly observations, so every domain z-scores to zero
+> and the index rescales to its neutral midpoint ([#586](https://github.com/BasilSuhail/OSINT/issues/586)).
+> The historical panel is unaffected — it is built by `app/composite/backfill.py`,
+> which fetches history directly rather than reading the rolling events table.
+> Ingestion, stories, corroboration, coverage bias and the brain are working and
+> are what this system currently does well.
+
 ## Chapters
 
 - [Chapter 1 — Switch it on](#chapter-1--switch-it-on)
@@ -81,11 +92,13 @@ green pulsing while working (with live progress), red while idle, red
 | `make disagreement` | score cross-country telling divergence → most contested stories |
 | `make indicator-ranking` | rank every dashboard indicator by measured predictive value |
 | `make onset-eval` | run the pre-registered onset evaluation (calm-window months only) |
+| `make within-eval` | run the pre-registered within-country evaluation — a country's own onset months vs its own calm months (#582) |
 | `make validator` | local-LLM claim extraction over window stories (needs Ollama) |
 | `make validator-audit` | emit the human-check sheet that gates validator use |
 | `make validator-agreement` | publish the model-vs-human agreement rate from the filled sheet |
 | `make brain-qa-eval` | compare Q&A candidate models locally and write the Phase C report |
 | `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
+| `python scripts/data_audit.py` | audit every source against its declared expectation — does severity parse, vary, and reach anything downstream (#580) |
 
 ### The data folder
 
@@ -236,9 +249,25 @@ We can't compute "truth", so we compute three honest proxies **per story**:
   `docs/onset-eval.md`, #380). Verdict: **coin flip there too** (0.496–0.526
   vs a 0.744 base rate) — even among countries calm for a full year, long-run
   relapse history dominates and the composite adds nothing measurable yet.
-  Both negatives are published; the per-indicator decomposition
-  (`make indicator-ranking`, #376) shows where recoverable signal lives —
-  the magnitude of the deviation, which composite v1.1 must not discard.
+- **The objection that both exams were the wrong instrument — tested, and it
+  does not rescue the composite.** Both scored a *single pooled AUROC*, while
+  the composite z-scores within country and so carries no cross-country level
+  by construction. With 133 of 238 panel countries never labelled and 10
+  labelled in ≥90% of months, a pooled metric is largely rewarded for telling
+  Norway from Syria — which is where the ~0.93 base rate comes from. So a
+  third exam was pre-registered (`docs/within-country-eval.md`, #582) asking
+  whether the composite ranks a country's **own** onset months above its
+  **own** calm months. Verdict: **negative** — best 0.531 at k=6, below the
+  declared 0.55 threshold, 95% CI [0.474, 0.582] containing 0.5. The
+  stratification demonstrably worked: the base rate collapsed from 0.93 pooled
+  to 0.30 within country. The composite simply had nothing hidden underneath.
+  **This settles it for the composite as constructed.**
+- All negatives are published. What it does *not* settle is whether the
+  *inputs* carry anything: `scripts/data_audit.py` (#580) shows severity is a
+  two- or three-level categorical across nearly every source, and #579 that the
+  FIRMS value is detection confidence rather than fire intensity — and
+  non-monotonic against it. "Bad construction" and "bad inputs" remain
+  indistinguishable from these results alone.
 
 ### 2.4 Status board
 
@@ -249,6 +278,8 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
 | Onset exam | the composite's second pre-registered test | ✅ ran — coin flip again, honestly published (#380) |
+| Within-country exam | the composite's third, on the axis it was built for | ✅ ran — negative, 0.531 vs a declared 0.55 (#582) |
+| Source data audit | does each source's data mean what it claims | ✅ live — 50 findings across 47 sources (#580) |
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
 | WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward exam (#374) |
 | WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 (#376) |
@@ -300,15 +331,21 @@ these forever: retention prunes continuously, so every figure below moves.
 
 | source | rows | span held |
 |---|---:|---|
-| nasa-firms | 536,097 | rolling ~2 weeks |
-| opensky-adsb | 58,032 | rolling, hourly country rollups |
-| gdelt | 48,662 | rolling ~30 days |
-| abuse-ch-urlhaus | 20,440 | rolling ~30 days |
-| 44 RSS feeds | ~15,000 | rolling ~2 weeks |
+| nasa-firms | 611,016 | rolling ~2 weeks |
+| gdelt | 59,705 | rolling ~30 days |
+| opensky-adsb | 59,652 | rolling, hourly country rollups |
+| abuse-ch-urlhaus | 20,471 | rolling ~30 days |
+| 44 RSS feeds | ~17,000 | rolling ~2 weeks |
 
-Derived on top: 14,944 stories · 20,681 story members · 6,744 embeddings ·
-4,451 gists · 53,421 scores · 582 journal predictions · 15,600 rows of GDELT
-daily volume across 93 ingested archive days.
+Derived on top: 16,824 stories · 23,512 story members · 8,633 embeddings ·
+5,562 gists · 57,510 scores · 582 journal predictions · 15,600 rows of GDELT
+daily volume across 93 ingested archive days. 774,090 events across 53 sources,
+774 MB.
+
+`scripts/data_audit.py` (#580) is the companion to this table: it reports not
+how *many* rows a source has but whether they mean anything — whether severity
+parses, varies, and reaches anything downstream. Its first run returned 50
+findings across 47 sources.
 
 **"Span held" is not "span covered."** The events table is a rolling window,
 not an archive. GDELT's eleven years of history exists as monthly aggregate
