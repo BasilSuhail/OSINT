@@ -9,9 +9,9 @@ import pytest
 import respx
 
 from app.models import Category
+from app.severity import news as news_severity
+from app.severity import scale
 from app.sources.rss_news_fetcher import (
-    NEWS_DEFAULT_SEVERITY,
-    NEWS_KEYWORD_SEVERITY,
     BBCUKNewsFetcher,
     BBCWorldNewsFetcher,
     DawnNewsFetcher,
@@ -21,7 +21,6 @@ from app.sources.rss_news_fetcher import (
     RssFeedConfig,
     RssNewsFetcher,
     _hash_event_id,
-    _severity_for,
     _strip_html,
     entry_to_event,
     parse_rss_body,
@@ -79,19 +78,31 @@ class TestHelpers:
         c = _hash_event_id("rss-bbc-uk", "https://example.com/b", "title")
         assert a != c
 
-    def test_severity_default(self) -> None:
-        assert (
-            _severity_for("local fundraiser opens", "people raise money") == NEWS_DEFAULT_SEVERITY
-        )
+    def test_routine_news_lands_low(self) -> None:
+        """The old rule gave this 0.35 — a third of the way up, for a fundraiser."""
+        verdict = news_severity.keyword_verdict("local fundraiser opens", "people raise money")
 
-    def test_severity_keyword_attack(self) -> None:
-        assert _severity_for("Police called after attack in town", "") == NEWS_KEYWORD_SEVERITY
+        assert verdict.value < 0.20
 
-    def test_severity_keyword_fire_in_summary(self) -> None:
-        assert (
-            _severity_for("Latest update", "A large fire broke out overnight")
-            == NEWS_KEYWORD_SEVERITY
-        )
+    def test_violence_without_confirmed_death_stays_below_the_lethal_floor(self) -> None:
+        verdict = news_severity.keyword_verdict("Police called after attack in town", "")
+
+        assert 0.40 <= verdict.value < scale.LETHAL_FLOOR
+
+    def test_confirmed_death_reaches_the_lethal_floor(self) -> None:
+        """The whole point of #591: this and a protest used to score identically."""
+        verdict = news_severity.keyword_verdict("Three killed in attack on town", "")
+
+        assert verdict.value >= scale.LETHAL_FLOOR
+
+    def test_a_protest_no_longer_scores_as_violence(self) -> None:
+        protest = news_severity.keyword_verdict("Workers strike over pay", "")
+        killing = news_severity.keyword_verdict("Fifty killed in market bombing", "")
+
+        assert protest.value < killing.value
+
+    def test_every_verdict_states_its_reason(self) -> None:
+        assert news_severity.keyword_verdict("Latest update", "A large fire overnight").rationale
 
 
 class TestEntryToEvent:
@@ -108,7 +119,10 @@ class TestEntryToEvent:
         assert event.source == "rss-test"
         assert event.source_event_id == "guid-001"
         assert event.category == Category.NEWS
-        assert event.severity == NEWS_KEYWORD_SEVERITY  # 'attack' keyword
+        # 'attack' with no confirmed death is violence, not lethal (#591).
+        assert event.severity == 0.50
+        assert event.payload["severity_band"] == "violence"
+        assert event.payload["severity_rationale"]
         assert event.country == "GB"
         assert event.occurred_at == datetime(2026, 6, 21, 10, 15, 0, tzinfo=UTC)
         assert event.payload["title"] == "Knife attack reported in Edinburgh"
@@ -172,7 +186,7 @@ class TestParseRssBody:
         # 3rd item has empty title → skipped
         assert len(events) == 2
         assert events[0].payload["title"] == "Knife attack reported in Edinburgh"
-        assert events[0].severity == NEWS_KEYWORD_SEVERITY
+        assert events[0].severity == 0.50  # attack, no confirmed death (#591)
 
     def test_empty_body(self) -> None:
         assert parse_rss_body("", config=CFG, fetched_at=datetime.now(UTC)) == []

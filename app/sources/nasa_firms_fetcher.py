@@ -22,6 +22,7 @@ import httpx
 from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.settings import settings
+from app.severity import scale
 from app.sources.base import Fetcher
 
 FIRMS_URL_TEMPLATE: Final[str] = (
@@ -107,6 +108,22 @@ def row_to_event(row: dict[str, str], *, fetched_at: datetime) -> Event | None:
         return None
 
     severity = confidence_to_severity(confidence_raw)
+    # Deterministic reason (#591). Stated bluntly because it is the honest
+    # description: this is detection confidence, not fire intensity. #579
+    # argues it is the wrong quantity outright — FRP is the intensity measure
+    # and runs non-monotonic to confidence.
+    verdict = (
+        scale.Verdict(
+            value=severity,
+            rationale=(
+                f"VIIRS detection confidence {confidence_raw!r} — "
+                f"instrument certainty that this pixel is fire, NOT fire intensity (#579)"
+            ),
+            method="firms-confidence-v1",
+        )
+        if severity is not None
+        else None
+    )
 
     source_event_id = hash_event_id(lat_raw, lon_raw, acq_date, acq_time, satellite)
 
@@ -116,6 +133,7 @@ def row_to_event(row: dict[str, str], *, fetched_at: datetime) -> Event | None:
         "satellite": satellite,
         "instrument": row.get("instrument"),
         "confidence_raw": confidence_raw,
+        **(verdict.as_payload() if verdict is not None else {}),
         "brightness": row.get("brightness"),
         "bright_t31": row.get("bright_t31"),
         "frp": row.get("frp"),

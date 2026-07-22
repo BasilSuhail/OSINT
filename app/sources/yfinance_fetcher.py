@@ -19,6 +19,7 @@ import pandas as pd
 import yfinance as yf
 
 from app.models import Category, Event
+from app.severity import scale
 from app.sources.base import Fetcher
 
 #: Country ISO 3166-1 alpha-2 → ETF ticker. ETFs picked because they trade on
@@ -77,6 +78,14 @@ def _compute_events(
         close = float(close_raw)
         dd = float(dd_raw)
         severity = max(0.0, min(dd / SEVERITY_SATURATION_PCT, 1.0))
+        verdict = scale.Verdict(
+            value=severity,
+            rationale=(
+                f"{ticker} down {dd:.1f}% from its 30d rolling max, "
+                f"saturating at {SEVERITY_SATURATION_PCT:.0f}%"
+            ),
+            method="yfinance-drawdown-v1",
+        )
 
         occurred_at = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
         if occurred_at.tzinfo is None:
@@ -88,6 +97,7 @@ def _compute_events(
             "volume": float(df["Volume"].loc[ts]) if "Volume" in df.columns else 0.0,
             "rolling_max_30d": float(rolling_max.loc[ts]),
             "drawdown_pct": dd,
+            **verdict.as_payload(),
         }
 
         events.append(
