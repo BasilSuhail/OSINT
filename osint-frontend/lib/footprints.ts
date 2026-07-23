@@ -51,6 +51,29 @@ export function fireRadiusKm(areaHa: number): number {
   return Math.sqrt((areaHa * 0.01) / Math.PI)
 }
 
+// EONET reports an event's size as a structured magnitude rather than GDACS'
+// free text — wildfires in acres, sea ice in square nautical miles. Hectares
+// per unit, so the existing radius maths is reused unchanged.
+const HA_PER_AREA_UNIT: Record<string, number> = {
+  acres: 0.404686,
+  acre: 0.404686,
+  "nm^2": 342.99,
+  km2: 100,
+  "km^2": 100,
+  ha: 1,
+}
+
+/** Hectares from an EONET `magnitude_value` + `magnitude_unit` pair. Null when
+ *  the unit is not an area (storms report knots) or the value is unusable. */
+export function magnitudeAreaHa(
+  value: number | null | undefined,
+  unit: string | null | undefined,
+): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null
+  const factor = HA_PER_AREA_UNIT[String(unit ?? "").toLowerCase()]
+  return factor ? value * factor : null
+}
+
 export type FootprintBand = { mmi: number; color: string; radiusKm: number }
 
 // MMI band → ring colour (felt → destructive), green to red.

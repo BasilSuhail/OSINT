@@ -1,7 +1,7 @@
 // One source of truth: event -> { kind, color, icon, footprint }. Drives both the
 // map pin (icon + colour) and the synthesized footprint layer.
 import type { EventRow } from "./types"
-import { circlePolygon, fireRadiusKm, parseBurnedHa, quakeBands } from "./footprints"
+import { circlePolygon, fireRadiusKm, magnitudeAreaHa, parseBurnedHa, quakeBands } from "./footprints"
 
 /** Minimal GeoJSON feature for footprints (avoids a @types/geojson dependency —
  *  mirrors the local types in lib/geo.ts). Geometry is loose so it carries both
@@ -143,6 +143,17 @@ function cycloneWindRadiusKm(p: Record<string, unknown>, severity: unknown): num
   return severityRadiusKm(Number(severity ?? 0))
 }
 
+/** Area an event reports about itself, in hectares. EONET is the only source
+ *  that does this — a wildfire in acres, sea ice in square nautical miles — and
+ *  it ships single-Point geometry, so without this its fires drew nothing at
+ *  all (#612). */
+function reportedAreaHa(p: Record<string, unknown>): number | null {
+  return magnitudeAreaHa(
+    typeof p.magnitude_value === "number" ? p.magnitude_value : null,
+    typeof p.magnitude_unit === "string" ? p.magnitude_unit : null,
+  )
+}
+
 export function footprintFeatures(ev: EventRow, expanded = false): HazardFeature[] {
   const p = payload(ev)
   const kind = hazardKind(ev)
@@ -180,12 +191,14 @@ export function footprintFeatures(ev: EventRow, expanded = false): HazardFeature
   }
 
   if (kind === "WF") {
-    const ha = parseBurnedHa(typeof p.severity_raw === "string" ? p.severity_raw : null)
+    const ha = parseBurnedHa(typeof p.severity_raw === "string" ? p.severity_raw : null) ?? reportedAreaHa(p)
     if (!ha) return []
     return [poly(circlePolygon(lon, lat, fireRadiusKm(ha)), hazardColor(ev), 0.25)]
   }
 
-  // TC / FL / VO / other: a single severity-sized extent circle.
-  const r = severityRadiusKm(Number(ev.severity ?? 0))
+  // TC / FL / VO / other: the reported extent when there is one (EONET sea ice
+  // ships square nautical miles), else a severity-sized circle.
+  const areaHa = reportedAreaHa(p)
+  const r = areaHa ? fireRadiusKm(areaHa) : severityRadiusKm(Number(ev.severity ?? 0))
   return [poly(circlePolygon(lon, lat, r), hazardColor(ev), 0.15)]
 }
