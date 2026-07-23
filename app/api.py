@@ -665,20 +665,26 @@ def story_deep_read(story_id: int, session: Session = Depends(get_session)) -> d
         return {"analysis": None}
     blocs = deepread.deep_read_blocs(members, framing)
     prompt = deepread.build_deep_read_prompt(story.title, blocs)
+    #: Plain text, not format=json (#609): the deep read is long prose, and a
+    #: JSON wrapper truncated by num_predict is invalid JSON that raises on parse
+    #: — read as "offline". Mirrors brain_ask_stream; a capped answer is just
+    #: shorter valid prose.
     try:
-        raw = client.generate_json(
-            prompt,
-            model=settings.qa_model,
-            keep_alive="0",
-            num_predict=deepread.DEEP_READ_NUM_PREDICT,
+        chunks = list(
+            client.generate_text_stream(
+                prompt,
+                model=settings.qa_model,
+                keep_alive="0",
+                num_predict=deepread.DEEP_READ_NUM_PREDICT,
+            )
         )
     except Exception:
         return {"analysis": qa.BRAIN_OFFLINE_ANSWER}
-    text = raw.get("analysis") if isinstance(raw, dict) else None
-    if not (isinstance(text, str) and text.strip()):
+    text = "".join(chunks).strip()
+    if not text:
         return {"analysis": qa.BRAIN_NOT_WORKING_ANSWER}
     #: Same plain-text + paragraph shaping as the ask answers (#480/#484/#598).
-    return {"analysis": qa.reflow_paragraphs(qa.strip_markdown(text.strip()))}
+    return {"analysis": qa.reflow_paragraphs(qa.strip_markdown(text))}
 
 
 @app.get("/disagreement/top")
