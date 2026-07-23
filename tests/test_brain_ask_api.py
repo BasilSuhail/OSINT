@@ -346,9 +346,10 @@ def test_ask_uses_qa_model_and_evicts(monkeypatch):
     )
     captured = {}
 
-    def _generate(prompt, *, model=None, keep_alive=None):
+    def _generate(prompt, *, model=None, keep_alive=None, num_predict=None):
         captured["model"] = model
         captured["keep_alive"] = keep_alive
+        captured["num_predict"] = num_predict
         return {"answer": "No match."}
 
     monkeypatch.setattr(api.client, "generate_json", _generate)
@@ -377,9 +378,10 @@ def test_ask_stream_uses_qa_model_and_evicts(monkeypatch):
     )
     captured = {}
 
-    def _stream(prompt, *, model=None, keep_alive=None):
+    def _stream(prompt, *, model=None, keep_alive=None, num_predict=None):
         captured["model"] = model
         captured["keep_alive"] = keep_alive
+        captured["num_predict"] = num_predict
         yield "No match."
 
     monkeypatch.setattr(api.client, "generate_text_stream", _stream)

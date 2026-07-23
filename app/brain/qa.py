@@ -868,11 +868,55 @@ def build_qa_context(
     }
 
 
+#: Words/phrases that switch the answer from concise to ELI10-elaborate (#600).
+_ELABORATE_RE = re.compile(
+    r"\b(elaborat\w*|explain\w*|enhance\w*|expand\w*|"
+    r"break (it|this|that) down|breakdown|"
+    r"in (more )?detail|more detail|in depth|tell me more|go deeper|"
+    r"dumb (it|this|that) down|in simple terms|simpler|eli5)\b",
+    re.IGNORECASE,
+)
+
+#: Token cap for elaborate answers — long enough for the three-part breakdown
+#: without letting a slow 1.5B model run away (#600). Concise answers keep the
+#: model's own default (no cap threaded).
+ELABORATE_NUM_PREDICT: int = 768
+
+#: The override block appended in elaborate mode: it countermands the brevity
+#: rules above it and pins the ELI10 structure with a fact/inference boundary.
+_ELABORATE_DIRECTIVE = (
+    "ELABORATE MODE — the reader asked you to explain or go deeper, so the "
+    "brevity rules above are OVERRIDDEN for this answer:\n"
+    "- Explain like you are talking to a sharp 10-year-old: plain words, short "
+    "sentences, define anything technical. Be thorough, not brief.\n"
+    "- Cover these three parts, each in its own short paragraph and in this "
+    "order: (1) WHAT HAPPENED — the event in simple terms, cited [n]; (2) WHY "
+    "IT MATTERS — who is involved and what is at stake, cited [n]; (3) WHAT "
+    "COULD COME NEXT.\n"
+    "- Parts 1 and 2 stay strictly grounded in the context: invent no facts, "
+    "cite the stories. Part 3 is YOUR OWN reasoning, not reporting — open it "
+    "literally with 'What could come next (my read, not reported):', state it "
+    "as possibility not fact, and put no [n] citations in it.\n"
+    "- If the reader is asking you to elaborate on your previous answer, build "
+    "on it and go further — add detail, background, and consequences — never "
+    "just restate it.\n\n"
+)
+
+
+def is_elaborate_request(question: str | None) -> bool:
+    """Did the reader ask for a longer, explain-it-to-me answer? (#600)"""
+    return bool(question and _ELABORATE_RE.search(question))
+
+
 def build_qa_prompt(
     qa_context: dict[str, Any],
     question: str,
     history: list[dict[str, Any]] | None = None,
+    *,
+    elaborate: bool = False,
 ) -> str:
+    directive = _ELABORATE_DIRECTIVE if elaborate else ""
+    answer_desc = "thorough, in-depth" if elaborate else "short"
     return (
         "You are the Q&A brain of an OSINT early-warning system. Answer the user's "
         "question using ONLY the JSON context below. The context includes a numbered "
@@ -963,23 +1007,31 @@ def build_qa_prompt(
         "conclusion.\n"
         "- If the context cannot answer part of the question, say what is not "
         "known. Never guess.\n\n"
-        'Return a JSON object with exactly one key: "answer" (a short plain-English '
-        "string).\n\n"
+        f"{directive}"
+        f'Return a JSON object with exactly one key: "answer" (a {answer_desc} '
+        "plain-English string).\n\n"
         f"{_conversation_block(history)}"
         f"CONTEXT:\n{json.dumps(qa_context, ensure_ascii=False)}\n\n"
         f"QUESTION: {question}"
     )
 
 
+#: The JSON-return instruction, whatever the length descriptor inside it (#600).
+_RETURN_JSON_RE = re.compile(r'Return a JSON object with exactly one key: "answer" \([^)]*\)\.\n\n')
+
+
 def build_qa_text_prompt(
     qa_context: dict[str, Any],
     question: str,
     history: list[dict[str, Any]] | None = None,
+    *,
+    elaborate: bool = False,
 ) -> str:
-    return build_qa_prompt(qa_context, question, history=history).replace(
-        'Return a JSON object with exactly one key: "answer" (a short plain-English string).\n\n',
+    return _RETURN_JSON_RE.sub(
         "Return only the final plain-English answer text. Do not wrap it in JSON. "
         "Do not include markdown.\n\n",
+        build_qa_prompt(qa_context, question, history=history, elaborate=elaborate),
+        count=1,
     )
 
 

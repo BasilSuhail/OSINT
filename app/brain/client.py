@@ -67,8 +67,19 @@ def _warn_if_oversized(prompt: str, model: str) -> None:
         )
 
 
+def _gen_options(num_predict: int | None) -> dict[str, Any]:
+    options: dict[str, Any] = {"temperature": 0, "num_ctx": _NUM_CTX}
+    if num_predict is not None:
+        options["num_predict"] = num_predict
+    return options
+
+
 def generate_json(
-    prompt: str, *, model: str | None = None, keep_alive: str | None = None
+    prompt: str,
+    *,
+    model: str | None = None,
+    keep_alive: str | None = None,
+    num_predict: int | None = None,
 ) -> dict[str, Any]:
     """One prompt → parsed JSON dict. Raises on HTTP or JSON failure."""
     _warn_if_oversized(prompt, model or settings.brain_model)
@@ -81,7 +92,7 @@ def generate_json(
             "stream": False,
             "think": False,
             "keep_alive": keep_alive or settings.brain_keep_alive,
-            "options": {"temperature": 0, "num_ctx": _NUM_CTX},
+            "options": _gen_options(num_predict),
         },
         timeout=_TIMEOUT_S,
     )
@@ -90,7 +101,11 @@ def generate_json(
 
 
 def generate_text_stream(
-    prompt: str, *, model: str | None = None, keep_alive: str | None = None
+    prompt: str,
+    *,
+    model: str | None = None,
+    keep_alive: str | None = None,
+    num_predict: int | None = None,
 ) -> Iterator[str]:
     """Yield Ollama response text chunks for a plain-text answer prompt."""
     _warn_if_oversized(prompt, model or settings.brain_model)
@@ -103,7 +118,7 @@ def generate_text_stream(
             "stream": True,
             "think": False,
             "keep_alive": keep_alive or settings.brain_keep_alive,
-            "options": {"temperature": 0, "num_ctx": _NUM_CTX},
+            "options": _gen_options(num_predict),
         },
         timeout=_TIMEOUT_S,
     ) as response:
