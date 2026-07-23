@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 from typing import Any, Final
 
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -51,7 +52,8 @@ def _event_to_row(event: Event) -> dict[str, Any]:
 #: every fetch while a hazard is active; without refreshing these, an ongoing
 #: wildfire / flood / cyclone would freeze at its first-seen state and eventually
 #: fall out of the dashboard's live window. Identity columns (source,
-#: source_event_id, category) are never updated.
+#: source_event_id, category) are never updated. `payload` is handled separately
+#: — see `_payload_refresh()`.
 _REFRESH_COLS: Final = (
     "occurred_at",
     "fetched_at",
@@ -61,8 +63,23 @@ _REFRESH_COLS: Final = (
     "country",
     "lat",
     "lon",
-    "payload",
 )
+
+
+def _payload_refresh(excluded: Any, dialect: str) -> Any:
+    """Merge the incoming payload over the stored one instead of replacing it.
+
+    Everything we add ourselves after ingestion lives in `payload`: footprint
+    geometry, sentiment, NER, geo enrichment. Replacing the column on refresh
+    wiped all of it every time a snapshot feed re-published an active event —
+    GDACS does that every 15 minutes, which is why long-running hazards
+    (droughts above all) never kept their real polygon and fell back to the
+    synthesized circle on the map (#604). A shallow merge keeps the enrichment
+    and still lets upstream win on any key it actually sends.
+    """
+    if dialect == "postgresql":
+        return EventRow.payload.op("||")(excluded.payload)
+    return func.json_patch(EventRow.payload, excluded.payload)
 
 
 def _dedup_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -95,9 +112,11 @@ def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) ->
             f"upsert_events does not support dialect {dialect!r}; add a branch above"
         )
 
+    refreshed: dict[str, Any] = {col: base.excluded[col] for col in _REFRESH_COLS}
+    refreshed["payload"] = _payload_refresh(base.excluded, dialect)
     stmt = base.on_conflict_do_update(
         index_elements=["source", "source_event_id"],
-        set_={col: base.excluded[col] for col in _REFRESH_COLS},
+        set_=refreshed,
     )
 
     # RETURNING yields every affected row (inserted + updated). Both Postgres and
