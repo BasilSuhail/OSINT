@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.brain import client, context, enrich, gate, qa
+from app.brain import client, context, deepread, enrich, gate, qa
 from app.composite import degeneracy as composite_degeneracy
 from app.db import get_session_factory
 from app.db_models import (
@@ -542,15 +542,20 @@ def story_members(
     ]
 
 
-@app.get("/stories/{story_id}/detail")
-def story_detail(
-    story_id: int,
-    session: Session = Depends(get_session),
-) -> dict:
-    """The story pop-out card (#448): everything known about one story in one
-    read — gist, corroboration evidence, contested-telling groups, sensor
-    verdicts, and every member article with outlet + origin country."""
-    from app.db_models import StoryDisagreementRow, StoryMemberRow
+def _story_or_404(session: Session, story_id: int) -> StoryRow:
+    story = session.get(StoryRow, story_id)
+    if story is None:
+        raise HTTPException(status_code=404, detail="story not found")
+    return story
+
+
+def _story_members(session: Session, story_id: int) -> list[dict]:
+    """Every member article of a story, with outlet + origin country (#448).
+
+    Shared by the detail card and the deep read (#607) so both see the same
+    member shape — title, summary, sentiment label, origin bloc, outlet class.
+    """
+    from app.db_models import StoryMemberRow
     from app.sources.rss_registry import (
         content_owner_map,
         load_feed_configs,
@@ -558,34 +563,11 @@ def story_detail(
         outlet_country_map,
     )
 
-    story = session.get(StoryRow, story_id)
-    if story is None:
-        raise HTTPException(status_code=404, detail="story not found")
-
-    corro = session.execute(
-        select(StoryCorroborationRow).where(StoryCorroborationRow.story_id == story_id)
-    ).scalar_one_or_none()
-    disagreement = session.execute(
-        select(StoryDisagreementRow).where(StoryDisagreementRow.story_id == story_id)
-    ).scalar_one_or_none()
-    gist = session.execute(
-        select(StoryGistRow)
-        .where(StoryGistRow.story_id == story_id)
-        .order_by(StoryGistRow.created_at.desc())
-        .limit(1)
-    ).scalar_one_or_none()
-    checks = {
-        c.claim_type: c.verdict
-        for c in session.execute(
-            select(StorySensorCheckRow).where(StorySensorCheckRow.story_id == story_id)
-        ).scalars()
-    }
-
     owners = content_owner_map()
     origins = outlet_country_map()
     classes = outlet_class_map()
     pretty = {cfg.source: cfg.pretty_name for cfg in load_feed_configs()}
-    members = [
+    return [
         {
             "title": (event.payload or {}).get("title") or "",
             "source": event.source,
@@ -607,6 +589,40 @@ def story_detail(
             .order_by(EventRow.occurred_at)
         ).all()
     ]
+
+
+@app.get("/stories/{story_id}/detail")
+def story_detail(
+    story_id: int,
+    session: Session = Depends(get_session),
+) -> dict:
+    """The story pop-out card (#448): everything known about one story in one
+    read — gist, corroboration evidence, contested-telling groups, sensor
+    verdicts, and every member article with outlet + origin country."""
+    from app.db_models import StoryDisagreementRow
+
+    story = _story_or_404(session, story_id)
+
+    corro = session.execute(
+        select(StoryCorroborationRow).where(StoryCorroborationRow.story_id == story_id)
+    ).scalar_one_or_none()
+    disagreement = session.execute(
+        select(StoryDisagreementRow).where(StoryDisagreementRow.story_id == story_id)
+    ).scalar_one_or_none()
+    gist = session.execute(
+        select(StoryGistRow)
+        .where(StoryGistRow.story_id == story_id)
+        .order_by(StoryGistRow.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    checks = {
+        c.claim_type: c.verdict
+        for c in session.execute(
+            select(StorySensorCheckRow).where(StorySensorCheckRow.story_id == story_id)
+        ).scalars()
+    }
+
+    members = _story_members(session, story_id)
 
     return {
         "id": str(story.id),
@@ -630,6 +646,39 @@ def story_detail(
         "framing": _framing_analysis(members) if disagreement else None,
         "members": members,
     }
+
+
+@app.post("/stories/{story_id}/deep-read")
+def story_deep_read(story_id: int, session: Session = Depends(get_session)) -> dict:
+    """The reasoned WHY behind a contested telling (#607), on demand.
+
+    User-initiated, so it is RAM-gated like /brain/ask and returns a typed
+    message at HTTP 200 on every failure. `analysis` is null when the story is
+    not contested (one bloc) — the frontend only offers the button when the
+    deterministic framing (#605) is present, so that path is a guard."""
+    story = _story_or_404(session, story_id)
+    if gate.ram_free_mb() < settings.qa_min_free_mb:
+        return {"analysis": qa.BRAIN_BUSY_ANSWER}
+    members = _story_members(session, story_id)
+    framing = _framing_analysis(members)
+    if framing is None:
+        return {"analysis": None}
+    blocs = deepread.deep_read_blocs(members, framing)
+    prompt = deepread.build_deep_read_prompt(story.title, blocs)
+    try:
+        raw = client.generate_json(
+            prompt,
+            model=settings.qa_model,
+            keep_alive="0",
+            num_predict=deepread.DEEP_READ_NUM_PREDICT,
+        )
+    except Exception:
+        return {"analysis": qa.BRAIN_OFFLINE_ANSWER}
+    text = raw.get("analysis") if isinstance(raw, dict) else None
+    if not (isinstance(text, str) and text.strip()):
+        return {"analysis": qa.BRAIN_NOT_WORKING_ANSWER}
+    #: Same plain-text + paragraph shaping as the ask answers (#480/#484/#598).
+    return {"analysis": qa.reflow_paragraphs(qa.strip_markdown(text.strip()))}
 
 
 @app.get("/disagreement/top")
