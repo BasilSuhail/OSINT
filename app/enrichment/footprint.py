@@ -21,9 +21,11 @@ is best-effort and must never break ingestion.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Final
 
 import httpx
+from shapely.geometry import mapping, shape
 
 USGS_DETAIL_URL: Final[str] = (
     "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid={usgs_id}&format=geojson"
@@ -48,9 +50,94 @@ _DEFAULT_COLOR: Final[str] = "#f97316"
 _POLYGON_FILL_OPACITY: Final[float] = 0.25
 
 
+#: Serialized size a single event's footprint may occupy (issue #613). The map
+#: ships the whole payload in its list response and polls up to 2 000 events, so
+#: a 2 MB GDACS flood boundary is paid for on every refresh. 50 kB still holds
+#: several thousand vertices — far more than is visible at the zoom levels a
+#: world map is used at.
+FOOTPRINT_BYTE_BUDGET: Final[int] = 50_000
+#: Douglas-Peucker tolerances in degrees, tried in order until the collection
+#: fits. 0.005° ≈ 550 m; the last resort ≈ 28 km, which only the very largest
+#: admin-boundary footprints ever reach.
+_SIMPLIFY_TOLERANCES: Final[tuple[float, ...]] = (0.005, 0.01, 0.02, 0.05, 0.1, 0.25)
+
+
 # --------------------------------------------------------------------------- #
 # Pure parsing / normalisation                                                #
 # --------------------------------------------------------------------------- #
+
+
+def geojson_bytes(fc: dict[str, Any]) -> int:
+    """Serialized size of a FeatureCollection, as the API would send it."""
+    return len(json.dumps(fc, separators=(",", ":")))
+
+
+def _keep_multi(simplified: dict[str, Any], original: dict[str, Any]) -> dict[str, Any]:
+    """Restore a single-part Multi* geometry that shapely collapsed.
+
+    Simplifying a MultiLineString/MultiPolygon that holds one part hands back
+    the bare part. Harmless to draw, but the stored geometry should keep the
+    type it arrived with.
+    """
+    was_multi = str(original.get("type", "")).startswith("Multi")
+    if was_multi and not str(simplified.get("type", "")).startswith("Multi"):
+        return {"type": original["type"], "coordinates": [simplified["coordinates"]]}
+    return simplified
+
+
+def _simplified(fc: dict[str, Any], tolerance: float) -> dict[str, Any]:
+    """Douglas-Peucker every feature, keeping the original when it cannot help.
+
+    A feature that fails to simplify (invalid ring, degenerate geometry) or that
+    simplifies away to nothing is kept as-is — an oversized footprint still
+    beats a missing one.
+    """
+    out: list[dict[str, Any]] = []
+    for ft in fc.get("features", []):
+        geometry = ft.get("geometry")
+        try:
+            simple = shape(geometry).simplify(tolerance, preserve_topology=True)
+            if not simple.is_empty:
+                geometry = _keep_multi(json.loads(json.dumps(mapping(simple))), geometry)
+        except Exception:  # geometry libraries raise broadly; keep the original shape
+            pass
+        out.append({**ft, "geometry": geometry})
+    return {**fc, "features": out}
+
+
+def fit_to_budget(
+    fc: dict[str, Any] | None, *, budget: int = FOOTPRINT_BYTE_BUDGET
+) -> dict[str, Any] | None:
+    """Simplify a footprint collection just enough to fit `budget` bytes.
+
+    Anything already under budget is returned untouched, so the ordinary small
+    footprint keeps every vertex. Only the outliers — GDACS flood and shake
+    boundaries traced along administrative borders, up to 2 MB each — get
+    coarsened, and only as far as needed.
+    """
+    if fc is None or geojson_bytes(fc) <= budget:
+        return fc
+    best = fc
+    for tolerance in _SIMPLIFY_TOLERANCES:
+        best = _simplified(fc, tolerance)
+        if geojson_bytes(best) <= budget:
+            return best
+    return _drop_heaviest(best, budget)
+
+
+def _drop_heaviest(fc: dict[str, Any], budget: int) -> dict[str, Any]:
+    """Last resort: shed whole features, heaviest first, until the rest fit.
+
+    Simplification cannot help a GDACS shake band made of thousands of separate
+    grid cells — the vertices are already minimal, the part count is the cost.
+    The heaviest feature in such a collection is the weakest, widest band; the
+    inner bands that carry the actual signal are small and survive. At least one
+    feature is always kept.
+    """
+    features = sorted(fc.get("features", []), key=lambda f: -len(json.dumps(f.get("geometry"))))
+    while len(features) > 1 and geojson_bytes({**fc, "features": features}) > budget:
+        features = features[1:]
+    return {**fc, "features": features}
 
 
 def usgs_mmi_contour_url(detail: dict[str, Any]) -> str | None:
@@ -99,7 +186,7 @@ def normalize_usgs_footprint(fc: dict[str, Any]) -> dict[str, Any] | None:
         )
     if not out:
         return None
-    return {"type": "FeatureCollection", "features": out}
+    return fit_to_budget({"type": "FeatureCollection", "features": out})
 
 
 def gdacs_footprint_url(event_type: str, event_id: str, episode: int = 1) -> str:
@@ -145,7 +232,7 @@ def normalize_gdacs_footprint(fc: dict[str, Any], color: str) -> dict[str, Any] 
         )
     if not out:
         return None
-    return {"type": "FeatureCollection", "features": out}
+    return fit_to_budget({"type": "FeatureCollection", "features": out})
 
 
 def alert_color(alert_level: str | None) -> str:
