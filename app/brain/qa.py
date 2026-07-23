@@ -1123,6 +1123,33 @@ def strip_markdown(answer: str) -> str:
     return "\n".join(lines)
 
 
+_PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n")
+
+#: Sentences per paragraph when the model gives none (#598) — short enough to
+#: read, long enough not to feel choppy.
+_REFLOW_MAX_SENTENCES = 3
+
+
+def reflow_paragraphs(answer: str, max_sentences: int = _REFLOW_MAX_SENTENCES) -> str:
+    """Guarantee the paragraph breaks the model omits (#598).
+
+    #484 preserved blank lines the model wrote; the qwen 1.5B model routinely
+    writes none, so the whole answer arrives as one block — the wall of text in
+    the transcript. Regroup every paragraph longer than max_sentences into
+    chunks of that many sentences, keeping any breaks the model did write.
+    Single-sentence answers (refusals, canned messages) pass through untouched.
+    """
+    out: list[str] = []
+    for para in _PARAGRAPH_SPLIT_RE.split(answer.strip()):
+        para = para.strip()
+        if not para:
+            continue
+        sentences = _SENTENCE_RE.split(para)
+        for i in range(0, len(sentences), max_sentences):
+            out.append(" ".join(sentences[i : i + max_sentences]))
+    return "\n\n".join(out)
+
+
 def trim_incomplete_tail(answer: str) -> str:
     """Drop a truncated trailing fragment (#474).
 

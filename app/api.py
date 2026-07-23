@@ -888,7 +888,9 @@ def _checked_ask_answer(
             answer = qa.strip_bad_citations(repaired_answer, n_sources)
     if not qa.citation_compliant(answer, n_sources):
         answer = qa.build_no_evidence_answer(stories)
-    return answer
+    #: Last step (#598): break the model's wall of text into short paragraphs.
+    #: Runs after citation repair so appended [n] stays inside its paragraph.
+    return qa.reflow_paragraphs(answer)
 
 
 def _ask_payload(

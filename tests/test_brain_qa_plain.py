@@ -42,6 +42,29 @@ def test_strip_markdown_leaves_plain_text_untouched():
     assert qa.strip_markdown("2 * 3 is 6.") == "2 * 3 is 6."
 
 
+def test_reflow_splits_single_block_into_short_paragraphs():
+    # #598: the 1.5B model returns one block with no breaks — regroup it so the
+    # reader gets short paragraphs instead of a wall of text.
+    raw = "One [1]. Two. Three. Four."
+    assert qa.reflow_paragraphs(raw) == "One [1]. Two. Three.\n\nFour."
+
+
+def test_reflow_keeps_breaks_the_model_did_write():
+    raw = "A. B.\n\nC. D."
+    assert qa.reflow_paragraphs(raw) == "A. B.\n\nC. D."
+
+
+def test_reflow_leaves_short_answer_untouched():
+    assert qa.reflow_paragraphs("Just one sentence.") == "Just one sentence."
+    assert qa.reflow_paragraphs(qa.REFUSAL_ANSWER) == qa.REFUSAL_ANSWER
+
+
+def test_reflow_regroups_an_overlong_model_paragraph():
+    # Model wrote one break but the first block is still four sentences.
+    raw = "A. B. C. D.\n\nE."
+    assert qa.reflow_paragraphs(raw) == "A. B. C.\n\nD.\n\nE."
+
+
 def test_prompt_bans_markdown_and_input_talk():
     prompt = qa.build_qa_prompt({"stories": []}, "q")
     assert "NEVER describe or mention your input in ANY words" in prompt
@@ -69,3 +92,16 @@ def test_checked_answer_strips_markdown(monkeypatch):
         n_sources=1,
     )
     assert out == "Yes. Strikes resumed at the border [1]."
+
+
+def test_checked_answer_reflows_a_wall(monkeypatch):
+    # #598: a cited four-sentence block comes back as short paragraphs.
+    monkeypatch.setattr(api.client, "generate_json", lambda *a, **k: None)
+    out = api._checked_ask_answer(
+        answer="First point [1]. Second point. Third point. Fourth point.",
+        qa_context={"stories": []},
+        question="q",
+        stories=[{"n": 1, "story_id": 5, "title": "t", "gist": None}],
+        n_sources=1,
+    )
+    assert out == "First point [1]. Second point. Third point.\n\nFourth point."
