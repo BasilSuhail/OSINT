@@ -151,7 +151,17 @@ function sourceSpans(items: BrainSource[]) {
 const CHIP_BASE =
   "mx-0.5 align-baseline text-[11px] underline decoration-dotted underline-offset-2"
 
-function ChatEntry({ m, onOpenStory }: { m: ChatMessage; onOpenStory: (id: string) => void }) {
+function ChatEntry({
+  m,
+  onOpenStory,
+  onElaborate,
+}: {
+  m: ChatMessage
+  onOpenStory: (id: string) => void
+  //: Present only on the latest finalized answer (#602): tapping it asks the
+  //: brain to elaborate on that answer — a shortcut for typing "elaborate".
+  onElaborate?: () => void
+}) {
   //: Which (thinking) chip's analysis panel is open, by claim index (#476).
   const [openThinking, setOpenThinking] = useState<number | null>(null)
   const storyFor = (n: number) =>
@@ -238,6 +248,14 @@ function ChatEntry({ m, onOpenStory }: { m: ChatMessage; onOpenStory: (id: strin
           closest matches — not evidence: {sourceSpans(m.closest)}
         </p>
       ) : null}
+      {onElaborate ? (
+        <button
+          onClick={onElaborate}
+          className="mt-1.5 rounded-md border border-neutral-800 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-neutral-500 hover:text-neutral-300"
+        >
+          elaborate ⌄
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -275,6 +293,14 @@ export function SituationPanel() {
     setQuestion("")
     pinnedRef.current = true
     void ask(q)
+  }
+
+  //: The chip's shortcut (#602): the "elaborate" trigger word is what the
+  //: backend detects to switch into long-answer mode — no special API needed.
+  const elaborate = () => {
+    if (pending) return
+    pinnedRef.current = true
+    void ask("elaborate on that")
   }
 
   const narrative = data?.payload ?? null
@@ -361,7 +387,15 @@ export function SituationPanel() {
             </div>
             <div className="divide-y divide-neutral-800/60">
               {messages.map((m, i) => (
-                <ChatEntry key={i} m={m} onOpenStory={openStory} />
+                <ChatEntry
+                  key={i}
+                  m={m}
+                  onOpenStory={openStory}
+                  //: Only the latest, finalized answer gets the chip — retrieval
+                  //: anchors on the most recent exchange, so elaborating an older
+                  //: one would drift topic (#602).
+                  onElaborate={i === messages.length - 1 && !m.draft && !pending ? elaborate : undefined}
+                />
               ))}
             </div>
           </section>
