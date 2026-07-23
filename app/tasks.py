@@ -11,12 +11,12 @@ going through Celery's broker.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
 from celery.schedules import crontab
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.celery_app import app
@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 
 #: Hazard sources whose real footprint geometry we enrich (issue #205).
 _FOOTPRINT_SOURCES: tuple[str, ...] = ("usgs-quake", "gdacs", "eonet")
+#: How long a row that came back without geometry rests before we ask upstream
+#: again (issue #604). Most quakes never get a ShakeMap; they are also the
+#: newest hazard rows, so without a cooldown they refill the scan window every
+#: run and the GDACS backlog behind them (droughts, floods) is never reached.
+#: A day is short enough that a late-published ShakeMap still lands.
+_FOOTPRINT_RETRY_AFTER: timedelta = timedelta(hours=24)
 
 
 def _skip_optional_heavy() -> dict[str, Any] | None:
@@ -343,12 +349,24 @@ def _enrich_footprints_body(
     and writes it into the payload. Best-effort: any single fetch failing leaves
     that row untouched for the next run. ``upsert_events`` never updates existing
     rows (ON CONFLICT DO NOTHING), so this is the only path that mutates them.
+
+    The candidate filter lives in SQL (issue #604): the scan budget must be
+    spent on rows that actually need geometry, and a row that came back empty
+    rests for ``_FOOTPRINT_RETRY_AFTER`` before being asked again. Filtering in
+    Python instead let the ever-refreshing, mostly ShakeMap-less USGS quakes
+    occupy the whole window, so slower-moving GDACS hazards — droughts above
+    all — kept falling back to the synthesized circle on the map.
     """
-    from app.enrichment.footprint import USER_AGENT, footprint_for_event
+    from app.enrichment import footprint as footprint_mod
 
     owns_client = client is None
     if client is None:
-        client = httpx.Client(timeout=30.0, headers={"User-Agent": USER_AGENT})
+        client = httpx.Client(timeout=30.0, headers={"User-Agent": footprint_mod.USER_AGENT})
+    # `.as_string()` (-> `->>` on Postgres, JSON_EXTRACT on SQLite) is the one
+    # form where a missing key reads back as SQL NULL on both dialects.
+    geojson_at = EventRow.payload["footprint_geojson"].as_string()
+    checked_at = EventRow.payload["footprint_checked_at"].as_string()
+    retry_before = (datetime.now(UTC) - _FOOTPRINT_RETRY_AFTER).isoformat()
     scanned = 0
     enriched = 0
     try:
@@ -356,20 +374,24 @@ def _enrich_footprints_body(
             stmt = (
                 select(EventRow)
                 .where(EventRow.source.in_(_FOOTPRINT_SOURCES))
+                .where(geojson_at.is_(None))
+                .where(or_(checked_at.is_(None), checked_at < retry_before))
                 .order_by(EventRow.occurred_at.desc())
                 .limit(limit)
             )
             for row in session.execute(stmt).scalars():
                 payload = dict(row.payload or {})
-                if "footprint_geojson" in payload:
-                    continue
                 scanned += 1
-                geojson = footprint_for_event(row.source, payload, client=client)
+                geojson = footprint_mod.footprint_for_event(row.source, payload, client=client)
                 if geojson is None:
-                    continue
-                payload["footprint_geojson"] = geojson
+                    # Stamp the attempt so this row rests instead of crowding
+                    # out the backlog on the next run.
+                    payload["footprint_checked_at"] = datetime.now(UTC).isoformat()
+                else:
+                    payload["footprint_geojson"] = geojson
+                    payload.pop("footprint_checked_at", None)
+                    enriched += 1
                 row.payload = payload  # reassign so SQLAlchemy flags the jsonb dirty
-                enriched += 1
     finally:
         if owns_client:
             client.close()

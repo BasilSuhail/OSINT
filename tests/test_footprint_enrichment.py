@@ -6,6 +6,9 @@ exercised against monkeypatched clients where they add logic.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
+from app.db_models import EventRow
 from app.enrichment.footprint import (
     alert_color,
     eonet_track_geojson,
@@ -273,3 +276,104 @@ def test_footprint_for_event_gdacs_prefers_geometry_url() -> None:
     )
     assert out is not None
     assert out["features"][0]["properties"]["color"] == "#f97316"
+
+
+# --------------------------------------------------------------------------- #
+# Backlog scan (issue #604)                                                    #
+# --------------------------------------------------------------------------- #
+
+
+def _hazard_row(source: str, source_event_id: str, *, minutes_ago: int, payload: dict) -> EventRow:
+    return EventRow(
+        source=source,
+        source_event_id=source_event_id,
+        occurred_at=datetime.now(UTC) - timedelta(minutes=minutes_ago),
+        fetched_at=datetime.now(UTC),
+        category="hazard",
+        severity=0.6,
+        keywords=[],
+        payload=payload,
+    )
+
+
+def _scope(session):
+    """A session_scope stand-in that hands back the test's session."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm():
+        yield session
+        session.flush()
+
+    return _cm
+
+
+def _run_body(monkeypatch, session, *, limit: int, fetched: dict[str, dict | None]):
+    from app import tasks
+
+    monkeypatch.setattr(tasks, "session_scope", _scope(session))
+    asked: list[str] = []
+
+    def _fake_footprint_for_event(source, payload, *, client):
+        key = payload.get("usgs_id") or payload.get("gdacs_event_id") or ""
+        asked.append(key)
+        return fetched.get(key)
+
+    monkeypatch.setattr("app.enrichment.footprint.footprint_for_event", _fake_footprint_for_event)
+    result = tasks._enrich_footprints_body(limit=limit, client=object())  # type: ignore[arg-type]
+    return asked, result
+
+
+def test_scan_skips_rows_that_already_have_geometry(monkeypatch, db_session) -> None:
+    # The old query took the newest N hazard rows outright, so already-enriched
+    # rows burned the budget and the backlog behind them never drained (#604).
+    db_session.add(
+        _hazard_row(
+            "gdacs",
+            "WF:1",
+            minutes_ago=1,
+            payload={"gdacs_event_id": "1", "footprint_geojson": {"features": [_polygon()]}},
+        )
+    )
+    db_session.add(_hazard_row("gdacs", "DR:2", minutes_ago=5, payload={"gdacs_event_id": "2"}))
+    db_session.flush()
+
+    asked, result = _run_body(
+        monkeypatch, db_session, limit=1, fetched={"2": {"features": [_polygon()]}}
+    )
+
+    assert asked == ["2"]
+    assert result["enriched"] == 1
+
+
+def test_a_footprintless_row_is_not_re_asked_every_run(monkeypatch, db_session) -> None:
+    # Most quakes never get a ShakeMap. Without a cooldown they are re-asked on
+    # every run and, being the newest rows, starve droughts/floods behind them.
+    db_session.add(_hazard_row("usgs-quake", "q1", minutes_ago=1, payload={"usgs_id": "q1"}))
+    db_session.add(_hazard_row("gdacs", "DR:2", minutes_ago=5, payload={"gdacs_event_id": "2"}))
+    db_session.flush()
+
+    first, _ = _run_body(monkeypatch, db_session, limit=1, fetched={})
+    assert first == ["q1"]
+
+    second, _ = _run_body(
+        monkeypatch, db_session, limit=1, fetched={"2": {"features": [_polygon()]}}
+    )
+    assert second == ["2"], "the empty-handed quake was re-asked instead of the drought"
+
+
+def test_a_stale_cooldown_is_retried(monkeypatch, db_session) -> None:
+    stale = (datetime.now(UTC) - timedelta(days=3)).isoformat()
+    db_session.add(
+        _hazard_row(
+            "usgs-quake",
+            "q1",
+            minutes_ago=1,
+            payload={"usgs_id": "q1", "footprint_checked_at": stale},
+        )
+    )
+    db_session.flush()
+
+    asked, _ = _run_body(monkeypatch, db_session, limit=5, fetched={})
+
+    assert asked == ["q1"], "a day-old ShakeMap check was never retried"

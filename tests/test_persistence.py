@@ -82,6 +82,40 @@ class TestUpsertEvents:
         assert len(rows) == 3  # no duplicate rows created
         assert all(r.severity == 0.9 for r in rows)  # mutable field updated
 
+    def test_refresh_keeps_locally_enriched_payload_keys(self, db_session: Session) -> None:
+        # A refresh used to overwrite payload wholesale, so every enrichment key
+        # we add ourselves (footprint geometry, sentiment, NER) was wiped on the
+        # next fetch. GDACS re-publishes an active hazard every 15 min, which is
+        # why long-running droughts never kept their real polygon (#604).
+        upsert_events([_make_event("SPY:1")], db_session)
+        db_session.commit()
+        row = db_session.execute(select(EventRow)).scalars().one()
+        row.payload = {**row.payload, "footprint_geojson": {"features": [1]}}
+        db_session.commit()
+
+        upsert_events([_make_event("SPY:1", severity=0.9)], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        assert row.payload["footprint_geojson"] == {"features": [1]}, "enrichment was wiped"
+        assert row.severity == 0.9, "upstream refresh no longer lands"
+
+    def test_refresh_lets_upstream_win_on_shared_keys(self, db_session: Session) -> None:
+        upsert_events([_make_event("SPY:1")], db_session)
+        db_session.commit()
+        row = db_session.execute(select(EventRow)).scalars().one()
+        row.payload = {**row.payload, "close": 1.0, "alert_level": "Green"}
+        db_session.commit()
+
+        upsert_events([_make_event("SPY:1")], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        assert row.payload["close"] == 500.0, "stale local value shadowed the upstream one"
+        assert row.payload["alert_level"] == "Green"
+
     def test_mixed_new_and_existing_all_affected(self, db_session: Session) -> None:
         original = [_make_event(f"SPY:{i}") for i in range(3)]
         upsert_events(original, db_session)
