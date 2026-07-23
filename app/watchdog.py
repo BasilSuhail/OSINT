@@ -24,7 +24,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.db_models import IngestHealthRow, NotificationRow
+from app.db_models import EventRow, IngestHealthRow, NotificationRow
 from app.settings import settings
 from app.sources.rss_registry import feed_cadence_map
 
@@ -103,9 +103,11 @@ def _pushover_send(message: str) -> None:
         logger.warning("watchdog: pushover send failed: %s", exc)
 
 
-def _persist_notification(session: Session, *, source: str, message: str, today: date) -> bool:
+def _persist_notification(
+    session: Session, *, source: str, message: str, today: date, kind: str = "stale"
+) -> bool:
     """Insert a notifications row; return True if a new row was inserted."""
-    dedup_key = f"watchdog:stale:{source}:{today.isoformat()}"
+    dedup_key = f"watchdog:{kind}:{source}:{today.isoformat()}"
     row = {
         "channel": "watchdog",
         "country": None,
@@ -168,4 +170,62 @@ def check_sources(session: Session, *, now: datetime | None = None) -> dict[str,
             _pushover_send(message)
             report[source]["alerted"] = True
 
+    return report
+
+
+#: Hazard footprint coverage watchdog (#617). Ingest health only proves a fetch
+#: succeeded — GDACS answered perfectly all through #604 while every refresh
+#: deleted the geometry the map needed. This watches the OUTPUT instead.
+FOOTPRINT_SOURCE: str = "gdacs"
+#: Rows younger than this have not been through the enrichment beat yet.
+FOOTPRINT_GRACE_MIN: int = 60
+#: Below this share of eligible rows carrying geometry, something is wrong:
+#: the refresh path, the GDACS geometry endpoint, or the enrichment task.
+FOOTPRINT_MIN_COVERAGE: float = 0.6
+#: Too few rows to conclude anything — right after a wipe, or a quiet feed.
+FOOTPRINT_MIN_SAMPLE: int = 20
+
+
+def check_footprint_coverage(session: Session, *, now: datetime | None = None) -> dict[str, object]:
+    """Flag a collapse in the share of hazards carrying real footprint geometry.
+
+    Eligible rows are GDACS hazards old enough to have been enriched and not
+    already stamped ``footprint_checked_at`` — that stamp means upstream has no
+    geometry for them, which is normal and must not drag the ratio down or the
+    alarm would ring forever.
+    """
+    now = now or datetime.now(UTC)
+    cutoff = now - timedelta(minutes=FOOTPRINT_GRACE_MIN)
+    payload = EventRow.payload
+    eligible_rows = (
+        select(payload["footprint_geojson"].as_string())
+        .where(EventRow.source == FOOTPRINT_SOURCE)
+        .where(EventRow.fetched_at <= cutoff)
+        .where(payload["footprint_checked_at"].as_string().is_(None))
+    )
+    geojson = [row[0] for row in session.execute(eligible_rows).all()]
+    eligible = len(geojson)
+    with_geometry = sum(1 for value in geojson if value is not None)
+    coverage = with_geometry / eligible if eligible else 1.0
+
+    report: dict[str, object] = {
+        "eligible": eligible,
+        "with_geometry": with_geometry,
+        "coverage": coverage,
+        "alerted": False,
+    }
+    if eligible < FOOTPRINT_MIN_SAMPLE or coverage >= FOOTPRINT_MIN_COVERAGE:
+        return report
+
+    message = (
+        f"{FOOTPRINT_SOURCE}: footprint coverage {with_geometry}/{eligible} "
+        f"({coverage:.0%}) below {FOOTPRINT_MIN_COVERAGE:.0%} — hazards are drawing "
+        f"synthesized circles instead of real geometry"
+    )
+    logger.warning("watchdog: %s", message)
+    if _persist_notification(
+        session, source=FOOTPRINT_SOURCE, message=message, today=now.date(), kind="footprint"
+    ):
+        _pushover_send(message)
+        report["alerted"] = True
     return report
