@@ -142,6 +142,48 @@ class TestUpsertEvents:
         assert row.payload["close"] == 500.0, "stale local value shadowed the upstream one"
         assert row.payload["alert_level"] == "Green"
 
+    def test_refresh_keeps_geocoded_coordinates_when_upstream_sends_none(
+        self, db_session: Session
+    ) -> None:
+        # enrich_country and backfill_news_cities write derived geo onto the
+        # lat/lon/country COLUMNS. The feed that re-publishes the item sends
+        # none of it, so replacing on refresh undid that work for any row still
+        # live in its feed (#618).
+        upsert_events([_make_event("SPY:1")], db_session)
+        db_session.commit()
+        row = db_session.execute(select(EventRow)).scalars().one()
+        row.lat, row.lon, row.country = 57.14, -2.09, "GB"
+        row.payload = {**row.payload, "city": "Aberdeen"}
+        db_session.commit()
+
+        blank = _make_event("SPY:1", severity=0.9).model_copy(
+            update={"lat": None, "lon": None, "country": None}
+        )
+        upsert_events([blank], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        assert (row.lat, row.lon, row.country) == (57.14, -2.09, "GB"), "geocode was wiped"
+        assert row.severity == 0.9, "upstream refresh no longer lands"
+
+    def test_upstream_coordinates_still_win_over_the_stored_ones(self, db_session: Session) -> None:
+        # Preserving must not freeze a moving event: a cyclone that reports a
+        # new position has to move.
+        upsert_events([_make_event("SPY:1")], db_session)
+        db_session.commit()
+        row = db_session.execute(select(EventRow)).scalars().one()
+        row.lat, row.lon, row.country = 10.0, 20.0, "PH"
+        db_session.commit()
+
+        moved = _make_event("SPY:1").model_copy(update={"lat": 12.5, "lon": 21.5, "country": "VN"})
+        upsert_events([moved], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        assert (row.lat, row.lon, row.country) == (12.5, 21.5, "VN")
+
     def test_mixed_new_and_existing_all_affected(self, db_session: Session) -> None:
         original = [_make_event(f"SPY:{i}") for i in range(3)]
         upsert_events(original, db_session)
