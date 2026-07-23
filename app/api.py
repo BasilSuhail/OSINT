@@ -952,12 +952,19 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     if gate.ram_free_mb() < settings.qa_min_free_mb:
         return _ask_payload(qa.BRAIN_BUSY_ANSWER, None, [])
     history = [h.model_dump() for h in req.history]
+    #: Elaborate mode (#600): the reader asked to explain/go deeper — swap in the
+    #: ELI10 prompt, raise the token cap, and skip the echo guard (elaboration
+    #: legitimately expands the previous answer, which the guard would reject).
+    elaborate = qa.is_elaborate_request(req.question)
+    num_predict = qa.ELABORATE_NUM_PREDICT if elaborate else None
     trace: dict = {}
     qa_context = qa.build_qa_context(session, question=req.question, history=history, trace=trace)
-    prompt = qa.build_qa_prompt(qa_context, req.question, history=history)
+    prompt = qa.build_qa_prompt(qa_context, req.question, history=history, elaborate=elaborate)
     try:
         answer = _extracted_answer(
-            client.generate_json(prompt, model=settings.qa_model, keep_alive="0")
+            client.generate_json(
+                prompt, model=settings.qa_model, keep_alive="0", num_predict=num_predict
+            )
         )
     except Exception:
         return _ask_payload(qa.BRAIN_OFFLINE_ANSWER, None, [])
@@ -965,7 +972,9 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
         #: One retry on unusable output (#474) — 3/12 audit answers died here.
         try:
             answer = _extracted_answer(
-                client.generate_json(prompt, model=settings.qa_model, keep_alive="0")
+                client.generate_json(
+                    prompt, model=settings.qa_model, keep_alive="0", num_predict=num_predict
+                )
             )
         except Exception:
             answer = None
@@ -974,7 +983,10 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     stories = qa_context.get("stories") or []
     sensors = qa_context.get("sensors") or []
     sources = _ask_sources(stories, sensors)
-    answer = _deechoed_answer(answer, qa_context=qa_context, question=req.question, history=history)
+    if not elaborate:
+        answer = _deechoed_answer(
+            answer, qa_context=qa_context, question=req.question, history=history
+        )
     answer = _derefused_answer(
         answer, qa_context=qa_context, question=req.question, stories=stories, sensors=sensors
     )
@@ -1000,6 +1012,8 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
             yield _sse("final", _ask_payload(qa.BRAIN_BUSY_ANSWER, None, []))
             return
         history = [h.model_dump() for h in req.history]
+        elaborate = qa.is_elaborate_request(req.question)  # #600
+        num_predict = qa.ELABORATE_NUM_PREDICT if elaborate else None
         trace: dict = {}
         qa_context = qa.build_qa_context(
             session, question=req.question, history=history, trace=trace
@@ -1011,9 +1025,11 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
         yield _sse("sources", {"context_digest": digest, "sources": sources})
         chunks: list[str] = []
         try:
-            prompt = qa.build_qa_text_prompt(qa_context, req.question, history=history)
+            prompt = qa.build_qa_text_prompt(
+                qa_context, req.question, history=history, elaborate=elaborate
+            )
             for chunk in client.generate_text_stream(
-                prompt, model=settings.qa_model, keep_alive="0"
+                prompt, model=settings.qa_model, keep_alive="0", num_predict=num_predict
             ):
                 chunks.append(chunk)
                 yield _sse("delta", {"text": chunk})
@@ -1026,18 +1042,22 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
             try:
                 retried = _extracted_answer(
                     client.generate_json(
-                        qa.build_qa_prompt(qa_context, req.question, history=history),
+                        qa.build_qa_prompt(
+                            qa_context, req.question, history=history, elaborate=elaborate
+                        ),
                         model=settings.qa_model,
                         keep_alive="0",
+                        num_predict=num_predict,
                     )
                 )
             except Exception:
                 retried = None
             answer = retried if retried is not None else qa.BRAIN_NOT_WORKING_ANSWER
         if answer != qa.BRAIN_NOT_WORKING_ANSWER:
-            answer = _deechoed_answer(
-                answer, qa_context=qa_context, question=req.question, history=history
-            )
+            if not elaborate:
+                answer = _deechoed_answer(
+                    answer, qa_context=qa_context, question=req.question, history=history
+                )
             answer = _derefused_answer(
                 answer,
                 qa_context=qa_context,
