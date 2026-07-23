@@ -60,10 +60,15 @@ _REFRESH_COLS: Final = (
     "severity",
     "confidence",
     "keywords",
-    "country",
-    "lat",
-    "lon",
 )
+
+#: Columns refreshed only when the incoming row actually carries a value. Geo
+#: can be derived after ingestion — `enrich_country.py` reverse-geocodes country
+#: from lat/lon, `backfill_news_cities.py` writes a city match onto all three —
+#: and the feed that publishes the item sends none of it. Replacing on refresh
+#: therefore undid that work for any row still live in its feed (#618). A source
+#: that does report a position still wins, so a moving cyclone keeps moving.
+_COALESCE_COLS: Final = ("country", "lat", "lon")
 
 
 #: Payload keys written AFTER ingestion — by the enrichment tasks and the
@@ -136,6 +141,9 @@ def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) ->
         )
 
     refreshed: dict[str, Any] = {col: base.excluded[col] for col in _REFRESH_COLS}
+    refreshed.update(
+        {col: func.coalesce(base.excluded[col], getattr(EventRow, col)) for col in _COALESCE_COLS}
+    )
     refreshed["payload"] = _payload_refresh(base.excluded, dialect)
     stmt = base.on_conflict_do_update(
         index_elements=["source", "source_event_id"],
