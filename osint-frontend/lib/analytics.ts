@@ -119,8 +119,29 @@ export interface StoryDetail {
   divergence_groups: Record<string, number> | null
   /** Per-bloc distinctive wording (#492) — what each country says that others don't. */
   divergence_contrast?: Record<string, string[]> | null
+  /** Deterministic framing read (#605) — per-bloc tone + terms, plus a synthesis. */
+  framing?: StoryFraming | null
   sensor_checks: Record<string, string>
   members: StoryMember[]
+}
+
+export interface FramingBloc {
+  country: string
+  articles: number
+  tone: string
+  terms: string[]
+}
+
+export interface StoryFraming {
+  blocs: FramingBloc[]
+  synthesis: {
+    a: string
+    b: string
+    a_tone: string
+    b_tone: string
+    a_terms: string[]
+    b_terms: string[]
+  }
 }
 
 export async function fetchStoryDetail(storyId: string): Promise<StoryDetail> {
