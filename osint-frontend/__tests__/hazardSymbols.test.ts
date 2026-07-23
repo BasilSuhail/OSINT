@@ -82,6 +82,47 @@ describe("footprintFeatures", () => {
     expect(f[0].properties?.color).toBeTypeOf("string")
     expect(f[0].properties?.fillOpacity).toBeTypeOf("number")
   })
+  it("emits a burn circle for an EONET wildfire, which reports acres not ha text", () => {
+    // EONET fires are a single Point, so the backend can never build geometry
+    // for them; before #612 they drew nothing at all — a pin with no extent.
+    const f = footprintFeatures(
+      row({
+        source: "eonet",
+        payload: {
+          title: "Wildfire CHELAN HILLS, Douglas, Washington",
+          categories: ["wildfires"],
+          magnitude_value: 9735,
+          magnitude_unit: "acres",
+        },
+      }),
+    )
+    expect(f).toHaveLength(1)
+    expect(f[0].geometry.type).toBe("Polygon")
+  })
+  it("sizes EONET sea ice from its square-nautical-mile extent", () => {
+    const f = footprintFeatures(
+      row({
+        source: "eonet",
+        severity: 0.2,
+        payload: {
+          title: "Iceberg A-84",
+          categories: ["seaLakeIce"],
+          magnitude_value: 725,
+          magnitude_unit: "NM^2",
+        },
+      }),
+    )
+    expect(f).toHaveLength(1)
+    // 725 NM^2 ≈ 2486 km² → ~28 km radius, far past the 20 km severity default.
+    const ring = (f[0].geometry.coordinates as [number, number][][])[0]
+    const lons = ring.map((c) => c[0])
+    const spanKm = (Math.max(...lons) - Math.min(...lons)) * 111.32 * Math.cos((10 * Math.PI) / 180)
+    expect(spanKm).toBeGreaterThan(50)
+  })
+  it("still draws nothing for a fire with no reported area", () => {
+    const f = footprintFeatures(row({ source: "eonet", payload: { title: "Wildfire Unknown" } }))
+    expect(f).toEqual([])
+  })
   it("emits a wind-extent circle for a storm with no real geometry", () => {
     const f = footprintFeatures(row({ payload: { event_type: "TC", alert_level: "Orange" }, severity: 0.7 }))
     expect(f).toHaveLength(1)

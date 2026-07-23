@@ -4,6 +4,7 @@ import {
   feltRadiusKm,
   parseBurnedHa,
   fireRadiusKm,
+  magnitudeAreaHa,
   quakeBands,
 } from "@/lib/footprints"
 
@@ -52,6 +53,26 @@ describe("parseBurnedHa", () => {
 describe("fireRadiusKm", () => {
   it("derives radius from area (8028 ha ≈ 5 km)", () => {
     expect(fireRadiusKm(8028)).toBeCloseTo(5.05, 1)
+  })
+})
+
+describe("magnitudeAreaHa", () => {
+  // EONET carries the area as structured fields instead of GDACS free text:
+  // wildfires in acres, sea ice in square nautical miles.
+  it("converts EONET acres to hectares", () => {
+    expect(magnitudeAreaHa(12338, "acres")).toBeCloseTo(4993, 0)
+  })
+  it("converts square nautical miles to hectares", () => {
+    expect(magnitudeAreaHa(100, "NM^2")).toBeCloseTo(34299, 0)
+  })
+  it("passes hectares through", () => {
+    expect(magnitudeAreaHa(500, "ha")).toBe(500)
+  })
+  it("returns null for a non-area unit or unusable value", () => {
+    expect(magnitudeAreaHa(75, "kts")).toBeNull()
+    expect(magnitudeAreaHa(null, "acres")).toBeNull()
+    expect(magnitudeAreaHa(0, "acres")).toBeNull()
+    expect(magnitudeAreaHa(12338, null)).toBeNull()
   })
 })
 
