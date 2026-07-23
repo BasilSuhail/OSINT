@@ -9,7 +9,12 @@
  */
 
 import useSWR from "swr"
-import { confirmedClaims, fetchStoryDetail, type StoryDetail } from "@/lib/analytics"
+import {
+  confirmedClaims,
+  fetchStoryDetail,
+  type StoryDetail,
+  type StoryFraming,
+} from "@/lib/analytics"
 import { countryName } from "@/lib/countryName"
 import { groupByOrigin, groupByVoice, singleVoiceCaveat } from "@/lib/situation"
 import { contestedVerdict, storyVerdict } from "@/lib/verdicts"
@@ -43,7 +48,28 @@ function ContestedTelling({ detail }: { detail: StoryDetail }) {
       <p className="mt-1 text-[12px] leading-snug text-neutral-400">
         {contestedVerdict({ divergence: detail.divergence, groups: detail.divergence_groups })}
       </p>
-      {detail.divergence_contrast && Object.keys(detail.divergence_contrast).length > 0 ? (
+      {detail.framing ? (
+        <div className="mt-2 space-y-1.5">
+          {detail.framing.blocs.map((b) => (
+            <p key={b.country} className="text-[12px] leading-snug text-neutral-400">
+              <span className="text-neutral-200">{countryName(b.country)}</span>{" "}
+              <span className="text-neutral-500">
+                ({b.articles} article{b.articles === 1 ? "" : "s"}, {b.tone})
+              </span>{" "}
+              {b.terms.length > 0 ? (
+                <>
+                  frames it around <span className="text-neutral-300">{b.terms.join(", ")}</span>.
+                </>
+              ) : (
+                <span className="text-neutral-500">— no distinctive wording.</span>
+              )}
+            </p>
+          ))}
+          <p className="border-t border-neutral-800 pt-1.5 text-[12px] leading-snug text-neutral-300">
+            {framingSynthesis(detail.framing.synthesis)}
+          </p>
+        </div>
+      ) : detail.divergence_contrast && Object.keys(detail.divergence_contrast).length > 0 ? (
         <div className="mt-2 space-y-0.5">
           {Object.entries(detail.divergence_contrast).map(([code, terms]) => (
             <p key={code} className="text-[11px] leading-snug text-neutral-500">
@@ -55,6 +81,22 @@ function ContestedTelling({ detail }: { detail: StoryDetail }) {
       ) : null}
     </div>
   )
+}
+
+/** The synthesis line — the tone gap between the two loudest blocs, then the
+ * signature terms each leans on (#605). Names resolved here, not in the API. */
+function framingSynthesis(s: StoryFraming["synthesis"]): string {
+  const a = countryName(s.a)
+  const b = countryName(s.b)
+  const tone =
+    s.a_tone === s.b_tone
+      ? `${a} and ${b} both read ${s.a_tone}`
+      : `${a} reads ${s.a_tone} while ${b} reads ${s.b_tone}`
+  const terms =
+    s.a_terms.length > 0 && s.b_terms.length > 0
+      ? `; ${a} stresses ${s.a_terms.join(", ")}, ${b} stresses ${s.b_terms.join(", ")}`
+      : ""
+  return `The gap: ${tone}${terms}.`
 }
 
 function TrustRead({ detail }: { detail: StoryDetail }) {

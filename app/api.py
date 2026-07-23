@@ -429,6 +429,71 @@ def _bloc_contrast(members: list[dict]) -> dict[str, list[str]]:
     return out
 
 
+#: A bloc leans a way only when that way clears this share of its labelled
+#: articles; below it the lean is real but soft ("leans" not "mostly").
+_TONE_STRONG_SHARE: float = 0.6
+
+
+def _tone_lean(labels: list[str]) -> str:
+    """A bloc's emotional lean from its members' VADER sentiment labels (#605).
+
+    Deterministic and honest: a clear majority one way is "mostly", a plainer
+    edge is "leans", an even positive/negative split is "mixed", and no signal
+    is said plainly rather than guessed.
+    """
+    counts = Counter(labels)
+    total = counts["negative"] + counts["positive"] + counts["neutral"]
+    if total == 0:
+        return "tone unclear"
+    neg, pos = counts["negative"], counts["positive"]
+    if neg > pos:
+        return "mostly negative" if neg / total > _TONE_STRONG_SHARE else "leans negative"
+    if pos > neg:
+        return "mostly positive" if pos / total > _TONE_STRONG_SHARE else "leans positive"
+    if neg > 0:  # equal and non-zero → genuinely split
+        return "mixed"
+    return "neutral"
+
+
+def _framing_analysis(members: list[dict]) -> dict | None:
+    """How each origin-country bloc frames the story, keyword + sentiment (#605).
+
+    Structured, not prose: per bloc the article count, tone lean, and the
+    wording only it uses (via `_bloc_contrast`); plus a synthesis naming the two
+    loudest blocs' tones and signature terms. The frontend interpolates country
+    names into these fields. None when fewer than two blocs tell the story.
+    """
+    contrast = _bloc_contrast(members)
+    by_country: dict[str, list[dict]] = {}
+    for m in members:
+        by_country.setdefault(m.get("origin_country") or "??", []).append(m)
+    if len(by_country) < 2:
+        return None
+    #: Loudest first (most articles), ties alphabetical — matches the groups list.
+    order = sorted(by_country, key=lambda c: (-len(by_country[c]), c))
+    blocs = [
+        {
+            "country": country,
+            "articles": len(by_country[country]),
+            "tone": _tone_lean(
+                [m.get("sentiment") for m in by_country[country] if m.get("sentiment")]
+            ),
+            "terms": contrast.get(country, []),
+        }
+        for country in order
+    ]
+    a, b = blocs[0], blocs[1]
+    synthesis = {
+        "a": a["country"],
+        "b": b["country"],
+        "a_tone": a["tone"],
+        "b_tone": b["tone"],
+        "a_terms": a["terms"][:3],
+        "b_terms": b["terms"][:3],
+    }
+    return {"blocs": blocs, "synthesis": synthesis}
+
+
 @app.get("/stories/{story_id}/members")
 def story_members(
     story_id: int,
@@ -562,6 +627,7 @@ def story_detail(
         else None,
         "sensor_checks": checks,
         "divergence_contrast": _bloc_contrast(members) if disagreement else None,
+        "framing": _framing_analysis(members) if disagreement else None,
         "members": members,
     }
 
