@@ -8,13 +8,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.db_models import EventRow
 from app.enrichment.footprint import (
+    FOOTPRINT_BYTE_BUDGET,
     alert_color,
     eonet_track_geojson,
     fetch_usgs_footprint,
+    fit_to_budget,
     footprint_for_event,
     gdacs_footprint_url,
+    geojson_bytes,
     normalize_gdacs_footprint,
     normalize_usgs_footprint,
     usgs_mmi_contour_url,
@@ -276,6 +281,129 @@ def test_footprint_for_event_gdacs_prefers_geometry_url() -> None:
     )
     assert out is not None
     assert out["features"][0]["properties"]["color"] == "#f97316"
+
+
+# --------------------------------------------------------------------------- #
+# Geometry budget (issue #613)                                                 #
+# --------------------------------------------------------------------------- #
+
+
+def _dense_ring(n: int, *, radius: float = 5.0) -> list[list[float]]:
+    """A closed ring of `n` points on a circle — the shape of the admin-boundary
+    polygons GDACS ships for floods, which reach 2 MB per event."""
+    import math
+
+    ring = [
+        [radius * math.cos(2 * math.pi * i / n), radius * math.sin(2 * math.pi * i / n)]
+        for i in range(n)
+    ]
+    ring.append(ring[0])
+    return ring
+
+
+def _collection(geometry: dict) -> dict:
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"color": "#ef4444", "fillOpacity": 0.25},
+                "geometry": geometry,
+            }
+        ],
+    }
+
+
+def test_small_geometry_is_returned_untouched() -> None:
+    # Most footprints are already small; they must keep every vertex.
+    fc = _collection({"type": "Polygon", "coordinates": [[*_SQUARE, [0, 0]]]})
+    assert fit_to_budget(fc) == fc
+
+
+def test_oversized_geometry_is_brought_under_budget() -> None:
+    fc = _collection({"type": "Polygon", "coordinates": [_dense_ring(20000)]})
+    assert geojson_bytes(fc) > 50_000
+
+    out = fit_to_budget(fc, budget=50_000)
+
+    assert out is not None
+    assert geojson_bytes(out) <= 50_000
+    assert out["features"][0]["geometry"]["type"] == "Polygon"
+    assert out["features"][0]["properties"] == {"color": "#ef4444", "fillOpacity": 0.25}
+    ring = out["features"][0]["geometry"]["coordinates"][0]
+    assert ring[0] == ring[-1], "simplification broke the ring closure"
+
+
+def test_simplified_shape_stays_recognisable() -> None:
+    # A 5-degree circle must still read as a ~5-degree circle after the squeeze.
+    fc = _collection({"type": "Polygon", "coordinates": [_dense_ring(20000, radius=5.0)]})
+    ring = fit_to_budget(fc, budget=5_000)["features"][0]["geometry"]["coordinates"][0]
+    xs = [p[0] for p in ring]
+    assert max(xs) == pytest.approx(5.0, abs=0.3)
+    assert min(xs) == pytest.approx(-5.0, abs=0.3)
+
+
+def test_lines_and_multipolygons_survive_the_squeeze() -> None:
+    for geometry in (
+        {"type": "MultiLineString", "coordinates": [_dense_ring(9000)]},
+        {"type": "MultiPolygon", "coordinates": [[_dense_ring(9000)]]},
+    ):
+        out = fit_to_budget(_collection(geometry), budget=20_000)
+        assert out is not None
+        assert geojson_bytes(out) <= 20_000
+        assert out["features"][0]["geometry"]["type"] == geometry["type"]
+
+
+def test_a_grid_cell_band_is_shed_so_the_readable_bands_survive() -> None:
+    # GDACS ships shake bands as thousands of separate grid cells: the vertices
+    # are already minimal, so only dropping whole features can help. The heavy
+    # band goes, the small inner bands stay.
+    cells = [
+        [[[x, y], [x + 0.1, y], [x + 0.1, y + 0.1], [x, y + 0.1], [x, y]]]
+        for x in range(60)
+        for y in range(60)
+    ]
+    fc = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"color": "#fca5a5", "fillOpacity": 0.25},
+                "geometry": {"type": "MultiPolygon", "coordinates": cells},
+            },
+            {
+                "type": "Feature",
+                "properties": {"color": "#ef4444", "fillOpacity": 0.25},
+                "geometry": {"type": "Polygon", "coordinates": [[*_SQUARE, [0, 0]]]},
+            },
+        ],
+    }
+    assert geojson_bytes(fc) > 50_000
+
+    out = fit_to_budget(fc, budget=50_000)
+
+    assert geojson_bytes(out) <= 50_000
+    assert len(out["features"]) == 1
+    assert out["features"][0]["properties"]["color"] == "#ef4444", "kept the wrong band"
+
+
+def test_unsimplifiable_geometry_is_kept_rather_than_dropped() -> None:
+    # A footprint we cannot shrink is still better than no footprint at all.
+    fc = _collection({"type": "Polygon", "coordinates": [_dense_ring(60000)]})
+    out = fit_to_budget(fc, budget=200)
+    assert out is not None
+    assert out["features"], "the feature was dropped instead of kept oversized"
+
+
+def test_normalize_gdacs_applies_the_budget() -> None:
+    fc = {
+        "features": [
+            {"geometry": {"type": "Polygon", "coordinates": [_dense_ring(20000)]}, "properties": {}}
+        ]
+    }
+    out = normalize_gdacs_footprint(fc, "#ef4444")
+    assert out is not None
+    assert geojson_bytes(out) <= FOOTPRINT_BYTE_BUDGET
 
 
 # --------------------------------------------------------------------------- #
