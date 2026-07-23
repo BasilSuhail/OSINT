@@ -109,7 +109,9 @@ def test_deep_read_busy_when_ram_low(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def test_deep_read_returns_analysis(monkeypatch):
+def test_deep_read_returns_plain_text_analysis(monkeypatch):
+    # #609: generate as plain text (no format=json), so a token-capped answer is
+    # just shorter valid prose — never a truncated-JSON parse error.
     client, _ = _client_and_story()
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
     monkeypatch.setattr(api, "_story_members", lambda session, sid: _members())
@@ -117,14 +119,39 @@ def test_deep_read_returns_analysis(monkeypatch):
     monkeypatch.setattr(api, "_story_or_404", lambda session, sid: type("S", (), {"title": "t"})())
     seen = {}
 
-    def fake_gen(prompt, **kw):
+    def fake_stream(prompt, **kw):
         seen["num_predict"] = kw.get("num_predict")
-        return {"analysis": "Russia frames it as failure. France frames it as routine."}
+        yield "Russia frames it as failure. "
+        yield "France frames it as routine."
 
-    monkeypatch.setattr(api.client, "generate_json", fake_gen)
+    monkeypatch.setattr(api.client, "generate_text_stream", fake_stream)
+    #: The JSON path must not be used at all.
+    monkeypatch.setattr(
+        api.client,
+        "generate_json",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("deep read must not use JSON")),
+    )
     body = client.post("/stories/1/deep-read").json()
     assert "Russia frames it as failure" in body["analysis"]
+    assert "France frames it as routine" in body["analysis"]
     assert seen["num_predict"] == deepread.DEEP_READ_NUM_PREDICT
+    app.dependency_overrides.clear()
+
+
+def test_deep_read_offline_when_generation_raises(monkeypatch):
+    client, _ = _client_and_story()
+    monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(api, "_story_members", lambda session, sid: _members())
+    monkeypatch.setattr(api, "_framing_analysis", lambda members: _framing())
+    monkeypatch.setattr(api, "_story_or_404", lambda session, sid: type("S", (), {"title": "t"})())
+
+    def boom(prompt, **kw):
+        raise RuntimeError("connection refused")
+        yield  # pragma: no cover — make it a generator
+
+    monkeypatch.setattr(api.client, "generate_text_stream", boom)
+    body = client.post("/stories/1/deep-read").json()
+    assert "offline" in body["analysis"].lower()
     app.dependency_overrides.clear()
 
 
@@ -135,7 +162,9 @@ def test_deep_read_none_when_not_contested(monkeypatch):
     monkeypatch.setattr(api, "_framing_analysis", lambda members: None)
     monkeypatch.setattr(api, "_story_or_404", lambda session, sid: type("S", (), {"title": "t"})())
     monkeypatch.setattr(
-        api.client, "generate_json", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no gen"))
+        api.client,
+        "generate_text_stream",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no gen")),
     )
     body = client.post("/stories/1/deep-read").json()
     assert body["analysis"] is None
