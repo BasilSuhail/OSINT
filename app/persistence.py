@@ -66,6 +66,29 @@ _REFRESH_COLS: Final = (
 )
 
 
+#: Payload keys written AFTER ingestion — by the enrichment tasks and the
+#: backfill scripts, not by the fetcher that produced the event. A refresh must
+#: never destroy them: the fetcher does not know they exist and will not send
+#: them again, so anything lost here is lost until the enrichment happens to run
+#: on that row a second time. That is exactly how #604 hid for weeks — GDACS
+#: re-published every active hazard on a 15-minute cadence and each refresh
+#: deleted the real footprint geometry the map needed.
+#:
+#: Add the key here when you add an enricher. `test_persistence.py` walks this
+#: list, so a refresh that starts clobbering enrichment fails the suite instead
+#: of quietly emptying the map.
+ENRICHMENT_PAYLOAD_KEYS: Final = (
+    "footprint_geojson",  # real hazard geometry (app/enrichment/footprint.py, #205)
+    "footprint_checked_at",  # cooldown stamp for footprints with no upstream geometry (#604)
+    "city",  # scripts/backfill_news_cities.py
+    "news_scope",  # scripts/backfill_news_scope.py
+    "sentiment",  # scripts/backfill_news_sentiment.py
+    "sentiment_label",
+    "entities",  # scripts/backfill_news_ner.py
+    "enrichment_meta",  # which enricher/model wrote the above
+)
+
+
 def _payload_refresh(excluded: Any, dialect: str) -> Any:
     """Merge the incoming payload over the stored one instead of replacing it.
 

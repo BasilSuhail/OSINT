@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db_models import EventRow
 from app.models import Category, Event
-from app.persistence import _event_to_row, upsert_events
+from app.persistence import ENRICHMENT_PAYLOAD_KEYS, _event_to_row, upsert_events
 
 
 def _make_event(source_event_id: str, *, severity: float = 0.5) -> Event:
@@ -100,6 +100,32 @@ class TestUpsertEvents:
         row = db_session.execute(select(EventRow)).scalars().one()
         assert row.payload["footprint_geojson"] == {"features": [1]}, "enrichment was wiped"
         assert row.severity == 0.9, "upstream refresh no longer lands"
+
+    def test_every_enrichment_owned_key_survives_a_refresh(self, db_session: Session) -> None:
+        # The #604 trap: `payload` joined _REFRESH_COLS in a change that was
+        # right on its own, and silently deleted what enrichment had written.
+        # This walks the registry so adding an enricher without protecting its
+        # key, or reverting to replace semantics, fails here instead of quietly
+        # emptying the map weeks later.
+        upsert_events([_make_event("SPY:1")], db_session)
+        db_session.commit()
+        row = db_session.execute(select(EventRow)).scalars().one()
+        row.payload = {**row.payload, **{k: f"enriched-{k}" for k in ENRICHMENT_PAYLOAD_KEYS}}
+        db_session.commit()
+
+        upsert_events([_make_event("SPY:1", severity=0.9)], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        survivors = {k: row.payload.get(k) for k in ENRICHMENT_PAYLOAD_KEYS}
+        assert survivors == {k: f"enriched-{k}" for k in ENRICHMENT_PAYLOAD_KEYS}
+        assert row.severity == 0.9, "upstream refresh no longer lands"
+
+    def test_the_registry_is_not_empty(self) -> None:
+        # A registry that quietly empties would make the test above vacuous.
+        assert len(ENRICHMENT_PAYLOAD_KEYS) >= 5
+        assert "footprint_geojson" in ENRICHMENT_PAYLOAD_KEYS
 
     def test_refresh_lets_upstream_win_on_shared_keys(self, db_session: Session) -> None:
         upsert_events([_make_event("SPY:1")], db_session)
