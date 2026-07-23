@@ -9,11 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import tasks
-from app.db_models import IngestHealthRow, NotificationRow
+from app.db_models import EventRow, IngestHealthRow, NotificationRow
 from app.watchdog import (
     SOURCE_CADENCE_MIN,
     STALE_MULTIPLIER,
     _persist_notification,
+    check_footprint_coverage,
     check_sources,
 )
 
@@ -153,3 +154,86 @@ def test_watchdog_covers_every_scheduled_fetcher() -> None:
 def test_module_imports() -> None:
     assert callable(check_sources)
     pytest.importorskip("sqlalchemy")
+
+
+def _hazard(session: Session, *, minutes_old: int, payload: dict) -> None:
+    now = datetime.now(UTC)
+    session.add(
+        EventRow(
+            source="gdacs",
+            source_event_id=f"EQ:{payload.get('n', len(payload))}-{minutes_old}-{id(payload)}",
+            occurred_at=now - timedelta(minutes=minutes_old),
+            fetched_at=now - timedelta(minutes=minutes_old),
+            category="hazard",
+            severity=0.6,
+            keywords=[],
+            payload=payload,
+        )
+    )
+
+
+class TestFootprintCoverage:
+    """#604 hid for weeks because nothing watched enrichment OUTPUT — ingest
+    health only knows GDACS answered, which it did the whole time."""
+
+    def test_healthy_coverage_is_not_flagged(self, db_session: Session) -> None:
+        for i in range(30):
+            _hazard(db_session, minutes_old=180, payload={"n": i, "footprint_geojson": {"f": 1}})
+        db_session.commit()
+
+        report = check_footprint_coverage(db_session)
+
+        assert report["coverage"] == 1.0
+        assert report["alerted"] is False
+
+    def test_collapsed_coverage_pages_once(self, db_session: Session) -> None:
+        for i in range(30):
+            _hazard(db_session, minutes_old=180, payload={"n": i})
+        db_session.commit()
+
+        first = check_footprint_coverage(db_session)
+        second = check_footprint_coverage(db_session)
+
+        assert first["coverage"] == 0.0
+        assert first["alerted"] is True
+        assert second["alerted"] is False, "paged twice for the same day"
+        notes = db_session.execute(select(NotificationRow)).scalars().all()
+        assert len(notes) == 1
+        assert "footprint" in notes[0].message
+
+    def test_rows_with_no_upstream_geometry_do_not_drag_coverage_down(
+        self, db_session: Session
+    ) -> None:
+        # A quake with no ShakeMap is stamped, not broken — it must leave the
+        # denominator or the alarm would ring forever.
+        stamped = "2026-01-01T00:00:00+00:00"
+        for i in range(30):
+            _hazard(db_session, minutes_old=180, payload={"n": i, "footprint_checked_at": stamped})
+        for i in range(30, 40):
+            _hazard(db_session, minutes_old=180, payload={"n": i, "footprint_geojson": {"f": 1}})
+        db_session.commit()
+
+        report = check_footprint_coverage(db_session)
+
+        assert report["eligible"] == 10
+        assert report["coverage"] == 1.0
+        assert report["alerted"] is False
+
+    def test_freshly_ingested_rows_are_given_time_to_enrich(self, db_session: Session) -> None:
+        for i in range(30):
+            _hazard(db_session, minutes_old=2, payload={"n": i})
+        db_session.commit()
+
+        report = check_footprint_coverage(db_session)
+
+        assert report["eligible"] == 0
+        assert report["alerted"] is False
+
+    def test_a_thin_sample_never_pages(self, db_session: Session) -> None:
+        # Right after a database wipe there is nothing to conclude from.
+        _hazard(db_session, minutes_old=180, payload={"n": 1})
+        db_session.commit()
+
+        report = check_footprint_coverage(db_session)
+
+        assert report["alerted"] is False

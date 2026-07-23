@@ -415,11 +415,19 @@ def enrich_footprints(limit: int | None = None) -> dict[str, Any]:
 
 @app.task(name="app.tasks.ingest_watchdog")
 def ingest_watchdog() -> dict[str, Any]:
-    """Walk ingest_health and flag any source whose last_success has gone stale."""
-    from app.watchdog import check_sources
+    """Flag sources that have gone quiet, and enrichment output that has vanished.
+
+    Staleness alone would have missed #604 entirely: GDACS kept answering on
+    cadence while every refresh deleted the footprint geometry behind it, so
+    ingest_health stayed green for weeks (#617).
+    """
+    from app.watchdog import check_footprint_coverage, check_sources
 
     with session_scope() as session:
-        return check_sources(session)
+        return {
+            "sources": check_sources(session),
+            "footprints": check_footprint_coverage(session),
+        }
 
 
 @app.task(name="app.tasks.run_housekeeping")

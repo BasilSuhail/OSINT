@@ -178,6 +178,15 @@ Beat is declarative. All schedules live in `app/tasks.py` so they are auditable.
 | `ingest_watchdog` | every 15 min | — | observability |
 | `run_housekeeping` | daily 03:00 UTC | — | retention |
 
+`ingest_watchdog` checks two different things. **Staleness**: a source whose
+`last_success` is older than `cadence x STALE_MULTIPLIER`. **Footprint
+coverage**: the share of GDACS hazard rows old enough to have been enriched
+that actually carry `payload.footprint_geojson`, ignoring rows stamped
+`footprint_checked_at` (upstream has no geometry for those, which is normal).
+Coverage exists because staleness alone missed #604 completely — GDACS kept
+answering on cadence for weeks while every refresh deleted the geometry behind
+it, so ingest health stayed green while the map drew synthesized circles.
+
 The 25 RSS feeds are not enumerated individually — they're generated from `app/sources/rss_feeds.json` via `feed_cadence_map()` (issue #158). Adding a new feed = one JSON entry.
 
 WebSocket consumers (none active yet — AIS deferred to a follow-up issue) would run as their own systemd-managed worker with auto-reconnect rather than via Beat.
