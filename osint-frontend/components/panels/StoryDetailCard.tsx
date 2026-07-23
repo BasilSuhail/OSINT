@@ -8,9 +8,11 @@
  * country — the "who tells it, and how differently" view.
  */
 
+import { useState } from "react"
 import useSWR from "swr"
 import {
   confirmedClaims,
+  fetchStoryDeepRead,
   fetchStoryDetail,
   type StoryDetail,
   type StoryFraming,
@@ -25,6 +27,42 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <p className="mb-1 mt-4 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
       {children}
     </p>
+  )
+}
+
+/** On-demand LLM "why they differ" (#607). The deterministic block above says
+ * how the blocs differ; tapping this asks the local model for the reasoned why.
+ * Loads on tap, caches in state for as long as the card is open. */
+function DeepRead({ storyId }: { storyId: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle")
+  const [text, setText] = useState<string | null>(null)
+
+  const run = async () => {
+    setState("loading")
+    try {
+      const analysis = await fetchStoryDeepRead(storyId)
+      setText(analysis)
+      setState("done")
+    } catch {
+      setState("error")
+    }
+  }
+
+  if (state === "done") {
+    return (
+      <p className="whitespace-pre-line border-t border-neutral-800 pt-1.5 text-[12px] leading-relaxed text-neutral-300">
+        {text || "No deeper read available for this story."}
+      </p>
+    )
+  }
+  return (
+    <button
+      onClick={run}
+      disabled={state === "loading"}
+      className="mt-1 rounded-md border border-neutral-800 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
+    >
+      {state === "loading" ? "reading…" : state === "error" ? "retry deep read" : "deep read ⌄"}
+    </button>
   )
 }
 
@@ -68,6 +106,7 @@ function ContestedTelling({ detail }: { detail: StoryDetail }) {
           <p className="border-t border-neutral-800 pt-1.5 text-[12px] leading-snug text-neutral-300">
             {framingSynthesis(detail.framing.synthesis)}
           </p>
+          <DeepRead storyId={detail.id} />
         </div>
       ) : detail.divergence_contrast && Object.keys(detail.divergence_contrast).length > 0 ? (
         <div className="mt-2 space-y-0.5">

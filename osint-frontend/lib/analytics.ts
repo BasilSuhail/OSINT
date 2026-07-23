@@ -150,6 +150,15 @@ export async function fetchStoryDetail(storyId: string): Promise<StoryDetail> {
   return (await res.json()) as StoryDetail
 }
 
+/** On-demand LLM deep read of a contested story (#607) — the reasoned "why".
+ * Returns null when the story is not contested. Failures surface a typed
+ * message string, not a throw, mirroring the endpoint. */
+export async function fetchStoryDeepRead(storyId: string): Promise<string | null> {
+  const res = await fetch(`${API_BASE}/stories/${storyId}/deep-read`, { method: "POST" })
+  if (!res.ok) throw new Error(`POST /stories/${storyId}/deep-read ${res.status}`)
+  return ((await res.json()) as { analysis: string | null }).analysis
+}
+
 export async function fetchStoryMembers(storyId: string): Promise<StoryMember[]> {
   const res = await fetch(`${API_BASE}/stories/${storyId}/members`)
   if (!res.ok) throw new Error(`GET /stories/${storyId}/members ${res.status}`)
