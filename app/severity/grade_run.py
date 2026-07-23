@@ -61,6 +61,14 @@ def grade_row(row: EventRow, *, model: str) -> tuple[float, dict] | None:
     return verdict.value, verdict.as_payload()
 
 
+#: Rows per commit. A regrade of the whole news table is ~13h of model calls;
+#: committing once at the end made it a single transaction that saved nothing if
+#: interrupted (#596). Committing in batches also makes the run resumable —
+#: `pending` already skips rows carrying the LLM method, so a re-run picks up
+#: exactly where a killed one stopped.
+COMMIT_EVERY: int = 50
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=100)
@@ -72,8 +80,9 @@ def main() -> int:
     graded = skipped = 0
     with session_scope() as session:
         rows = pending(session, limit=args.limit)
-        print(f"{len(rows)} ungraded news row(s)\n")
-        for row in rows:
+        total = len(rows)
+        print(f"{total} ungraded news row(s)\n")
+        for index, row in enumerate(rows, start=1):
             result = grade_row(row, model=args.model)
             if result is None:
                 skipped += 1
@@ -81,13 +90,17 @@ def main() -> int:
             value, payload = result
             before = row.severity
             print(
-                f"  {before} -> {value}  {payload['severity_band']:<14} "
+                f"  [{index}/{total}] {before} -> {value}  {payload['severity_band']:<14} "
                 f"{(row.payload or {}).get('title', '')[:60]}"
             )
             print(f"      {payload['severity_rationale']}")
             if args.apply:
                 row.severity = value
                 row.payload = {**(row.payload or {}), **payload}
+                # Commit as we go so a 13h run is never one all-or-nothing
+                # transaction, and a kill costs at most COMMIT_EVERY rows (#596).
+                if graded % COMMIT_EVERY == 0:
+                    session.commit()
             graded += 1
         if args.apply:
             session.commit()
