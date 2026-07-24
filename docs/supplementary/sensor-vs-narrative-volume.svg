@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="440" viewBox="0 0 840 440" font-family="Helvetica, Arial, sans-serif">
+  <rect width="840" height="440" fill="#ffffff"/>
+  <text x="40" y="40" font-size="22" font-weight="700" fill="#1a1a1a">Sensors are cheap and loud; narrative is scarce and expensive</text>
+  <text x="40" y="64" font-size="13" fill="#555">Rows held per source (log scale, 2026-07-24). Does the loud sensor side move before the quiet narrative side?</text>
+
+  <!-- log10 axis: x = 210 + (log10(v)-3)/3*580 -->
+  <g stroke="#e5e5e5" stroke-width="1">
+    <line x1="210" y1="100" x2="210" y2="360"/>
+    <line x1="403" y1="100" x2="403" y2="360"/>
+    <line x1="597" y1="100" x2="597" y2="360"/>
+    <line x1="790" y1="100" x2="790" y2="360"/>
+  </g>
+  <g font-size="12" fill="#777" text-anchor="middle">
+    <text x="210" y="378">1k</text>
+    <text x="403" y="378">10k</text>
+    <text x="597" y="378">100k</text>
+    <text x="790" y="378">1M</text>
+  </g>
+  <text x="500" y="400" font-size="13" fill="#555" text-anchor="middle">rows held (log scale)</text>
+
+  <!-- bars -->
+  <g>
+    <rect x="210" y="108" width="557.4" height="26" fill="#0f766e"/>
+    <rect x="210" y="148" width="345.7" height="26" fill="#0f766e"/>
+    <rect x="210" y="188" width="229.5" height="26" fill="#0f766e"/>
+    <rect x="210" y="228" width="358.4" height="26" fill="#b45309"/>
+    <rect x="210" y="268" width="251.5" height="26" fill="#b45309"/>
+  </g>
+  <!-- source labels (left) -->
+  <g font-size="13.5" fill="#1a1a1a" text-anchor="end">
+    <text x="200" y="126">nasa-firms</text>
+    <text x="200" y="166">opensky-adsb</text>
+    <text x="200" y="206">abuse-ch-urlhaus</text>
+    <text x="200" y="246">gdelt</text>
+    <text x="200" y="286">44 RSS feeds</text>
+  </g>
+  <!-- value labels: white inside the long bar, dark to the right of shorter bars -->
+  <text x="758" y="126" font-size="12.5" font-weight="600" fill="#fff" text-anchor="end">764,814</text>
+  <text x="563" y="166" font-size="12.5" font-weight="600" fill="#333">61,313</text>
+  <text x="447" y="206" font-size="12.5" font-weight="600" fill="#333">15,391</text>
+  <text x="576" y="246" font-size="12.5" font-weight="600" fill="#333">71,474</text>
+  <text x="469" y="286" font-size="12.5" font-weight="600" fill="#333">~20,000</text>
+
+  <!-- legend -->
+  <rect x="210" y="410" width="14" height="14" fill="#0f766e"/>
+  <text x="230" y="422" font-size="12.5" fill="#1a1a1a">sensor (can't lie)</text>
+  <rect x="380" y="410" width="14" height="14" fill="#b45309"/>
+  <text x="400" y="422" font-size="12.5" fill="#1a1a1a">narrative (can lie)</text>
+</svg>

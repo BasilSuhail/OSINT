@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" font-family="Helvetica, Arial, sans-serif">
+  <rect width="840" height="420" fill="#ffffff"/>
+  <text x="40" y="40" font-size="22" font-weight="700" fill="#1a1a1a">Why it fits a Raspberry Pi: raw is disposable, signal is kept</text>
+  <text x="40" y="64" font-size="13" fill="#555">Every fetched row is derived-from, then pruned at ~30 days. The small permanent derivations are what the dashboard and thesis read.</text>
+
+  <!-- time axis -->
+  <line x1="90" y1="360" x2="770" y2="360" stroke="#999" stroke-width="1.5"/>
+  <polygon points="770,360 762,356 762,364" fill="#999"/>
+  <text x="770" y="382" font-size="12" fill="#777" text-anchor="end">time →</text>
+  <g font-size="12" fill="#777" text-anchor="middle">
+    <text x="150" y="382">day 0 (fetch)</text>
+    <text x="470" y="382">day 30</text>
+    <text x="640" y="382">day 30+</text>
+  </g>
+  <line x1="150" y1="120" x2="150" y2="366" stroke="#e5e5e5"/>
+  <line x1="470" y1="120" x2="470" y2="366" stroke="#e5e5e5" stroke-dasharray="4 4"/>
+
+  <!-- RAW lane: label above box -->
+  <text x="150" y="112" font-size="14" font-weight="700" fill="#b45309">RAW events table</text>
+  <rect x="150" y="120" width="320" height="40" rx="6" fill="#fde3c4" stroke="#b45309"/>
+  <text x="310" y="145" font-size="13" fill="#7c3f06" text-anchor="middle">held ~30 days (news · hazard · GDELT raw)</text>
+  <!-- prune -->
+  <line x1="470" y1="140" x2="552" y2="140" stroke="#b45309" stroke-width="1.5"/>
+  <polygon points="560,140 552,136 552,144" fill="#b45309"/>
+  <rect x="560" y="122" width="160" height="36" rx="6" fill="#fff" stroke="#b45309" stroke-dasharray="5 4"/>
+  <text x="640" y="145" font-size="12.5" fill="#b45309" text-anchor="middle">pruned (03:00 UTC)</text>
+
+  <!-- derive arrow down -->
+  <line x1="300" y1="160" x2="300" y2="240" stroke="#0f766e" stroke-width="1.5"/>
+  <polygon points="300,248 296,240 304,240" fill="#0f766e"/>
+  <text x="312" y="204" font-size="12" fill="#0f766e">derive</text>
+
+  <!-- DERIVED lane: label above box, right-aligned to clear the derive arrow -->
+  <text x="715" y="242" font-size="14" font-weight="700" fill="#0f766e" text-anchor="end">DERIVED — kept forever</text>
+  <rect x="150" y="250" width="570" height="46" rx="6" fill="#cdeae6" stroke="#0f766e"/>
+  <text x="435" y="271" font-size="12.5" fill="#0b5f58" text-anchor="middle">scores · stories · gists · claims · corroboration · disagreement · journal predictions</text>
+  <text x="435" y="289" font-size="12.5" fill="#0b5f58" text-anchor="middle">+ GDELT daily-volume aggregate · market/macro history (never re-fetchable → exempt)</text>
+  <line x1="720" y1="273" x2="748" y2="273" stroke="#0f766e" stroke-width="1.5"/>
+  <polygon points="756,273 748,269 748,277" fill="#0f766e"/>
+
+  <text x="40" y="410" font-size="11.5" fill="#999">The events table stays small while the analytical record grows forever — no hot/cold Parquet tier needed; Postgres holds all of it.</text>
+</svg>
