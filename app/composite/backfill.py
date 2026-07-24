@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from app.composite.aggregation import aggregate_events_to_domain_signals
 from app.composite.config import DEFAULT_METHOD_VERSION
 from app.composite.gdelt import fetch_gdelt_history
+from app.composite.history import persist_signals
 from app.composite.normalization import normalize_domain_signals
 from app.composite.persistence import upsert_scores
 from app.composite.scoring import compute_scores
@@ -154,6 +155,11 @@ def run_signal_backfill(
     )
 
     aggregated = aggregate_events_to_domain_signals(events)
+    # Keep the aggregate as well as the scores (#586). The live worker
+    # normalises against `composite_signals`, so a backfill run is also how
+    # that history gets seeded — otherwise the live composite has to wait three
+    # months of its own observations before it can emit anything but 0.5.
+    persist_signals(aggregated, session)
     normalized = normalize_domain_signals(aggregated)
     scores = compute_scores(normalized, method_version=DEFAULT_METHOD_VERSION)
 
