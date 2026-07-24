@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.composite.aggregation import aggregate_events_to_domain_signals
 from app.composite.config import DEFAULT_METHOD_VERSION, WeightingConfig
+from app.composite.history import load_signals, merge_signals, persist_signals
 from app.composite.normalization import normalize_domain_signals
 from app.composite.persistence import upsert_scores
 from app.composite.scoring import compute_scores
@@ -62,7 +63,17 @@ def _compute_composite_body(
         ]
 
     aggregated = aggregate_events_to_domain_signals(events)
-    normalized = normalize_domain_signals(aggregated)
+
+    # Record this run's months, then normalise against everything on record —
+    # not just what survived retention. Rebuilding history from the events
+    # table alone left 183 of 184 countries below MIN_HISTORY, so every z-score
+    # was 0 and every live composite score was exactly 0.5 (#586).
+    with session_scope() as session:
+        persist_signals(aggregated, session)
+        history = load_signals(session, since=cutoff)
+    signals = merge_signals(history, aggregated)
+
+    normalized = normalize_domain_signals(signals)
     scores = compute_scores(
         normalized,
         weights=weights,
@@ -75,6 +86,7 @@ def _compute_composite_body(
     return {
         "events_read": len(events),
         "buckets_aggregated": len(aggregated),
+        "months_on_record": len(signals),
         "scores_written": len(scores),
         "rows_upserted": upserted,
         "method_version": method_version,
