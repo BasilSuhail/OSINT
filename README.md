@@ -96,6 +96,9 @@ green pulsing while working (with live progress), red while idle, red
 | `make validator` | local-LLM claim extraction over window stories (needs Ollama) |
 | `make validator-audit` | emit the human-check sheet that gates validator use |
 | `make validator-agreement` | publish the model-vs-human agreement rate from the filled sheet |
+| `make severity-grade` | grade stored news severity with the local model — reports; `--apply` writes (#591) |
+| `make severity-audit` | emit the human-check sheet that gates LLM severity use (#593) |
+| `make severity-agreement` | publish the model-vs-human severity agreement from the filled sheet (#593) |
 | `make brain-qa-eval` | compare Q&A candidate models locally and write the Phase C report |
 | `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
 | `python scripts/data_audit.py` | audit every source against its declared expectation — does severity parse, vary, and reach anything downstream (#580) |
@@ -267,7 +270,11 @@ We can't compute "truth", so we compute three honest proxies **per story**:
   two- or three-level categorical across nearly every source, and #579 that the
   FIRMS value is detection confidence rather than fire intensity — and
   non-monotonic against it. "Bad construction" and "bad inputs" remain
-  indistinguishable from these results alone.
+  indistinguishable from these results alone. News severity in particular is no
+  longer a keyword substring match — every score now records *why* it was
+  assigned (#592), and the local-model regrade behind it is gated on a measured
+  model-vs-human agreement rate (`make severity-audit` / `severity-agreement`,
+  #593) before anything downstream trusts it.
 
 ### 2.4 Status board
 
@@ -325,22 +332,22 @@ re-fetched (Chapter 2.1). Per-source successes/failures land in
 
 ### 3.1b What is actually in there
 
-Snapshot of **2026-07-21** — 683,446 events across 53 active sources, 671 MB.
+Snapshot of **2026-07-24** — 939,854 events across 53 active sources, 1,077 MB.
 Regenerate with `uv run python scripts/db_snapshot.py` rather than quoting
 these forever: retention prunes continuously, so every figure below moves.
 
 | source | rows | span held |
 |---|---:|---|
-| nasa-firms | 611,016 | rolling ~2 weeks |
-| gdelt | 59,705 | rolling ~30 days |
-| opensky-adsb | 59,652 | rolling, hourly country rollups |
-| abuse-ch-urlhaus | 20,471 | rolling ~30 days |
-| 44 RSS feeds | ~17,000 | rolling ~2 weeks |
+| nasa-firms | 764,814 | rolling ~2 weeks |
+| gdelt | 71,474 | rolling ~30 days |
+| opensky-adsb | 61,313 | rolling, hourly country rollups |
+| abuse-ch-urlhaus | 15,391 | rolling ~30 days |
+| 44 RSS feeds | ~20,000 | rolling ~2 weeks |
 
-Derived on top: 16,824 stories · 23,512 story members · 8,633 embeddings ·
-5,562 gists · 57,510 scores · 582 journal predictions · 15,600 rows of GDELT
-daily volume across 93 ingested archive days. 774,090 events across 53 sources,
-774 MB.
+Derived on top: 19,140 stories · 26,985 story members · 10,949 embeddings ·
+6,742 gists · 3,791 claims · 17,004 corroboration rows · 1,444 disagreement
+rows · 61,306 scores · 582 journal predictions · 15,600 rows of GDELT daily
+volume across 93 ingested archive days.
 
 `scripts/data_audit.py` (#580) is the companion to this table: it reports not
 how *many* rows a source has but whether they mean anything — whether severity
@@ -395,7 +402,7 @@ newest export.CSV.zip               YYYYMMDD.export.CSV.zip
    │ unzip in memory                   │ download → unzip in memory
    ▼                                   │ keep 3 columns only
 events table                           │ (date, GoldsteinScale, country)
-(retention ~2 days)                    ▼
+(retention ~30 days)                   ▼
                                     per-country monthly sums
                                     → one small JSON checkpoint per month
                                       in data/gdelt/ — raw file DISCARDED
@@ -498,7 +505,7 @@ whole thing is idempotent — run it twice, get the same database.
 
 ```text
 data/                        (one folder, bind-mounted, survives anything)
-├── postgres/      1.1 GB    the database — 683k events, 671 MB of it
+├── postgres/      1.5 GB    the database — 940k events, 1077 MB of it
 ├── private/       104 MB    ACLED drop-folder (gitignored)
 ├── redis/          48 MB    queue state, ephemeral
 ├── gdelt/         3.1 MB    monthly checkpoint JSONs (11 years of GDELT)
@@ -513,6 +520,18 @@ labels, stories, gists, journal, job runs, the GDELT daily-volume aggregate),
 and because market/macro history is exempt — it cannot be re-fetched. Backups: `make data-size` to inspect, snapshot script in
 `scripts/`, and the whole folder is portable — point `OSINT_DATA_DIR` at an
 external disk and move it.
+
+### 3.6 Real hazard footprints on the map
+
+Hazard rows arrive as a single point; the map wants the real shape. A few
+minutes after each USGS/GDACS fetch, `enrich_footprints` pulls the actual
+geometry — USGS ShakeMap contours, GDACS alert polygons, and EONET's reported
+extent for wildfires and sea ice (#205, #612/#614). Stored geometry is capped
+at **50 kB per event** so one sprawling polygon cannot bloat the row (#615),
+and footprints **survive a later refresh** of the same event instead of being
+overwritten back to a bare point (#604/#611/#618/#621). A watchdog alerts if
+footprint coverage suddenly collapses — a silent upstream format change should
+not quietly empty the map (#617/#620).
 
 ---
 
@@ -601,6 +620,11 @@ never OOMs. If Ollama is down it answers "The brain is offline right now." Nothi
 persisted; the ask box lives at the bottom of the Situation card and clears on
 reload.
 
+Answers reflow into short readable paragraphs rather than one wall of text
+(#599), and an **elaborate** chip under the latest answer re-runs it in an
+ELI10 mode that spells out each inference step with its own label (#601/#603) —
+for when the terse answer moved too fast.
+
 **Model policy** (#413/#433): the 1.5b `brain_model` stays warm for the scheduled
 narrative and story enrichment above; every user ask (`/brain/ask` and
 `/brain/ask/stream`) runs the heavier 4b model per-call with `keep_alive=0`, so
@@ -651,7 +675,7 @@ The right pane is a deck of five cards (swipe, or click for fullscreen):
 coverage, scoreboard. Geography lives in the map on the left; the 3D globe was
 removed in #494 because its WebGL context was the tab's largest memory holder.
 
-### 4.0 Briefing — "just tell me what matters today"
+### 5.1 Briefing — "just tell me what matters today"
 
 The deck opens with the answer instead of a hunt (a pattern carried over
 from the news-intelligence-platform, this project's predecessor):
@@ -672,7 +696,7 @@ cards below. The same idea as a weekly artifact: `make briefing` writes a
 newsletter-ready one-pager (also generated automatically every Monday
 morning) — the first step on the productization path tracked in issue #400.
 
-### 4.1 Stories — "what is the world talking about, and should I believe it?"
+### 5.2 Stories — "what is the world talking about, and should I believe it?"
 
 Every row is **one real-world story**, no matter how many outlets wrote it
 up. The machine groups similar headlines every 30 minutes, so "Earthquake
@@ -712,7 +736,14 @@ has said. The header line — *"X stories · Y told by 2+ independent owners ·
 Z sensor-confirmed"* — is the day's honesty summary: how much of the news
 flow is corroborated versus single-sourced.
 
-### 4.2 Coverage — "whose stories never get told?"
+**Framing and the deep read.** Each story carries a deterministic **framing**
+breakdown — which angle each bloc leads with — replacing the old raw keyword
+dump (#606). For a contested story you can pull an on-demand **deep read**
+(#608): the 4b model explains, in plain prose, *why* the tellings diverge,
+returned as readable text rather than truncated JSON (#610). Both are opt-in
+per story, so the Pi only spends the tokens when you ask.
+
+### 5.3 Coverage — "whose stories never get told?"
 
 This card is the dashboard admitting its own blind spots. Media attention is
 wildly uneven: the top five countries absorb roughly **30 % of all recorded
@@ -737,7 +768,7 @@ high-share country is probably just loudness; a *small* spike in a country
 with high fatal/event may be a big deal that barely made the record. Loud
 countries are judged against their own past for exactly this reason.
 
-### 4.3 Scoreboard — "is any of this actually predictive?"
+### 5.4 Scoreboard — "is any of this actually predictive?"
 
 The honesty engine. Two sections:
 
@@ -783,7 +814,7 @@ that part works today. The predictive claim is *on trial in public*: watch
 the Brier column accumulate; if the instruments are worth anything, it sinks
 below 0.25 and stays there. Until then, nobody here will pretend otherwise.
 
-### 4.4 The one-paragraph version
+### 5.5 The one-paragraph version
 
 Stories = what happened, weighted by independent confirmation, machine-checked
 against sensors. Coverage = which countries this whole apparatus is blind to.
@@ -795,6 +826,12 @@ public, currently honest about not winning yet. Read them in that order.
 # Reference shelf
 
 *The deep material — architecture, domains, pipeline, thesis protocol.*
+
+> **The diagrams below describe the _target_ production shape, not what runs
+> today.** The live system is a single box, Postgres-only: the Raspberry Pi 5 +
+> RAID1, the Parquet cold-archive tier, Pushover alerting, Caddy/Tailscale are
+> all planned, not yet wired. Retention prunes raw events at ~30 days and every
+> derivation stays in Postgres — there is no hot/cold split yet.
 
 ## Project map — where everything lives
 
@@ -810,7 +847,7 @@ OSINT/
 │   ├── fetcher_registry.py     maps source name → fetcher
 │   ├── persistence.py          upsert events into Postgres (+ Redis "new rows" tick)
 │   ├── events_bus.py           Redis pub/sub channel powering the live SSE stream
-│   ├── housekeeping.py         retention policy (GDELT 2d / news 3d / hazard 2d)
+│   ├── housekeeping.py         retention policy (GDELT/news/hazard 30d, per RETENTION_* in .env)
 │   ├── db.py / db_models.py    SQLAlchemy engine/session  +  table definitions
 │   ├── settings.py             ALL config (reads .env): POSTGRES_*, OSINT_DATA_DIR, RETENTION_*
 │   ├── models.py               canonical Event/Score pydantic shapes
@@ -989,12 +1026,12 @@ Plain version:
 
 1. A scheduler wakes up a worker (every 5 minutes for fast feeds, every 15 minutes for slow ones).
 2. Worker takes a rate-limit token from Redis so we never burn the daily allowance.
-3. Worker fetches from the source, writes the raw response to disk (Parquet) and the parsed events to Postgres. Duplicates are filtered by `(source, source_event_id)`.
+3. Worker fetches from the source and writes the parsed events to Postgres. Duplicates are filtered by `(source, source_event_id)`.
 4. Once an hour, the composite worker reads the last 90 days of events per country, normalises and weights them per the JRC handbook, and writes a score row with a `method_version` tag.
 5. If the score crosses a threshold, Pushover gets called and your phone lights up.
 6. The dashboard pulls from Postgres via FastAPI and renders the country map plus per-country time series.
 
-Everything older than 90 days moves from Postgres to Parquet archive overnight (the "hot/cold" split) so the database stays fast.
+Retention prunes raw events at ~30 days overnight so the database stays small; every derivation (scores, stories, journal) is kept. The Parquet hot/cold split drawn above is planned, not yet built — today it is Postgres only.
 
 ---
 
@@ -1064,7 +1101,7 @@ For the thesis to land its primary claim, **B6 (or B7, or B8) must beat each of 
 | **VPN access** | Tailscale | Reach the Pi from anywhere with no port-forwarding |
 | **Queue** | Celery + Redis | Worker isolation, retry, rate limiting per source |
 | **Hot store** | Postgres 16 | Indexed queries for dashboard + composite |
-| **Cold archive** | Parquet on btrfs (Hive-partitioned) | Replayable evaluation, no DB round-trip |
+| **Cold archive** | *(planned)* Parquet on btrfs (Hive-partitioned) | Not built yet — today raw events are pruned by retention and all derivations stay in Postgres |
 | **Backup** | restic → Backblaze B2 or Cloudflare R2 | Encrypted off-site |
 | **API** | FastAPI | Async Python, fits the worker stack |
 | **Frontend** | Next.js + MapLibre GL | Vector map tiles, off-Pi build |
@@ -1079,9 +1116,10 @@ Full reasoning: [`docs/architecture/`](docs/architecture/) sections 01-07.
 
 Sits on the dashboard for situational awareness, **not** in the composite, **not** in the evaluation, **not** in the thesis Methods or Results chapters. Single Discussion paragraph + appendix table in the thesis. Grows freely after 28 August.
 
-Live as of the latest source-expansion batch — **43 active fetchers**:
+Live as of the latest source-expansion batch — **58 collectors** (14 named
+fetchers + 44 RSS feeds; see §3.1 for the authoritative cadence table):
 
-- **News (RSS, 25 feeds)** — BBC World, BBC UK, Reuters/Yahoo, Dawn, Guardian, Geo English, Al Jazeera, CNN, NYT, France 24, DW, NHK, RT, TASS, Times of India, The Hindu, Tribune PK, CBC, ABC AU, RNZ, Straits Times, Jerusalem Post, Haaretz, Arab News, Kyiv Independent. JSON-registry driven (#158).
+- **News (RSS, 44 feeds)** — BBC World, BBC UK, Reuters/Yahoo, Dawn, Guardian, Geo English, Al Jazeera, CNN, NYT, France 24, DW, NHK, RT, TASS, Times of India, The Hindu, Tribune PK, CBC, ABC AU, RNZ, Straits Times, Jerusalem Post, Haaretz, Arab News, Kyiv Independent. JSON-registry driven (#158).
 - **Aviation** — OpenSky public ADS-B (#161). 2 min cadence, every aircraft broadcasting ADS-B in the last 10 s.
 - **Cyber-threat** — abuse.ch URLhaus malware URLs + Feodo Tracker botnet C2 IPs (#163). 15 min cadence each.
 - **Prediction markets** — Polymarket public Gamma API (#165). 30 min cadence. Severity reads as "tail-event awareness" (peaks at p = 0.5).
@@ -1113,6 +1151,10 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
   - Part A — pre-registered evaluation protocol (ground truth, splits, baselines, metrics, sensitivity, reporting checklist)
   - Part B — literature baseline (citations, reading priority, BibTeX snippets)
 - **[`docs/project-direction.md`](docs/project-direction.md)** — what the project is, who it serves, why it matters, and the long-term product / research path
+- **[`docs/analytical-agenda.md`](docs/analytical-agenda.md)** — the WS-A…G workstreams: what we actually do with the data (quantify, validate, predict)
+- **The three pre-registered exams** — [`docs/onset-eval.md`](docs/onset-eval.md), [`docs/within-country-eval.md`](docs/within-country-eval.md), [`docs/disagreement-exam.md`](docs/disagreement-exam.md), each frozen before its first result
+- **[`docs/data-coverage.md`](docs/data-coverage.md)** · **[`docs/acled-non-api-collection.md`](docs/acled-non-api-collection.md)** · **[`docs/security.md`](docs/security.md)**
+- **[`docs/backtest/`](docs/backtest/)** — lead-time gate reports · **[`docs/audits/`](docs/audits/)** — clustering-threshold hand-check · **[`docs/frontend/`](docs/frontend/)** — dashboard design notes
 - **[`docs/architecture/`](docs/architecture/)** — seven-section build spec, all sections drafted:
   - [01 overview](docs/architecture/01-overview.md) · [02 storage](docs/architecture/02-storage.md) · [03 ingestion](docs/architecture/03-ingestion.md) · [04 schema](docs/architecture/04-schema.md) · [05 originality](docs/architecture/05-originality.md) · [06 validation](docs/architecture/06-validation.md) · [07 risks](docs/architecture/07-risks.md)
   - [CII methodology](docs/architecture/CII-METHODOLOGY.md) — per-country baseline + 4-component event blend (cii.v1.1, 31 Tier-1 countries)
