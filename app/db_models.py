@@ -103,6 +103,30 @@ class ScoreRow(Base):
     )
 
 
+class CompositeSignalRow(Base):
+    """One (country, month, domain) signal value, kept beyond event retention.
+
+    The composite z-scores a country against its own past. It used to rebuild
+    that past from the events table on every run, but retention keeps ~30 days,
+    so 183 of 184 countries never reached the three observations the normaliser
+    needs and every live score came out at exactly 0.5 (#586). Storing the
+    aggregate — a few thousand rows a year — decouples the analysis history from
+    how long the raw events live.
+    """
+
+    __tablename__ = "composite_signals"
+
+    country: Mapped[str] = mapped_column(String(2), primary_key=True)
+    bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    domain: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("composite_signals_bucket_idx", "bucket_start"),)
+
+
 class LabelRow(Base):
     __tablename__ = "labels"
 
