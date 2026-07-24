@@ -289,7 +289,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | Source data audit | does each source's data mean what it claims | ✅ live — 50 findings across 47 sources (#580) |
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
 | WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward exam (#374) |
-| WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 (#376) |
+| WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 full-panel, but fades to ~0.53 on the fair onset exam and even beats the composite that contains it (#376, #573) |
 | WS-G local AI checker | Ollama claim extraction w/ measured error rate | 🔨 machinery done (#386) — awaiting Basil's filled audit sheet |
 
 The living log of all of this is pinned issue
@@ -897,6 +897,50 @@ OSINT/
 
 ---
 
+## Trace it yourself — clickable file + data map
+
+The ASCII tree above shows the *shape*; this shows the *route data takes*. Every
+path is a link — click to open the file on GitHub.
+
+**Follow one row, source → screen** (a GDELT event's whole life):
+
+| # | Stage | File | What happens |
+|---|---|---|---|
+| 1 | fetch | [`app/sources/gdelt_fetcher.py`](app/sources/gdelt_fetcher.py) | HTTP GET the newest 15-min export |
+| 2 | register | [`app/fetcher_registry.py`](app/fetcher_registry.py) | name → fetcher lookup |
+| 3 | schedule | [`app/tasks.py`](app/tasks.py) | Celery beat fires it every 15 min |
+| 4 | dedup + store | [`app/persistence.py`](app/persistence.py) | upsert on `(source, source_event_id)` → `events` |
+| 5 | normalise | [`app/composite/normalization.py`](app/composite/normalization.py) | rolling within-country z-score |
+| 6 | score | [`app/composite/scoring.py`](app/composite/scoring.py) | weighted-z → sigmoid → `scores` |
+| 7 | serve | [`app/api.py`](app/api.py) | `/scores`, `/events`, SSE stream |
+| 8 | fetch (UI) | [`osint-frontend/lib/apiClient.ts`](osint-frontend/lib/apiClient.ts) | all backend calls in one file |
+| 9 | render | [`osint-frontend/components/`](osint-frontend/components/) | map + cards |
+
+**Where each source lands:**
+
+| Source | Fetcher | Table / output |
+|---|---|---|
+| GDELT live | [`app/sources/gdelt_fetcher.py`](app/sources/gdelt_fetcher.py) | `events` (rolling ~30d) |
+| GDELT history | [`app/composite/gdelt.py`](app/composite/gdelt.py) | `data/gdelt/` monthly JSON + `gdelt_daily_volume` |
+| USGS / GDACS / FIRMS / EONET | [`app/sources/`](app/sources/) | `events` → footprint enrich in [`app/tasks.py`](app/tasks.py) |
+| yfinance / FRED | [`app/sources/`](app/sources/) | `events` (market/macro, never pruned) |
+| ACLED (labels) | [`scripts/`](scripts/) drop-folder | `labels` table (ground truth, kept separate) |
+| RSS ×44 | [`app/sources/rss_feeds.json`](app/sources/rss_feeds.json) | `events` → stories |
+
+**Analytical subsystems — one folder each, formula inside:**
+
+| Concern | Folder | Formula file |
+|---|---|---|
+| Composite index | [`app/composite/`](app/composite/) | [`normalization.py`](app/composite/normalization.py) · [`scoring.py`](app/composite/scoring.py) |
+| Corroboration | [`app/corroboration/`](app/corroboration/) | [`score.py`](app/corroboration/score.py) |
+| Divergence / disagreement | [`app/divergence/`](app/divergence/) | [`config.py`](app/divergence/config.py) |
+| CII | [`app/cii/`](app/cii/) | [`scoring.py`](app/cii/scoring.py) |
+| The brain (LLM) | [`app/brain/`](app/brain/) | `gate.py` · `client.py` |
+| Prediction journal | [`app/journal/`](app/journal/) | [`emit.py`](app/journal/emit.py) |
+| Retention | [`app/housekeeping.py`](app/housekeeping.py) | — |
+
+---
+
 ## The thing in one diagram
 
 ```mermaid
@@ -1166,3 +1210,107 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 
 - **Architectural inspiration only (not cited in thesis literature review)**: [Shadowbroker](https://github.com/BigBodyCobain/Shadowbroker), WorldMonitor
 - **Methodology lineage (cited)**: OECD/JRC Composite Indicator Handbook (Nardo et al., 2008), ViEWS (Hegre et al., 2019), CEWS field review (Davies et al., 2023), FSI methodology (Fund for Peace), GDELT validity critiques (Wang 2025, Wallace 2014, Öberg & Yilmaz 2025), FinBERT honesty (Yang et al., 2024). Full list with reading priority in [`docs/methodology.md`](docs/methodology.md#part-b--literature-baseline).
+
+---
+
+## Equations the examiner will ask
+
+Every formula below is the one actually in the code, with its file. Learn the
+first six; the rest are standard definitions.
+
+### 1. Within-country rolling z-score — [`app/composite/normalization.py`](app/composite/normalization.py)
+
+Each domain's raw severity is standardised against *that country's own* trailing history:
+
+$$z_t = \frac{x_t - \mu_{[t-w,\,t)}}{\sigma_{[t-w,\,t)}}$$
+
+A minimum history (≥3 monthly points) is required; cold starts and zero-variance windows emit $z=0$. **This is the crux of the whole thesis:** the score carries no cross-country level, only "unusual vs its own past" — which is why a pooled AUROC (0.93 base rate) was the wrong ruler and the within-country exam (base rate 0.30) was the right one.
+
+### 2. Composite aggregation — [`app/composite/scoring.py`](app/composite/scoring.py)
+
+Weighted sum of domain z-scores, squashed to [0,1] by a logistic:
+
+$$C = \sigma\!\left(\sum_d w_d\, z_d\right), \qquad \sigma(x)=\frac{1}{1+e^{-x}}, \qquad \sum_d w_d = 1$$
+
+Missing domains contribute $z=0$. **This is exactly why every live score is 0.5 right now (#586):** retention holds 30 days but the z-score needs ≥3 monthly points, so every $z_d=0$, the weighted sum is 0, and $\sigma(0)=0.5$.
+
+### 3. Goldstein → severity — [`app/composite/gdelt.py`](app/composite/gdelt.py)
+
+GDELT's conflict–cooperation scale [−10, +10] inverted to a [0,1] severity (1 = maximal conflict), zero tuning knobs:
+
+$$s = \mathrm{clip}\!\left(\frac{10 - G}{20},\; 0,\; 1\right)$$
+
+### 4. Corroboration confidence — [`app/corroboration/score.py`](app/corroboration/score.py)
+
+Each additional *independent owner* halves the remaining doubt; a sensor confirmation halves it once more:
+
+$$\text{doubt} = 2^{-\left(\max(n,1)-1+\,f_{\text{sensor}}\right)}, \qquad \text{score} = 1 - \text{doubt}$$
+
+$n$ = independent owners (RT + TASS = 1), $f_{\text{sensor}}\in\{0,1\}$. One unverified teller → doubt 1 → score 0. Two owners → 0.5. Three → 0.75. A sensor ✓ adds one more halving.
+
+### 5. Divergence spike + lead — [`app/divergence/config.py`](app/divergence/config.py) (`div.v4`)
+
+A physical and a narrative daily series are each z-scored over a 28-day rolling window; a side "spikes" when it crosses $\tau = 1.5$. Values are compressed with $\log(1+x)$ against per-side ceilings (physical 10, narrative 300). Lead detection searches ±21 days on *both* sides of a narrative spike (the v4 fix), so a positive lead is not the only outcome the detector can return.
+
+### 6. CII v1.1 — [`app/cii/scoring.py`](app/cii/scoring.py)
+
+$$\text{CII} = 0.40\,b + 0.60\,e, \qquad e = 0.25\,u + 0.30\,c + 0.20\,s + 0.25\,i$$
+
+$b$ = per-country baseline, $e$ = event aggregate over unrest $u$, conflict $c$, security $s$, information $i$ (each log-scaled to 0–100). 31 Tier-1 countries, hourly.
+
+### The grading metrics (standard — know the definitions)
+
+- **Brier** $=\frac{1}{N}\sum_i (p_i - o_i)^2$ — 0 clairvoyant, 0.25 coin flip, 1 perfectly wrong. The journal's headline grade.
+- **AUROC** — P(model ranks a random positive above a random negative); 0.5 = chance. A *pooled* AUROC is rewarded for separating high- from low-base-rate countries, which is where the illusory 0.93 came from.
+- **AUPR** — area under precision–recall; the honest metric under class imbalance (few positive months).
+- **Base rate** — share of positive months; the score a "predict the mean" baseline earns.
+- **Impact ranking (NIP §3)** — $0.30\,|\text{sentiment}| + 0.25\,\text{cluster} + 0.25\,\text{sourceWeight} + 0.20\,\text{recency}$.
+
+---
+
+## SWOT (viva defense)
+
+Framed for the examiner, not a product pitch — and logged here so it stays with the code.
+
+| | Helpful | Harmful |
+|---|---|---|
+| **Internal** | **Strengths** (below) | **Weaknesses** (below) |
+| **External** | **Opportunities** (below) | **Threats** (below) |
+
+**Strengths**
+- A pre-registration + server-stamp **honesty machine** that structurally cannot lie to itself — five negatives published, none buried.
+- Reproducible, local-first, zero-cloud; idempotent backfills; every method version-stamped and never edited in place.
+- Genuine multi-modal ingestion (58 collectors) with *structural* dedup and published coverage bias.
+
+**Weaknesses**
+- The headline claim **failed**: the composite does not beat the dumb baselines on any of the three pre-registered exams.
+- Single developer, heavily AI-assisted → depth-of-understanding is the real exam risk (this document and §"Equations" are the mitigation).
+- The live composite is currently degenerate (0.5) from the retention-vs-z-score mismatch (#586); ACLED ground-truth labels are manually maintained.
+
+**Opportunities**
+- **Slow-onset hazards** (drought, flood, sustained unrest) are the untested anchor where a sensor could plausibly lead coverage — the open question, not a settled failure.
+- Productization path (newsletter → API → app, #400); the corroboration + coverage engine works *today* and has standalone value independent of the thesis claim.
+- If any signal is recoverable it is in the hazard domain — the strongest single indicator (|hazard z| ≈ 0.59 full-panel), which even beats the composite that contains it (#573). The open task is making it survive the fair onset exam, where it currently fades to ~0.53.
+
+**Threats**
+- The examiner attacks the within-country construction, the 0.5 degeneracy, and "how much did you build vs the AI."
+- Upstream drift: GDELT gaps, ACLED API rejection, RSS format changes, FIRMS confidence ≠ intensity.
+- The retention window vs evaluation needs (the #586 class of bug) can silently flatten a signal before it is measured.
+
+---
+
+## Figures — printable supplementary
+
+Rendered assets live in [`docs/supplementary/`](docs/supplementary/) as **SVG** (scalable, editable text) and **PNG** (2× print resolution). Regenerate the PNGs with `rsvg-convert -z 2 <file>.svg -o <file>.png`.
+
+**The result in one picture** — the composite is a coin flip in all three exams; the impressive 0.93 was only the base rate.
+
+![Composite AUROC across the three pre-registered exams](docs/supplementary/auroc-vs-exams.png)
+
+**Why "signal before narrative" is the whole bet** — sensors are cheap and high-volume, narrative is scarce and expensive; the thesis asks whether the first moves before the second.
+
+![Rows held per source, sensors vs narrative, log scale](docs/supplementary/sensor-vs-narrative-volume.png)
+
+**Why it runs on a Raspberry Pi** — raw events are pruned at ~30 days, the small permanent derivations are kept forever.
+
+![Retention vs derived lifecycle](docs/supplementary/retention-lifecycle.png)
