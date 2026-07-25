@@ -149,8 +149,15 @@ services:
     restart: unless-stopped
     # Threads pool, not prefork: macOS fork-safety segfaults under prefork
     # (#437). Concurrency stays low to leave headroom on Pi-class hardware.
+    #
+    # `-Q celery` is explicit (#634). Without it this worker consumed only the
+    # default queue by accident of `task_default_queue`, and nothing anywhere
+    # consumed `analytics` — so every heavy job was published to a queue with no
+    # consumer and silently never ran. Stating both queues is what stops that
+    # returning the next time the routing table changes.
     command:
       ["celery", "-A", "app.celery_app", "worker",
+       "-Q", "celery",
        "--pool", "threads", "--concurrency", "4", "--loglevel", "INFO"]
     env_file: *backend_env_file
     environment: *backend_env
@@ -169,6 +176,43 @@ services:
     # on the broker, so an untargeted probe passes even when THIS container is
     # the dead one. Measured cost: 0.26s CPU per call (the rest is broadcast
     # wait), ~0.4% of a core at this interval.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping -d celery@$$(hostname) -t 5 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+
+  # The heavy half of the split (#388): pandas panels, TF-IDF windows and the
+  # Ollama batches. Concurrency 1 so peak memory is max(one job) rather than
+  # sum(everything beat fired at once), which is what an 8 GB Pi sharing RAM
+  # with a 4B model can actually survive. Mirrors the host worker that
+  # scripts/dev-up.sh has always spawned.
+  worker-analytics:
+    profiles: ["app"]
+    # Ceiling, not a reservation. Higher than the fetcher worker because these
+    # are the jobs that hold a panel in memory; measured 655 MB on the host.
+    mem_limit: 1500m
+    build: .
+    image: osint-backend:local
+    restart: unless-stopped
+    command:
+      ["celery", "-A", "app.celery_app", "worker",
+       "-Q", "analytics",
+       "--pool", "threads", "--concurrency", "1", "--loglevel", "INFO"]
+    env_file: *backend_env_file
+    environment: *backend_env
+    user: *backend_user
+    volumes: *backend_volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # Same reasoning as `worker` — a wedged-but-alive worker satisfies
+    # `restart: unless-stopped` forever, so it needs a real probe (#569). The
+    # node name must be targeted or the broadcast answers for the other worker
+    # and a dead analytics container reports healthy.
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.celery_app inspect ping -d celery@$$(hostname) -t 5 | grep -q pong"]
       interval: 60s

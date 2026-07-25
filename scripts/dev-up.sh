@@ -239,8 +239,21 @@ ensure_docker
 #      clean. Data lives on $OSINT_DATA_DIR bind mounts, so the new project
 #      reattaches to the same Postgres/Redis state; the ghost containers stay
 #      behind, inert and invisible to the new project name.
+# The dev overlay mounts app/ back over the image so editing a file still takes
+# effect without a rebuild (#634). It is passed explicitly rather than named
+# docker-compose.override.yml, which compose would auto-load and thereby apply
+# to the Pi as well.
+COMPOSE_DEV_FILES=(-f docker-compose.yml -f docker-compose.dev.yml)
+
 compose_up() {
-  docker compose up -d "$@" >/dev/null 2>logs/compose-up.err
+  docker compose "${COMPOSE_DEV_FILES[@]}" up -d "$@" >/dev/null 2>logs/compose-up.err
+}
+
+# Stores plus the profile-gated backend. Separate from compose_up so the store
+# bring-up and its corruption recovery above stay unchanged.
+compose_up_app() {
+  COMPOSE_PROFILES=app docker compose "${COMPOSE_DEV_FILES[@]}" up -d --build "$@" \
+    >/dev/null 2>logs/compose-up.err
 }
 
 bump_project_name() {
@@ -320,27 +333,29 @@ export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 echo "→ brain (ollama)"
 ensure_ollama
 
-# Two workers (#384, #388). The default queue keeps a tiny concurrent pool
-# for the I/O-bound fetchers; every heavy analytical job routes to the
-# `analytics` queue consumed at concurrency 1 — strictly one at a time, so
-# peak memory is max(one job) and the nightly Ollama batch never overlaps a
-# pandas parse. Default to one fetcher locally so Docker, Next, Ollama, and
-# Postgres keep enough headroom; fast machines can set CELERY_CONCURRENCY=2.
-# macOS only (#437): prefork children segfault in SCDynamicStoreCopyProxies /
-# CFPrefs on their first HTTP request (fork-without-exec poisons ObjC/dispatch
-# state) — "Python quit unexpectedly" dialog spam. Threads pool avoids the
-# fork; tasks are I/O-bound and the queues already run at concurrency 1.
-# Linux (the Pi) keeps celery's default prefork.
-POOL_ARGS=()
-if [ "$(uname -s)" = "Darwin" ]; then
-  POOL_ARGS=(--pool threads)
+# The backend runs in containers (#634). It used to run as host processes here
+# while `make up-docker` ran the same code in compose, and the two were not
+# equivalent: the compose worker carried no `-Q`, so nothing consumed the
+# `analytics` queue and thirteen heavy jobs — the composite, the CII, story
+# clustering, the brain, housekeeping — were published to a queue with no
+# consumer and silently never ran. One path means one thing to keep correct.
+#
+# Two workers either way (#384, #388): the default queue keeps a small
+# concurrent pool for the I/O-bound fetchers, and every heavy job routes to
+# `analytics` at concurrency 1, so peak memory is max(one job) rather than
+# sum(everything beat fired together).
+#
+# Ollama and the frontend stay on the host. Ollama because containerising it on
+# macOS loses Metal and makes the brain materially slower; the frontend because
+# there is no image for it yet (#550 §3.1).
+echo "→ backend (containers)"
+if ! compose_up_app; then
+  echo "Backend containers did not start." >&2
+  echo "See logs/compose-up.err for the compose error." >&2
+  exit 1
 fi
-spawn worker .venv/bin/celery -A app.celery_app worker -l info \
-  -Q celery --concurrency "${CELERY_CONCURRENCY:-1}" -n fetchers@%h "${POOL_ARGS[@]}"
-spawn worker-analytics .venv/bin/celery -A app.celery_app worker -l info \
-  -Q analytics --concurrency 1 -n analytics@%h "${POOL_ARGS[@]}"
-spawn beat   .venv/bin/celery -A app.celery_app beat   -l info
-spawn api    .venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
+echo "  api + worker + worker-analytics + beat started"
+
 spawn_frontend
 
 # Wait briefly for the API to answer.
