@@ -1,8 +1,8 @@
 # OSINT — Multi-modal Early-Warning Dashboard
 
-> A self-hosted dashboard plus a **composite stress index** per country, fed by three independent open-data domains (market signals, geopolitical events, hazards). MSc thesis project (PX5928, University of Aberdeen, supervised by Marco Thiel) and a personal infrastructure project meant to run for years on a Raspberry Pi.
+> A self-hosted dashboard plus a **composite stress index** per country, fed by three independent open-data domains (market signals, geopolitical events, hazards). A personal infrastructure project meant to run for years on a Raspberry Pi.
 
-The thesis is one specific claim: **a composite of three heterogeneous OSINT signal domains discriminates later instability events better than the best single-domain baseline.** The dashboard, the Pi, the maps — they are the system that lets that claim be measured.
+The project is built around one specific claim: **a composite of three heterogeneous OSINT signal domains discriminates later instability events better than the best single-domain baseline.** The dashboard, the Pi, the maps — they are the system that lets that claim be measured.
 
 > **Status, plainly: the claim has been tested five times and failed every
 > time.** The composite does not discriminate better than the dumb baselines —
@@ -139,7 +139,7 @@ cd osint-frontend && pnpm dev
 
 The dashboard eats the world's open data all day: news feeds, earthquake
 sensors, satellites, market prices, conflict databases. The obvious question —
-the one a professor, an examiner or a customer asks first — is:
+the one an analyst or a customer asks first — is:
 
 > **"How do you know any of this is true, complete, and not just one loud
 > country's version of events?"**
@@ -216,7 +216,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
   `disagreement-v1.0` divergence (#370), rolled up per (country-pair, month)
   (#372) — first live board: RU|US at 0.832 mean over 11 co-told stories.
   Whether divergence *predicts* instability is under a pre-registered forward
-  exam (#374): divergence exposures enter the prediction journal daily and
+  evaluation (#374): divergence exposures enter the prediction journal daily and
   get graded like every other forecast — protocol frozen in
   `docs/disagreement-exam.md` before the first prediction was issued.
 - **Coverage bias (WS-D, done)** — the dashboard publishes its own blind
@@ -236,7 +236,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
    written BEFORE           composite on          the scoreboard
    any result exists)       2015-2022 only)       shows it in red)
 
-  2023-2024 = TEST WINDOW — locked, untouched, for the final exam.
+  2023-2024 = TEST WINDOW — locked, untouched, for the final held-out evaluation.
 ```
 
 - **Ground truth** comes from ACLED (human-validated conflict data),
@@ -246,7 +246,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 - The current headline: with all three domains live, the composite scores
   **AUROC 0.502** against a per-country base rate of **0.929**. A coin flip —
   published, not hidden. The generous reading was that our index measures
-  *"is this country behaving unusually vs its own past?"* while the exam asks
+  *"is this country behaving unusually vs its own past?"* while the evaluation asks
   *"which countries have conflict at all?"* — so a second, pre-registered
   test restricted scoring to **onset months** (calm-before-the-storm cases,
   `docs/onset-eval.md`, #380). Verdict: **coin flip there too** (0.496–0.526
@@ -258,7 +258,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
   by construction. With 133 of 238 panel countries never labelled and 10
   labelled in ≥90% of months, a pooled metric is largely rewarded for telling
   Norway from Syria — which is where the ~0.93 base rate comes from. So a
-  third exam was pre-registered (`docs/within-country-eval.md`, #582) asking
+  third evaluation was pre-registered (`docs/within-country-eval.md`, #582) asking
   whether the composite ranks a country's **own** onset months above its
   **own** calm months. Verdict: **negative** — best 0.531 at k=6, below the
   declared 0.55 threshold, 95% CI [0.474, 0.582] containing 0.5. The
@@ -284,12 +284,12 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-D coverage bias | attention-bias table | ✅ live on /coverage |
 | WS-E prediction journal | forward track record | ✅ live on /scoreboard |
 | GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
-| Onset exam | the composite's second pre-registered test | ✅ ran — coin flip again, honestly published (#380) |
-| Within-country exam | the composite's third, on the axis it was built for | ✅ ran — negative, 0.531 vs a declared 0.55 (#582) |
+| Onset evaluation | the composite's second pre-registered test | ✅ ran — coin flip again, honestly published (#380) |
+| Within-country evaluation | the composite's third, on the axis it was built for | ✅ ran — negative, 0.531 vs a declared 0.55 (#582) |
 | Source data audit | does each source's data mean what it claims | ✅ live — 50 findings across 47 sources (#580) |
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
-| WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward exam (#374) |
-| WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 full-panel, but fades to ~0.53 on the fair onset exam and even beats the composite that contains it (#376, #573) |
+| WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward evaluation (#374) |
+| WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 full-panel, but fades to ~0.53 on the fair onset evaluation and even beats the composite that contains it (#376, #573) |
 | WS-G local AI checker | Ollama claim extraction w/ measured error rate | 🔨 machinery done (#386) — awaiting Basil's filled audit sheet |
 
 The living log of all of this is pinned issue
@@ -790,7 +790,7 @@ afterwards, graded automatically once reality catches up. The columns:
 "predict randomly", "predict yesterday's weather", "predict each country's
 long-run average". The published result, stated plainly: **the composite has
 not yet beaten the dumb rivals** (AUROC ≈ 0.5 = coin flip, on both the
-ordinary exam and the pre-registered onset exam). That negative is published
+ordinary evaluation and the pre-registered onset evaluation). That negative is published
 on purpose — it is what makes every other number here credible, and the
 per-indicator decomposition (`make indicator-ranking`) shows where the
 recoverable signal lives for the next version.
@@ -825,7 +825,7 @@ public, currently honest about not winning yet. Read them in that order.
 
 # Reference shelf
 
-*The deep material — architecture, domains, pipeline, thesis protocol.*
+*The deep material — architecture, domains, pipeline, evaluation protocol.*
 
 > **The diagrams below describe the _target_ production shape, not what runs
 > today.** The live system is a single box, Postgres-only: the Raspberry Pi 5 +
@@ -961,7 +961,7 @@ flowchart LR
     subgraph OUT["Outputs"]
         DASH[Next.js dashboard<br/>MapLibre GL]
         PHONE[Pushover<br/>phone alert]
-        THESIS[Thesis report<br/>AUROC / AUPR / Brier]
+        EVAL[Evaluation report<br/>AUROC / AUPR / Brier]
     end
 
     S1 & S2 & S3 --> W
@@ -971,10 +971,10 @@ flowchart LR
     COMP --> DB
     DB --> DASH
     COMP --> PHONE
-    AR --> THESIS
+    AR --> EVAL
 ```
 
-Three sources in. One pipeline. Three outputs: a live dashboard you can pull up on your phone, an alert when a country crosses a threshold, and a thesis report at the end.
+Three sources in. One pipeline. Three outputs: a live dashboard you can pull up on your phone, an alert when a country crosses a threshold, and an evaluation report at the end.
 
 ---
 
@@ -983,15 +983,15 @@ Three sources in. One pipeline. Three outputs: a live dashboard you can pull up 
 | Question | Answer |
 |---|---|
 | **What is it?** | A small early-warning dashboard. It watches three kinds of open data — markets, geopolitical news events, and natural hazards — and combines them into a single number per country that goes up when things look stressed. |
-| **Why these three?** | Marco's brief says "must not depend on a single data source." Three independent domains keep the score honest: if only one domain spikes, the composite stays calm. If multiple domains spike together, the composite goes red. |
-| **What is it for?** | (a) **Thesis** — prove that this multi-modal composite is better at flagging real instability events than just watching one domain on its own. (b) **Personal** — a self-hosted situational-awareness tool that keeps running after the thesis is submitted. |
+| **Why these three?** | The design brief: "must not depend on a single data source." Three independent domains keep the score honest: if only one domain spikes, the composite stays calm. If multiple domains spike together, the composite goes red. |
+| **What is it for?** | (a) **The claim** — test whether this multi-modal composite is better at flagging real instability events than watching one domain alone. (b) **Personal** — a self-hosted situational-awareness tool that keeps running indefinitely. |
 | **What is NOT it?** | Not a prediction system. Not Palantir. Not Shadowbroker. Not finance-only. Does not claim to predict specific events. Does not use private intelligence feeds. |
 
 ---
 
 ## Three input domains
 
-The thesis defends a composite over **three domains**, not finance alone, not GDELT alone.
+The system tests a composite over **three domains**, not finance alone, not GDELT alone.
 
 ```mermaid
 flowchart LR
@@ -1029,7 +1029,7 @@ flowchart LR
 | **D** | Composite | JRC handbook 10-step methodology | [`docs/methodology.md`](docs/methodology.md#part-b--literature-baseline) |
 | **E** | Evaluation | Pre-registered AUROC / AUPR / Brier vs ground truth | [`docs/methodology.md`](docs/methodology.md#part-a--evaluation-protocol-pre-registered) |
 
-Layer 3 feeds (satellites, news RSS, aviation, maritime, weather, mesh) sit on the dashboard for situational awareness only. They **do not enter the composite or the thesis evaluation**. See the [feed taxonomy](docs/architecture/01-overview.md#feed-taxonomy) for the full list.
+Layer 3 feeds (satellites, news RSS, aviation, maritime, weather, mesh) sit on the dashboard for situational awareness only. They **do not enter the composite or the evaluation**. See the [feed taxonomy](docs/architecture/01-overview.md#feed-taxonomy) for the full list.
 
 ---
 
@@ -1097,7 +1097,7 @@ The labels live in their own database table, kept strictly separate from input e
 
 ---
 
-## Thesis loop — how the claim gets proven
+## Evaluation loop — how the claim gets tested
 
 ```mermaid
 flowchart TD
@@ -1108,13 +1108,12 @@ flowchart TD
     SPLIT -->|2015-2021| TRAIN[Train composite weights]
     SPLIT -->|2022| VAL[Tune hyperparameters]
     SPLIT -->|2023-2024| TEST[Held-out final evaluation]
-    TRAIN --> LOCK[Lock methodology v1.0<br/>with Marco · Week 5]
+    TRAIN --> LOCK[Lock methodology v1.0]
     LOCK --> RUN[Run 9 baselines<br/>B0..B8]
     VAL --> RUN
     RUN --> METRICS[AUROC · AUPR · Brier · lead-time]
     TEST --> METRICS
-    METRICS --> REPORT[Thesis report<br/>4000 words]
-    REPORT --> VIVA[Viva exam]
+    METRICS --> REPORT[Evaluation report]
 ```
 
 Nine baselines compete:
@@ -1127,11 +1126,11 @@ Nine baselines compete:
 | B3 | Geo only | Module B score alone |
 | B4 | Market only | Module A score alone |
 | B5 | Hazard only | Module C score alone |
-| B6 | Composite (equal weights) | The headline thesis claim |
+| B6 | Composite (equal weights) | The headline claim |
 | B7 | Composite (PCA weights) | Alternative weighting |
 | B8 | Composite (geometric mean) | Less-compensatory aggregation |
 
-For the thesis to land its primary claim, **B6 (or B7, or B8) must beat each of B3, B4, B5** on both AUROC and AUPR on the held-out test set. If it doesn't, the thesis says so honestly — pre-registered protocols make negative results respectable.
+For the composite to land its primary claim, **B6 (or B7, or B8) must beat each of B3, B4, B5** on both AUROC and AUPR on the held-out test set. If it doesn't, the system says so honestly — pre-registered protocols make negative results respectable.
 
 ---
 
@@ -1156,9 +1155,9 @@ Full reasoning: [`docs/architecture/`](docs/architecture/) sections 01-07.
 
 ---
 
-## Layer 3 — dashboard breadth (not in thesis)
+## Layer 3 — dashboard breadth (not in the evaluation)
 
-Sits on the dashboard for situational awareness, **not** in the composite, **not** in the evaluation, **not** in the thesis Methods or Results chapters. Single Discussion paragraph + appendix table in the thesis. Grows freely after 28 August.
+Sits on the dashboard for situational awareness only — **not** in the composite, **not** in the evaluation.
 
 Live as of the latest source-expansion batch — **58 collectors** (14 named
 fetchers + 44 RSS feeds; see §3.1 for the authoritative cadence table):
@@ -1169,8 +1168,6 @@ fetchers + 44 RSS feeds; see §3.1 for the authoritative cadence table):
 - **Prediction markets** — Polymarket public Gamma API (#165). 30 min cadence. Severity reads as "tail-event awareness" (peaks at p = 0.5).
 - **Crime** — UK Police data.police.uk monthly snapshots.
 - **Hazard / geo / market (Layer 1+2)** — yfinance, FRED, GDELT, USGS, GDACS, FIRMS, EONET.
-
-**Hard rule** ([`docs/architecture/07-risks.md`](docs/architecture/07-risks.md#schedule-risks)): no Layer 3 worker is merged after end of Week 7. Layer 3 PRs that arrive after that are closed without merge. This rule is load-bearing for the thesis grade — every Layer 3 hour after Week 7 is an hour stolen from writing or viva prep.
 
 ## Enrichment + analytics on the rows
 
@@ -1190,13 +1187,13 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 ## Documentation index
 
 - **[`docs/storage.md`](docs/storage.md)** — local storage & data: `OSINT_DATA_DIR`, where the live DB lives vs backups vs the config pointer, retention, move/back-up/restore/wipe
-- **[`docs/requirements.md`](docs/requirements.md)** — PX5928 university spec, group context, three-layer scope analysis, deliverable checklist
+- **[`docs/requirements.md`](docs/requirements.md)** — system requirements spec, three-layer scope analysis, deliverable checklist
 - **[`docs/methodology.md`](docs/methodology.md)**
   - Part A — pre-registered evaluation protocol (ground truth, splits, baselines, metrics, sensitivity, reporting checklist)
   - Part B — literature baseline (citations, reading priority, BibTeX snippets)
 - **[`docs/project-direction.md`](docs/project-direction.md)** — what the project is, who it serves, why it matters, and the long-term product / research path
 - **[`docs/analytical-agenda.md`](docs/analytical-agenda.md)** — the WS-A…G workstreams: what we actually do with the data (quantify, validate, predict)
-- **The three pre-registered exams** — [`docs/onset-eval.md`](docs/onset-eval.md), [`docs/within-country-eval.md`](docs/within-country-eval.md), [`docs/disagreement-exam.md`](docs/disagreement-exam.md), each frozen before its first result
+- **The three pre-registered evaluations** — [`docs/onset-eval.md`](docs/onset-eval.md), [`docs/within-country-eval.md`](docs/within-country-eval.md), [`docs/disagreement-exam.md`](docs/disagreement-exam.md), each frozen before its first result
 - **[`docs/data-coverage.md`](docs/data-coverage.md)** · **[`docs/acled-non-api-collection.md`](docs/acled-non-api-collection.md)** · **[`docs/security.md`](docs/security.md)**
 - **[`docs/backtest/`](docs/backtest/)** — lead-time gate reports · **[`docs/audits/`](docs/audits/)** — clustering-threshold hand-check · **[`docs/frontend/`](docs/frontend/)** — dashboard design notes
 - **[`docs/architecture/`](docs/architecture/)** — seven-section build spec, all sections drafted:
@@ -1208,15 +1205,15 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 
 ## Inspirations and lineage
 
-- **Architectural inspiration only (not cited in thesis literature review)**: [Shadowbroker](https://github.com/BigBodyCobain/Shadowbroker), WorldMonitor
+- **Architectural inspiration only**: [Shadowbroker](https://github.com/BigBodyCobain/Shadowbroker), WorldMonitor
 - **Methodology lineage (cited)**: OECD/JRC Composite Indicator Handbook (Nardo et al., 2008), ViEWS (Hegre et al., 2019), CEWS field review (Davies et al., 2023), FSI methodology (Fund for Peace), GDELT validity critiques (Wang 2025, Wallace 2014, Öberg & Yilmaz 2025), FinBERT honesty (Yang et al., 2024). Full list with reading priority in [`docs/methodology.md`](docs/methodology.md#part-b--literature-baseline).
 
 ---
 
-## Equations the examiner will ask
+## Core equations
 
-Every formula below is the one actually in the code, with its file. Learn the
-first six; the rest are standard definitions.
+Every formula below is the one actually in the code, with its file. The first
+six are the ones that matter; the rest are standard definitions.
 
 ### 1. Within-country rolling z-score — [`app/composite/normalization.py`](app/composite/normalization.py)
 
@@ -1224,7 +1221,7 @@ Each domain's raw severity is standardised against *that country's own* trailing
 
 $$z_t = \frac{x_t - \mu_{[t-w,\,t)}}{\sigma_{[t-w,\,t)}}$$
 
-A minimum history (≥3 monthly points) is required; cold starts and zero-variance windows emit $z=0$. **This is the crux of the whole thesis:** the score carries no cross-country level, only "unusual vs its own past" — which is why a pooled AUROC (0.93 base rate) was the wrong ruler and the within-country exam (base rate 0.30) was the right one.
+A minimum history (≥3 monthly points) is required; cold starts and zero-variance windows emit $z=0$. **This is the crux of the whole approach:** the score carries no cross-country level, only "unusual vs its own past" — which is why a pooled AUROC (0.93 base rate) was the wrong ruler and the within-country evaluation (base rate 0.30) was the right one.
 
 ### 2. Composite aggregation — [`app/composite/scoring.py`](app/composite/scoring.py)
 
@@ -1268,9 +1265,9 @@ $b$ = per-country baseline, $e$ = event aggregate over unrest $u$, conflict $c$,
 
 ---
 
-## SWOT (viva defense)
+## SWOT
 
-Framed for the examiner, not a product pitch — and logged here so it stays with the code.
+A candid read of where the project stands — logged here so it stays with the code.
 
 | | Helpful | Harmful |
 |---|---|---|
@@ -1284,16 +1281,16 @@ Framed for the examiner, not a product pitch — and logged here so it stays wit
 
 **Weaknesses**
 - The headline claim **failed**: the composite does not beat the dumb baselines on any of the three pre-registered exams.
-- Single developer, heavily AI-assisted → depth-of-understanding is the real exam risk (this document and §"Equations" are the mitigation).
+- Single developer, heavily AI-assisted → depth-of-understanding of the internals is the real risk (this document and §Core equations are the mitigation).
 - The live composite is currently degenerate (0.5) from the retention-vs-z-score mismatch (#586); ACLED ground-truth labels are manually maintained.
 
 **Opportunities**
 - **Slow-onset hazards** (drought, flood, sustained unrest) are the untested anchor where a sensor could plausibly lead coverage — the open question, not a settled failure.
-- Productization path (newsletter → API → app, #400); the corroboration + coverage engine works *today* and has standalone value independent of the thesis claim.
-- If any signal is recoverable it is in the hazard domain — the strongest single indicator (|hazard z| ≈ 0.59 full-panel), which even beats the composite that contains it (#573). The open task is making it survive the fair onset exam, where it currently fades to ~0.53.
+- Productization path (newsletter → API → app, #400); the corroboration + coverage engine works *today* and has standalone value independent of the composite claim.
+- If any signal is recoverable it is in the hazard domain — the strongest single indicator (|hazard z| ≈ 0.59 full-panel), which even beats the composite that contains it (#573). The open task is making it survive the fair onset evaluation, where it currently fades to ~0.53.
 
 **Threats**
-- The examiner attacks the within-country construction, the 0.5 degeneracy, and "how much did you build vs the AI."
+- The sharpest challenges to answer: the within-country construction, the 0.5 degeneracy, and "how much was built by hand vs the AI."
 - Upstream drift: GDELT gaps, ACLED API rejection, RSS format changes, FIRMS confidence ≠ intensity.
 - The retention window vs evaluation needs (the #586 class of bug) can silently flatten a signal before it is measured.
 
@@ -1307,7 +1304,7 @@ Rendered assets live in [`docs/supplementary/`](docs/supplementary/) as **SVG** 
 
 ![Composite AUROC across the three pre-registered exams](docs/supplementary/auroc-vs-exams.png)
 
-**Why "signal before narrative" is the whole bet** — sensors are cheap and high-volume, narrative is scarce and expensive; the thesis asks whether the first moves before the second.
+**Why "signal before narrative" is the whole bet** — sensors are cheap and high-volume, narrative is scarce and expensive; the question is whether the first moves before the second.
 
 ![Rows held per source, sensors vs narrative, log scale](docs/supplementary/sensor-vs-narrative-volume.png)
 
