@@ -48,6 +48,10 @@ app.conf.task_routes = {
         "app.tasks.run_housekeeping",
         "app.tasks.brain_narrate",
         "app.tasks.brain_enrich",
+        # Ollama batch, one headline per call (#631). Belongs with the other
+        # heavy jobs: on the default queue it would run alongside fetchers and
+        # contend with the brain for the same model.
+        "app.tasks.grade_news_severity",
     )
 }
 
