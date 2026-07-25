@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.brain import client
@@ -29,22 +29,36 @@ from app.severity import news
 logger = logging.getLogger(__name__)
 
 
+#: The stored grader stamp, as a SQL expression. `as_string()` renders to
+#: `->>` on Postgres and `json_extract` on SQLite, so the filter is portable
+#: between production and the test suite.
+_STORED_METHOD = EventRow.payload["severity_method"].as_string()
+
+
 def pending(session: Session, *, limit: int) -> list[EventRow]:
-    """News rows not yet graded by the model, newest first."""
-    rows = session.execute(
-        select(EventRow)
-        .where(EventRow.category == Category.NEWS.value)
-        .order_by(EventRow.occurred_at.desc())
-        .limit(limit * 4)
-    ).scalars()
-    out = []
-    for row in rows:
-        if (row.payload or {}).get("severity_method") == news.METHOD:
-            continue
-        out.append(row)
-        if len(out) >= limit:
-            break
-    return out
+    """News rows not yet graded by the model, newest first.
+
+    The already-graded filter runs in SQL, so `limit` bounds what the database
+    returns. It used to over-fetch `limit * 4` rows and drop the graded ones in
+    Python, which meant a whole-table regrade loaded every news row as an ORM
+    object and held it for the entire run — 3.4 GB measured on the #597 pass,
+    and more than a Pi has to give.
+
+    `payload` has no key at all on rows the model never touched, so the null
+    case is spelled out rather than left to `!=`, which is never true against
+    SQL NULL.
+    """
+    return list(
+        session.execute(
+            select(EventRow)
+            .where(
+                EventRow.category == Category.NEWS.value,
+                or_(_STORED_METHOD.is_(None), _STORED_METHOD != news.METHOD),
+            )
+            .order_by(EventRow.occurred_at.desc())
+            .limit(limit)
+        ).scalars()
+    )
 
 
 def grade_row(row: EventRow, *, model: str) -> tuple[float, dict] | None:

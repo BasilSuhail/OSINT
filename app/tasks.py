@@ -318,6 +318,29 @@ def brain_enrich() -> dict[str, Any]:
 
 
 @app.task(
+    name="app.tasks.grade_news_severity",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def grade_news_severity(batch_limit: int | None = None) -> dict[str, Any]:
+    """Grade news headlines the model has not seen yet (#631).
+
+    `grade_run` converts a backlog by hand; this keeps up with the feed, so the
+    LLM grade stops decaying as 30-day retention deletes the rows a manual pass
+    graded. Idle-gated: a busy box skips and the next tick picks up the same
+    rows, because `pending` selects on what is still ungraded.
+    """
+    if skipped := _skip_optional_heavy():
+        return skipped
+    from app.severity.task import _grade_body
+
+    return _grade_body(batch_limit=batch_limit)
+
+
+@app.task(
     name="app.tasks.compute_cii",
     autoretry_for=(Exception,),
     retry_backoff=True,
@@ -615,5 +638,14 @@ app.conf.beat_schedule = {
     "brain-enrich-20min": {
         "task": "app.tasks.brain_enrich",
         "schedule": crontab(minute="*/20"),
+    },
+    # News severity grading (#631). Twice hourly, offset from the RSS fetchers
+    # that feed it and from the analytical beats so the model is not contended.
+    # ~2,400 headlines/day of capacity against ~863 arriving: a backlog drains
+    # in days, then the pass idles. Without it the LLM grade only exists where
+    # someone ran `grade_run` by hand, and 30-day retention deletes it again.
+    "severity-grade-30min": {
+        "task": "app.tasks.grade_news_severity",
+        "schedule": crontab(minute="14,44"),
     },
 }
