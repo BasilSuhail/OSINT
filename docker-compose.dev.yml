@@ -1,0 +1,46 @@
+# Development overlay (#634) — applied by scripts/dev-up.sh, never on the Pi.
+#
+# `make up` runs the backend in containers so there is one way to run the app.
+# Without this file that would cost hot reload: `build: .` bakes the source into
+# the image, so every edit to app/ would need a rebuild before it took effect.
+# Mounting the source back over /app/app restores the host dev loop.
+#
+# NOT named docker-compose.override.yml on purpose. Compose auto-loads that
+# name, which would silently apply these dev settings to a production or Pi
+# deployment too. This one only applies when passed with -f.
+services:
+  api:
+    # --reload watches /app and restarts uvicorn on edit.
+    command:
+      ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ${OSINT_DATA_DIR:-./data}:/data
+      # Source only. The virtualenv stays in the image — mounting the whole
+      # repo would shadow /app/.venv with the host's, whose wheels are built
+      # for macOS and cannot run in a linux container.
+      - ./app:/app/app
+      - ./migrations:/app/migrations
+
+  worker:
+    volumes:
+      - ${OSINT_DATA_DIR:-./data}:/data
+      - ./app:/app/app
+      - ./migrations:/app/migrations
+
+  worker-analytics:
+    volumes:
+      - ${OSINT_DATA_DIR:-./data}:/data
+      - ./app:/app/app
+      - ./migrations:/app/migrations
+
+  beat:
+    volumes:
+      - ${OSINT_DATA_DIR:-./data}:/data
+      - ./app:/app/app
+      - ./migrations:/app/migrations
+
+  migrate:
+    volumes:
+      - ${OSINT_DATA_DIR:-./data}:/data
+      - ./app:/app/app
+      - ./migrations:/app/migrations

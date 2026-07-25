@@ -48,6 +48,11 @@ app.conf.task_routes = {
         "app.tasks.run_housekeeping",
         "app.tasks.brain_narrate",
         "app.tasks.brain_enrich",
+        # Ollama batch, one headline per model call (#631). Verified routed to
+        # the fetcher queue before this line existed: it ran on the concurrency-4
+        # worker alongside the fetchers, contending with the brain for the model
+        # the serialisation above exists to prevent.
+        "app.tasks.grade_news_severity",
     )
 }
 

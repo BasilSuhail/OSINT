@@ -34,19 +34,19 @@ clean-dev: clear  ## Alias for make clear
 off:  ## Stop everything, then quit Docker Desktop on macOS
 	@bash scripts/dev-off.sh
 
-# ── Containerised backend (opt-in; see #530) ────────────────────────────────
-# Deliberately NOT wired into `make up`: dev-up.sh runs the worker, beat and
-# API on the host, and running both would give two beats firing every
-# scheduled job twice and two APIs on port 8000. Pick one or the other.
+# ── Containerised backend (#530, unified into `make up` by #634) ────────────
+# There is now ONE way to run the app: `make up` runs stores, api, worker,
+# worker-analytics and beat in containers, with Ollama and the frontend on the
+# host. Two paths meant two things to keep correct, and they diverged — the
+# compose worker carried no `-Q`, so nothing consumed the `analytics` queue and
+# every heavy job was published to a queue with no consumer.
 
-up-docker:  ## Start stores + backend IN CONTAINERS (host backend must be down)
-	@docker compose --profile app up -d --build
-	@echo "Backend is in Docker. Frontend still runs on the host:"
-	@echo "  cd osint-frontend && pnpm dev"
+up-docker: up  ## Alias for make up (kept so older docs and habits still work)
+	@:
 
 down-docker:  ## Stop the containerised backend, leaving stores and data alone
-	@docker compose --profile app stop migrate api worker beat >/dev/null 2>&1 || true
-	@docker compose --profile app rm -f migrate api worker beat >/dev/null 2>&1 || true
+	@docker compose --profile app stop migrate api worker worker-analytics beat >/dev/null 2>&1 || true
+	@docker compose --profile app rm -f migrate api worker worker-analytics beat >/dev/null 2>&1 || true
 	@echo "Containerised backend stopped. Stores still running; data untouched."
 
 docker-prune: clear  ## Alias for make clear
