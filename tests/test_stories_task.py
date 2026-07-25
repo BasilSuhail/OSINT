@@ -53,7 +53,10 @@ def test_round_trip_clusters_and_persists(db_session: Session) -> None:
     quake = next(s for s in stories if "earthquake" in s.title.lower())
     assert quake.member_count == 2
     assert quake.outlet_count == 2
-    assert quake.owner_count == 2  # rss-a / rss-b unmapped → own owners
+    # rss-a / rss-b carry no ownership record, so neither counts as an
+    # independent teller (#641). The round trip persists that honestly rather
+    # than crediting two unvetted feeds with independence nobody established.
+    assert quake.owner_count == 0
 
 
 def test_rerun_is_noop(db_session: Session) -> None:

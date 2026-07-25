@@ -18,6 +18,7 @@ from app.db import get_engine
 from app.db_models import EventRow, StoryMemberRow, StoryRow
 from app.sources.rss_registry import content_owner_map
 from app.stories.cluster import cluster_articles
+from app.stories.independence import owner_count
 
 WINDOW_HOURS: int = 72
 
@@ -110,7 +111,7 @@ def _cluster_stories_inner(*, now: datetime | None = None) -> dict[str, Any]:
             if story is not None and sources:
                 story.member_count = len(event_ids)
                 story.outlet_count = len({s.source for s in sources})
-                story.owner_count = len({owner_map.get(s.source, s.source) for s in sources})
+                story.owner_count = owner_count([s.source for s in sources], owner_map)
                 story.last_seen = max(s.occurred_at for s in sources)
                 # The newest member's headline becomes the story's title (#516).
                 # A developing story's latest report supersedes its first: the

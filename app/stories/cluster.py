@@ -12,6 +12,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.stories.independence import independent_owners
 from app.stories.vectorize import build_idf, cosine, tokenize, vectorize
 
 METHOD_VERSION: str = "stories-v1.0"
@@ -54,8 +55,10 @@ def cluster_articles(
 
     `articles`: unassigned news events — event_id, title, source, occurred_at.
     `existing`: current members in the window — event_id, story_id, title.
-    `owner_map`: source slug → content owner (#355); unmapped slugs count as
-    their own owner, so a missing map can never inflate independence.
+    `owner_map`: source slug → content owner (#355). A slug with no recorded
+    owner contributes nothing to `owner_count` (#641) — independence is
+    positively established, never inferred from a missing record. An empty map
+    therefore yields `owner_count = 0`, not one owner per source.
     """
     owner_map = owner_map or {}
     articles = sorted(articles, key=lambda a: (a["occurred_at"], a["event_id"]))
@@ -108,11 +111,11 @@ def cluster_articles(
                     "last_seen": article["occurred_at"],
                     "member_count": 1,
                     "outlet_count": 1,
-                    "owner_count": 1,
+                    "owner_count": len(independent_owners([article["source"]], owner_map)),
                 }
             )
             outlet_sets.append({article["source"]})
-            owner_sets.append({owner_map.get(article["source"], article["source"])})
+            owner_sets.append(independent_owners([article["source"]], owner_map))
             story = _Story(story_id=None, new_index=new_index, centroid=vector, n=1)
             stories[("new", new_index)] = story
             result.new_members.append(
@@ -131,7 +134,7 @@ def cluster_articles(
                 story_row["last_seen"] = article["occurred_at"]
                 outlet_sets[best.new_index].add(article["source"])
                 story_row["outlet_count"] = len(outlet_sets[best.new_index])
-                owner_sets[best.new_index].add(owner_map.get(article["source"], article["source"]))
+                owner_sets[best.new_index] |= independent_owners([article["source"]], owner_map)
                 story_row["owner_count"] = len(owner_sets[best.new_index])
             result.new_members.append(
                 {

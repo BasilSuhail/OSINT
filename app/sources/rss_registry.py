@@ -56,9 +56,14 @@ def content_owner_map() -> dict[str, str]:
     """Source slug → owner of the *words* the feed carries (WS-C step 2, #355).
 
     ``syndication`` wins over ``owner``: the Yahoo-hosted feed republishes
-    Reuters wire, so its content owner is ``reuters``. Consumers should fall
-    back to the source slug for slugs not in this map — an unmapped feed
-    counts as its own owner and can never inflate independence.
+    Reuters wire, so its content owner is ``reuters``.
+
+    Consumers must **not** fall back to the source slug. This docstring used to
+    say an unmapped feed "counts as its own owner and can never inflate
+    independence" — that fallback is precisely how independence inflates (#641).
+    `owner_count` feeds an exponential confidence formula, so a source asserting
+    its own independence because nobody recorded an owner for it is the whole
+    failure. See `app.stories.independence`.
     """
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
     return {entry["source"]: entry.get("syndication") or entry["owner"] for entry in raw}

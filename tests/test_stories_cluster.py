@@ -73,8 +73,15 @@ def test_owner_count_collapses_same_owner_feeds() -> None:
     assert story["owner_count"] == 2
 
 
-def test_owner_count_falls_back_to_feed_slug_without_map() -> None:
-    """Unmapped feeds count as their own owner — never inflates independence."""
+def test_sources_without_a_recorded_owner_do_not_count_as_independent() -> None:
+    """Independence is recorded, never inferred from a missing record (#641).
+
+    This test asserted the opposite until #641: unmapped slugs each counted as
+    their own owner, so two unvetted feeds read as two independent tellers.
+    `corroboration-v1.0` is exponential in `owner_count`, and #442 admits
+    sources that arrive with no ownership record by definition — ten of them
+    would have scored 0.998.
+    """
     result = cluster_articles(
         [
             _article(1, "Wildfire forces mass evacuation in southern France", "rss-a"),
@@ -83,7 +90,35 @@ def test_owner_count_falls_back_to_feed_slug_without_map() -> None:
         existing=[],
     )
     (story,) = result.new_stories
-    assert story["owner_count"] == story["outlet_count"] == 2
+    assert story["outlet_count"] == 2
+    assert story["owner_count"] == 0
+
+
+def test_recorded_owners_still_count() -> None:
+    result = cluster_articles(
+        [
+            _article(1, "Wildfire forces mass evacuation in southern France", "rss-a"),
+            _article(2, "Mass evacuation as wildfire spreads in southern France", "rss-b", 3),
+        ],
+        existing=[],
+        owner_map={"rss-a": "alpha-group", "rss-b": "beta-group"},
+    )
+    (story,) = result.new_stories
+    assert story["owner_count"] == 2
+
+
+def test_syndicated_feeds_still_collapse_to_one_owner() -> None:
+    result = cluster_articles(
+        [
+            _article(1, "Wildfire forces mass evacuation in southern France", "rss-a"),
+            _article(2, "Mass evacuation as wildfire spreads in southern France", "rss-b", 3),
+        ],
+        existing=[],
+        owner_map={"rss-a": "reuters", "rss-b": "reuters"},
+    )
+    (story,) = result.new_stories
+    assert story["outlet_count"] == 2
+    assert story["owner_count"] == 1
 
 
 def test_incremental_run_joins_existing_story() -> None:
