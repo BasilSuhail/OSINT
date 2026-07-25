@@ -212,7 +212,8 @@ The `category` field is constrained to a fixed vocabulary so the dashboard's cat
 |---|---|---|
 | `market` | yfinance, FRED, ECB, World Bank, Alpha Vantage, Finnhub, FinBERT-on-RSS | Module A — composite input |
 | `geopolitical` | GDELT events, GDELT GKG | Module B — composite input |
-| `hazard` | USGS Quake, GDACS, NASA FIRMS | Module C — composite input |
+| `hazard` | USGS Quake, GDACS, NASA EONET | Module C — composite input |
+| `hazard` (source `nasa-firms`) | NASA FIRMS | Module C — composite input, routed to the **`wildfire`** domain (#579) |
 | `weather` | NOAA GFS, Open-Meteo, NOAA SWPC | Layer 3 dashboard only |
 | `tracking` | OpenSky, adsb.lol, AISStream | Layer 3 dashboard only |
 | `space` | CelesTrak, NASA NEO, JPL SBDB, N2YO | Layer 3 dashboard only |
@@ -226,10 +227,19 @@ The composite worker selects only rows where `category IN ('market', 'geopolitic
 
 ### Note on FIRMS routing
 
-NASA FIRMS active-fire detections are routed to **`hazard`**, not `weather`, even though the upstream sensor (VIIRS) is meteorological. This is intentional:
+NASA FIRMS active-fire detections are **stored** as `category = 'hazard'`, not `weather`, even though the upstream sensor (VIIRS) is meteorological. A fire detection is a stress event in its own right (loss of life, displacement, economic damage), not a weather forecast, and the map treats it as a hazard.
 
-- The OECD / JRC composite-indicator handbook clusters hazards (geophysical + climatological + wildfire) into one domain — splitting them across `weather` and `hazard` would invalidate the three-domain composite definition the thesis uses.
-- A fire detection is a stress event in its own right (loss of life, displacement, economic damage), not a weather forecast.
-- Keeping the three-domain composite stable (market / geopolitical / hazard) means adding a fourth `weather` domain is a methodology change, not a casual schema tweak — to be considered for a v2.0 composite if the thesis benefits from it.
+**The composite reads them as a separate `wildfire` domain, routed by `source = 'nasa-firms'` rather than by category (#579).** Routing on source rather than re-categorising 536,097 stored rows keeps the schema, the retention policy and every frontend filter untouched.
+
+The domain split is not cosmetic. Two measurements were sharing one bucket:
+
+- A VIIRS pixel is a heat signature; a USGS row is a measured earthquake with casualties attached. The hazard domain takes the month's `max`, so the fire pixel simply won — 55% of hazard country-months pinned at exactly 0.90 (#580), which is the domain answering "did this country have a fire this month" and nothing else.
+- `max` is also the wrong aggregation for FIRMS. The hottest single pixel out of half a million saturates and barely moves month to month. The wildfire domain sums FRP instead: `log10(1 + Σ frp_mw)` per country-month — fire *load*, which is what actually varies.
+
+Consequences worth stating:
+
+- The composite is **four** domains at 0.25 each, not three at 1/3. `method_version` moved to `v3.0`; no v2.0 score is comparable to a v3.0 one.
+- `wildfire` is the one domain whose raw signal is not a `[0, 1]` severity, because it is not a severity. Normalisation z-scores every domain before scoring, so the units never have to match — pretending they did is what put a fire pixel above a fatal earthquake.
+- `scripts/backfill.py` has no FIRMS archive path, so backfilled historical months carry no `wildfire` signal and z-score to 0 there. Live months are unaffected.
 
 The same rationale applies to NASA EONET wildfires / floods / volcanoes (`hazard`). Storm trajectories and `severeStorms` events are also routed to `hazard` for now; if the eval signal suggests a separate weather domain helps, we revisit.

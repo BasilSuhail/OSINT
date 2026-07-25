@@ -7,8 +7,11 @@ from datetime import UTC, datetime
 import pytest
 
 from app.composite.aggregation import (
+    WILDFIRE_DOMAIN,
+    WILDFIRE_SOURCE,
     aggregate_events_to_domain_signals,
     month_start_utc,
+    wildfire_signal,
 )
 
 
@@ -128,3 +131,104 @@ class TestAggregate:
         )
         only_bucket = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
         assert only_bucket["market"] == 0.7
+
+
+def _firms(
+    *,
+    country: str | None = "US",
+    frp: str | float | None = 10.0,
+    occurred_at: datetime | None = None,
+    severity: float | None = 0.3,
+) -> dict:
+    """A stored FIRMS row as the composite worker selects it."""
+    return {
+        "country": country,
+        "category": "hazard",
+        "severity": severity,
+        "occurred_at": occurred_at or datetime(2026, 6, 18, tzinfo=UTC),
+        "source": WILDFIRE_SOURCE,
+        "frp": frp,
+    }
+
+
+class TestWildfireDomain:
+    """FIRMS gets its own domain, summed on FRP (#579).
+
+    Two quantities that were sharing one bucket: a VIIRS pixel is a heat
+    signature, a USGS row is a measured earthquake with casualties attached.
+    Under `max` in the hazard domain the fire pixel simply won — 55% of
+    country-months pinned at exactly 0.90 (#580).
+    """
+
+    def test_firms_lands_in_wildfire_not_hazard(self) -> None:
+        result = aggregate_events_to_domain_signals([_firms()])
+        bucket = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
+        assert WILDFIRE_DOMAIN in bucket
+        assert "hazard" not in bucket
+
+    def test_firms_never_displaces_a_real_hazard(self) -> None:
+        # The bug this fixes: a fire pixel outranking a fatal earthquake.
+        result = aggregate_events_to_domain_signals(
+            [
+                _firms(frp=1488.19, severity=0.55),
+                _event(category="hazard", severity=0.42),
+            ]
+        )
+        bucket = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
+        assert bucket["hazard"] == 0.42
+        assert bucket[WILDFIRE_DOMAIN] == pytest.approx(wildfire_signal(1488.19))
+
+    def test_pixels_sum_rather_than_max(self) -> None:
+        # `max` over half a million pixels is the hottest single pixel, which
+        # saturates. Total FRP is what actually varies month to month.
+        result = aggregate_events_to_domain_signals([_firms(frp=10.0) for _ in range(4)])
+        bucket = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
+        assert bucket[WILDFIRE_DOMAIN] == pytest.approx(wildfire_signal(40.0))
+
+    def test_a_busier_fire_month_scores_higher(self) -> None:
+        quiet = aggregate_events_to_domain_signals([_firms(frp=50.0)])
+        busy = aggregate_events_to_domain_signals([_firms(frp=50.0) for _ in range(20)])
+        key = ("US", datetime(2026, 6, 1, tzinfo=UTC))
+        assert busy[key][WILDFIRE_DOMAIN] > quiet[key][WILDFIRE_DOMAIN]
+
+    def test_months_stay_separate(self) -> None:
+        result = aggregate_events_to_domain_signals(
+            [
+                _firms(frp=10.0, occurred_at=datetime(2026, 6, 18, tzinfo=UTC)),
+                _firms(frp=90.0, occurred_at=datetime(2026, 7, 2, tzinfo=UTC)),
+            ]
+        )
+        assert result[("US", datetime(2026, 6, 1, tzinfo=UTC))][WILDFIRE_DOMAIN] == pytest.approx(
+            wildfire_signal(10.0)
+        )
+        assert result[("US", datetime(2026, 7, 1, tzinfo=UTC))][WILDFIRE_DOMAIN] == pytest.approx(
+            wildfire_signal(90.0)
+        )
+
+    def test_unreadable_frp_is_skipped_not_counted_as_zero(self) -> None:
+        result = aggregate_events_to_domain_signals(
+            [_firms(frp=None), _firms(frp="not-a-number"), _firms(frp=-1.0)]
+        )
+        assert result == {}
+
+    def test_firms_severity_is_never_read_as_a_hazard_signal(self) -> None:
+        # Even a FIRMS row carrying a high stored severity must not appear in
+        # the hazard domain — that is the overlap #579 removes.
+        result = aggregate_events_to_domain_signals([_firms(severity=0.99, frp=1.0)])
+        bucket = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
+        assert "hazard" not in bucket
+        assert bucket[WILDFIRE_DOMAIN] == pytest.approx(wildfire_signal(1.0))
+
+
+class TestWildfireSignal:
+    def test_zero_total_is_zero(self) -> None:
+        assert wildfire_signal(0.0) == 0.0
+
+    def test_monotonic(self) -> None:
+        assert wildfire_signal(1.0) < wildfire_signal(100.0) < wildfire_signal(10_000.0)
+
+    def test_compresses_orders_of_magnitude(self) -> None:
+        # A fire season is not 1000x a quiet month on this scale, it is ~3 more.
+        # Not exactly 3: the +1 offset that keeps log(0) defined still shows at
+        # the small end.
+        assert wildfire_signal(10_000.0) - wildfire_signal(10.0) == pytest.approx(3.0, abs=0.05)

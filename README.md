@@ -1,6 +1,6 @@
 # OSINT — Multi-modal Early-Warning Dashboard
 
-> A self-hosted dashboard plus a **composite stress index** per country, fed by three independent open-data domains (market signals, geopolitical events, hazards). A personal infrastructure project meant to run for years on a Raspberry Pi.
+> A self-hosted dashboard plus a **composite stress index** per country, fed by four independent open-data domains (market signals, geopolitical events, hazards, wildfire load). A personal infrastructure project meant to run for years on a Raspberry Pi.
 
 The project is built around one specific claim: **a composite of three heterogeneous OSINT signal domains discriminates later instability events better than the best single-domain baseline.** The dashboard, the Pi, the maps — they are the system that lets that claim be measured.
 
@@ -982,7 +982,7 @@ Three sources in. One pipeline. Three outputs: a live dashboard you can pull up 
 
 | Question | Answer |
 |---|---|
-| **What is it?** | A small early-warning dashboard. It watches three kinds of open data — markets, geopolitical news events, and natural hazards — and combines them into a single number per country that goes up when things look stressed. |
+| **What is it?** | A small early-warning dashboard. It watches four kinds of open data — markets, geopolitical news events, natural hazards, and satellite-detected fire load — and combines them into a single number per country that goes up when things look stressed. |
 | **Why these three?** | The design brief: "must not depend on a single data source." Three independent domains keep the score honest: if only one domain spikes, the composite stays calm. If multiple domains spike together, the composite goes red. |
 | **What is it for?** | (a) **The claim** — test whether this multi-modal composite is better at flagging real instability events than watching one domain alone. (b) **Personal** — a self-hosted situational-awareness tool that keeps running indefinitely. |
 | **What is NOT it?** | Not a prediction system. Not Palantir. Not Shadowbroker. Not finance-only. Does not claim to predict specific events. Does not use private intelligence feeds. |

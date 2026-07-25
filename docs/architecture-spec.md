@@ -92,7 +92,7 @@ events(id, source, source_event_id, occurred_at, fetched_at,
        category, severity, confidence, keywords, country, lat, lon, payload)
 ```
 
-`category ∈ {market, geopolitical, hazard, weather, tracking, space, news, cyber, mesh}`. The composite worker consumes only `{market, geopolitical, hazard}`. FIRMS is routed to `hazard` (rationale in `04-schema.md#note-on-firms-routing`).
+`category ∈ {market, geopolitical, hazard, weather, tracking, space, news, cyber, mesh}`. The composite worker consumes only `{market, geopolitical, hazard}`, and splits those rows into four scoring domains: FIRMS is stored as `hazard` but scored as its own `wildfire` domain, routed by source (rationale in `04-schema.md#note-on-firms-routing`).
 
 `scores` table holds the composite + every baseline. `labels` table is intentionally separate — ground-truth answer key, not OSINT input.
 

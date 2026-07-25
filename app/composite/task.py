@@ -46,6 +46,8 @@ def _compute_composite_body(
                 EventRow.category,
                 EventRow.severity,
                 EventRow.occurred_at,
+                EventRow.source,
+                EventRow.payload["frp"].as_string().label("frp"),
             )
             .where(EventRow.occurred_at >= cutoff)
             .where(EventRow.category.in_(COMPOSITE_CATEGORIES))
@@ -58,6 +60,10 @@ def _compute_composite_body(
                 "category": r.category,
                 "severity": r.severity,
                 "occurred_at": r.occurred_at,
+                # FIRMS is routed to the wildfire domain by source, and
+                # summed on FRP rather than max'd on severity (#579).
+                "source": r.source,
+                "frp": r.frp,
             }
             for r in rows
         ]
