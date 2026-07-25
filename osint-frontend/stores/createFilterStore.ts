@@ -114,3 +114,7 @@ export function createFilterStore(): FilterStore {
 }
 
 export const WINDOW_SPAN_MS = THIRTY_DAYS
+
+/** The window length that counts as the normal live view. Exported so the
+ *  status bar can tell a default window from a widened one (#501). */
+export const DEFAULT_WINDOW_MS = DEFAULT_WINDOW

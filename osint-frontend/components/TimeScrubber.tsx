@@ -3,6 +3,7 @@
 import { Pause, Play } from "lucide-react"
 import { format } from "date-fns"
 import { WINDOW_SPAN_MS, type FilterStore } from "@/stores/createFilterStore"
+import { LIVE_TOLERANCE_MS } from "@/lib/timeWindow"
 import { cn } from "@/lib/utils"
 import { Slider } from "@/components/ui/slider"
 
@@ -29,7 +30,9 @@ export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
 
   // Slider value: SPAN - offset, so the right edge = live (offset 0).
   const sliderValue = WINDOW_SPAN_MS - windowEndOffsetMs
-  const isLive = windowEndOffsetMs < 60_000
+  // Same threshold the status bar uses (#501) — two indicators disagreeing
+  // about whether the view is live is worse than having only one.
+  const isLive = windowEndOffsetMs < LIVE_TOLERANCE_MS
 
   const windowStart = windowEnd - windowLengthMs
 
