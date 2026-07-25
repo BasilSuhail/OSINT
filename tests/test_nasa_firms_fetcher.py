@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from itertools import pairwise
 
 import httpx
 import pytest
@@ -12,8 +13,11 @@ from app import settings as settings_module
 from app.models import Category
 from app.sources.nasa_firms_fetcher import (
     FIRMS_URL_TEMPLATE,
+    FRP_REFERENCE_MW,
+    FRP_SEVERITY_CEILING,
     NasaFirmsFetcher,
-    confidence_to_severity,
+    confidence_quality,
+    frp_to_severity,
     hash_event_id,
     parse_csv_body,
     row_to_event,
@@ -43,29 +47,92 @@ def _csv_row(
     )
 
 
-class TestConfidenceToSeverity:
+class TestConfidenceQuality:
     def test_text_low(self) -> None:
-        assert confidence_to_severity("low") == 0.2
+        assert confidence_quality("low") == 0.2
 
     def test_text_nominal(self) -> None:
-        assert confidence_to_severity("nominal") == 0.5
+        assert confidence_quality("nominal") == 0.5
 
     def test_text_high(self) -> None:
-        assert confidence_to_severity("HIGH") == 0.9
+        assert confidence_quality("HIGH") == 0.9
 
     def test_numeric(self) -> None:
-        assert confidence_to_severity("80") == pytest.approx(0.8)
-        assert confidence_to_severity("0") == 0.0
-        assert confidence_to_severity("100") == 1.0
+        assert confidence_quality("80") == pytest.approx(0.8)
+        assert confidence_quality("0") == 0.0
+        assert confidence_quality("100") == 1.0
 
     def test_numeric_clamps(self) -> None:
-        assert confidence_to_severity("150") == 1.0
-        assert confidence_to_severity("-5") == 0.0
+        assert confidence_quality("150") == 1.0
+        assert confidence_quality("-5") == 0.0
 
     def test_unknown_returns_none(self) -> None:
-        assert confidence_to_severity("garbage") is None
-        assert confidence_to_severity("") is None
-        assert confidence_to_severity(None) is None
+        assert confidence_quality("garbage") is None
+        assert confidence_quality("") is None
+        assert confidence_quality(None) is None
+
+
+class TestFrpToSeverity:
+    """Severity comes from radiative power, not detection confidence (#579)."""
+
+    def test_zero_frp_is_zero(self) -> None:
+        assert frp_to_severity("0", confidence_raw="n") == 0.0
+
+    def test_monotonic_in_frp(self) -> None:
+        # The property the old mapping broke: more radiative power always
+        # means more severity, whatever the confidence letter says.
+        # min, p50, p99 and max of the 536,097 stored rows.
+        measured = (0.0, 1.0, 5.37, 105.69, 1488.19)
+        values = [frp_to_severity(str(f), confidence_raw="n") for f in measured]
+        assert all(v is not None for v in values)
+        assert all(a < b for a, b in pairwise(values))
+
+    def test_a_low_confidence_big_fire_outranks_a_high_confidence_small_one(self) -> None:
+        # The measured inversion: `l` pixels average 18.27 MW against 8.91 for
+        # `n`, so the old confidence mapping ranked these two backwards.
+        big_but_uncertain = frp_to_severity("500", confidence_raw="l")
+        small_but_certain = frp_to_severity("2", confidence_raw="h")
+        assert big_but_uncertain is not None and small_but_certain is not None
+        assert big_but_uncertain > small_but_certain
+
+    def test_never_reaches_the_lethal_floor(self) -> None:
+        # A detection knows nothing about casualties. It must not outrank a
+        # confirmed-fatality event sharing its country-month.
+        from app.severity import scale
+
+        hottest = frp_to_severity(str(FRP_REFERENCE_MW * 100), confidence_raw="h")
+        assert hottest is not None
+        assert hottest <= FRP_SEVERITY_CEILING < scale.LETHAL_FLOOR
+
+    def test_reference_frp_lands_at_the_ceiling(self) -> None:
+        assert frp_to_severity(str(FRP_REFERENCE_MW), confidence_raw="n") == pytest.approx(
+            FRP_SEVERITY_CEILING, abs=1e-6
+        )
+
+    def test_the_measured_distribution_spreads(self) -> None:
+        # The whole complaint in #579 was three distinct values. p50 and p99
+        # of the stored FRP must not collapse to the same number.
+        p50 = frp_to_severity("5.37", confidence_raw="n")
+        p99 = frp_to_severity("105.69", confidence_raw="n")
+        assert p50 == pytest.approx(0.139, abs=0.005)
+        assert p99 == pytest.approx(0.351, abs=0.005)
+
+    def test_unreadable_confidence_still_refuses(self) -> None:
+        # #574's lesson: an encoding change must fail loudly at the boundary,
+        # not quietly become "no fire happened".
+        assert frp_to_severity("12.3", confidence_raw="bananas") is None
+        assert frp_to_severity("12.3", confidence_raw=None) is None
+
+    def test_unreadable_frp_returns_none_rather_than_falling_back(self) -> None:
+        # Falling back to confidence would silently restore the wrong quantity.
+        assert frp_to_severity(None, confidence_raw="h") is None
+        assert frp_to_severity("", confidence_raw="h") is None
+        assert frp_to_severity("not-a-number", confidence_raw="h") is None
+
+    def test_nonsense_frp_values_are_refused(self) -> None:
+        assert frp_to_severity("-1", confidence_raw="h") is None
+        assert frp_to_severity("nan", confidence_raw="h") is None
+        assert frp_to_severity("inf", confidence_raw="h") is None
 
 
 class TestHashEventId:
@@ -90,12 +157,16 @@ class TestRowToEvent:
             "satellite": "N20",
             "confidence": "high",
             "brightness": "320.5",
+            "frp": "12.3",
         }
         event = row_to_event(row, fetched_at=datetime.now(UTC))
         assert event is not None
         assert event.source == "nasa-firms"
+        # Still stored as a hazard — it is one, and the map treats it as one.
+        # The composite routes it to the wildfire domain by source (#579).
         assert event.category == Category.HAZARD
-        assert event.severity == 0.9  # high
+        assert event.severity == frp_to_severity("12.3", confidence_raw="high")
+        assert event.payload["severity_method"] == "firms-frp-v1"
         assert event.lat == pytest.approx(-23.45)
         assert event.lon == pytest.approx(-46.63)
         # (-23.45, -46.63) is São Paulo, Brazil — enrichment picks it up.
@@ -210,38 +281,36 @@ class TestViirsConfidenceEncoding:
     """
 
     def test_single_letter_codes_are_understood(self) -> None:
-        from app.sources.nasa_firms_fetcher import confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_quality
 
-        assert confidence_to_severity("l") is not None
-        assert confidence_to_severity("n") is not None
-        assert confidence_to_severity("h") is not None
+        assert confidence_quality("l") is not None
+        assert confidence_quality("n") is not None
+        assert confidence_quality("h") is not None
 
     def test_the_letters_rank_the_same_way_as_the_words(self) -> None:
-        from app.sources.nasa_firms_fetcher import confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_quality
 
-        assert confidence_to_severity("l") == confidence_to_severity("low")
-        assert confidence_to_severity("n") == confidence_to_severity("nominal")
-        assert confidence_to_severity("h") == confidence_to_severity("high")
+        assert confidence_quality("l") == confidence_quality("low")
+        assert confidence_quality("n") == confidence_quality("nominal")
+        assert confidence_quality("h") == confidence_quality("high")
 
     def test_confidence_still_orders_low_below_high(self) -> None:
-        from app.sources.nasa_firms_fetcher import confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_quality
 
-        assert (
-            confidence_to_severity("l") < confidence_to_severity("n") < confidence_to_severity("h")
-        )
+        assert confidence_quality("l") < confidence_quality("n") < confidence_quality("h")
 
     def test_modis_numeric_confidence_still_works(self) -> None:
         # MODIS reports 0-100 rather than a category; that path must survive.
-        from app.sources.nasa_firms_fetcher import confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_quality
 
-        assert confidence_to_severity("0") == 0.0
-        assert confidence_to_severity("100") == 1.0
+        assert confidence_quality("0") == 0.0
+        assert confidence_quality("100") == 1.0
 
     def test_an_unrecognised_encoding_still_returns_none(self) -> None:
         # If NASA changes the encoding again this must fail loudly at the
         # boundary rather than quietly becoming "no fire happened".
-        from app.sources.nasa_firms_fetcher import confidence_to_severity
+        from app.sources.nasa_firms_fetcher import confidence_quality
 
-        assert confidence_to_severity("bananas") is None
-        assert confidence_to_severity("") is None
-        assert confidence_to_severity(None) is None
+        assert confidence_quality("bananas") is None
+        assert confidence_quality("") is None
+        assert confidence_quality(None) is None

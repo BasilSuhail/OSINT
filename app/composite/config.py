@@ -20,7 +20,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 #: rows carried severity NULL and were skipped by the aggregator — 99.8% of the
 #: hazard domain absent from every score ever computed. Scores either side of
 #: this line are not comparable, hence the bump rather than an edit.
-DEFAULT_METHOD_VERSION: str = "v2.0"
+#:
+#: v3.0 (#579): FIRMS left the hazard domain for a `wildfire` domain of its
+#: own, aggregated by total FRP rather than by the hottest pixel. Three
+#: domains became four and the weights moved from 1/3 to 1/4, so no v2.0 score
+#: is comparable to a v3.0 one — including the numbers #573 and #400 quote.
+DEFAULT_METHOD_VERSION: str = "v3.0"
 
 
 class WeightingConfig(BaseModel):
@@ -33,20 +38,26 @@ class WeightingConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    market: float = Field(default=1.0 / 3.0, ge=0.0)
-    geopolitical: float = Field(default=1.0 / 3.0, ge=0.0)
-    hazard: float = Field(default=1.0 / 3.0, ge=0.0)
+    market: float = Field(default=0.25, ge=0.0)
+    geopolitical: float = Field(default=0.25, ge=0.0)
+    #: Discrete, casualty-bearing events only — USGS, GDACS, EONET (#579).
+    hazard: float = Field(default=0.25, ge=0.0)
+    #: FIRMS thermal load. Equal weight is a starting position, not a finding:
+    #: nothing has yet measured what a fire-load domain is worth against the
+    #: other three, and an equal split at least states that plainly.
+    wildfire: float = Field(default=0.25, ge=0.0)
     method_version: str = Field(default=DEFAULT_METHOD_VERSION)
 
     @model_validator(mode="after")
     def _weights_sum_to_one(self) -> WeightingConfig:
-        total = self.market + self.geopolitical + self.hazard
+        total = self.market + self.geopolitical + self.hazard + self.wildfire
         if not math.isclose(total, 1.0, abs_tol=1e-9):
             if total <= 0:
                 raise ValueError("at least one weight must be > 0")
             self.market /= total
             self.geopolitical /= total
             self.hazard /= total
+            self.wildfire /= total
         return self
 
     def as_dict(self) -> dict[str, float]:
@@ -54,4 +65,5 @@ class WeightingConfig(BaseModel):
             "market": self.market,
             "geopolitical": self.geopolitical,
             "hazard": self.hazard,
+            "wildfire": self.wildfire,
         }

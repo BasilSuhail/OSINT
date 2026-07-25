@@ -21,21 +21,21 @@ def _bucket(year: int, month: int) -> datetime:
 class TestWeightingConfig:
     def test_defaults_sum_to_one(self) -> None:
         w = WeightingConfig()
-        assert w.market + w.geopolitical + w.hazard == pytest.approx(1.0)
+        assert w.market + w.geopolitical + w.hazard + w.wildfire == pytest.approx(1.0)
         assert w.method_version == DEFAULT_METHOD_VERSION
 
     def test_custom_weights_renormalised(self) -> None:
-        w = WeightingConfig(market=0.5, geopolitical=0.5, hazard=0.0)
-        assert w.market + w.geopolitical + w.hazard == pytest.approx(1.0)
+        w = WeightingConfig(market=0.5, geopolitical=0.5, hazard=0.0, wildfire=0.0)
+        assert w.market + w.geopolitical + w.hazard + w.wildfire == pytest.approx(1.0)
 
     def test_unnormalised_inputs_renormalised(self) -> None:
-        w = WeightingConfig(market=2.0, geopolitical=1.0, hazard=1.0)
-        assert w.market + w.geopolitical + w.hazard == pytest.approx(1.0)
+        w = WeightingConfig(market=2.0, geopolitical=1.0, hazard=1.0, wildfire=0.0)
+        assert w.market + w.geopolitical + w.hazard + w.wildfire == pytest.approx(1.0)
         assert w.market == pytest.approx(0.5)
 
     def test_all_zero_rejected(self) -> None:
         with pytest.raises(ValueError):
-            WeightingConfig(market=0.0, geopolitical=0.0, hazard=0.0)
+            WeightingConfig(market=0.0, geopolitical=0.0, hazard=0.0, wildfire=0.0)
 
     def test_negative_rejected(self) -> None:
         with pytest.raises(ValueError):
@@ -44,7 +44,7 @@ class TestWeightingConfig:
     def test_as_dict(self) -> None:
         w = WeightingConfig()
         d = w.as_dict()
-        assert set(d.keys()) == {"market", "geopolitical", "hazard"}
+        assert set(d.keys()) == {"market", "geopolitical", "hazard", "wildfire"}
 
 
 class TestSigmoid:
@@ -79,8 +79,8 @@ class TestComputeScores:
     def test_missing_domain_treated_as_zero(self) -> None:
         signals = {("US", _bucket(2026, 6)): {"market": 6.0}}
         scores = compute_scores(signals)
-        # weight 1/3 * 6 = 2 → sigmoid(2) ≈ 0.88
-        assert scores[0].score_value > 0.85
+        # weight 1/4 * 6 = 1.5 → sigmoid(1.5) ≈ 0.82
+        assert scores[0].score_value > 0.8
         assert scores[0].components["z"]["geopolitical"] == 0.0
         assert scores[0].components["z"]["hazard"] == 0.0
 
@@ -89,8 +89,8 @@ class TestComputeScores:
         scores = compute_scores(signals)
         comp = scores[0].components
         assert comp["z"]["market"] == 3.0
-        assert comp["contribution"]["market"] == pytest.approx(1.0)
-        assert comp["weighted_sum"] == pytest.approx(1.0)
+        assert comp["contribution"]["market"] == pytest.approx(0.75)
+        assert comp["weighted_sum"] == pytest.approx(0.75)
 
     def test_method_version_default(self) -> None:
         signals = {("US", _bucket(2026, 6)): {"market": 0.0}}

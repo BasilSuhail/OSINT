@@ -7,6 +7,18 @@ no-op so local dev does not surface upstream-credential errors.
 VIIRS_SNPP_NRT confidence is a text value (low / nominal / high). MODIS feeds
 publish numeric 0..100 confidence; both shapes are accepted here so the fetcher
 can switch upstream products without code changes.
+
+Severity comes from `frp` (fire radiative power, MW), not from confidence
+(#579). Confidence answers "is this pixel fire at all"; severity is read
+downstream as "how bad is this". The two ran non-monotonic on live data —
+`l` pixels average roughly twice the FRP of `n` pixels — so a high-confidence
+small fire outranked a low-confidence large one.
+
+A row with no readable `frp` gets no severity, deliberately: falling back to
+confidence would silently restore the wrong quantity, and the whole cost of
+#574 was a wrong-but-plausible number that nothing surfaced. If a future FIRMS
+product drops the column the resweep's `unreadable_rows` count says so out
+loud.
 """
 
 from __future__ import annotations
@@ -14,6 +26,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import math
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
@@ -36,7 +49,7 @@ FIRMS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
 #: the composite then skipped entirely (#574). The value was read and kept in
 #: `payload.confidence_raw` the whole time, which is why the gap was invisible
 #: at every layer except the one that used it.
-_TEXT_CONFIDENCE_SEVERITY: Final[dict[str, float]] = {
+_TEXT_CONFIDENCE_QUALITY: Final[dict[str, float]] = {
     "low": 0.2,
     "l": 0.2,
     "nominal": 0.5,
@@ -45,27 +58,88 @@ _TEXT_CONFIDENCE_SEVERITY: Final[dict[str, float]] = {
     "h": 0.9,
 }
 
+#: FRP, in MW, that maps to the top of the severity range. 1488.19 is the
+#: largest value across the 536,097 stored rows; 1500 rounds it off so the
+#: reference is a stated constant rather than a high-water mark that shifts
+#: every time a bigger fire is observed.
+#:
+#: Global, not per-country, and that is not a convenience. Composite
+#: normalisation already applies a rolling per-country z-score
+#: (`app.composite.normalization.normalize_domain_signals`), so scaling within
+#: country here would apply the country frame twice and destroy the
+#: cross-country comparability the composite is built on.
+FRP_REFERENCE_MW: Final[float] = 1500.0
 
-def confidence_to_severity(raw: str | None) -> float | None:
-    """Map a raw FIRMS confidence to 0..1 severity, or None if unreadable.
+#: The highest severity a bare fire detection may claim. `scale.LETHAL_FLOOR`
+#: means "confirmed deaths"; FIRMS sees a hot pixel and knows nothing about
+#: casualties, so it must stay below that floor no matter how large the fire.
+#:
+#: This also fixes an aggregation bug. Hazard signals are combined with `max`
+#: over the country-month (#574), so the old 0.90 mapping put an ordinary fire
+#: pixel above every USGS and GDACS row it shared a bucket with — 55% of
+#: country-months pinned at exactly 0.90 (#580). Capped here, a confirmed
+#: fatality event always outranks a detection.
+#:
+#: Rounded because binary floats make `0.60 - 0.05` land at 0.5499999999999999,
+#: and a ceiling that a value can exceed by 1e-16 is not a ceiling.
+FRP_SEVERITY_CEILING: Final[float] = round(scale.LETHAL_FLOOR - 0.05, 6)
 
-    Public because the #577 backfill applies the same mapping to rows this
-    fetcher stored before #574 fixed it — same reason `format_figure` moved out
-    of a private in #554. Two callers must agree on this mapping exactly, or
-    swept rows would disagree with freshly fetched ones.
+
+def confidence_quality(raw: str | None) -> float | None:
+    """Read a raw FIRMS confidence as 0..1 detection quality, None if unreadable.
+
+    Not a severity (#579). This is the instrument's certainty that the pixel is
+    fire at all, and it is used as a readability gate: an unrecognised encoding
+    returns None so a future FIRMS change fails loudly at the boundary instead
+    of quietly becoming "no fire happened", which is precisely how #574 hid
+    536,097 null severities for the life of the source.
+
+    It deliberately does *not* filter `l` pixels out. On the stored data `l`
+    detections average 18.27 MW against 8.91 MW for `n` — dropping them would
+    throw away larger fires than it kept.
     """
     if raw is None:
         return None
     cleaned = raw.strip().lower()
     if not cleaned:
         return None
-    if cleaned in _TEXT_CONFIDENCE_SEVERITY:
-        return _TEXT_CONFIDENCE_SEVERITY[cleaned]
+    if cleaned in _TEXT_CONFIDENCE_QUALITY:
+        return _TEXT_CONFIDENCE_QUALITY[cleaned]
     try:
         value = float(cleaned)
     except ValueError:
         return None
     return max(0.0, min(value / 100.0, 1.0))
+
+
+def frp_to_severity(raw_frp: str | float | None, *, confidence_raw: str | None) -> float | None:
+    """Map fire radiative power (MW) to severity, or None if it cannot be read.
+
+    Log-scaled. FRP spans 2.4 decades on the stored rows (p50 5.37, p99 105.69,
+    max 1488.19), so a linear map pins essentially everything at zero and
+    resolves nothing where almost all of the data lives. On the log curve the
+    median pixel reads 0.139, p99 reads 0.351 and the largest fire observed
+    reads 0.549.
+
+    A fixed reference rather than a percentile rank of the current corpus:
+    percentile makes the value depend on which other rows happen to be loaded,
+    so the same fire would score differently between a fetch and a resweep.
+
+    Returns None when confidence is unreadable — that signals the upstream
+    encoding changed, and nothing derived from that row should be trusted.
+    """
+    if confidence_quality(confidence_raw) is None:
+        return None
+    if raw_frp is None:
+        return None
+    try:
+        frp = float(raw_frp)
+    except (TypeError, ValueError):
+        return None
+    if frp != frp or frp == float("inf") or frp < 0.0:  # NaN, inf, negative
+        return None
+    scaled = math.log10(1.0 + frp) / math.log10(1.0 + FRP_REFERENCE_MW)
+    return round(max(0.0, min(scaled, 1.0)) * FRP_SEVERITY_CEILING, 6)
 
 
 def hash_event_id(lat: str, lon: str, acq_date: str, acq_time: str, satellite: str) -> str:
@@ -107,19 +181,21 @@ def row_to_event(row: dict[str, str], *, fetched_at: datetime) -> Event | None:
     if occurred_at is None:
         return None
 
-    severity = confidence_to_severity(confidence_raw)
-    # Deterministic reason (#591). Stated bluntly because it is the honest
-    # description: this is detection confidence, not fire intensity. #579
-    # argues it is the wrong quantity outright — FRP is the intensity measure
-    # and runs non-monotonic to confidence.
+    frp_raw = row.get("frp")
+    severity = frp_to_severity(frp_raw, confidence_raw=confidence_raw)
+    # Deterministic reason (#591), and it now names the quantity actually
+    # measured: radiative power in MW, capped below the lethal floor because a
+    # detection knows nothing about casualties (#579).
     verdict = (
         scale.Verdict(
             value=severity,
             rationale=(
-                f"VIIRS detection confidence {confidence_raw!r} — "
-                f"instrument certainty that this pixel is fire, NOT fire intensity (#579)"
+                f"fire radiative power {frp_raw} MW, log-scaled against "
+                f"{FRP_REFERENCE_MW:.0f} MW and capped at {FRP_SEVERITY_CEILING} — "
+                f"a detection cannot claim confirmed deaths (confidence {confidence_raw!r} "
+                f"read as quality only)"
             ),
-            method="firms-confidence-v1",
+            method="firms-frp-v1",
         )
         if severity is not None
         else None
