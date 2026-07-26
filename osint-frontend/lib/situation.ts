@@ -78,6 +78,16 @@ export function dayMarkers<T extends { last_seen: string }>(
   })
 }
 
+/**
+ * Drop the pinned stories from the activity list (#449). The DEVELOPING block
+ * already shows them; without this they appear twice.
+ */
+export function excludePinned<T extends { id: string }>(rows: T[], pinnedIds: string[]): T[] {
+  if (pinnedIds.length === 0) return rows
+  const pinned = new Set(pinnedIds)
+  return rows.filter((row) => !pinned.has(row.id))
+}
+
 /** One renderable piece of an answer line (#476). */
 export type AnswerSegment =
   | { type: "text"; text: string }

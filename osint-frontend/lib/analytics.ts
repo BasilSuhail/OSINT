@@ -85,6 +85,24 @@ export async function fetchTopStories(hours = 24, limit = 100): Promise<StoryRow
   return (await res.json()) as StoryRow[]
 }
 
+/** Why a story earned the pinned slot (#449) — shown, not just asserted. */
+export interface PinReasons {
+  max_severity: number
+  countries: number
+  new_members_12h: number
+  age_hours: number
+}
+
+export interface DevelopingStory extends StoryRow {
+  pin_reasons: PinReasons
+}
+
+export async function fetchDevelopingStories(limit = 3): Promise<DevelopingStory[]> {
+  const res = await fetch(`${API_BASE}/stories/developing?limit=${limit}`)
+  if (!res.ok) throw new Error(`GET /stories/developing ${res.status}`)
+  return (await res.json()) as DevelopingStory[]
+}
+
 export interface StoryMember {
   title: string
   source: string
