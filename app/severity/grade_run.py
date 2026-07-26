@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Callable
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.brain import client
@@ -61,6 +62,25 @@ def pending(session: Session, *, limit: int) -> list[EventRow]:
     )
 
 
+def pending_count(session: Session) -> int:
+    """How many news rows are still ungraded, table-wide.
+
+    `pending` is bounded by `limit`, so it answers "what is in this batch",
+    never "is the table done". The run's closing line needs the second
+    question answered or a completed batch reads as a completed job (#644).
+    """
+    return int(
+        session.execute(
+            select(func.count())
+            .select_from(EventRow)
+            .where(
+                EventRow.category == Category.NEWS.value,
+                or_(_STORED_METHOD.is_(None), _STORED_METHOD != news.METHOD),
+            )
+        ).scalar_one()
+    )
+
+
 def grade_row(row: EventRow, *, model: str) -> tuple[float, dict] | None:
     """Ask the model, run every guard, return (severity, payload) or None."""
     headline = (row.payload or {}).get("title") or ""
@@ -83,43 +103,111 @@ def grade_row(row: EventRow, *, model: str) -> tuple[float, dict] | None:
 COMMIT_EVERY: int = 50
 
 
+def _grade_batch(
+    session: Session,
+    rows: list[EventRow],
+    *,
+    model: str,
+    apply: bool,
+    grade: Callable[..., tuple[float, dict] | None],
+) -> tuple[int, int]:
+    """Grade one snapshot of rows. Returns (graded, skipped)."""
+    graded = skipped = 0
+    total = len(rows)
+    for index, row in enumerate(rows, start=1):
+        result = grade(row, model=model)
+        if result is None:
+            skipped += 1
+            continue
+        value, payload = result
+        before = row.severity
+        print(
+            f"  [{index}/{total}] {before} -> {value}  {payload['severity_band']:<14} "
+            f"{(row.payload or {}).get('title', '')[:60]}"
+        )
+        print(f"      {payload['severity_rationale']}")
+        if apply:
+            row.severity = value
+            row.payload = {**(row.payload or {}), **payload}
+            # Commit as we go so a 13h run is never one all-or-nothing
+            # transaction, and a kill costs at most COMMIT_EVERY rows (#596).
+            if graded % COMMIT_EVERY == 0:
+                session.commit()
+        graded += 1
+    if apply:
+        session.commit()
+    return graded, skipped
+
+
+def run(
+    session: Session,
+    *,
+    limit: int,
+    model: str,
+    apply: bool,
+    until_empty: bool,
+    grade: Callable[..., tuple[float, dict] | None] = grade_row,
+) -> tuple[int, int]:
+    """Grade one batch, or keep re-snapshotting until the table is drained.
+
+    A single batch is what the runner always did, and it is why every long
+    run ended looking stuck: `pending` snapshots once, ingest keeps arriving,
+    so the 30h #597 pass finished its 17,489 rows with ~2,000 newer ones
+    behind it and no hint of them in the log (#644).
+
+    `until_empty` re-snapshots after each batch. Re-snapshotting is safe
+    because `pending` already excludes graded rows (#596), so a pass never
+    redoes work. It stops when the table is empty or when a whole pass grades
+    nothing — a row that always fails a guard stays pending forever, and
+    without the progress check it would spin on that row indefinitely.
+    """
+    graded = skipped = 0
+    while True:
+        rows = pending(session, limit=limit)
+        if not rows:
+            break
+        print(f"{len(rows)} ungraded news row(s) this pass\n")
+        pass_graded, pass_skipped = _grade_batch(
+            session, rows, model=model, apply=apply, grade=grade
+        )
+        graded += pass_graded
+        skipped += pass_skipped
+        # Release the pass's ORM objects: holding every row of a whole-table
+        # regrade cost 3.4 GB before #596's bounded fetch, and a drain loop
+        # would accumulate the same way across passes.
+        session.expunge_all()
+        if not until_empty or pass_graded == 0:
+            break
+    return graded, skipped
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--apply", action="store_true", help="write the graded verdicts")
     parser.add_argument("--model", default=settings.ollama_model)
+    parser.add_argument(
+        "--until-empty",
+        action="store_true",
+        help="keep re-snapshotting until no ungraded news rows remain",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING)
-    graded = skipped = 0
     with session_scope() as session:
-        rows = pending(session, limit=args.limit)
-        total = len(rows)
-        print(f"{total} ungraded news row(s)\n")
-        for index, row in enumerate(rows, start=1):
-            result = grade_row(row, model=args.model)
-            if result is None:
-                skipped += 1
-                continue
-            value, payload = result
-            before = row.severity
-            print(
-                f"  [{index}/{total}] {before} -> {value}  {payload['severity_band']:<14} "
-                f"{(row.payload or {}).get('title', '')[:60]}"
-            )
-            print(f"      {payload['severity_rationale']}")
-            if args.apply:
-                row.severity = value
-                row.payload = {**(row.payload or {}), **payload}
-                # Commit as we go so a 13h run is never one all-or-nothing
-                # transaction, and a kill costs at most COMMIT_EVERY rows (#596).
-                if graded % COMMIT_EVERY == 0:
-                    session.commit()
-            graded += 1
-        if args.apply:
-            session.commit()
+        graded, skipped = run(
+            session,
+            limit=args.limit,
+            model=args.model,
+            apply=args.apply,
+            until_empty=args.until_empty,
+        )
+        remaining = pending_count(session)
 
     print(f"\n{graded} graded, {skipped} rejected by a guard or unparseable.")
+    # State the table, not the batch: a finished batch is not a finished job,
+    # and the log is what a human reads to tell the difference (#644).
+    print(f"{remaining} news row(s) still ungraded.")
     if not args.apply:
         print("dry run — nothing written. Re-run with --apply.")
     return 0
