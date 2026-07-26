@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   answerLines,
+  excludePinned,
   groupByOrigin,
   groupByVoice,
   singleVoiceCaveat,
@@ -380,6 +381,22 @@ describe("singleVoiceCaveat", () => {
   it("stays silent with two or more classes", () => {
     const groups = groupByVoice([{ outlet_class: "state" }, { outlet_class: "mainstream" }])
     expect(singleVoiceCaveat(groups)).toBeNull()
+  })
+})
+
+describe("excludePinned", () => {
+  const rows = [{ id: "1" }, { id: "2" }, { id: "3" }]
+
+  it("drops pinned rows so no story renders twice", () => {
+    expect(excludePinned(rows, ["2"])).toEqual([{ id: "1" }, { id: "3" }])
+  })
+
+  it("returns the list untouched when nothing is pinned", () => {
+    expect(excludePinned(rows, [])).toEqual(rows)
+  })
+
+  it("ignores pinned ids that are not in the list", () => {
+    expect(excludePinned(rows, ["99"])).toEqual(rows)
   })
 })
 

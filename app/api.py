@@ -40,6 +40,7 @@ from app.db_models import (
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
 from app.settings import settings
+from app.stories import developing
 
 app = FastAPI(title="OSINT local API", version="1.0")
 app.state.event_source = subscribe_new_events
@@ -338,6 +339,32 @@ def scores(
     return [_score_dict(r) for r in session.execute(stmt).scalars()]
 
 
+def _story_payload(
+    story: StoryRow,
+    corro: StoryCorroborationRow | None,
+    checks: dict[str, str],
+    gist: StoryGistRow | None,
+) -> dict:
+    """One story as the API renders it — shared by /stories/top and
+    /stories/developing so a pinned row and a list row never drift apart."""
+    return {
+        "id": str(story.id),
+        "title": story.title,
+        "first_seen": story.first_seen.isoformat(),
+        "last_seen": story.last_seen.isoformat(),
+        "member_count": story.member_count,
+        "outlet_count": story.outlet_count,
+        "owner_count": story.owner_count,
+        "corroboration": corro.score if corro else None,
+        "corroboration_components": corro.components if corro else None,
+        "sensor_checks": checks,
+        "method_version": story.method_version,
+        "gist": gist.gist if gist else None,
+        "category": gist.category if gist else None,
+        "escalating": gist.escalating if gist else None,
+    }
+
+
 @app.get("/stories/top")
 def stories_top(
     session: Session = Depends(get_session),
@@ -379,24 +406,65 @@ def stories_top(
             gists[g.story_id] = g
 
     return [
-        {
-            "id": str(story.id),
-            "title": story.title,
-            "first_seen": story.first_seen.isoformat(),
-            "last_seen": story.last_seen.isoformat(),
-            "member_count": story.member_count,
-            "outlet_count": story.outlet_count,
-            "owner_count": story.owner_count,
-            "corroboration": corro.score if corro else None,
-            "corroboration_components": corro.components if corro else None,
-            "sensor_checks": checks.get(story.id, {}),
-            "method_version": story.method_version,
-            "gist": gists[story.id].gist if story.id in gists else None,
-            "category": gists[story.id].category if story.id in gists else None,
-            "escalating": gists[story.id].escalating if story.id in gists else None,
-        }
+        _story_payload(story, corro, checks.get(story.id, {}), gists.get(story.id))
         for story, corro in rows
     ]
+
+
+@app.get("/stories/developing")
+def stories_developing(
+    session: Session = Depends(get_session),
+    limit: int = Query(default=developing.DEFAULT_LIMIT, ge=1, le=10),
+) -> list[dict]:
+    """The Situation card's pinned slot (#449) — multi-day international
+    stories still gathering coverage, best-first.
+
+    Same row shape as /stories/top plus `pin_reasons`, the evidence for the
+    pin: the card justifies a pin rather than asserting it. Corroboration
+    rides along and is never a gate — a widely-told story with few
+    independent owners is precisely what must stay visible.
+    """
+    picks = developing.select_developing(session, limit=limit)
+    if not picks:
+        return []
+
+    order = {p["story_id"]: i for i, p in enumerate(picks)}
+    reasons = {p["story_id"]: p["pin_reasons"] for p in picks}
+    story_ids = list(order)
+
+    stories = {
+        story.id: (story, corro)
+        for story, corro in session.execute(
+            select(StoryRow, StoryCorroborationRow)
+            .outerjoin(StoryCorroborationRow, StoryCorroborationRow.story_id == StoryRow.id)
+            .where(StoryRow.id.in_(story_ids))
+        ).all()
+    }
+
+    checks: dict[int, dict[str, str]] = {}
+    for check in session.execute(
+        select(StorySensorCheckRow).where(StorySensorCheckRow.story_id.in_(story_ids))
+    ).scalars():
+        checks.setdefault(check.story_id, {})[check.claim_type] = check.verdict
+
+    gists: dict[int, StoryGistRow] = {}
+    for g in session.execute(
+        select(StoryGistRow).where(
+            StoryGistRow.story_id.in_(story_ids),
+            StoryGistRow.method_version == enrich.METHOD_VERSION,
+        )
+    ).scalars():
+        gists[g.story_id] = g
+
+    out = []
+    for sid in sorted(order, key=lambda s: order[s]):
+        if sid not in stories:
+            continue
+        story, corro = stories[sid]
+        row = _story_payload(story, corro, checks.get(sid, {}), gists.get(sid))
+        row["pin_reasons"] = reasons[sid]
+        out.append(row)
+    return out
 
 
 def _bloc_contrast(members: list[dict]) -> dict[str, list[str]]:

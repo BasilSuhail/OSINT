@@ -16,13 +16,19 @@ import {
   streamBrainAsk,
   type BrainSource,
 } from "@/lib/apiClient"
-import { fetchTopStories, type StoryRow } from "@/lib/analytics"
+import {
+  fetchDevelopingStories,
+  fetchTopStories,
+  type DevelopingStory,
+  type StoryRow,
+} from "@/lib/analytics"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import {
   answerLines,
   askHistory,
   chatReducer,
   dayMarkers,
+  excludePinned,
   parseChatStorage,
   sortByActivity,
   splitRecent,
@@ -44,6 +50,50 @@ function TagChip({ category, escalating }: { category: string | null; escalating
       {category}
       {escalating === "yes" ? " ↑" : ""}
     </span>
+  )
+}
+
+/**
+ * The pinned slot (#449): multi-day international stories still gathering
+ * coverage. Nothing qualifying → nothing rendered, because an empty slot is
+ * itself the finding. Corroboration shows on the row and never gates the pin.
+ */
+function DevelopingBlock({
+  stories,
+  onOpen,
+}: {
+  stories: DevelopingStory[]
+  onOpen: (id: string) => void
+}) {
+  if (stories.length === 0) return null
+  return (
+    <div className="mb-2 border-b border-neutral-800 pb-2">
+      <div className="mb-1 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
+        developing
+      </div>
+      {stories.map((s) => (
+        <button
+          key={s.id}
+          onClick={() => onOpen(s.id)}
+          className="mb-1 block w-full text-left"
+        >
+          <div className="flex items-baseline gap-2">
+            <span className="shrink-0 text-amber-500/80">●</span>
+            <span className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-neutral-100">
+              {s.title}
+            </span>
+          </div>
+          <div className="pl-4 font-mono text-[9px] text-neutral-500">
+            {s.outlet_count} outlets · {s.pin_reasons.countries} countries ·{" "}
+            {s.pin_reasons.age_hours}h ·{" "}
+            {s.corroboration === null
+              ? "unscored"
+              : `corrob ${s.corroboration.toFixed(2)}`}{" "}
+            · {s.owner_count} owners
+          </div>
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -267,6 +317,9 @@ export function SituationPanel() {
   const { data: stories } = useSWR("situation-stories", () => fetchTopStories(72, 50), {
     refreshInterval: STORIES_REFRESH_MS,
   })
+  const { data: pinned } = useSWR("stories-developing", () => fetchDevelopingStories(3), {
+    refreshInterval: STORIES_REFRESH_MS,
+  })
   const openStory = useStoryDetailStore((s) => s.openStory)
   const [showOlder, setShowOlder] = useState(false)
   const [question, setQuestion] = useState("")
@@ -306,7 +359,11 @@ export function SituationPanel() {
   const narrative = data?.payload ?? null
   const createdAt = data?.created_at ? new Date(data.created_at).getTime() : 0
   const stale = !data?.present || Date.now() - createdAt > STALE_MS
-  const sorted = sortByActivity(stories ?? [])
+  const developing = pinned ?? []
+  const sorted = excludePinned(
+    sortByActivity(stories ?? []),
+    developing.map((s) => s.id),
+  )
   const { recent, older } = splitRecent(sorted)
   //: A quiet spell must not blank the card — with nothing recent, show all.
   const rows = showOlder || recent.length === 0 ? sorted : recent
@@ -335,6 +392,8 @@ export function SituationPanel() {
         {narrative?.headline ? (
           <h2 className="mb-2 text-lg font-semibold leading-snug">{narrative.headline}</h2>
         ) : null}
+
+        <DevelopingBlock stories={developing} onOpen={openStory} />
 
         {rows.length > 0 ? (
           <div className="flex flex-col divide-y divide-neutral-800/60">
