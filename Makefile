@@ -52,8 +52,8 @@ down-docker:  ## Stop the containerised backend, leaving stores and data alone
 docker-prune: clear  ## Alias for make clear
 	@:
 
-logs:  ## Tail background app logs (Ctrl-C to stop tailing; stack keeps running)
-	@tail -n 40 -F logs/*.log
+logs:  ## Tail the whole stack — backend containers + host frontend (Ctrl-C stops tailing only)
+	@bash scripts/dev-logs.sh
 
 data-size:  ## Show disk used by each data subfolder
 	@du -sh $(OSINT_DATA_DIR)/* 2>/dev/null || echo "no data yet at $(OSINT_DATA_DIR)"

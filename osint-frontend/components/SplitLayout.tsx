@@ -119,7 +119,7 @@ export function SplitLayout() {
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-100">
-      <SystemStatusBar />
+      <SystemStatusBar useStore={useLeftPaneStore} />
       <div className="relative h-[calc(100dvh-2rem)] w-full overflow-hidden">
         {!configured && (
           <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
