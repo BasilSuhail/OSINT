@@ -4,8 +4,10 @@ import useSWR from "swr"
 import { fetchIngestHealth, fetchSourceCoverage, isApiConfigured } from "@/lib/apiClient"
 import { summarizeSystemHealth, type DatasetHealthSummary } from "@/lib/systemHealth"
 import type { IngestHealthRow, SourceCoverageRow } from "@/lib/types"
+import type { FilterStore } from "@/stores/createFilterStore"
 import { ConnectionIndicator } from "./ConnectionIndicator"
 import { JobChips } from "./JobChips"
+import { TimeWindowStatus } from "./TimeWindowStatus"
 
 const API_REFRESH_MS = 30_000
 const COVERAGE_REFRESH_MS = 60_000
@@ -52,7 +54,12 @@ function statusTextClass(status: DatasetHealthSummary["status"]): string {
   }
 }
 
-export function SystemStatusBar() {
+interface SystemStatusBarProps {
+  /** The pane store driving the map's time scrubber (#501). */
+  useStore: FilterStore
+}
+
+export function SystemStatusBar({ useStore }: SystemStatusBarProps) {
   const ingestRows = useIngestHealthRows()
   const coverageRows = useCoverageRows()
   const datasets = summarizeSystemHealth(ingestRows, coverageRows)
@@ -61,6 +68,7 @@ export function SystemStatusBar() {
     <div className="sticky top-0 z-50 h-8 border-b border-neutral-800 bg-neutral-950/96 backdrop-blur-xl">
       <div className="mx-auto flex h-full w-full max-w-[2400px] items-center gap-x-2 overflow-hidden whitespace-nowrap px-3 sm:px-4">
         <ConnectionIndicator />
+        <TimeWindowStatus useStore={useStore} />
         {datasets.map((dataset) => (
           <span
             key={dataset.key}

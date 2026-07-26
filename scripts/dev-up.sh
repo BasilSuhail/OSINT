@@ -349,6 +349,14 @@ ensure_ollama
 # macOS loses Metal and makes the brain materially slower; the frontend because
 # there is no image for it yet (#550 §3.1).
 echo "→ backend (containers)"
+# The backend used to run as host processes and write these (#634). A leftover
+# worker.log never updates again, so `make logs` or a plain tail would show a
+# frozen file exactly where a live worker used to be. Delete them rather than
+# leave something that reads as a stopped service. Backend logs now come from
+# `docker compose logs` — see scripts/dev-logs.sh.
+for stale in worker worker-analytics beat api; do
+  rm -f "logs/$stale.log" "logs/$stale.pid"
+done
 if ! compose_up_app; then
   echo "Backend containers did not start." >&2
   echo "See logs/compose-up.err for the compose error." >&2
