@@ -725,7 +725,7 @@ def story_deep_read(story_id: int, session: Session = Depends(get_session)) -> d
     not contested (one bloc) — the frontend only offers the button when the
     deterministic framing (#605) is present, so that path is a guard."""
     story = _story_or_404(session, story_id)
-    if gate.ram_free_mb() < settings.qa_min_free_mb:
+    if gate.qa_ram_blocked():
         return {"analysis": qa.BRAIN_BUSY_ANSWER}
     members = _story_members(session, story_id)
     framing = _framing_analysis(members)
@@ -1138,7 +1138,7 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     low, to protect the Pi from OOM. Every failure returns a typed answer at HTTP
     200; only a bad request is a 422.
     """
-    if gate.ram_free_mb() < settings.qa_min_free_mb:
+    if gate.qa_ram_blocked():
         return _ask_payload(qa.BRAIN_BUSY_ANSWER, None, [])
     history = [h.model_dump() for h in req.history]
     #: Elaborate mode (#600): the reader asked to explain/go deeper — swap in the
@@ -1197,7 +1197,7 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
     """Stream ask-the-brain answer chunks, then a citation-checked final answer."""
 
     def gen() -> Iterator[str]:
-        if gate.ram_free_mb() < settings.qa_min_free_mb:
+        if gate.qa_ram_blocked():
             yield _sse("final", _ask_payload(qa.BRAIN_BUSY_ANSWER, None, []))
             return
         history = [h.model_dump() for h in req.history]

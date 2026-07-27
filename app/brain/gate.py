@@ -13,6 +13,7 @@ from __future__ import annotations
 import platform
 import subprocess
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,6 +57,30 @@ def _parse_vm_stat(text: str) -> int:
     return (pages["free"] + pages["inactive"]) * page_size // (1024 * 1024)
 
 
+#: Hosts that mean "the model loads in this same machine's memory". Anything
+#: else — `host.docker.internal`, a box on the LAN — means a local reading
+#: describes a machine that will not be holding the model (#413).
+_LOCAL_OLLAMA_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1", "", "0.0.0.0"})
+
+
+def ollama_is_local(url: str | None = None) -> bool:
+    """Does Ollama run in the same memory as this process?
+
+    The RAM floor only means something when it does. On the Pi and on bare
+    metal the caller and the model share one machine, the check is exact, and
+    that is what #409 was written against — it must not change there.
+
+    Containerising the backend (#634) broke the assumption silently. The worker
+    reads `/proc/meminfo` inside the Docker VM (2,983 MB total, ~1,026 MB
+    available) while Ollama runs on the host over `host.docker.internal` with
+    ~11 GB available. The brain refused to load a model on a machine with room
+    to spare, because an unrelated machine was tight — and reported it as a
+    successful run.
+    """
+    raw = url if url is not None else settings.ollama_url
+    return (urlparse(raw).hostname or "") in _LOCAL_OLLAMA_HOSTS
+
+
 def ram_free_mb() -> int:
     """Best-effort free RAM in MB. On unknown platforms, return a large number
     so the gate never blocks purely on a RAM read we cannot perform."""
@@ -67,6 +92,21 @@ def ram_free_mb() -> int:
         out = subprocess.run(["vm_stat"], capture_output=True, text=True, check=True)
         return _parse_vm_stat(out.stdout)
     return 1 << 20
+
+
+def qa_ram_blocked() -> bool:
+    """Should an ask be refused because the Q&A model will not fit?
+
+    Same reasoning as `should_run`'s floor, and the same defect: the API is a
+    container too, with a 512 MB ceiling of its own, reading the Docker VM's
+    `/proc/meminfo`. Measured at 995 MB against a 3,800 MB floor — so every
+    ask returned BRAIN_BUSY_ANSWER, always, while the host had ~11 GB free and
+    Ollama sat idle. The floor is not merely too high there, it is larger than
+    the VM's entire 2,983 MB, so no load could ever satisfy it.
+    """
+    if not ollama_is_local():
+        return False
+    return ram_free_mb() < settings.qa_min_free_mb
 
 
 def heavy_job_active(session: Session, *, now: datetime | None = None) -> bool:
@@ -89,11 +129,16 @@ def should_run(session: Session, *, now: datetime | None = None) -> tuple[bool, 
     degraded state so backoff is visible, never a silent lie."""
     if not settings.brain_enabled:
         return False, "brain disabled (brain_enabled=false)"
-    free = ram_free_mb()
-    if free < settings.brain_min_free_mb:
+    local = ollama_is_local()
+    free = ram_free_mb() if local else None
+    if free is not None and free < settings.brain_min_free_mb:
         return False, f"low RAM: {free}MB free < {settings.brain_min_free_mb}MB floor"
     if reason := runtime_load.busy_reason(now=now):
         return False, reason
     if heavy_job_active(session, now=now):
         return False, "heavy job in flight — backing off"
+    if free is None:
+        # Said plainly rather than reported as a passing RAM check: the floor
+        # was not applied, and the reason should not imply otherwise.
+        return True, f"ok: no heavy job (RAM floor not applied — Ollama at {settings.ollama_url})"
     return True, f"ok: {free}MB free, no heavy job"
