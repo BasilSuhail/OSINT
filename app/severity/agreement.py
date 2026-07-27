@@ -24,6 +24,10 @@ from typing import Any
 
 from app.severity import scale
 
+#: Mirrors `audit.RANDOM_STRATUM`. Imported by value rather than from `audit`,
+#: which reaches for a database engine on import.
+RANDOM_STRATUM: str = "random"
+
 
 def _float_or_none(cell: str) -> float | None:
     try:
@@ -39,8 +43,12 @@ def parse_sheet(text: str) -> list[dict[str, Any]]:
         if not line.startswith("|") or line.startswith("|---"):
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) != 7 or cells[0].lower() == "headline":
+        # 7 columns is the pre-#665 sheet, which had no stratum. Such a sheet is
+        # entirely a random draw, so it reads as one — the published 0.860 stays
+        # true and stays readable.
+        if len(cells) not in (7, 8) or cells[0].lower() == "headline":
             continue
+        stratum = cells[7] if len(cells) == 8 else RANDOM_STRATUM
 
         human_severity = _float_or_none(cells[4])
         human_band = cells[5] or None
@@ -59,6 +67,7 @@ def parse_sheet(text: str) -> list[dict[str, Any]]:
                 "human_severity": human_severity,
                 "human_band": human_band,
                 "rationale_ok": rationale_ok,
+                "stratum": stratum or RANDOM_STRATUM,
             }
         )
     return rows
@@ -81,8 +90,23 @@ def _floor_violation(row: dict[str, Any]) -> bool:
 
 
 def score(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Published rates. None rather than a fake number when nothing qualifies."""
-    banded = [r for r in rows if r["human_band"] and r["model_band"]]
+    """Published rates. None rather than a fake number when nothing qualifies.
+
+    The two headline numbers are computed over different rows on purpose (#665):
+
+    **Band agreement uses the random block only.** The lethal block is
+    deliberately enriched for deaths, and lethal headlines are the easy ones to
+    band — counting them would inflate the rate by construction.
+
+    **Floor violations use every row.** More lethal rows is the entire point:
+    the figure #593 published rested on four, and four coin flips is not a
+    safety property.
+
+    Both denominators are returned so nobody quotes a rate without its sample
+    size again.
+    """
+    unbiased = [r for r in rows if r.get("stratum", RANDOM_STRATUM) == RANDOM_STRATUM]
+    banded = [r for r in unbiased if r["human_band"] and r["model_band"]]
     numeric = [
         r for r in rows if r["human_severity"] is not None and r["model_severity"] is not None
     ]
@@ -91,9 +115,12 @@ def score(rows: list[dict[str, Any]]) -> dict[str, Any]:
     agreed = sum(1 for r in banded if r["human_band"] == r["model_band"])
     ok = sum(1 for r in judged if r["rationale_ok"] in ("ok", "yes"))
 
+    lethal = [r for r in rows if r["human_band"] in ("grave", "mass_casualty")]
+
     return {
         "n": len(rows),
         "n_banded": len(banded),
+        "n_lethal": len(lethal),
         "band_agreement": agreed / len(banded) if banded else None,
         "floor_violations": sum(1 for r in rows if _floor_violation(r)),
         "rationale_ok_rate": ok / len(judged) if judged else None,
@@ -113,11 +140,14 @@ def render(result: dict[str, Any]) -> str:
     lines = [
         "# News severity — model vs human agreement (#593)",
         "",
-        f"{result['n']} graded row(s), {result['n_banded']} with a band on both sides.",
+        f"{result['n']} graded row(s), {result['n_banded']} in the unbiased block "
+        f"with a band on both sides, {result['n_lethal']} the human called lethal.",
         "",
-        f"- **band agreement**: {_fmt(result['band_agreement'])}",
-        f"- **floor violations**: {result['floor_violations']} "
-        "(human says a death, model scored below 0.60 — read this first)",
+        f"- **band agreement**: {_fmt(result['band_agreement'])} "
+        f"(over {result['n_banded']} unbiased rows — the lethal block is excluded, "
+        "since oversampling deaths would inflate it)",
+        f"- **floor violations**: {result['floor_violations']} of {result['n_lethal']} "
+        "lethal rows (human says a death, model scored below 0.60 — read this first)",
         f"- rationale judged honest: {_fmt(result['rationale_ok_rate'])}",
         f"- mean absolute error on the raw value: {_fmt(result['mean_absolute_error'])}",
         "",
