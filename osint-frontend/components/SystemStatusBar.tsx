@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import useSWR from "swr"
 import {
   fetchBrainNarrative,
@@ -93,6 +93,14 @@ export function SystemStatusBar({ useStore }: SystemStatusBarProps) {
   const priorityDatasets = datasets.filter((d) => d.status !== "ok")
   const detailDatasets = priorityDatasets.length > 0 ? priorityDatasets : datasets
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
+
   return (
     <div className="sticky top-0 z-50 border-b border-neutral-800 bg-neutral-950/96 backdrop-blur-xl">
       <div className="relative mx-auto flex min-h-10 w-full max-w-[2400px] items-center gap-2 px-2 py-1.5 sm:px-3">
@@ -128,26 +136,25 @@ export function SystemStatusBar({ useStore }: SystemStatusBarProps) {
           {attention} attention
         </span>
         {open ? (
-          <div className="absolute left-2 top-[calc(100%+0.35rem)] z-50 w-[min(28rem,calc(100vw-1rem))] rounded-xl border border-neutral-800 bg-neutral-950/98 p-3 shadow-2xl shadow-black/40">
+          <div className="absolute left-2 top-[calc(100%+0.35rem)] z-50 w-[min(24rem,calc(100vw-1rem))] rounded-xl border border-neutral-800 bg-neutral-950/98 p-3 shadow-2xl shadow-black/40">
             <div className="mb-2 flex items-center justify-between">
               <p className="font-mono text-[9px] uppercase tracking-[0.24em] text-neutral-500">
                 activity monitor
               </p>
-              <span className="font-mono text-[9px] uppercase tracking-wide text-neutral-600">
-                {attention} attention
-              </span>
-            </div>
-            <div className="mb-3 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
-              <div className="mb-1 flex items-center gap-2 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-                <span>AI</span>
-                <span className={brainClass}>{brainLabel}</span>
+              <div className="flex items-center gap-2">
+                <span className={`font-mono text-[9px] uppercase tracking-wide ${brainClass}`}>
+                  AI {brainLabel}
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-wide text-neutral-600">
+                  {attention} attention
+                </span>
               </div>
-              <p className="text-[11px] leading-snug text-neutral-300">
-                {brain?.payload?.system ?? "No pipeline summary from the brain yet."}
-                {brain?.created_at ? ` · ${new Date(brain.created_at).toLocaleTimeString()}` : ""}
-              </p>
             </div>
-            <div className="space-y-2">
+            <p className="mb-3 text-[11px] leading-snug text-neutral-400">
+              {brain?.payload?.system ?? "No pipeline summary from the brain yet."}
+              {brain?.created_at ? ` · ${new Date(brain.created_at).toLocaleTimeString()}` : ""}
+            </p>
+            <div className="space-y-1.5">
               {detailDatasets.map((dataset) => (
                 <div
                   key={dataset.key}
