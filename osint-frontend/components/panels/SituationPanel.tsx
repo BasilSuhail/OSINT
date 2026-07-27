@@ -111,11 +111,18 @@ function StoryLine({
     minute: "2-digit",
   })
   return (
-    <div className="py-1.5">
-      <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-neutral-900/40">
+    <div className="py-0.5">
+      <button onClick={onOpen} className="flex w-full items-start gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-neutral-900/30">
         <span className="shrink-0 font-mono text-[10px] text-neutral-600">{n}</span>
         <span className="shrink-0 font-mono text-[10px] text-neutral-500">{time}</span>
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-6 text-neutral-200">
+        <span
+          className="min-w-0 flex-1 overflow-hidden text-[11.5px] leading-4 text-neutral-300"
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+          }}
+        >
           {story.title}
         </span>
         <TagChip category={story.category} escalating={story.escalating} />
