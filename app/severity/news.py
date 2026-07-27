@@ -27,6 +27,7 @@ from app.severity import scale
 logger = logging.getLogger(__name__)
 
 METHOD: str = "news-llm-v1"
+BAND_METHOD: str = "news-llm-band-v1"
 FALLBACK_METHOD: str = "news-keyword-v2"
 
 #: Extracts the first JSON object from a response. Small models wrap their
@@ -69,9 +70,55 @@ Headline: {headline}
 """
 
 
+#: The same grading job, asking for the band's name instead of a number (#649).
+#:
+#: #646 benched five smaller models and found they classify correctly in prose
+#: and then emit an unrelated float — `qwen2.5:1.5b` called a story "a routine
+#: policy or business matter" and scored it 0.6, which is the confirmed-deaths
+#: band. Naming what kind of event happened is the part a small model can do;
+#: holding five numeric intervals in working memory and mapping onto the right
+#: one is the part it cannot. So this asks only for the part it can do, and
+#: `scale.value_for_band` does the mapping where it cannot be got wrong.
+#:
+#: The rules are #591's rules verbatim, minus the two that talk about numbers —
+#: a model that never emits a value cannot be told to keep that value above a
+#: floor, so the floors are stated as which band to choose instead.
+BAND_PROMPT = """You grade how severe a news headline is, on a scale of harm to people.
+
+Choose exactly one band:
+  routine        policy, business, sport. Nothing happened to anyone.
+  tension        protest, strike, diplomatic rupture. No violence.
+  violence       violence without confirmed death, or mass displacement.
+  grave          confirmed deaths (1-9), or a serious armed attack.
+  mass_casualty  10+ dead, massacre, atrocity, or mass-fatality disaster.
+
+Rules:
+- If anyone is confirmed killed, the band is AT LEAST grave. Never lower.
+- If 10 or more are killed, the band is mass_casualty.
+- Say plainly what happened. Write "killed", not "incident". Write "attack",
+  not "situation". Do not soften it.
+- Only cite numbers that appear in the headline. Never invent a death toll.
+- Describe ONLY what happened. Do not mention this scale, its bands, or the
+  band you chose. "Three killed in a bombing" — not "this is the grave band".
+- Judge the actual event, not the wording. A "market crash" is financial, not
+  violent. A "strike" may be industrial action, not an attack.
+
+Answer with JSON only:
+{{"band": "<one of: routine, tension, violence, grave, mass_casualty>",
+  "rationale": "<one short blunt sentence>"}}
+
+Headline: {headline}
+"""
+
+
 def build_prompt(headline: str, summary: str = "") -> str:
     text = f"{headline} {summary}".strip() if summary else headline
     return PROMPT.format(headline=text)
+
+
+def build_band_prompt(headline: str, summary: str = "") -> str:
+    text = f"{headline} {summary}".strip() if summary else headline
+    return BAND_PROMPT.format(headline=text)
 
 
 def parse_response(body: str, *, headline: str) -> scale.Verdict | None:
@@ -110,15 +157,49 @@ def verdict_from_payload(payload: Any, *, headline: str) -> scale.Verdict | None
     if not 0.0 <= value <= 1.0:
         return None
 
+    return _guarded(value, rationale, headline=headline, method=METHOD)
+
+
+def band_verdict_from_payload(payload: Any, *, headline: str) -> scale.Verdict | None:
+    """Parsed model JSON naming a band → a Verdict, or None (#649).
+
+    Same guards as the numeric path, deliberately: the protocol changes what the
+    model is asked for, not what the system is willing to store. An unknown band
+    name is rejected rather than coerced to the nearest one — a model answering
+    "severe" has not named a band, and guessing which one it meant would invent
+    a judgement nobody made.
+    """
+    if not isinstance(payload, dict):
+        return None
+
+    raw_band = payload.get("band")
+    rationale = payload.get("rationale")
+    if not isinstance(raw_band, str) or not isinstance(rationale, str) or not rationale.strip():
+        return None
+
+    band = scale.band_by_name(raw_band)
+    if band is None:
+        logger.warning("severity verdict names no known band (%r)", raw_band)
+        return None
+
+    return _guarded(scale.value_for_band(band), rationale, headline=headline, method=BAND_METHOD)
+
+
+def _guarded(value: float, rationale: str, *, headline: str, method: str) -> scale.Verdict | None:
+    """The checks every verdict passes, whichever protocol produced it.
+
+    Shared rather than duplicated per protocol: a guard that exists on one path
+    and not the other is how #514 happens twice.
+    """
     # #514's guard: a figure in the rationale must appear in the source text.
     # The scale's own constants are exempt — a model that quotes the rubric
     # ("47 deaths exceed the 10-death threshold, minimum 0.80") is citing this
     # prompt, not inventing a casualty figure, and rejecting that discarded a
     # correct verdict in live testing.
     invented = [
-        value
-        for value in numerals.unsupported_numerals(rationale, [headline])
-        if value not in _RUBRIC_NUMERALS
+        figure
+        for figure in numerals.unsupported_numerals(rationale, [headline])
+        if figure not in _RUBRIC_NUMERALS
     ]
     if invented:
         logger.warning(
@@ -131,7 +212,7 @@ def verdict_from_payload(payload: Any, *, headline: str) -> scale.Verdict | None
         logger.warning("severity rationale softens a lethal event (%r): %r", softened, rationale)
         return None
 
-    return scale.Verdict(value=value, rationale=rationale.strip(), method=METHOD)
+    return scale.Verdict(value=value, rationale=rationale.strip(), method=method)
 
 
 #: Words that indicate someone died. Distinct from "violent but not fatal" so

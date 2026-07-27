@@ -64,6 +64,33 @@ def band_for(value: float) -> Band:
     return BANDS[-1]
 
 
+def band_by_name(name: str) -> Band | None:
+    """The band with this name, or None. Never guesses.
+
+    A model asked for a label can answer with something that is not a label.
+    Coercing "severe" to the nearest band would invent a judgement nobody made,
+    so an unknown name is a rejected verdict like any other guard failure.
+    """
+    wanted = (name or "").strip().lower()
+    for band in BANDS:
+        if band.name == wanted:
+            return band
+    return None
+
+
+def value_for_band(band: Band) -> float:
+    """The number that stands for a band: its midpoint (#649).
+
+    A band is an interval, so a label alone does not name a value, and the
+    midpoint is the choice that asserts least — it sits inside the band and
+    claims nothing about where in it the event falls. The lower edge was the
+    obvious alternative and is worse: it would put every confirmed death at
+    exactly LETHAL_FLOOR and make the `>= 0.6` unrest test in
+    `app/cii/scoring.py` a knife-edge on floating point.
+    """
+    return (band.lower + band.upper) / 2
+
+
 #: Words that soften what happened. Refused above the lethal floor, where the
 #: whole point is to say plainly that people were killed. Below it they are
 #: often the accurate word, so they are left alone.
