@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.corroboration.rules import (
@@ -35,6 +35,28 @@ from app.db_models import (
     StorySensorCheckRow,
 )
 from app.stories.task import WINDOW_HOURS
+
+
+def _country_predicate(story_countries: set[str]):
+    """SQL for "this sensor row could belong to one of the story's countries".
+
+    `evaluate_claim` already discards any row whose country is not in
+    `story_countries`, so every other row was being fetched, deserialised with
+    its full payload, and thrown away — 186,020 FIRMS rows per story with a
+    wildfire claim, which is what killed the worker 717 times in a day (#656).
+    Moving the same condition into the WHERE is not an approximation: it drops
+    rows that provably cannot match.
+
+    Null-country rows must still come back. `sensor_country` recovers a country
+    for them from `payload.iso3` (GDACS) or the tail of `payload.place` (USGS
+    offshore epicentres), so excluding them here would change verdicts.
+    """
+    if not story_countries:
+        # `evaluate_claim` returns "story-not-geolocated" without looking at a
+        # single sensor row, so only the null-country fallback could ever be
+        # reached — and it cannot match an empty set either.
+        return EventRow.country.is_(None)
+    return or_(EventRow.country.in_(story_countries), EventRow.country.is_(None))
 
 
 def _sensor_checks_body(*, now: datetime | None = None) -> dict[str, Any]:
@@ -106,6 +128,7 @@ def _sensor_checks_inner(*, now: datetime | None = None) -> dict[str, Any]:
                         EventRow.source == CLAIM_SENSOR_SOURCE[claim],
                         EventRow.occurred_at >= window[0],
                         EventRow.occurred_at <= window[1],
+                        _country_predicate(story_countries),
                     )
                 ).all()
                 check = evaluate_claim(
