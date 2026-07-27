@@ -110,7 +110,7 @@ def _run() -> int:
                 break
             headline = (row.payload or {})["title"]
             payload = client.generate_json(
-                news.build_prompt(headline), model=settings.ollama_model, keep_alive="5m"
+                news.build_prompt(headline), model=settings.severity_model, keep_alive="5m"
             )
             verdict = news.verdict_from_payload(payload, headline=headline)
             if verdict is None:

@@ -185,7 +185,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--apply", action="store_true", help="write the graded verdicts")
-    parser.add_argument("--model", default=settings.ollama_model)
+    parser.add_argument("--model", default=settings.severity_model)
     parser.add_argument(
         "--until-empty",
         action="store_true",
