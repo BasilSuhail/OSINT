@@ -19,12 +19,22 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
-from app.db_models import EventRow, IngestHealthRow, JobRunRow, NotificationRow
+from app.db_models import (
+    BrainNarrativeRow,
+    EventRow,
+    IngestHealthRow,
+    JobRunRow,
+    NotificationRow,
+    StoryDisagreementRow,
+    StoryGistRow,
+    StoryRow,
+    StorySensorCheckRow,
+)
 from app.settings import settings
 from app.sources.rss_registry import feed_cadence_map
 
@@ -381,6 +391,138 @@ def check_jobs(session: Session, *, now: datetime | None = None) -> dict[str, di
 
         logger.warning("watchdog: %s", message)
         if _persist_notification(session, source=job, message=message, today=today, kind="job"):
+            _pushover_send(message)
+            report[job]["alerted"] = True
+
+    return report
+
+
+#: Output watchdog (#663). #659 watches whether jobs *run*; this watches whether
+#: they *do anything*. The brain returned `done` 63 times in a day while
+#: producing no narrative at all — every layer honest, every light green,
+#: nothing wrong to find, because backing off is a success (#413). #630 and
+#: #660 were the same shape. `check_footprint_coverage` above exists for the
+#: same reason on the ingest side: watching input never sees output stop.
+#:
+#: job -> (what it writes, the column that advances when it works)
+JOB_OUTPUT: dict[str, tuple[type, InstrumentedAttribute]] = {
+    "brain-narrate": (BrainNarrativeRow, BrainNarrativeRow.created_at),
+    "brain-enrich": (StoryGistRow, StoryGistRow.created_at),
+    "sensor-checks": (StorySensorCheckRow, StorySensorCheckRow.checked_at),
+    "disagreement": (StoryDisagreementRow, StoryDisagreementRow.computed_at),
+    "stories-cluster": (StoryRow, StoryRow.last_seen),
+}
+
+#: `severity-grade` is deliberately absent, and this is the design decision of
+#: the whole check rather than an oversight. Its backlog legitimately empties:
+#: `{"considered": 0}` with nothing pending is correct, healthy and the normal
+#: steady state since #631, so watching its output would page on success. Every
+#: table above receives rows on every healthy pass — there is always a situation
+#: to narrate, always new stories to gist, always stories in the clustering
+#: window — so silence there really does mean something is wrong.
+
+#: How many of its own cadences a job may produce nothing before it is flagged.
+#: Deliberately looser than the failure check: these jobs skip on purpose when
+#: the box is busy (#409), and an afternoon of real work must not page.
+OUTPUT_STALE_MULTIPLIER: int = 8
+
+#: Ceiling on the extra grace, as in `job_stale_after`.
+OUTPUT_MAX_GRACE_MIN: int = 1440
+
+
+def output_stale_after(cadence_min: int) -> timedelta:
+    """How long a job may produce nothing before that is worth saying."""
+    scaled = cadence_min * OUTPUT_STALE_MULTIPLIER
+    return timedelta(minutes=min(scaled, cadence_min + OUTPUT_MAX_GRACE_MIN))
+
+
+def _last_output(session: Session, column: InstrumentedAttribute) -> datetime | None:
+    value = session.execute(select(func.max(column))).scalars().first()
+    if value is not None and value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value
+
+
+def _ran_since(session: Session, job: str, cutoff: datetime) -> bool:
+    """Did this job actually complete a run inside the window?
+
+    Without this the check pages after any downtime. The stack was off from
+    01:15 to 10:32 on 2026-07-27, and the first sweep after restart would have
+    seen a 556-minute gap in every output table and fired on all of them. That
+    is not "succeeded while producing nothing" — it is "was not running", which
+    is #657's question and is answered there. This check only speaks when the
+    job demonstrably ran and still produced nothing.
+    """
+    stmt = (
+        select(JobRunRow.id)
+        .where(
+            JobRunRow.job == job,
+            JobRunRow.status == "done",
+            JobRunRow.finished_at >= cutoff,
+        )
+        .limit(1)
+    )
+    return session.execute(stmt).first() is not None
+
+
+def _last_run_reason(session: Session, job: str) -> str | None:
+    """What the job's most recent finished run recorded, if anything.
+
+    A page saying "produced nothing for 6h" sends someone to psql. One that adds
+    `low RAM: 1072MB free < 1200MB floor` is the diagnosis — the same reason
+    `check_jobs` quotes the reaper's detail.
+    """
+    stmt = (
+        select(JobRunRow.detail)
+        .where(JobRunRow.job == job, JobRunRow.detail.is_not(None))
+        .order_by(JobRunRow.started_at.desc())
+        .limit(1)
+    )
+    return session.execute(stmt).scalars().first()
+
+
+def check_output(session: Session, *, now: datetime | None = None) -> dict[str, dict[str, object]]:
+    """Flag jobs whose output has stopped advancing. Return per-job state.
+
+    Says nothing about quality — only whether anything came out. Whether what
+    came out is any good is what the eval harnesses are for (#593, #432).
+    """
+    now = now or datetime.now(UTC)
+    today = now.date()
+    report: dict[str, dict[str, object]] = {}
+
+    for job, (_, column) in JOB_OUTPUT.items():
+        cadence_min = JOB_CADENCE_MIN[job]
+        threshold = output_stale_after(cadence_min)
+        last_output = _last_output(session, column)
+        # Never produced anything at all: a fresh database is every job at once,
+        # and paging on first boot is how a channel gets ignored.
+        no_output = last_output is not None and (now - last_output) > threshold
+        # ...and it only counts if the job ran during that silence. Otherwise
+        # this fires on every restart after a night with the stack off.
+        ran = _ran_since(session, job, now - threshold)
+        is_stale = no_output and ran
+
+        report[job] = {
+            "last_output": last_output,
+            "ran_in_window": ran,
+            "is_stale": is_stale,
+            "alerted": False,
+        }
+        if not is_stale:
+            continue
+
+        age_min = int((now - last_output).total_seconds() / 60)
+        headline = (
+            f"{job}: ran, but produced nothing for {age_min} min "
+            f"(cadence {cadence_min} min, expected output within "
+            f"{int(threshold.total_seconds() / 60)})"
+        )
+        reason = _last_run_reason(session, job)
+        message = f"{headline} — last run said: {reason}" if reason else headline
+
+        logger.warning("watchdog: %s", message)
+        if _persist_notification(session, source=job, message=message, today=today, kind="output"):
             _pushover_send(message)
             report[job]["alerted"] = True
 
