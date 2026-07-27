@@ -439,21 +439,31 @@ def enrich_footprints(limit: int | None = None) -> dict[str, Any]:
 @app.task(name="app.tasks.ingest_watchdog")
 def ingest_watchdog() -> dict[str, Any]:
     """Flag sources that have gone quiet, enrichment output that has vanished,
-    and scheduled jobs that have stopped succeeding.
+    scheduled jobs that have stopped succeeding, and jobs that keep succeeding
+    while producing nothing.
 
-    Staleness alone would have missed #604 entirely: GDACS kept answering on
-    cadence while every refresh deleted the footprint geometry behind it, so
-    ingest_health stayed green for weeks (#617). It would also have missed #656,
-    where every sensor kept arriving on time and the job that reads them failed
-    717 times in a day (#657) — watching input never sees output stop.
+    Each check exists because the previous ones missed something real. Source
+    staleness alone missed #604: GDACS answered on cadence while every refresh
+    deleted the geometry behind it (#617). Adding output coverage still missed
+    #656, where every sensor arrived on time and the job reading them failed 717
+    times in a day (#657). And failure-watching still missed #413, where the
+    brain returned `done` 63 times while producing no narrative at all — a
+    component reporting "I am deliberately doing nothing" is invisible to
+    anything looking for failure (#663).
     """
-    from app.watchdog import check_footprint_coverage, check_jobs, check_sources
+    from app.watchdog import (
+        check_footprint_coverage,
+        check_jobs,
+        check_output,
+        check_sources,
+    )
 
     with session_scope() as session:
         return {
             "sources": check_sources(session),
             "footprints": check_footprint_coverage(session),
             "jobs": check_jobs(session),
+            "output": check_output(session),
         }
 
 
