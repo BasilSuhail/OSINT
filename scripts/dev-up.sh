@@ -226,6 +226,19 @@ frontend_pid() {
 
 }
 
+sync_repo() {
+  # Bring the checkout up to date before anything starts (#661). Three fixes
+  # were merged and none of them ran, because `make up` starts whatever is on
+  # disk and nothing kept that current. Refuses on uncommitted or unpushed
+  # work, and never blocks the stack from starting — the decision logic and
+  # its tests live in app/devx/repo_sync.py.
+  [ -x .venv/bin/python ] || return 0
+  .venv/bin/python -m app.devx.repo_sync || true
+}
+
+echo "→ checkout"
+sync_repo
+
 echo "→ stores (postgres + redis)"
 ensure_docker
 # A Docker Desktop daemon restart can corrupt a compose project's container
