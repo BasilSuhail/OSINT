@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: severity-grade severity-audit severity-agreement within-eval up down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: severity-grade severity-audit severity-agreement severity-bench within-eval up down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 # ── The three commands ──────────────────────────────────────────────────────
 # Everything else below is either an alias kept for muscle memory or a
@@ -105,6 +105,9 @@ severity-audit:  ## Emit the human-check sheet that gates LLM severity use (#593
 
 severity-agreement:  ## Publish model-vs-human agreement from the filled sheet (#593)
 	.venv/bin/python -m app.severity.agreement
+
+severity-bench:  ## Replay the human sheet through candidate graders (#646)
+	.venv/bin/python -m app.severity.bench
 
 validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
 	.venv/bin/python -m app.validator.run

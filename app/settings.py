@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     ollama_url: str = Field(default="http://localhost:11434")
     ollama_model: str = Field(default="qwen3.5:4b-q4_K_M")
     validator_batch_limit: int = Field(default=200)
+    # News severity grading (#591) had no setting of its own, so it rode on the
+    # validator's model above and neither could move without the other. Split so
+    # a bench result (#646) can swap the grader alone. Same default: this is a
+    # seam, not a change — the #593 agreement still describes what runs.
+    severity_model: str = Field(default="qwen3.5:4b-q4_K_M")
 
     # The brain (#409) — a light always-warm-when-idle local model, separate
     # from the 4b nightly validator above. Localhost only.

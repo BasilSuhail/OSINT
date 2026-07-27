@@ -46,7 +46,7 @@ def _grade_body(*, batch_limit: int | None = None) -> dict[str, Any]:
             return counters
 
         for index, row in enumerate(rows, start=1):
-            result = grade_run.grade_row(row, model=settings.ollama_model)
+            result = grade_run.grade_row(row, model=settings.severity_model)
             if result is None:
                 # Guard rejected it (invented numeral, softened wording) or the
                 # row has no title. Leave the stored grade alone.
