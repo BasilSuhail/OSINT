@@ -78,10 +78,21 @@ def human_cases(sheet_text: str) -> list[dict[str, Any]]:
     ]
 
 
+#: How the model is asked. `number` is #591's protocol, the one production runs.
+#: `band` asks for the band's name and maps it to a value in code (#649), after
+#: #646 found small models classifying correctly in prose and emitting an
+#: unrelated float. Both go through the same guards.
+PROTOCOLS: dict[str, tuple[Any, Any]] = {
+    "number": (news.build_prompt, news.verdict_from_payload),
+    "band": (news.build_band_prompt, news.band_verdict_from_payload),
+}
+
+
 def bench_model(
     cases: list[dict[str, Any]],
     *,
     model: str,
+    protocol: str = "number",
     generate_json: Callable[..., dict[str, Any]] = client.generate_json,
 ) -> dict[str, Any]:
     """Grade every case with one model. Returns its scores plus what it cost.
@@ -92,6 +103,7 @@ def bench_model(
     rate is reported next to the agreement so a model that scores well on the
     third of rows it did not mangle cannot hide behind the average.
     """
+    build, parse = PROTOCOLS[protocol]
     rows: list[dict[str, Any]] = []
     rejected = 0
     errors = 0
@@ -101,7 +113,7 @@ def bench_model(
         headline = case["headline"]
         started = time.perf_counter()
         try:
-            payload = generate_json(news.build_prompt(headline), model=model, keep_alive="5m")
+            payload = generate_json(build(headline), model=model, keep_alive="5m")
         except Exception:
             # A missing model or a dead daemon fails this candidate, not the
             # whole bench — the remaining candidates still have numbers worth
@@ -111,7 +123,7 @@ def bench_model(
             continue
         elapsed += time.perf_counter() - started
 
-        verdict = news.verdict_from_payload(payload, headline=headline)
+        verdict = parse(payload, headline=headline)
         if verdict is None:
             rejected += 1
             continue
@@ -130,6 +142,7 @@ def bench_model(
     attempts = len(cases)
     result: dict[str, Any] = {
         "model": model,
+        "protocol": protocol,
         "attempted": attempts,
         "rejected": rejected,
         "errors": errors,
@@ -162,19 +175,23 @@ def _fmt(value: float | None, places: int = 3) -> str:
 
 
 def render(results: list[dict[str, Any]], *, incumbent: str) -> str:
+    protocols = sorted({result.get("protocol", "number") for result in results})
     lines = [
         "# News severity — candidate grader bench (#646)",
         "",
-        f"{len(results)} model(s) over the same human-graded rows from "
-        "`severity-audit-sheet.md`. Prompt and guards unchanged; the incumbent "
-        "is re-run as a control rather than quoted from #593.",
+        f"{len(results)} run(s) over the same human-graded rows from "
+        f"`severity-audit-sheet.md`, protocol: {', '.join(protocols)}. Guards "
+        "unchanged; the incumbent is re-run as a control rather than quoted "
+        "from #593.",
         "",
-        "| model | band agreement | floor violations | MAE | rejected | s/headline | gate |",
-        "|---|---:|---:|---:|---:|---:|---|",
+        "| model | protocol | band agreement | floor violations | MAE | rejected "
+        "| s/headline | gate |",
+        "|---|---|---:|---:|---:|---:|---:|---|",
     ]
     for result in results:
         name = result["model"]
         label = f"`{name}`" + (" (incumbent)" if name == incumbent else "")
+        label = f"{label} | {result.get('protocol', 'number')}"
         verdict = "**pass**" if result["passes_gate"] else "fail"
         if result["errors"]:
             verdict = f"error ({result['errors']})"
@@ -201,7 +218,8 @@ def render(results: list[dict[str, Any]], *, incumbent: str) -> str:
     if passing:
         best = min(passing, key=lambda r: r["seconds_per_headline"] or float("inf"))
         lines += [
-            f"Fastest candidate clearing the gate: **`{best['model']}`** at "
+            f"Fastest candidate clearing the gate: **`{best['model']}`** on the "
+            f"{best.get('protocol', 'number')} protocol, at "
             f"{_fmt(best['seconds_per_headline'], 2)} s/headline.",
             "",
         ]
@@ -226,6 +244,11 @@ def main() -> int:
     parser.add_argument(
         "--limit", type=int, default=0, help="bench only the first N human-graded rows"
     )
+    parser.add_argument(
+        "--protocols",
+        default="number",
+        help="comma-separated protocols to bench: number (#591), band (#649)",
+    )
     args = parser.parse_args()
 
     exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
@@ -242,18 +265,25 @@ def main() -> int:
         cases = cases[: args.limit]
 
     models = [m.strip() for m in args.models.split(",") if m.strip()]
+    protocols = [p.strip() for p in args.protocols.split(",") if p.strip()]
+    for protocol in protocols:
+        if protocol not in PROTOCOLS:
+            print(f"unknown protocol {protocol!r} — choose from {', '.join(PROTOCOLS)}")
+            return 1
+
     results = []
-    for model in models:
-        print(f"benching {model} over {len(cases)} row(s)…", flush=True)
-        result = bench_model(cases, model=model)
-        print(
-            f"  band agreement {_fmt(result['band_agreement'])} · "
-            f"floors {result['floor_violations']} · "
-            f"{_fmt(result['seconds_per_headline'], 2)} s/headline · "
-            f"{'pass' if result['passes_gate'] else 'fail'}",
-            flush=True,
-        )
-        results.append(result)
+    for protocol in protocols:
+        for model in models:
+            print(f"benching {model} ({protocol}) over {len(cases)} row(s)…", flush=True)
+            result = bench_model(cases, model=model, protocol=protocol)
+            print(
+                f"  band agreement {_fmt(result['band_agreement'])} · "
+                f"floors {result['floor_violations']} · "
+                f"{_fmt(result['seconds_per_headline'], 2)} s/headline · "
+                f"{'pass' if result['passes_gate'] else 'fail'}",
+                flush=True,
+            )
+            results.append(result)
 
     report = render(results, incumbent=settings.severity_model)
     exports.mkdir(parents=True, exist_ok=True)

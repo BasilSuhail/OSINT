@@ -877,7 +877,7 @@ OSINT/
 ├── scripts/     ← one-off tools: snapshot.py (backup) · prune_now.py · backfill_*.py · enrich_*.py
 ├── tests/       ← pytest suite (backend);  frontend tests live in osint-frontend/__tests__ + lib/*.test.mts
 │
-├── docs/        ← architecture-spec.md · methodology.md · data-coverage.md · frontend/ · superpowers/(specs+plans)
+├── docs/        ← architecture-spec.md · methodology.md · data-coverage.md · severity-grading.md · frontend/ · superpowers/(specs+plans)
 │
 ├── docker-compose.yml   ← Postgres + Redis services (bind-mount → $OSINT_DATA_DIR)
 ├── Makefile             ← make data-size / data-prune / data-reset
