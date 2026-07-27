@@ -111,11 +111,13 @@ function StoryLine({
     minute: "2-digit",
   })
   return (
-    <div className="py-1">
-      <button onClick={onOpen} className="flex w-full items-baseline gap-2 text-left">
+    <div className="py-1.5">
+      <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-neutral-900/40">
         <span className="shrink-0 font-mono text-[10px] text-neutral-600">{n}</span>
         <span className="shrink-0 font-mono text-[10px] text-neutral-500">{time}</span>
-        <span className="min-w-0 flex-1 truncate text-[12px] text-neutral-300">{story.title}</span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-6 text-neutral-200">
+          {story.title}
+        </span>
         <TagChip category={story.category} escalating={story.escalating} />
       </button>
     </div>
@@ -389,10 +391,6 @@ export function SituationPanel() {
           </p>
         ) : null}
 
-        {narrative?.headline ? (
-          <h2 className="mb-2 text-lg font-semibold leading-snug">{narrative.headline}</h2>
-        ) : null}
-
         <DevelopingBlock stories={developing} onOpen={openStory} />
 
         {rows.length > 0 ? (
@@ -462,12 +460,6 @@ export function SituationPanel() {
       </div>
 
       <footer className="shrink-0 border-t border-neutral-800 p-3">
-        {narrative?.system ? (
-          <p className="mb-2 text-[11px] leading-snug text-neutral-500">
-            {narrative.system}
-            {data?.created_at ? ` · ${new Date(data.created_at).toLocaleTimeString()}` : ""}
-          </p>
-        ) : null}
         <div className="flex gap-2">
           <input
             value={question}
