@@ -165,3 +165,75 @@ def test_beat_schedule_has_sensor_checks_entry() -> None:
 
     entry = celery_app.conf.beat_schedule["sensor-checks-30min"]
     assert entry["task"] == "app.tasks.sensor_check_stories"
+
+
+# ── The country filter (#656) ───────────────────────────────────────────────
+# The fetch used to pull every sensor row in the window, payloads and all, once
+# per story — 186,020 FIRMS rows for a single wildfire claim, which killed the
+# analytics worker 717 times in a day. `evaluate_claim` then discarded almost
+# all of them on country. These prove that moving the discard into SQL drops
+# only rows that could never have matched.
+
+
+def test_sensor_row_in_another_country_is_not_matched(db_session: Session) -> None:
+    db_session.add_all(
+        [
+            _news(1, "Powerful earthquake strikes Tokyo, dozens injured", "rss-a", "JP"),
+            # Same window, wrong country — was fetched and discarded in Python,
+            # is now never fetched. Either way it cannot confirm a Japan story.
+            _quake(50, "CL", hours_before=4),
+        ]
+    )
+    db_session.commit()
+
+    counters = _run_both(db_session)
+
+    assert counters["confirmed"] == 0
+    (check,) = db_session.execute(select(StorySensorCheckRow)).scalars().all()
+    assert check.verdict == "unconfirmed"
+    assert check.evidence["reason"] == "no-matching-sensor-row"
+
+
+def test_null_country_row_is_still_fetched_and_can_confirm(db_session: Session) -> None:
+    # The reason the predicate cannot be a plain `country IN (...)`: USGS leaves
+    # `country` null for offshore epicentres and carries the country at the tail
+    # of `place`, which `sensor_country` recovers. Excluding nulls in SQL would
+    # silently turn these into `unconfirmed`.
+    db_session.add_all(
+        [
+            _news(1, "Powerful earthquake strikes Tokyo, dozens injured", "rss-a", "JP"),
+            _quake(50, None, hours_before=4, place="80 km E of Honshu, Japan"),
+        ]
+    )
+    db_session.commit()
+
+    counters = _run_both(db_session)
+
+    assert counters["confirmed"] == 1
+    (check,) = db_session.execute(select(StorySensorCheckRow)).scalars().all()
+    assert check.matched_event_id == 50
+
+
+def test_a_story_with_no_country_still_records_a_verdict(db_session: Session) -> None:
+    # With no countries there is nothing a sensor row could match, and
+    # `evaluate_claim` says so before reading one. The verdict must still be
+    # written rather than the story being skipped.
+    db_session.add(_news(1, "Powerful earthquake strikes the region", "rss-a", None))
+    db_session.commit()
+
+    _run_both(db_session)
+
+    (check,) = db_session.execute(select(StorySensorCheckRow)).scalars().all()
+    assert check.verdict == "unconfirmed"
+    assert check.evidence["reason"] == "story-not-geolocated"
+
+
+def test_the_filter_asks_the_database_for_the_country(db_session: Session) -> None:
+    # The point of the fix is that the rows never come back, not that they are
+    # rejected afterwards. Assert on the SQL rather than only on the verdict,
+    # so a refactor that reverts to filtering in Python fails here.
+    predicate = corro_task._country_predicate({"JP", "CL"})
+    rendered = str(predicate.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "events.country IN" in rendered
+    assert "events.country IS NULL" in rendered

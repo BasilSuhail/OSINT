@@ -24,7 +24,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.db_models import EventRow, IngestHealthRow, NotificationRow
+from app.db_models import EventRow, IngestHealthRow, JobRunRow, NotificationRow
 from app.settings import settings
 from app.sources.rss_registry import feed_cadence_map
 
@@ -228,4 +228,160 @@ def check_footprint_coverage(session: Session, *, now: datetime | None = None) -
     ):
         _pushover_send(message)
         report["alerted"] = True
+    return report
+
+
+#: Job-failure watchdog (#657). `sensor-checks` failed 717 times in 24 hours
+#: (#656) and nothing said a word — the reaper from #564 recorded every one of
+#: them faithfully, but recording a failure is not reporting one, and nobody
+#: reads `job_runs` unprompted. Ingest health was green throughout: the sensors
+#: kept arriving perfectly, and the job that reads them was dead.
+#:
+#: Cadence in minutes per scheduled job, mirroring `beat_schedule` in
+#: ``app/tasks.py``. Editing one without the other is a bug — same contract as
+#: ``CORE_SOURCE_CADENCE_MIN`` above.
+#:
+#: One-shot entrypoints (`backfill-signals`, `panel`, `baselines`, `labels`,
+#: `coverage`, `onset-eval`, `within-eval`, `indicator-ranking`) are absent on
+#: purpose. They legitimately go months without running and must never page.
+JOB_CADENCE_MIN: dict[str, int] = {
+    "brain-narrate": 15,
+    "brain-enrich": 20,
+    "stories-cluster": 30,
+    "sensor-checks": 30,
+    "disagreement": 30,
+    "severity-grade": 30,
+    "journal": 1440,
+    "validator": 1440,
+    "briefing": 10080,
+}
+
+#: A job is stale after this many of its own cadences without a `done` run.
+JOB_STALE_MULTIPLIER: int = 3
+
+#: Ceiling on the extra grace a long-cadence job gets. Without it a weekly
+#: briefing would need to be missed for three weeks before anyone heard, since
+#: three cadences of a weekly job is most of a month.
+JOB_MAX_GRACE_MIN: int = 1440
+
+#: Runs inspected when judging whether a job is failing rather than merely
+#: quiet. Wide enough to survive one bad run, short enough to notice a job that
+#: has started failing every time.
+JOB_RECENT_RUNS: int = 10
+
+#: Above this share of failures among recent runs, a job is broken even if it
+#: occasionally squeaks out a success and never looks stale.
+JOB_MAX_FAILURE_RATE: float = 0.5
+
+
+def job_stale_after(cadence_min: int) -> timedelta:
+    """How long a job may go without a `done` run before it is stale.
+
+    Its cadence tripled, but never more than a day of extra grace on top.
+    """
+    tripled = cadence_min * JOB_STALE_MULTIPLIER
+    return timedelta(minutes=min(tripled, cadence_min + JOB_MAX_GRACE_MIN))
+
+
+def _last_done(session: Session, job: str) -> datetime | None:
+    """When this job last finished successfully.
+
+    Re-attaches UTC on a naive value for the same reason `_last_success` does:
+    SQLite drops tzinfo on round-trip, Postgres does not.
+    """
+    stmt = (
+        select(JobRunRow.finished_at)
+        .where(JobRunRow.job == job, JobRunRow.status == "done")
+        .order_by(JobRunRow.finished_at.desc())
+        .limit(1)
+    )
+    value = session.execute(stmt).scalars().first()
+    if value is not None and value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value
+
+
+def _recent_failure_rate(session: Session, job: str) -> tuple[int, int, str | None]:
+    """(failed, considered, last failure detail) over the most recent runs.
+
+    `running` rows are excluded rather than counted either way: a job in flight
+    has not succeeded or failed yet, and #564's reaper will close it out on the
+    next start if the process died.
+    """
+    stmt = (
+        select(JobRunRow.status, JobRunRow.detail)
+        .where(JobRunRow.job == job, JobRunRow.status.in_(("done", "failed")))
+        .order_by(JobRunRow.started_at.desc())
+        .limit(JOB_RECENT_RUNS)
+    )
+    rows = session.execute(stmt).all()
+    failed = [row for row in rows if row.status == "failed"]
+    detail = next((row.detail for row in failed if row.detail), None)
+    return len(failed), len(rows), detail
+
+
+def check_jobs(session: Session, *, now: datetime | None = None) -> dict[str, dict[str, object]]:
+    """Flag scheduled jobs that have stopped succeeding. Return per-job state.
+
+    Two signals, because a job can break in two shapes. It can go quiet — the
+    #656 case, where the worker was killed before it could finish anything. Or
+    it can keep running and keep failing, staying just fresh enough never to
+    look stale. Both mean the same thing to whoever depends on the output.
+
+    A job doing nothing is not a job that is broken: `severity-grade` returning
+    `considered: 0` because there is no backlog is a success, and the beat
+    bodies that skip on a busy box return before opening a run at all. This
+    reads run outcomes, never the work they did.
+    """
+    now = now or datetime.now(UTC)
+    today = now.date()
+    report: dict[str, dict[str, object]] = {}
+
+    for job, cadence_min in JOB_CADENCE_MIN.items():
+        threshold = job_stale_after(cadence_min)
+        last_done = _last_done(session, job)
+        failed, considered, detail = _recent_failure_rate(session, job)
+
+        is_stale = last_done is None or (now - last_done) > threshold
+        is_failing = considered > 0 and (failed / considered) > JOB_MAX_FAILURE_RATE
+
+        report[job] = {
+            "last_done": last_done,
+            "is_stale": is_stale,
+            "is_failing": is_failing,
+            "failed_recent": failed,
+            "considered_recent": considered,
+            "alerted": False,
+        }
+
+        if not (is_stale or is_failing):
+            continue
+        if last_done is None and considered == 0:
+            # Never run at all. On a fresh database that is every job, and a
+            # page per job on first boot is noise, not signal.
+            continue
+
+        if is_stale and last_done is not None:
+            age_min = int((now - last_done).total_seconds() / 60)
+            headline = (
+                f"{job}: no successful run for {age_min} min "
+                f"(cadence {cadence_min} min, stale after {int(threshold.total_seconds() / 60)})"
+            )
+        elif is_stale:
+            headline = f"{job}: no successful run on record (cadence {cadence_min} min)"
+        else:
+            headline = (
+                f"{job}: {failed} of the last {considered} runs failed (cadence {cadence_min} min)"
+            )
+
+        # The reaper's detail already explains the cause — an OOM kill reads as
+        # "abandoned: no heartbeat ... killed without unwinding". Quoting it
+        # makes the page actionable instead of just alarming.
+        message = f"{headline} — last failure: {detail}" if detail else headline
+
+        logger.warning("watchdog: %s", message)
+        if _persist_notification(session, source=job, message=message, today=today, kind="job"):
+            _pushover_send(message)
+            report[job]["alerted"] = True
+
     return report
