@@ -20,7 +20,7 @@
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.16.0",
     "maplibre-gl": "^5.24.0",
-    "next": "16.2.6",
+    "next": "16.2.11",
     "react": "^19",
     "react-dom": "^19",
     "react-map-gl": "^8.1.1",
