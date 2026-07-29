@@ -171,3 +171,18 @@ class TestThresholds:
         # The two tables are maintained by hand; this is what catches drift.
         for job in JOB_OUTPUT:
             assert job in JOB_CADENCE_MIN, f"{job} has output watched but no cadence"
+
+
+def test_data_audit_is_watched_on_run_completion_not_findings() -> None:
+    """Zero findings is success. Watching findings would page on good news.
+
+    `audit_runs.finished_at` asks the only honest question: did the audit run
+    to completion?
+    """
+    from app.db_models import AuditRunRow
+
+    model, column = JOB_OUTPUT["data-audit"]
+
+    assert model is AuditRunRow
+    assert column is AuditRunRow.finished_at
+    assert JOB_CADENCE_MIN["data-audit"] == 1440

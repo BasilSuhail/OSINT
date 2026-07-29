@@ -192,6 +192,21 @@ def journal_daily() -> dict[str, Any]:
     return _journal_daily_body()
 
 
+@app.task(name="app.tasks.data_audit")
+def data_audit() -> dict[str, Any]:
+    """Nightly source-data audit (#669): does each source still mean what it declares?
+
+    Every other guardrail watches presence — that data arrived, that jobs ran,
+    that jobs produced something. This is the only one that watches meaning,
+    and until now it only ran when someone typed it.
+    """
+    if skipped := _skip_optional_heavy():
+        return skipped
+    from app.audit.task import run_audit_job
+
+    return run_audit_job()
+
+
 @app.task(
     name="app.tasks.cluster_stories",
     autoretry_for=(Exception,),
@@ -642,6 +657,14 @@ app.conf.beat_schedule = {
     "housekeeping-daily-3am-utc": {
         "task": "app.tasks.run_housekeeping",
         "schedule": crontab(hour=3, minute=0),
+    },
+    "data-audit-daily": {
+        "task": "app.tasks.data_audit",
+        # 03:40 — last in the nightly window (journal 02:15, validator 02:45,
+        # housekeeping 03:00) and specifically after housekeeping runs the
+        # retention prune, so findings describe the table as it stands rather
+        # than counting rows about to be deleted.
+        "schedule": crontab(hour=3, minute=40),
     },
     # The brain narrates every 15 min when the box is idle enough (#409).
     "brain-narrate-15min": {

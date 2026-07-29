@@ -200,6 +200,7 @@ class TestThresholds:
             "severity-grade": "grade_news_severity",
             "journal": "journal_daily",
             "validator": "extract_claims",
+            "data-audit": "data_audit",
             "briefing": "weekly_briefing",
         }
         assert set(job_to_task) == set(JOB_CADENCE_MIN)
