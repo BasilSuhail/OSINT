@@ -105,21 +105,34 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
-def audit(session: Session, *, now: datetime | None = None) -> list[checks.Finding]:
-    """Every finding across every source, plus any source nothing declares."""
+def audit_detail(
+    session: Session, *, now: datetime | None = None
+) -> tuple[list[checks.Finding], int]:
+    """Findings, plus how many sources were measured to produce them.
+
+    The count cannot be derived from the findings: a source with nothing wrong
+    contributes zero findings and still has to count as measured, or a clean
+    night looks like a night the audit never ran.
+    """
     moment = now or datetime.now(UTC)
+    stats = gather_stats(session)
     findings: list[checks.Finding] = []
-    for stats in gather_stats(session):
-        expectation = expectations.for_source(stats.source)
+    for source_stats in stats:
+        expectation = expectations.for_source(source_stats.source)
         if expectation is None:
             findings.append(
                 checks.Finding(
-                    stats.source,
+                    source_stats.source,
                     "undeclared_source",
-                    f"{stats.rows:,} rows, but no expectation declares what this source "
-                    f"should produce",
+                    f"{source_stats.rows:,} rows, but no expectation declares what this "
+                    f"source should produce",
                 )
             )
             continue
-        findings.extend(checks.run_all(stats, expectation, now=moment))
-    return findings
+        findings.extend(checks.run_all(source_stats, expectation, now=moment))
+    return findings, len(stats)
+
+
+def audit(session: Session, *, now: datetime | None = None) -> list[checks.Finding]:
+    """Every finding across every source, plus any source nothing declares."""
+    return audit_detail(session, now=now)[0]

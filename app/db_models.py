@@ -16,6 +16,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     Interval,
@@ -638,3 +639,52 @@ class SourceQuarantineRow(Base):
     retry_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (Index("source_quarantine_retry_idx", "retry_after"),)
+
+
+class AuditRunRow(Base):
+    """One sweep of the source-data audit (#580 machinery, now on a clock — #669).
+
+    The row exists even when the audit finds nothing. An empty run is the
+    healthy state and still has to be visible, or "clean" and "never ran" look
+    identical — which is exactly the #663 failure shape one level up.
+
+    Written once, at the end, in the same transaction as its findings. A run
+    that crashes therefore leaves no row at all: `job_runs` records the failure
+    and the output watchdog sees MAX(finished_at) stop advancing.
+    """
+
+    __tablename__ = "audit_runs"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sources_measured: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    findings_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (Index("audit_runs_started_idx", "started_at"),)
+
+
+class AuditFindingRow(Base):
+    """One finding inside one run. Mirrors `app.audit.checks.Finding`.
+
+    `check_name` rather than `check`: CHECK is reserved in Postgres, and this
+    table exists to be queried by hand.
+
+    The delta that decides whether to notify compares (source, check_name) and
+    deliberately ignores `detail` — the detail carries live row counts, so
+    including it would page every night as those counts move.
+    """
+
+    __tablename__ = "audit_findings"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("audit_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    check_name: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (Index("audit_findings_run_idx", "run_id", "source"),)

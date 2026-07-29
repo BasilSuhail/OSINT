@@ -44,6 +44,7 @@ HEAVY_TASKS: tuple[str, ...] = (
     "app.tasks.brain_narrate",
     "app.tasks.brain_enrich",
     "app.tasks.grade_news_severity",
+    "app.tasks.data_audit",
 )
 
 

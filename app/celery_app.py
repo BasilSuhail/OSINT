@@ -53,6 +53,7 @@ app.conf.task_routes = {
         # worker alongside the fetchers, contending with the brain for the model
         # the serialisation above exists to prevent.
         "app.tasks.grade_news_severity",
+        "app.tasks.data_audit",
     )
 }
 

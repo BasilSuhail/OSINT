@@ -25,6 +25,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.db_models import (
+    AuditRunRow,
     BrainNarrativeRow,
     EventRow,
     IngestHealthRow,
@@ -263,6 +264,7 @@ JOB_CADENCE_MIN: dict[str, int] = {
     "severity-grade": 30,
     "journal": 1440,
     "validator": 1440,
+    "data-audit": 1440,
     "briefing": 10080,
 }
 
@@ -411,6 +413,7 @@ JOB_OUTPUT: dict[str, tuple[type, InstrumentedAttribute]] = {
     "sensor-checks": (StorySensorCheckRow, StorySensorCheckRow.checked_at),
     "disagreement": (StoryDisagreementRow, StoryDisagreementRow.computed_at),
     "stories-cluster": (StoryRow, StoryRow.last_seen),
+    "data-audit": (AuditRunRow, AuditRunRow.finished_at),
 }
 
 #: `severity-grade` is deliberately absent, and this is the design decision of
@@ -420,6 +423,21 @@ JOB_OUTPUT: dict[str, tuple[type, InstrumentedAttribute]] = {
 #: table above receives rows on every healthy pass — there is always a situation
 #: to narrate, always new stories to gist, always stories in the clustering
 #: window — so silence there really does mean something is wrong.
+#:
+#: `data-audit` is watched on its run row rather than on findings, and that is
+#: the same distinction: zero findings is a healthy audit, so watching findings
+#: would page precisely when the data got better. `finished_at` advancing means
+#: the audit ran to completion.
+#:
+#: That said, this entry is drift protection rather than the thing actually
+#: catching a broken audit. `run_audit` writes its row at the end of the same
+#: transaction that runs the checks, so every `done` `data-audit` run has
+#: already produced one — this can only fire in the narrow window where output
+#: staleness beats the job-ran check, and by then it is reporting the same
+#: underlying fault `check_jobs` (#657) already reported, under a different
+#: dedup kind. It only becomes load-bearing if `run_audit` ever stops writing
+#: a row on a healthy pass. What actually catches a `data-audit` that stops
+#: running is `check_jobs`.
 
 #: How many of its own cadences a job may produce nothing before it is flagged.
 #: Deliberately looser than the failure check: these jobs skip on purpose when

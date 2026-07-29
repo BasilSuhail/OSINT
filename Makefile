@@ -136,6 +136,9 @@ validator-agreement:  ## Compute + publish the model-vs-human agreement rate fro
 briefing:  ## Generate the weekly briefing now — the newsletter artifact (#401)
 	.venv/bin/python -m app.briefing.run
 
+data-audit:  ## Run the source-data audit now and record it in the run history (#669)
+	.venv/bin/python -m app.audit.task
+
 backfill-signals:  ## Backfill historical market+geopolitical+hazard composite scores (2015-2024); GDELT download resumes via $OSINT_DATA_DIR/gdelt/ checkpoints
 	.venv/bin/python -m app.composite.backfill
 
