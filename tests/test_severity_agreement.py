@@ -193,7 +193,11 @@ class TestSheet:
         filled = sheet.replace("| three killed |  |  |  |", "| three killed | 0.65 | grave | ok |")
 
         result = agreement.score(agreement.parse_sheet(filled))
-        assert result["band_agreement"] == 1.0
+        # "Three killed" carries a death word, so the row lands in the lethal
+        # block: it counts toward the floor check and deliberately not toward
+        # band agreement, which stays unbiased (#665).
+        assert result["band_agreement"] is None
+        assert result["n_lethal"] == 1
         assert result["floor_violations"] == 0
 
     def test_a_pipe_in_a_headline_cannot_break_the_table(self):
@@ -205,5 +209,5 @@ class TestSheet:
         )
 
         assert all(
-            line.count("|") == 8 for line in sheet.splitlines() if line.startswith("| Rebels")
+            line.count("|") == 9 for line in sheet.splitlines() if line.startswith("| Rebels")
         )

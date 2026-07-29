@@ -15,6 +15,7 @@ cherry-picked by whoever wrote the prompt.
 
 from __future__ import annotations
 
+import argparse
 import os
 import random
 from datetime import UTC, datetime
@@ -28,11 +29,43 @@ from app.db import get_engine
 from app.db_models import EventRow
 from app.models import Category
 from app.settings import settings
-from app.severity import news, scale
+from app.severity import agreement, news, scale
 
 SAMPLE_SIZE: int = 50
 #: Fixed seed — same sample every run.
 SAMPLE_SEED: int = 591
+
+#: Extra rows drawn from headlines that look fatal, on top of the random block
+#: (#665). The random block yielded four lethal rows out of fifty, so every
+#: "zero missed deaths" figure this project has published — the one #593 said
+#: to read first — rested on four headlines. Random sampling cannot fix that
+#: without asking a human to grade hundreds of rows, because news is mostly
+#: not fatal.
+LETHAL_SAMPLE_SIZE: int = 30
+
+#: Stratum labels, carried in the sheet so nobody has to reconstruct later
+#: which block a row came from.
+RANDOM_STRATUM: str = "random"
+LETHAL_STRATUM: str = "lethal"
+
+
+def looks_lethal(headline: str) -> bool:
+    """Does this headline claim a death, by a rule the model had no part in?
+
+    This is the whole design of #665. The obvious way to find lethal headlines
+    is to ask the model which ones it graded `grave` — and that would destroy
+    the metric it is meant to repair. A floor violation is "the human says
+    someone died and the model scored it below 0.60", so selecting on the
+    model's own verdict excludes exactly those rows by construction, and the
+    sheet would measure precision while claiming to measure missed harm.
+
+    `news._LETHAL_WORDS` owes nothing to the model — it is the fixed list the
+    ingest-path fallback uses. It has blind spots (#649 found `dies at 44`,
+    since the list carries `died` and not `dies`), so this block is *enriched*,
+    never exhaustive, and the random block stays to cover what it cannot see.
+    """
+    lowered = headline.lower()
+    return any(word in lowered for word in news._LETHAL_WORDS)
 
 
 def _band_guide() -> list[str]:
@@ -66,23 +99,49 @@ def build_sheet(rows: list[EventRow], *, created: str) -> str:
         "Leave a row entirely blank to skip it. Blank rows are not counted as "
         "agreement — they are dropped.",
         "",
+        "## Two blocks",
+        "",
+        f"`{RANDOM_STRATUM}` rows are an unbiased draw and are what band "
+        "agreement is computed from. `"
+        f"{LETHAL_STRATUM}` rows were picked because the headline carries a "
+        "death word, so the floor check has more than a handful of rows to "
+        "stand on (#665). They are selected by keyword, never by what the "
+        "model said — picking on the model's own verdict would exclude the "
+        "misses the floor metric exists to count.",
+        "",
         "| headline | model severity | model band | model rationale "
-        "| human severity | human band | rationale ok |",
-        "|---|---|---|---|---|---|---|",
+        "| human severity | human band | rationale ok | stratum |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         payload = row.payload or {}
         headline = (payload.get("title") or "").replace("|", "/")
         rationale = (payload.get("severity_rationale") or "").replace("|", "/")
+        stratum = LETHAL_STRATUM if looks_lethal(headline) else RANDOM_STRATUM
         lines.append(
             f"| {headline} | {row.severity} | {payload.get('severity_band') or '—'} "
-            f"| {rationale} |  |  |  |"
+            f"| {rationale} |  |  |  | {stratum} |"
         )
     lines.append("")
     return "\n".join(lines)
 
 
-def _run() -> int:
+def has_human_grades(path: Path) -> bool:
+    """Does this sheet already carry a human's answers?
+
+    A filled sheet is hours of hand-grading and the only evidence the grader
+    works. `make severity-audit` writes to a fixed path, so without this a
+    re-run silently discards it.
+    """
+    if not path.exists():
+        return False
+    return any(
+        row["human_band"] or row["human_severity"] is not None or row["rationale_ok"]
+        for row in agreement.parse_sheet(path.read_text())
+    )
+
+
+def _run(*, force: bool = False) -> int:
     """Grade a fixed sample in memory and emit the sheet. Writes nothing.
 
     Deliberately does not require rows to have been graded already. The point of
@@ -90,6 +149,19 @@ def _run() -> int:
     verdicts are written over stored data — requiring `grade_run --apply` first
     would invert that, validating a mutation that had already happened.
     """
+    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    sheet_path = exports / "severity-audit-sheet.md"
+    if not force and has_human_grades(sheet_path):
+        # Checked before a single model call: grading the sample takes minutes,
+        # and refusing afterwards would burn all of them to say no. The filled
+        # sheet is hours of hand-grading and the only evidence the grader works
+        # — the very thing #665 exists to give more of.
+        print(
+            f"{sheet_path} already contains human grades — refusing to overwrite.\n"
+            "Move it aside, or re-run with --force if you meant to discard them."
+        )
+        return 1
+
     with Session(get_engine()) as session:
         rows = list(
             session.execute(
@@ -104,10 +176,21 @@ def _run() -> int:
         rows.sort(key=lambda r: r.id)
         random.Random(SAMPLE_SEED).shuffle(rows)
 
-        sample: list[EventRow] = []
-        for row in rows:
-            if len(sample) >= SAMPLE_SIZE:
+        # Two blocks. The random one is the sheet as it always was, and is what
+        # band agreement is computed from. The lethal one is drawn from rows the
+        # keyword rule flags, so the floor metric stops resting on four rows
+        # (#665) — and it is drawn from the same shuffled order, so it stays
+        # reproducible rather than cherry-picked.
+        lethal_pool = [r for r in rows if looks_lethal((r.payload or {})["title"])]
+        wanted = {id(r): RANDOM_STRATUM for r in rows[:SAMPLE_SIZE]}
+        for row in lethal_pool:
+            if len([s for s in wanted.values() if s == LETHAL_STRATUM]) >= LETHAL_SAMPLE_SIZE:
                 break
+            wanted.setdefault(id(row), LETHAL_STRATUM)
+        candidates = [r for r in rows if id(r) in wanted]
+
+        sample: list[EventRow] = []
+        for row in candidates:
             headline = (row.payload or {})["title"]
             payload = client.generate_json(
                 news.build_prompt(headline), model=settings.severity_model, keep_alive="5m"
@@ -125,16 +208,20 @@ def _run() -> int:
 
         session.expunge_all()
 
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
     exports.mkdir(parents=True, exist_ok=True)
-    path = exports / "severity-audit-sheet.md"
-    path.write_text(build_sheet(sample, created=datetime.now(UTC).date().isoformat()))
-    print(f"written: {path} ({len(sample)} rows to hand-check; nothing written to the DB)")
+    sheet_path.write_text(build_sheet(sample, created=datetime.now(UTC).date().isoformat()))
+    print(f"written: {sheet_path} ({len(sample)} rows to hand-check; nothing written to the DB)")
     return 0
 
 
 def main() -> int:
-    return _run()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite a sheet that already has human grades in it",
+    )
+    return _run(force=parser.parse_args().force)
 
 
 if __name__ == "__main__":
