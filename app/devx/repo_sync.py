@@ -37,7 +37,7 @@ MAIN_BRANCH: str = "main"
 #: start needs an off switch.
 SKIP_ENV: str = "OSINT_NO_AUTO_SYNC"
 
-Action = Literal["none", "fast_forward", "reset", "refuse"]
+Action = Literal["none", "fast_forward", "reset", "refuse", "warn"]
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,11 @@ class Decision:
 
     action: Action
     reason: str
+
+
+def _unpushed(local_only: list[str]) -> list[str]:
+    """The `+` lines: commits that exist only here. Losing one is unforgivable."""
+    return [line for line in local_only if line.strip().startswith("+")]
 
 
 def decide(*, branch: str, dirty: bool, behind: int, local_only: list[str]) -> Decision:
@@ -61,6 +66,19 @@ def decide(*, branch: str, dirty: bool, behind: int, local_only: list[str]) -> D
     A single `+` means real work exists only here, and nothing is touched.
     """
     if branch != MAIN_BRANCH:
+        # Still never reset a feature branch. But a branch with nothing of its
+        # own, sitting behind main, is finished rather than in progress, and
+        # staying on it is an accident (#675): a checkout 16 commits back met a
+        # database one migration ahead, and `make up` died on a revision the
+        # code did not contain. Say so; change nothing.
+        if not _unpushed(local_only) and behind:
+            return Decision(
+                "warn",
+                f"on branch {branch!r}, which has no unmerged work of its own and is "
+                f"{behind} commit(s) behind origin/{MAIN_BRANCH}. Run "
+                f"`git checkout {MAIN_BRANCH}` before starting, or the stack runs code "
+                f"older than the database it talks to.",
+            )
         return Decision(
             "none", f"on branch {branch!r} — only {MAIN_BRANCH} is synced automatically"
         )
@@ -72,7 +90,7 @@ def decide(*, branch: str, dirty: bool, behind: int, local_only: list[str]) -> D
             "Commit or stash, then re-run.",
         )
 
-    unpushed = [line for line in local_only if line.strip().startswith("+")]
+    unpushed = _unpushed(local_only)
     if unpushed:
         return Decision(
             "refuse",
@@ -143,7 +161,7 @@ def main() -> int:
         print(f"  repo sync skipped (git said: {exc.stderr.strip() or exc})")
         return 0
 
-    if decision.action == "refuse":
+    if decision.action in {"refuse", "warn"}:
         print(f"  ⚠ repo NOT synced: {decision.reason}")
         print("    the stack will start on the code currently on disk")
         return 0
