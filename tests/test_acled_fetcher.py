@@ -178,11 +178,17 @@ def test_fetch_noops_without_csv_or_enabled_api(monkeypatch: pytest.MonkeyPatch)
 def test_fetch_reads_configured_csv(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import settings as settings_module
 
+    # Relative, like the two directory tests below: the row has to sit inside
+    # `lookback_days` or the fetcher correctly drops it. A hardcoded date gives
+    # the fixture a shelf life, and this one expired on 2026-07-28 (#673).
+    today = datetime.now(UTC).date()
+    event_date = (today - timedelta(days=2)).isoformat()
+
     path = tmp_path / "acled.csv"
     path.write_text(
         "event_id_cnty,event_date,year,event_type,sub_event_type,actor1,actor2,"
         "fatalities,location,latitude,longitude,iso3,source\n"
-        "UKR123,2026-06-28,2026,Battles,Armed clash,Actor A,Actor B,3,"
+        f"UKR123,{event_date},{today.year},Battles,Armed clash,Actor A,Actor B,3,"
         "Kyiv,50.45,30.52,UKR,Local source\n",
         encoding="utf-8",
     )
