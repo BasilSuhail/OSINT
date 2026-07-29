@@ -50,8 +50,16 @@
     "vitest": "^4.1.9"
   },
   "pnpm": {
+    "comment": "Overrides exist because these are transitive: next pins postcss 8.4.31 and sharp ^0.34.5 itself, so bumping our own dependency cannot reach them. Each override stays inside the package's own major version — the point is to clear the advisory, not to take a breaking upgrade. Drop an entry once the parent ships a version that no longer needs it. brace-expansion is deliberately overridden only on its 5.x line: GHSA-mh99-v99m-4gvg patches at 5.0.8 and has no fix in 1.x, and forcing 1.x consumers to 5.x breaks them — v1 exports the function directly while v5 exports { expand }, so minimatch@3's `require('brace-expansion')(...)` would throw at runtime. The remaining 1.1.15 is reachable only through eslint's devDependencies; it leaves when eslint 9 does.",
     "overrides": {
-      "hono": "4.12.25"
+      "hono": "^4.12.27",
+      "@hono/node-server": "^2.0.5",
+      "body-parser": "^2.3.0",
+      "brace-expansion@5": "^5.0.8",
+      "fast-uri@3": "^3.1.4",
+      "js-yaml@4": "^4.3.0",
+      "postcss": "^8.5.25",
+      "sharp": "^0.35.3"
     }
   }
 }
