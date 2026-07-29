@@ -18,12 +18,40 @@ from app.devx.repo_sync import decide, inspect
 
 
 class TestDecision:
-    def test_a_feature_branch_is_never_touched(self):
-        # Mid-feature is exactly when a reset is unforgivable.
-        decision = decide(branch="656-some-fix", dirty=False, behind=5, local_only=[])
+    def test_a_feature_branch_with_unmerged_work_is_never_touched(self):
+        # Mid-feature is exactly when a reset is unforgivable — and a branch
+        # carrying work of its own is not stale, however far behind it sits.
+        decision = decide(
+            branch="656-some-fix", dirty=False, behind=5, local_only=["+ abc123 mine only"]
+        )
 
         assert decision.action == "none"
         assert "only main" in decision.reason
+
+    def test_a_finished_branch_left_behind_is_called_out(self):
+        # #675: every commit already upstream, nothing of its own, and behind.
+        # That branch is done, and staying on it is an accident — a stale
+        # checkout ran against a database a migration ahead of it and `make up`
+        # died on a revision the code did not have.
+        decision = decide(branch="656-some-fix", dirty=False, behind=16, local_only=[])
+
+        assert decision.action == "warn"
+        assert "656-some-fix" in decision.reason
+        assert "16" in decision.reason
+        assert "checkout main" in decision.reason
+
+    def test_a_finished_branch_that_is_current_stays_quiet(self):
+        # Behind is what makes it worth saying. Sitting on a merged branch that
+        # matches main breaks nothing.
+        decision = decide(branch="656-some-fix", dirty=False, behind=0, local_only=[])
+
+        assert decision.action == "none"
+
+    def test_a_warned_branch_is_still_never_touched(self):
+        # The whole point: this reports, it does not act.
+        decision = decide(branch="656-some-fix", dirty=False, behind=16, local_only=[])
+
+        assert decision.action not in {"reset", "fast_forward"}
 
     def test_uncommitted_work_stops_everything(self):
         decision = decide(branch="main", dirty=True, behind=3, local_only=[])

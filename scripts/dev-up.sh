@@ -371,8 +371,22 @@ for stale in worker worker-analytics beat api; do
   rm -f "logs/$stale.log" "logs/$stale.pid"
 done
 if ! compose_up_app; then
-  echo "Backend containers did not start." >&2
-  echo "See logs/compose-up.err for the compose error." >&2
+  # Print the error rather than the path to it (#675). The store bring-up above
+  # already inlines its last line; this one sent you to a file, and the line
+  # waiting in it was the whole diagnosis.
+  err="$(tail -n1 logs/compose-up.err 2>/dev/null)"
+  echo "Backend containers did not start: ${err:-see logs/compose-up.err}" >&2
+  # One known cause deserves naming. Alembic reports a revision it cannot find
+  # when the database has been migrated by a branch this checkout does not
+  # have — the failure that started #675.
+  if grep -q "Can't locate revision identified by" logs/compose-up.err 2>/dev/null; then
+    rev="$(sed -n "s/.*Can't locate revision identified by '\([^']*\)'.*/\1/p" \
+      logs/compose-up.err | tail -n1)"
+    echo "  The database is at revision ${rev:-?}, which does not exist in this checkout." >&2
+    echo "  It was migrated by code you do not have — usually a branch that was merged," >&2
+    echo "  or one still open elsewhere. Check out the branch carrying that migration" >&2
+    echo "  (\`git checkout main && git pull\` if it has landed), then re-run \`make up\`." >&2
+  fi
   exit 1
 fi
 echo "  api + worker + worker-analytics + beat started"
