@@ -103,13 +103,24 @@ def test_a_declared_healthy_source_produces_nothing(db_session):
     assert findings == []
 
 
-def test_the_polymarket_shape_is_caught_end_to_end(db_session):
-    """Severity on every row, country on none, so the composite reads nothing."""
-    _add(db_session, "polymarket", n=100, severity=0.5, country=None, category="market")
+def test_polymarket_no_longer_claims_a_composite_role(db_session):
+    """Country on no row — and since #682 it does not claim to need one.
+
+    This used to assert `composite_reachability` fires. It did, correctly, while
+    polymarket declared `feeds_composite=True` and delivered nothing. The
+    declaration was the wrong half: severity there is market *uncertainty*, and
+    the stored sample was 94 US primary horse-race markets and 9 World Cup
+    football bets against exactly one conflict question. A 50/50 nomination race
+    would have scored as maximum national stress.
+
+    So the finding is gone because the claim is gone, not because the data
+    changed. The audit is right in both versions; only the declaration moved.
+    """
+    _add(db_session, "polymarket", n=100, severity=0.5, country=None, category="prediction")
 
     checks_fired = {f.check for f in run.audit(db_session, now=NOW) if f.source == "polymarket"}
 
-    assert "composite_reachability" in checks_fired
+    assert "composite_reachability" not in checks_fired
 
 
 def test_the_fred_shape_is_caught_end_to_end(db_session):
