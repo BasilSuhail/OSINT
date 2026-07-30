@@ -167,13 +167,15 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
   }, [expanded, setExpanded])
 
   return (
-    <div
-      className={
-        expanded
-          ? "fixed inset-x-0 bottom-0 top-8 z-[60] bg-neutral-950"
-          : "relative h-full w-full bg-neutral-950"
-      }
-    >
+    //: Fills whatever it is given, in both states (#707). It used to go
+    //: `fixed inset-x-0 bottom-0 top-8` when expanded, with the top-8 there to
+    //: clear the status bar — which assumes `fixed` resolves against the
+    //: viewport. It does not: FloatingPanel carries backdrop-blur-xl, and a
+    //: non-none backdrop-filter establishes a containing block for fixed
+    //: descendants. So the offsets resolved against the panel, leaving a 32px
+    //: band above the header and a flush bottom, which is exactly the uneven
+    //: gap. Growing is the panel's job now; this just fills it.
+    <div className="relative h-full w-full bg-neutral-950">
       <div className="flex h-full flex-col">
         <div className="flex h-8 shrink-0 items-center justify-between px-3">
           <button
