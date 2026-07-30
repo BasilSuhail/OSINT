@@ -4,6 +4,7 @@ import { Maximize2, Minimize2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useDeckExpandStore } from "@/stores/deckExpandStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
+import { useStoryDetailStore } from "@/stores/storyDetailStore"
 
 export interface DeckCard {
   key: string
@@ -123,14 +124,32 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     }
   }, [goTo])
 
-  //: A selection card appears when something on the map is picked, so the deck
-  //: moves to it (#699). Without this the card arrives silently off-screen and
-  //: the click looks like it did nothing. Keyed on the card's identity, not its
-  //: index, so re-selecting a different entity does not re-scroll.
+  //: The deck follows the click (#699, fixed #701). Keyed on *what* was picked
+  //: rather than on the card's index, so choosing a different country while the
+  //: card is already open navigates again instead of sitting still.
+  //:
+  //: Moving activeRef before the scroll is the load-bearing half. Adding the
+  //: card changes cards.length, which changes goTo's identity, which re-runs
+  //: the ResizeObserver effect below — and a fresh observer fires immediately,
+  //: re-aligning to activeRef. With activeRef still on the old card that
+  //: instant scroll cancelled the smooth one, so the card appeared in the deck
+  //: and the deck stayed where it was.
+  //:
+  //: The ref alone is enough: onScroll sets the React state once the scroll
+  //: lands, so nothing here has to setState from inside an effect.
+  const pickToken = useStoryDetailStore((st) => st.storyId)
+  const entityToken = useRightPaneModeStore((st) => {
+    const e = st.entity
+    if (!e) return null
+    return e.kind === "country" ? `country:${e.iso}` : e.kind === "cluster" ? `cluster:${e.label}` : `event:${e.event.id}`
+  })
+  const selectionToken = pickToken ?? entityToken
   const selectionIndex = cards.findIndex((c) => c.key === "selection")
   useEffect(() => {
-    if (selectionIndex >= 0) goTo(selectionIndex)
-  }, [selectionIndex, goTo])
+    if (!selectionToken || selectionIndex < 0) return
+    activeRef.current = selectionIndex
+    goTo(selectionIndex)
+  }, [selectionToken, selectionIndex, goTo])
 
   useEffect(() => {
     if (!expanded) return
