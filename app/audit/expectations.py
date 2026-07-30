@@ -75,11 +75,15 @@ EXPECTATIONS: dict[str, Expectation] = {
     "polymarket": Expectation(
         severity="continuous",
         country="none",
-        feeds_composite=True,
+        feeds_composite=False,
         note=(
-            "Prediction markets are global, so country none is defensible. The "
-            "composite filters country IS NOT NULL, so all rows drop. Declared "
-            "feeds_composite True on purpose: the reachability finding is real."
+            "Prediction markets are global, so country none is defensible. It no "
+            "longer claims to feed the composite (#682): severity here is market "
+            "uncertainty, and of the 115 stored rows 94 were US 2028 primary "
+            "horse-race markets and 9 were World Cup football, with exactly one "
+            "about conflict. A 50/50 nomination race would have scored as maximum "
+            "national stress. Category is PREDICTION now, outside the composite's "
+            "vocabulary, so composite_reachability no longer applies."
         ),
     ),
     "gdelt": Expectation(

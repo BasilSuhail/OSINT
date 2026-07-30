@@ -28,6 +28,10 @@ class Category(StrEnum):
     NEWS = "news"
     CYBER = "cyber"
     MESH = "mesh"
+    #: Prediction-market odds. Deliberately outside the composite (#682): the
+    #: severity proxy is market *uncertainty*, and uncertainty about who wins a
+    #: primary is not national stress.
+    PREDICTION = "prediction"
 
 
 class Event(BaseModel):
