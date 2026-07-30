@@ -67,7 +67,7 @@ def test_market_to_event_happy_path() -> None:
     ev = _market_to_event(_market(), FETCHED_AT)
     assert ev is not None
     assert ev.source == "polymarket"
-    assert ev.category == Category.MARKET
+    assert ev.category == Category.PREDICTION
     assert ev.payload["yes_price"] == 0.62
     assert ev.payload["question"].startswith("Will X")
 
