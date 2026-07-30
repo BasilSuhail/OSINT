@@ -1,8 +1,6 @@
 "use client"
 
-import { Maximize2, Minimize2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useDeckExpandStore } from "@/stores/deckExpandStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 
 export interface DeckCard {
@@ -46,16 +44,6 @@ const SWIPE_THRESHOLD_PX = 60
 export function CardDeck({ cards }: { cards: DeckCard[] }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState(0)
-  //: Lifted to a store (#699) so the world card's headline can open the deck
-  //: from inside its own content — the graph is a door, not a decoration.
-  const expanded = useDeckExpandStore((st) => st.expanded)
-  const setExpandedRaw = useDeckExpandStore((st) => st.setExpanded)
-  const toggleExpanded = useDeckExpandStore((st) => st.toggleExpanded)
-  const setExpanded = useCallback(
-    (v: boolean | ((prev: boolean) => boolean)) =>
-      typeof v === "function" ? toggleExpanded() : setExpandedRaw(v),
-    [setExpandedRaw, toggleExpanded],
-  )
   const activeRef = useRef(0)
   // Lazy cards mount on first visit and stay mounted (kept warm).
   const [visited, setVisited] = useState<ReadonlySet<number>>(() => new Set([0]))
@@ -154,18 +142,6 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     goTo(selectionIndex)
   }, [entityToken, selectionIndex, goTo])
 
-  useEffect(() => {
-    if (!expanded) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return
-      // An open entity owns Esc — collapse only once it is closed.
-      if (useRightPaneModeStore.getState().entity) return
-      setExpanded(false)
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [expanded, setExpanded])
-
   return (
     //: Fills whatever it is given, in both states (#707). It used to go
     //: `fixed inset-x-0 bottom-0 top-8` when expanded, with the top-8 there to
@@ -177,29 +153,16 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     //: gap. Growing is the panel's job now; this just fills it.
     <div className="relative h-full w-full bg-neutral-950">
       <div className="flex h-full flex-col">
-        <div className="flex h-8 shrink-0 items-center justify-between px-3">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            title={expanded ? "back to console (esc)" : "cover the full page"}
-            className="font-mono text-[10px] uppercase tracking-widest text-neutral-400 transition-colors hover:text-cyan-300"
-          >
+        {/* A label, not a toggle (#709). Expanding stopped changing anything
+            once the deck was told to fill its panel and nothing may get wider,
+            and a control that responds without changing the view reads as
+            broken rather than absent. Everything it reached is reachable: the
+            world tile's detail from its graph, a story from its row, a map
+            pick as the third tile. */}
+        <div className="flex h-8 shrink-0 items-center px-3">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-400">
             {cards[active]?.title}
-          </button>
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            aria-label={expanded ? "Collapse card" : "Expand card to full page"}
-            className="flex items-center gap-1.5 rounded-md border border-neutral-800 px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400 transition-colors hover:border-cyan-500/60 hover:text-cyan-300"
-          >
-            {expanded ? (
-              <>
-                <Minimize2 className="h-3 w-3" /> esc
-              </>
-            ) : (
-              <Maximize2 className="h-3 w-3" />
-            )}
-          </button>
+          </span>
         </div>
 
         <div
@@ -215,10 +178,10 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
             >
               <div className="h-full w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/40">
                 {(() => {
-                  const body =
-                    !expanded && card.collapsedContent !== undefined
-                      ? card.collapsedContent
-                      : card.content
+                  //: The deck shows the collapsed form when a card has one
+                  //: (#709). There is no expanded state to switch to any
+                  //: more — the fuller view opens beside the deck instead.
+                  const body = card.collapsedContent ?? card.content
                   return card.lazy && !visited.has(i) ? null : card.fill ? (
                     <div className="relative h-full w-full">
                       {typeof body === "function" ? body(i === active) : body}
