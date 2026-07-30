@@ -76,16 +76,89 @@ class TestComputeScores:
         scores = compute_scores(signals)
         assert scores[0].score_value > 0.8
 
-    def test_missing_domain_treated_as_zero(self) -> None:
+    def test_an_absent_domain_is_excluded_rather_than_imputed(self) -> None:
+        # #683. Absent and average are different claims. A domain that produced
+        # no signal used to enter the sum as z=0.0 — "exactly average" — which
+        # dragged the weighted sum toward 0 and every such score toward
+        # sigmoid(0) = 0.5. The countries missing the most data are the quiet
+        # ones the index most needs to discriminate.
         signals = {("US", _bucket(2026, 6)): {"market": 6.0}}
         scores = compute_scores(signals)
-        # weight 1/4 * 6 = 1.5 → sigmoid(1.5) ≈ 0.82
-        assert scores[0].score_value > 0.8
-        assert scores[0].components["z"]["geopolitical"] == 0.0
-        assert scores[0].components["z"]["hazard"] == 0.0
+
+        # Market is now the whole weight, not a quarter of it.
+        assert scores[0].components["z"] == {"market": 6.0}
+        assert scores[0].components["weights_used"] == {"market": pytest.approx(1.0)}
+        assert scores[0].components["domains_present"] == ["market"]
+        assert scores[0].components["weighted_sum"] == pytest.approx(6.0)
+
+    def test_absent_domains_do_not_drag_the_score_toward_one_half(self) -> None:
+        # The regression that matters, stated as a comparison: the same single
+        # strong signal must not be diluted by three domains that do not exist.
+        one_domain = compute_scores({("US", _bucket(2026, 6)): {"market": 6.0}})
+        all_four = compute_scores(
+            {
+                ("US", _bucket(2026, 6)): {
+                    "market": 6.0,
+                    "geopolitical": 0.0,
+                    "hazard": 0.0,
+                    "wildfire": 0.0,
+                }
+            }
+        )
+
+        # Four real domains, three of them average: dilution is correct there.
+        assert all_four[0].score_value == pytest.approx(_sigmoid(1.5))
+        # One real domain: no dilution, because there is nothing to dilute with.
+        assert one_domain[0].score_value == pytest.approx(_sigmoid(6.0))
+        assert one_domain[0].score_value > all_four[0].score_value
+
+    def test_weights_are_renormalised_over_present_domains_only(self) -> None:
+        signals = {("US", _bucket(2026, 6)): {"market": 2.0, "hazard": 2.0}}
+        scores = compute_scores(signals)
+
+        used = scores[0].components["weights_used"]
+        assert sum(used.values()) == pytest.approx(1.0)
+        assert used == {"market": pytest.approx(0.5), "hazard": pytest.approx(0.5)}
+        # Equal halves of equal z: the weighted sum is that z, not half of it.
+        assert scores[0].components["weighted_sum"] == pytest.approx(2.0)
+
+    def test_a_present_but_zero_domain_still_counts_as_present(self) -> None:
+        # An explicit 0.0 is a measurement — "this country was average this
+        # month" — and must dilute. Only absence is excluded.
+        signals = {("US", _bucket(2026, 6)): {"market": 4.0, "hazard": 0.0}}
+        scores = compute_scores(signals)
+
+        assert scores[0].components["domains_present"] == ["hazard", "market"]
+        assert scores[0].components["weighted_sum"] == pytest.approx(2.0)
+
+    def test_a_cell_with_no_known_domains_is_not_scored(self) -> None:
+        # Nothing to renormalise over. Emitting sigmoid(0) here would be the
+        # imputation this issue removes, wearing a different hat.
+        signals = {("US", _bucket(2026, 6)): {}}
+        assert compute_scores(signals) == []
+
+    def test_unknown_domains_are_ignored_not_scored(self) -> None:
+        # A signal the weighting config does not know about must not sneak into
+        # the sum with an implied weight.
+        signals = {("US", _bucket(2026, 6)): {"market": 2.0, "not_a_domain": 99.0}}
+        scores = compute_scores(signals)
+
+        assert scores[0].components["domains_present"] == ["market"]
+        assert scores[0].components["weighted_sum"] == pytest.approx(2.0)
 
     def test_components_breakdown(self) -> None:
-        signals = {("US", _bucket(2026, 6)): {"market": 3.0, "geopolitical": 0.0, "hazard": 0.0}}
+        # All four domains present, so the quarter weights apply unchanged. The
+        # fixture gained `wildfire` when #683 stopped imputing absent domains —
+        # this test is about the components payload, not about absence, and its
+        # assertions are unchanged.
+        signals = {
+            ("US", _bucket(2026, 6)): {
+                "market": 3.0,
+                "geopolitical": 0.0,
+                "hazard": 0.0,
+                "wildfire": 0.0,
+            }
+        }
         scores = compute_scores(signals)
         comp = scores[0].components
         assert comp["z"]["market"] == 3.0

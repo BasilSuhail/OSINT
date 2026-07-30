@@ -4,13 +4,23 @@ Gamma API at https://gamma-api.polymarket.com/markets is free + no key
 + paginated. Each market doc has an array of outcomes with current
 prices and volume. We read the active markets only.
 
-Each market → one Event with category = MARKET. Severity proxies the
-"tail-event awareness" signal: the implied probability of the YES /
-first outcome maps onto a 0..1 band. The intuition: a market trading
-at 0.5 carries the most stress (genuinely uncertain), while 0.05 or
-0.95 carry less because participants have made up their minds.
+Each market → one Event with category = PREDICTION, which is deliberately
+outside the composite (#682). Severity proxies uncertainty: the implied
+probability of the YES / first outcome maps onto a 0..1 band, so a market
+trading at 0.5 scores 1.0 and one at 0.05 or 0.95 scores near 0.
 
 severity = 1 - abs(p - 0.5) * 2  ∈  [0, 1]
+
+That measures how undecided a crowd is, which is not national stress. Measured
+across the 115 stored rows, 94 were US 2028 primary horse-race markets ("Will
+J.D. Vance win the 2028 Republican presidential nomination?") and 9 were World
+Cup football; exactly one concerned conflict. Feeding those into a per-country
+stress index would score a tight nomination race as instability. The endpoint is
+asked for `active=true` with no topic filter, so the sample is whatever is
+trending rather than anything risk-related.
+
+The rows stay — they are a legitimate dashboard signal and cost nothing — but
+they no longer claim to be a composite input.
 """
 
 from __future__ import annotations
@@ -84,7 +94,7 @@ def _market_to_event(market: dict[str, Any], fetched_at: datetime) -> Event | No
         source_event_id=str(market_id),
         occurred_at=fetched_at,
         fetched_at=fetched_at,
-        category=Category.MARKET,
+        category=Category.PREDICTION,
         severity=_severity_for_price(yes_price),
         confidence=None,
         keywords=["polymarket", "prediction-market"],
