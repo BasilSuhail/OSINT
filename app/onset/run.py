@@ -10,10 +10,8 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -28,6 +26,7 @@ from app.baselines.predictors import (
 from app.baselines.run import EVAL_END, EVAL_START, HORIZONS, RANDOM_SEED
 from app.baselines.targets import build_targets
 from app.onset.eligibility import onset_eligible
+from app.paths import exports_dir
 from app.ranking.rank import rank_indicators
 
 #: Primary calm window (months) — pre-registered; 6 is the declared sensitivity.
@@ -77,7 +76,7 @@ def _evaluate(panel: list[dict[str, Any]], *, calm_months: int) -> list[dict[str
 
 
 def _run() -> int:
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     panel_path = exports / "panel.parquet"
     if not panel_path.exists():
         print(f"{panel_path} not found — run `make panel` first.", file=sys.stderr)

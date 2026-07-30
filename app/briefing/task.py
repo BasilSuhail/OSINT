@@ -8,9 +8,7 @@ the JSON is the machine-readable artifact of record.
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -27,6 +25,7 @@ from app.db_models import (
     StorySensorCheckRow,
 )
 from app.journal.scoreboard import build_scoreboard
+from app.paths import exports_dir
 
 WEEK_DAYS: int = 7
 TOP_N: int = 5
@@ -67,7 +66,7 @@ def _briefing_inner(*, now: datetime | None = None) -> dict[str, Any]:
         }
 
     markdown = render_markdown(briefing)
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     exports.mkdir(parents=True, exist_ok=True)
     (exports / "weekly-briefing.md").write_text(markdown)
     (exports / "weekly-briefing.json").write_text(

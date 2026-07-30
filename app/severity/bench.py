@@ -31,13 +31,12 @@ Two things it deliberately does not reuse from the sheet:
 from __future__ import annotations
 
 import argparse
-import os
 import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from app.brain import client
+from app.paths import exports_dir
 from app.settings import settings
 from app.severity import agreement, news
 
@@ -251,7 +250,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     sheet = exports / "severity-audit-sheet.md"
     if not sheet.exists():
         print(f"{sheet} not found — run `make severity-audit` first")

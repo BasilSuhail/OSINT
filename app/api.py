@@ -7,11 +7,9 @@ Read-only over the local Postgres. Serves recent events + latest scores, and
 from __future__ import annotations
 
 import json
-import os
 from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
 
 import sqlalchemy as sa
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -41,6 +39,7 @@ from app.db_models import (
 )
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
+from app.paths import exports_dir
 from app.settings import settings
 from app.stories import developing
 
@@ -1288,7 +1287,7 @@ def journal_scoreboard(session: Session = Depends(get_session)) -> list[dict]:
 
 
 def _export_report(filename: str, hint: str) -> dict:
-    path = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports" / filename
+    path = exports_dir() / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"{filename} not found — run `{hint}` first")
     return json.loads(path.read_text())
