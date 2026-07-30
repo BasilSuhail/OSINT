@@ -88,6 +88,41 @@ function Sparkline({ points }: { points: number[] }) {
   )
 }
 
+/**
+ * The world card at deck size (#695): totals and the trend, nothing else.
+ *
+ * Everything that used to sit under it — ranked countries, the briefing, the
+ * charts — moved behind the deck's expand control. A card the size of a
+ * paperback cannot show a ranked table and a briefing at once and be read; the
+ * headline is what a glance is for, and the rest is what the full page is for.
+ */
+export function WorldHeadline() {
+  const { stats } = useWorldStats()
+  const spark = stats?.spark ?? []
+
+  return (
+    <div className="flex h-full w-full flex-col justify-center bg-neutral-950 p-4">
+      <h2 className="mb-3 text-[13px] font-semibold text-neutral-100">
+        All events worldwide · <span className="text-emerald-400">live</span>
+      </h2>
+      <div className="flex items-end gap-2">
+        <StatCell value={(stats?.total ?? 0).toLocaleString()} label="Events" accent />
+        <StatCell value={(stats?.countries ?? 0).toLocaleString()} label="Countries" />
+        <StatCell value={(stats?.sources ?? 0).toLocaleString()} label="Sources" />
+      </div>
+      <div className="mt-4">
+        <span className="mb-1 block font-mono text-[9px] uppercase tracking-widest text-neutral-500">
+          ↑ Events over time
+        </span>
+        <Sparkline points={spark} />
+      </div>
+      <p className="mt-4 font-mono text-[9px] uppercase tracking-widest text-neutral-600">
+        expand for ranked countries, briefing and charts
+      </p>
+    </div>
+  )
+}
+
 /** Default "world" mode of the right pane: totals + events sparkline +
  *  countries ranked by frequency (ACLED-style). Rows are clickable and lock
  *  the pane to that country's detail (#252). */
