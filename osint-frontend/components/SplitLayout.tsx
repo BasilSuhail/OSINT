@@ -134,7 +134,10 @@ export function SplitLayout() {
       title: "world",
       collapsedContent: (
         <div className="flex h-full w-full flex-col">
-          <div className="h-1/2 shrink-0 border-b border-neutral-800">
+          {/* Sizes to its content (#711). A fixed half left the title, three
+              numbers and a sparkline floating in the middle of a tall box with
+              a gap above and below. */}
+          <div className="shrink-0 border-b border-neutral-800">
             <WorldHeadline />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">

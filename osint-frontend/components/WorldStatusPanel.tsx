@@ -109,7 +109,7 @@ export function WorldHeadline() {
       type="button"
       onClick={openWorld}
       title="open country detail and coverage"
-      className="flex h-full w-full flex-col justify-center bg-neutral-950 p-4 text-left transition-colors hover:bg-neutral-900/40">
+      className="flex w-full flex-col bg-neutral-950 p-4 text-left transition-colors hover:bg-neutral-900/40">
       <h2 className="mb-3 text-[13px] font-semibold text-neutral-100">
         All events worldwide · <span className="text-emerald-400">live</span>
       </h2>
