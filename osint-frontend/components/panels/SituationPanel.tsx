@@ -17,8 +17,10 @@ import {
   type BrainSource,
 } from "@/lib/apiClient"
 import {
+  fetchAuditLatest,
   fetchDevelopingStories,
   fetchTopStories,
+  type AuditLatest,
   type DevelopingStory,
   type StoryRow,
 } from "@/lib/analytics"
@@ -37,6 +39,8 @@ import {
 
 const NARRATIVE_REFRESH_MS = 5 * 60_000
 const STORIES_REFRESH_MS = 60_000
+//: The audit runs once a night, so anything faster is polling for nothing.
+const AUDIT_REFRESH_MS = 15 * 60_000
 //: Older than this and the card says the brain is resting.
 const STALE_MS = 40 * 60_000
 const CHAT_STORAGE_KEY = "brain-chat-v1"
@@ -319,6 +323,61 @@ function ChatEntry({
   )
 }
 
+
+/**
+ * Data-quality line (#692). The nightly source-data audit (#669) had a history
+ * and no reader, so the check that found `fred` and `polymarket` contributing
+ * nothing to the composite was visible only in psql.
+ *
+ * Deliberately a line, not a panel: this reports health, it does not analyse.
+ * Silent when the audit has never completed — an empty frame reading "0
+ * findings" would be a clean bill of health the system has not earned.
+ */
+function DataQualityLine({ audit }: { audit: AuditLatest | undefined }) {
+  const [open, setOpen] = useState(false)
+  if (!audit || !audit.present || audit.findings_total === null) return null
+
+  const total = audit.findings_total
+  const delta = audit.delta
+  const worse = delta !== null && delta > 0
+
+  return (
+    <div className="mb-2 font-mono text-[10px]">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-baseline gap-2 text-left text-neutral-500 hover:text-neutral-300"
+      >
+        <span className="uppercase tracking-widest text-neutral-600">data quality</span>
+        <span className={total === 0 ? "text-emerald-500" : "text-amber-500"}>
+          {total} finding{total === 1 ? "" : "s"}
+        </span>
+        {audit.sources_measured !== null ? (
+          <span className="text-neutral-600">/ {audit.sources_measured} sources</span>
+        ) : null}
+        {delta !== null && delta !== 0 ? (
+          <span className={worse ? "text-red-400" : "text-emerald-500"}>
+            {worse ? "▲" : "▼"}
+            {Math.abs(delta)}
+          </span>
+        ) : null}
+        {delta === null ? <span className="text-neutral-600">first run</span> : null}
+        <span className="ml-auto text-neutral-700">{open ? "−" : "+"}</span>
+      </button>
+      {open ? (
+        <ul className="mt-1 space-y-0.5 border-l border-neutral-800 pl-2">
+          {audit.findings.map((f) => (
+            <li key={`${f.source}:${f.check}`} className="text-neutral-500">
+              <span className="text-neutral-300">{f.source}</span>{" "}
+              <span className="text-amber-600/80">{f.check}</span>
+              <div className="pl-2 text-[9px] text-neutral-600">{f.detail}</div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
 export function SituationPanel() {
   const { data } = useSWR("brain-narrative", fetchBrainNarrative, {
     refreshInterval: NARRATIVE_REFRESH_MS,
@@ -328,6 +387,10 @@ export function SituationPanel() {
   })
   const { data: pinned } = useSWR("stories-developing", () => fetchDevelopingStories(3), {
     refreshInterval: STORIES_REFRESH_MS,
+  })
+  // The audit runs nightly, so polling it hard would be noise.
+  const { data: audit } = useSWR("audit-latest", fetchAuditLatest, {
+    refreshInterval: AUDIT_REFRESH_MS,
   })
   const openStory = useStoryDetailStore((s) => s.openStory)
   const [showOlder, setShowOlder] = useState(false)
@@ -467,6 +530,7 @@ export function SituationPanel() {
       </div>
 
       <footer className="shrink-0 border-t border-neutral-800 p-3">
+        <DataQualityLine audit={audit} />
         <div className="flex gap-2">
           <input
             value={question}
