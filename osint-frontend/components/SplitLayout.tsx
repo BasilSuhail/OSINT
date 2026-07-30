@@ -16,6 +16,7 @@ import { CardDeck, type DeckCard } from "./CardDeck"
 import { FloatingPanel } from "./FloatingPanel"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
+import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
 import { SelectionPanel } from "./panels/SelectionPanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
@@ -112,10 +113,7 @@ export function SplitLayout() {
   // removed in #494 — its WebGL context was the tab's largest memory holder.
   const { data: scoreboardRows } = useSWR("deck-scoreboard-ready", fetchScoreboard)
   const scoreboardReady = scoreboardIsReady(scoreboardRows)
-  //: One card for "the thing I just picked" (#701) — a clicked country, event,
-  //: cluster or story all land on the selection card rather than a map-side
-  //: panel and a deck-side pop-out disagreeing about who owns the click.
-  const selection = useRightPaneModeStore((s) => s.entity) !== null || storyDetailOpen
+  const selection = useRightPaneModeStore((s) => s.entity)
 
   const deckCards: DeckCard[] = [
     //: fill — the panel is its own scroll surface (live list + transcript) with
@@ -130,9 +128,7 @@ export function SplitLayout() {
       title: "world",
       collapsedContent: (
         <div className="flex h-full w-full flex-col">
-          {/* Sizes to its content (#701). A fixed half left the title, three
-              numbers and a sparkline floating in the middle of a tall box. */}
-          <div className="shrink-0 border-b border-neutral-800">
+          <div className="h-1/2 shrink-0 border-b border-neutral-800">
             <WorldHeadline />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -222,7 +218,7 @@ export function SplitLayout() {
               style={{ display: activePane === "right" ? "block" : "none" }}
             >
               <FloatingPanel className="h-full w-full">
-                <CardDeck cards={deckCards} />
+                {storyDetailOpen ? <StoryDetailCard /> : <CardDeck cards={deckCards} />}
               </FloatingPanel>
             </div>
           </div>
@@ -238,9 +234,11 @@ export function SplitLayout() {
             //: detail card too when it is open, and collapses to 0 with the deck.
             style={
               {
-                //: One panel wide again (#701): the story pop-out that needed
-                //: the second column now rides the deck's selection card.
-                "--panel-width": deckCollapsed ? "0px" : PANEL_WIDTH,
+                "--panel-width": deckCollapsed
+                  ? "0px"
+                  : storyDetailOpen
+                    ? `calc(${PANEL_WIDTH} * 2 + 0.5rem)`
+                    : PANEL_WIDTH,
               } as React.CSSProperties
             }
           >
@@ -258,6 +256,14 @@ export function SplitLayout() {
 
             {/* With a fixed deck width the pop-out's position is arithmetic
              *  rather than plumbing the panel's measured pixels. */}
+            {storyDetailOpen && !deckCollapsed ? (
+              <FloatingPanel
+                className="absolute bottom-3 top-3 z-30"
+                style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
+              >
+                <StoryDetailCard />
+              </FloatingPanel>
+            ) : null}
 
             {/* Collapse handle rides the outer edge of whatever is showing,
              *  tracked by --panel-width. It cannot live inside the deck: that
