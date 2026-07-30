@@ -15,9 +15,10 @@ import { scoreboardIsReady } from "@/lib/deckReadiness"
 import { CardDeck, type DeckCard } from "./CardDeck"
 import { FloatingPanel } from "./FloatingPanel"
 import { BriefingPanel } from "./panels/BriefingPanel"
-import { WorldHeadline } from "./WorldStatusPanel"
+import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
+import { SelectionPanel } from "./panels/SelectionPanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
 import { SituationPanel } from "./panels/SituationPanel"
 import { StoriesPanel } from "./panels/StoriesPanel"
@@ -27,10 +28,10 @@ const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
   ssr: false,
   loading: () => <PaneSkeleton label="map" />,
 })
-const RightPane = dynamic(() => import("./RightPane").then((m) => m.RightPane), {
-  ssr: false,
-  loading: () => <PaneSkeleton label="status" />,
-})
+//: RightPane is superseded by #699 — its world half is WorldStatusPanel and its
+//: entity half is the selection card, so the deck no longer mounts it. The file
+//: stays on disk; removing panels is a separate decision from what the deck
+//: shows.
 
 /** Deck and detail share one width so the pop-out lines up with the deck
  *  without measuring anything at runtime (#503). */
@@ -112,31 +113,56 @@ export function SplitLayout() {
   // removed in #494 — its WebGL context was the tab's largest memory holder.
   const { data: scoreboardRows } = useSWR("deck-scoreboard-ready", fetchScoreboard)
   const scoreboardReady = scoreboardIsReady(scoreboardRows)
+  const selection = useRightPaneModeStore((s) => s.entity)
 
   const deckCards: DeckCard[] = [
     //: fill — the panel is its own scroll surface (live list + transcript) with
     //: a fixed ask-box footer; the deck's non-fill outer scroll would defeat it.
     { key: "situation", title: "situation", fill: true, content: <SituationPanel /> },
-    //: Was "console" (#695). A headline at deck size — totals and the trend —
-    //: and the whole world desk once expanded: ranked countries, the briefing
-    //: that used to be its own card, and the charts.
+    //: Two halves (#699). Collapsed: the totals graph as a door, and the
+    //: stories summary — counts, window, owner floor, confidence spread — with
+    //: the two hundred rows folded away, because a list is not a summary.
+    //: Expanded: ranked countries, per-country coverage, and the briefing.
     {
       key: "world",
       title: "world",
+      collapsedContent: (
+        <div className="flex h-full w-full flex-col">
+          <div className="h-1/2 shrink-0 border-b border-neutral-800">
+            <WorldHeadline />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <StoriesPanel tuckRows />
+          </div>
+        </div>
+      ),
       fill: true,
-      collapsedContent: <WorldHeadline />,
       content: (
         <div className="h-full w-full overflow-y-auto">
-          <RightPane />
-          <div className="mx-auto w-full max-w-5xl p-3">
+          <div className="h-[60vh]">
+            <WorldStatusPanel />
+          </div>
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-3">
+            <CoveragePanel />
             <BriefingPanel />
+            <StoriesPanel />
           </div>
         </div>
       ),
     },
-    { key: "stories", title: "stories", content: <StoriesPanel /> },
-    { key: "coverage", title: "coverage", content: <CoveragePanel /> },
   ]
+
+  //: The card that is not there most of the time (#699). A map click opens it,
+  //: Escape closes it, and it sits after the standing cards so those never get
+  //: shoved sideways — a deck whose pages move is not a place you can learn.
+  if (selection) {
+    deckCards.push({
+      key: "selection",
+      title: "selection",
+      fill: true,
+      content: <SelectionPanel />,
+    })
+  }
 
   //: The scoreboard shows itself once it has something graded (#694). Every
   //: Brier is null today because nothing has matured, and an empty table

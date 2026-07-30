@@ -2,6 +2,7 @@
 
 import { Maximize2, Minimize2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useDeckExpandStore } from "@/stores/deckExpandStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 
 export interface DeckCard {
@@ -45,7 +46,16 @@ const SWIPE_THRESHOLD_PX = 60
 export function CardDeck({ cards }: { cards: DeckCard[] }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState(0)
-  const [expanded, setExpanded] = useState(false)
+  //: Lifted to a store (#699) so the world card's headline can open the deck
+  //: from inside its own content — the graph is a door, not a decoration.
+  const expanded = useDeckExpandStore((st) => st.expanded)
+  const setExpandedRaw = useDeckExpandStore((st) => st.setExpanded)
+  const toggleExpanded = useDeckExpandStore((st) => st.toggleExpanded)
+  const setExpanded = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) =>
+      typeof v === "function" ? toggleExpanded() : setExpandedRaw(v),
+    [setExpandedRaw, toggleExpanded],
+  )
   const activeRef = useRef(0)
   // Lazy cards mount on first visit and stay mounted (kept warm).
   const [visited, setVisited] = useState<ReadonlySet<number>>(() => new Set([0]))
@@ -113,6 +123,15 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     }
   }, [goTo])
 
+  //: A selection card appears when something on the map is picked, so the deck
+  //: moves to it (#699). Without this the card arrives silently off-screen and
+  //: the click looks like it did nothing. Keyed on the card's identity, not its
+  //: index, so re-selecting a different entity does not re-scroll.
+  const selectionIndex = cards.findIndex((c) => c.key === "selection")
+  useEffect(() => {
+    if (selectionIndex >= 0) goTo(selectionIndex)
+  }, [selectionIndex, goTo])
+
   useEffect(() => {
     if (!expanded) return
     const onKey = (e: KeyboardEvent) => {
@@ -123,7 +142,7 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [expanded])
+  }, [expanded, setExpanded])
 
   return (
     <div
