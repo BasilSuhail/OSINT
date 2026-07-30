@@ -25,6 +25,8 @@ from app.brain import client, context, deepread, enrich, gate, qa
 from app.composite import degeneracy as composite_degeneracy
 from app.db import get_session_factory
 from app.db_models import (
+    AuditFindingRow,
+    AuditRunRow,
     BrainNarrativeRow,
     EventRow,
     IngestHealthRow,
@@ -1317,3 +1319,67 @@ def stream() -> StreamingResponse:
             yield f"data: {count}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.get("/audit/latest")
+def audit_latest(
+    session: Session = Depends(get_session),
+    limit: int = Query(default=25, ge=1, le=100),
+) -> dict:
+    """The most recent completed source-data audit, and whether it moved (#692).
+
+    #669 gave the audit a clock and a history, and nothing read it. Two of its
+    nine findings started the work that became #681, #682, #684, #689, #690 and
+    #691 — found by running a script by hand and reading a terminal.
+
+    `present: false` when the audit has never completed. That is deliberately
+    distinct from a run that found nothing: "clean" and "never ran" looking the
+    same is the #663 failure shape, and a zero here would read as a clean bill
+    of health the system has not earned.
+
+    `previous_findings_total` and `delta` compare against the previous
+    *completed* run, the same rule the notifier uses — a crashed run never
+    reached most sources, so diffing against it invents movement.
+    """
+    runs = (
+        session.execute(
+            select(AuditRunRow)
+            .where(AuditRunRow.finished_at.is_not(None))
+            .order_by(AuditRunRow.started_at.desc())
+            .limit(2)
+        )
+        .scalars()
+        .all()
+    )
+    if not runs:
+        return {
+            "present": False,
+            "started_at": None,
+            "sources_measured": None,
+            "findings_total": None,
+            "previous_findings_total": None,
+            "delta": None,
+            "findings": [],
+        }
+
+    latest = runs[0]
+    previous = runs[1] if len(runs) > 1 else None
+    rows = (
+        session.execute(
+            select(AuditFindingRow)
+            .where(AuditFindingRow.run_id == latest.id)
+            .order_by(AuditFindingRow.check_name, AuditFindingRow.source)
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "present": True,
+        "started_at": latest.started_at.isoformat() if latest.started_at else None,
+        "sources_measured": latest.sources_measured,
+        "findings_total": latest.findings_total,
+        "previous_findings_total": previous.findings_total if previous else None,
+        "delta": (latest.findings_total - previous.findings_total) if previous else None,
+        "findings": [{"source": r.source, "check": r.check_name, "detail": r.detail} for r in rows],
+    }

@@ -354,3 +354,33 @@ export async function fetchRecentJobs(hours = 48): Promise<JobRun[]> {
   if (!res.ok) throw new Error(`GET /jobs/recent ${res.status}`)
   return (await res.json()) as JobRun[]
 }
+
+/** One thing the nightly source-data audit objects to (#669). */
+export interface AuditFinding {
+  source: string
+  check: string
+  detail: string
+}
+
+/**
+ * Latest completed source-data audit (#692).
+ *
+ * `present: false` means the audit has never completed — deliberately distinct
+ * from a run that found nothing, because "clean" and "never ran" looking the
+ * same is the failure shape #663 exists to prevent.
+ */
+export interface AuditLatest {
+  present: boolean
+  started_at: string | null
+  sources_measured: number | null
+  findings_total: number | null
+  previous_findings_total: number | null
+  delta: number | null
+  findings: AuditFinding[]
+}
+
+export async function fetchAuditLatest(): Promise<AuditLatest> {
+  const res = await fetch(`${API_BASE}/audit/latest`)
+  if (!res.ok) throw new Error(`GET /audit/latest ${res.status}`)
+  return (await res.json()) as AuditLatest
+}
