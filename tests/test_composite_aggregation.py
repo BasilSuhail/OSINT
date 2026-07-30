@@ -10,6 +10,7 @@ from app.composite.aggregation import (
     WILDFIRE_DOMAIN,
     WILDFIRE_SOURCE,
     aggregate_events_to_domain_signals,
+    conflict_signal,
     month_start_utc,
     wildfire_signal,
 )
@@ -63,18 +64,21 @@ class TestAggregate:
         # month scored LOWER than a quiet country with one moderate event —
         # measured 11x dilution on live US hazard data (mean 0.095, max 1.000).
         # #528 already established this on the backtest side.
+        # Two severity domains, market and hazard. Geopolitical left this test
+        # when #680 made it a count rather than a severity — `max` never applied
+        # to it again, so asserting it here measured nothing about `max`.
         result = aggregate_events_to_domain_signals(
             [
                 _event(country="US", category="market", severity=0.2),
                 _event(country="US", category="market", severity=0.6),
-                _event(country="US", category="geopolitical", severity=0.5),
+                _event(country="US", category="hazard", severity=0.5),
                 _event(country="GB", category="market", severity=0.9),
             ]
         )
         us = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
         gb = result[("GB", datetime(2026, 6, 1, tzinfo=UTC))]
         assert us["market"] == pytest.approx(0.6)
-        assert us["geopolitical"] == pytest.approx(0.5)
+        assert us["hazard"] == pytest.approx(0.5)
         assert gb["market"] == pytest.approx(0.9)
 
     def test_a_swarm_of_small_events_cannot_outrank_one_severe_one(self) -> None:
@@ -218,6 +222,115 @@ class TestWildfireDomain:
         bucket = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
         assert "hazard" not in bucket
         assert bucket[WILDFIRE_DOMAIN] == pytest.approx(wildfire_signal(1.0))
+
+
+class TestGeopoliticalDomain:
+    """Conflict is counted, not graded (#680).
+
+    Every stored GDELT row has severity >= 0.700, because the parser keeps only
+    escalatory CAMEO codes (14-20) and `severity = (10 - goldstein) / 20`. Read
+    off a stream where every row is already severe, severity said the same thing
+    everywhere: mean 0.9863, sd 0.0523 across 168 countries, which z-scores to
+    nothing. Aggregation was not the culprit — the cell mean measured sd 0.0511,
+    no better than the max. The information is in how many, not how bad:
+    log-scaled counts measured sd 0.797, fifteen times the spread.
+    """
+
+    def test_the_signal_is_the_event_count_not_the_severity(self) -> None:
+        result = aggregate_events_to_domain_signals(
+            [
+                _event(category="geopolitical", severity=0.75),
+                _event(category="geopolitical", severity=1.0),
+                _event(category="geopolitical", severity=0.9),
+            ]
+        )
+
+        us = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
+        assert us["geopolitical"] == pytest.approx(conflict_signal(3))
+
+    def test_more_conflict_scores_higher(self) -> None:
+        result = aggregate_events_to_domain_signals(
+            [_event(country="RU", category="geopolitical") for _ in range(50)]
+            + [_event(country="NO", category="geopolitical")]
+        )
+
+        ru = result[("RU", datetime(2026, 6, 1, tzinfo=UTC))]
+        no = result[("NO", datetime(2026, 6, 1, tzinfo=UTC))]
+        assert ru["geopolitical"] > no["geopolitical"]
+
+    def test_severity_no_longer_changes_the_signal(self) -> None:
+        # The regression that matters: a stream of maximally severe events and a
+        # stream of mildly severe ones must now score identically, because the
+        # filter upstream already guaranteed every row is severe.
+        worst = aggregate_events_to_domain_signals(
+            [_event(category="geopolitical", severity=1.0) for _ in range(4)]
+        )
+        milder = aggregate_events_to_domain_signals(
+            [_event(category="geopolitical", severity=0.7) for _ in range(4)]
+        )
+
+        key = ("US", datetime(2026, 6, 1, tzinfo=UTC))
+        assert worst[key]["geopolitical"] == pytest.approx(milder[key]["geopolitical"])
+
+    def test_a_conflict_row_without_severity_still_counts(self) -> None:
+        # Counting does not need a severity, so a row missing one is no longer a
+        # reason to discard evidence that something happened.
+        result = aggregate_events_to_domain_signals(
+            [
+                _event(category="geopolitical", severity=None),
+                _event(category="geopolitical", severity=0.8),
+            ]
+        )
+
+        us = result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
+        assert us["geopolitical"] == pytest.approx(conflict_signal(2))
+
+    def test_counts_are_per_country_and_per_month(self) -> None:
+        june = datetime(2026, 6, 18, tzinfo=UTC)
+        july = datetime(2026, 7, 2, tzinfo=UTC)
+        result = aggregate_events_to_domain_signals(
+            [
+                _event(country="US", category="geopolitical", occurred_at=june),
+                _event(country="US", category="geopolitical", occurred_at=june),
+                _event(country="US", category="geopolitical", occurred_at=july),
+                _event(country="GB", category="geopolitical", occurred_at=june),
+            ]
+        )
+
+        assert result[("US", datetime(2026, 6, 1, tzinfo=UTC))]["geopolitical"] == pytest.approx(
+            conflict_signal(2)
+        )
+        assert result[("US", datetime(2026, 7, 1, tzinfo=UTC))]["geopolitical"] == pytest.approx(
+            conflict_signal(1)
+        )
+        assert result[("GB", datetime(2026, 6, 1, tzinfo=UTC))]["geopolitical"] == pytest.approx(
+            conflict_signal(1)
+        )
+
+    def test_a_country_with_no_conflict_gets_no_geopolitical_key(self) -> None:
+        # Absent, not zero. #683 renormalises weights over present domains, so
+        # emitting 0.0 here would reintroduce the imputation it removed.
+        result = aggregate_events_to_domain_signals([_event(category="market", severity=0.4)])
+
+        assert "geopolitical" not in result[("US", datetime(2026, 6, 1, tzinfo=UTC))]
+
+
+class TestConflictSignal:
+    def test_zero_events_is_zero(self) -> None:
+        assert conflict_signal(0) == 0.0
+
+    def test_monotonic_in_the_count(self) -> None:
+        assert conflict_signal(1) < conflict_signal(10) < conflict_signal(1000)
+
+    def test_log_scaled_so_a_loud_country_cannot_dwarf_the_scale(self) -> None:
+        # US 34,809 conflict events against Norway's handful is media attention,
+        # not conflict. Log keeps the range usable; within-country z-scoring is
+        # what actually removes the level (README section 5.3).
+        assert conflict_signal(34809) < 5.0
+        assert conflict_signal(34809) / conflict_signal(1) < 20.0
+
+    def test_negative_counts_are_treated_as_zero(self) -> None:
+        assert conflict_signal(-5) == 0.0
 
 
 class TestWildfireSignal:
