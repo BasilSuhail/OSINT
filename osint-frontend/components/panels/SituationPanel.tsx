@@ -45,8 +45,10 @@ const STORIES_REFRESH_MS = 60_000
 const AUDIT_REFRESH_MS = 15 * 60_000
 //: Shown at a glance; the rest fold away behind a count (#695).
 const DEVELOPING_COLLAPSED = 3
-//: Fetched, so "show more" reveals rather than waits on a request.
-const DEVELOPING_FETCH = 12
+//: Fetched, so "show more" reveals rather than waits on a request. Ten is the
+//: ceiling /stories/developing enforces (api.py: `le=10`); asking for twelve
+//: 422'd every request and the block silently rendered nothing (#713).
+const DEVELOPING_FETCH = 10
 //: Older than this and the card says the brain is resting.
 const STALE_MS = 40 * 60_000
 const CHAT_STORAGE_KEY = "brain-chat-v1"
@@ -70,15 +72,27 @@ function TagChip({ category, escalating }: { category: string | null; escalating
  */
 function DevelopingBlock({
   stories,
+  failed,
   onOpen,
 }: {
   stories: DevelopingStory[]
+  failed: boolean
   onOpen: (id: string) => void
 }) {
   //: Three is the glance; the rest are fetched and folded away (#695). The pin
   //: query already ranks them, so "more" is genuinely more of the same thing
   //: rather than a different, looser list.
   const [showAll, setShowAll] = useState(false)
+  //: Silence means "nothing qualifies", which is itself the finding. It must
+  //: not also mean "the request failed" — those looked identical on screen for
+  //: as long as the fetch was 422ing (#713).
+  if (failed) {
+    return (
+      <div className="mb-2 border-b border-neutral-800 pb-2 font-mono text-[9px] uppercase tracking-widest text-red-400/80">
+        developing — unavailable
+      </div>
+    )
+  }
   if (stories.length === 0) return null
   const visible = showAll ? stories : stories.slice(0, DEVELOPING_COLLAPSED)
   const hidden = stories.length - visible.length
@@ -447,9 +461,11 @@ export function SituationPanel() {
   const { data: stories } = useSWR("situation-stories", () => fetchTopStories(72, 50), {
     refreshInterval: STORIES_REFRESH_MS,
   })
-  const { data: pinned } = useSWR("stories-developing", () => fetchDevelopingStories(DEVELOPING_FETCH), {
-    refreshInterval: STORIES_REFRESH_MS,
-  })
+  const { data: pinned, error: pinnedError } = useSWR(
+    "stories-developing",
+    () => fetchDevelopingStories(DEVELOPING_FETCH),
+    { refreshInterval: STORIES_REFRESH_MS },
+  )
   // The audit runs nightly, so polling it hard would be noise.
   const { data: audit } = useSWR("audit-latest", fetchAuditLatest, {
     refreshInterval: AUDIT_REFRESH_MS,
@@ -526,7 +542,11 @@ export function SituationPanel() {
           </p>
         ) : null}
 
-        <DevelopingBlock stories={developing} onOpen={openStory} />
+        <DevelopingBlock
+          stories={developing}
+          failed={Boolean(pinnedError)}
+          onOpen={openStory}
+        />
         <ContestedBlock story={(contested ?? [])[0]} onOpen={openStory} />
 
         {rows.length > 0 ? (
