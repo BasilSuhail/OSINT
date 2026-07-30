@@ -8,15 +8,14 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 from app.baselines.run import EVAL_END, EVAL_START, HORIZONS
+from app.paths import exports_dir
 from app.ranking.rank import rank_indicators
 
 INDICATORS: tuple[str, ...] = (
@@ -32,7 +31,7 @@ def _fmt(value: float | None) -> str:
 
 
 def _run() -> int:
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     panel_path = exports / "panel.parquet"
     if not panel_path.exists():
         print(f"{panel_path} not found — run `make panel` first.", file=sys.stderr)

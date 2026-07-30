@@ -18,10 +18,9 @@ A blank human side leaves a row uncounted. Never assumed correct.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any
 
+from app.paths import exports_dir
 from app.severity import scale
 
 #: Mirrors `audit.RANDOM_STRATUM`. Imported by value rather than from `audit`,
@@ -163,7 +162,7 @@ def render(result: dict[str, Any]) -> str:
 
 
 def main() -> int:
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     path = exports / "severity-audit-sheet.md"
     if not path.exists():
         print(f"{path} not found — run `make severity-audit` first")

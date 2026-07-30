@@ -16,6 +16,7 @@ from app.db_models import (
     StoryRow,
     StorySensorCheckRow,
 )
+from app.settings import settings
 
 NOW = datetime.now(UTC)
 
@@ -276,7 +277,7 @@ class TestJournalScoreboard:
 
 class TestExportReports:
     def test_baselines_report_served(self, db_session, tmp_path, monkeypatch):
-        monkeypatch.setenv("OSINT_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(settings, "data_dir", str(tmp_path))
         exports = tmp_path / "exports"
         exports.mkdir()
         (exports / "baselines-report.json").write_text(json.dumps({"results": [1]}))
@@ -284,7 +285,7 @@ class TestExportReports:
         assert body == {"results": [1]}
 
     def test_coverage_report_served(self, db_session, tmp_path, monkeypatch):
-        monkeypatch.setenv("OSINT_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(settings, "data_dir", str(tmp_path))
         exports = tmp_path / "exports"
         exports.mkdir()
         (exports / "coverage-bias.json").write_text(json.dumps({"countries": 200}))
@@ -292,7 +293,7 @@ class TestExportReports:
         assert body["countries"] == 200
 
     def test_missing_report_is_404(self, db_session, tmp_path, monkeypatch):
-        monkeypatch.setenv("OSINT_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(settings, "data_dir", str(tmp_path))
         resp = _client(db_session).get("/analytics/baselines")
         assert resp.status_code == 404
         assert "make baselines" in resp.json()["detail"]

@@ -8,9 +8,7 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -19,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.db import get_engine
 from app.db_models import DisagreementPairRow, StoryDisagreementRow, StoryRow
 from app.disagreement.task import _disagreement_body
+from app.paths import exports_dir
 
 
 def _run() -> int:
@@ -61,7 +60,7 @@ def _run() -> int:
         ]
 
     report = _render_markdown(counters, contested, pairs)
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     exports.mkdir(parents=True, exist_ok=True)
     (exports / "disagreement-report.md").write_text(report)
     (exports / "disagreement-report.json").write_text(

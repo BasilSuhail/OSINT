@@ -20,6 +20,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from app.paths import exports_dir
 from app.stories.cluster import SIMILARITY_THRESHOLD
 from app.stories.vectorize import build_idf, cosine, tokenize, vectorize
 
@@ -189,8 +190,6 @@ def render_audit_markdown(
 
 
 def main() -> int:  # pragma: no cover - thin DB/IO shell over the pure layer
-    import os
-    from pathlib import Path
 
     from sqlalchemy import select
     from sqlalchemy.orm import Session
@@ -243,7 +242,7 @@ def main() -> int:  # pragma: no cover - thin DB/IO shell over the pure layer
         pairs,
         {row["story_id"]: row["title"] for row in stories},
     )
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     exports.mkdir(parents=True, exist_ok=True)
     out = exports / "stories-audit.md"
     out.write_text(report)

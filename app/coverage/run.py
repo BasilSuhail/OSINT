@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +16,7 @@ from typing import Any
 
 from app.coverage.stats import compute_coverage, concentration
 from app.labels.acled_loader import load_acled_weekly
+from app.paths import exports_dir
 from app.settings import settings
 
 
@@ -33,7 +33,7 @@ def _run() -> int:
     stats = compute_coverage(loaded.rows)
     tops = concentration(stats)
 
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     exports.mkdir(parents=True, exist_ok=True)
     _write_csv(stats, exports / "coverage-bias.csv")
     (exports / "coverage-bias.json").write_text(

@@ -7,9 +7,7 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import sys
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,6 +19,7 @@ from app.labels.acled_loader import load_acled_weekly
 from app.panel.assemble import assemble_panel
 from app.panel.export import export_panel
 from app.panel.spine import build_spine, coverage_windows
+from app.paths import exports_dir
 from app.settings import settings
 
 _SCORE_NAME = "composite"
@@ -65,7 +64,7 @@ def _run() -> int:
         ]
 
     panel = assemble_panel(spine, label_rows, score_rows)
-    out_dir = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    out_dir = exports_dir()
     meta = export_panel(panel, out_dir)
 
     print(f"panel exported to {out_dir}")
