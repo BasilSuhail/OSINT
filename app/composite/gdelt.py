@@ -22,7 +22,6 @@ errors retry, then fail the month loudly rather than write a partial one.
 from __future__ import annotations
 
 import json
-import os
 import time
 import zipfile
 from collections.abc import Callable, Iterator
@@ -34,6 +33,7 @@ from typing import Any
 import httpx
 
 from app.composite.fips import FIPS_TO_ISO2
+from app.paths import data_dir
 
 GDELT_URL_TEMPLATE = "http://data.gdeltproject.org/events/{yyyymmdd}.export.CSV.zip"
 
@@ -51,7 +51,7 @@ DownloadFn = Callable[[str], bytes | None]
 
 
 def default_cache_dir() -> Path:
-    return Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "gdelt"
+    return data_dir() / "gdelt"
 
 
 def iter_months(start: date, end: date) -> Iterator[date]:

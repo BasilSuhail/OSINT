@@ -16,7 +16,6 @@ cherry-picked by whoever wrote the prompt.
 from __future__ import annotations
 
 import argparse
-import os
 import random
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +27,7 @@ from app.brain import client
 from app.db import get_engine
 from app.db_models import EventRow
 from app.models import Category
+from app.paths import exports_dir
 from app.settings import settings
 from app.severity import agreement, news, scale
 
@@ -149,7 +149,7 @@ def _run(*, force: bool = False) -> int:
     verdicts are written over stored data — requiring `grade_run --apply` first
     would invert that, validating a mutation that had already happened.
     """
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     sheet_path = exports / "severity-audit-sheet.md"
     if not force and has_human_grades(sheet_path):
         # Checked before a single model call: grading the sample takes minutes,

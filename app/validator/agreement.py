@@ -13,10 +13,10 @@ Usage:
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
+
+from app.paths import exports_dir
 
 FIELDS: tuple[str, ...] = ("countries", "event", "casualties")
 
@@ -62,7 +62,7 @@ def compute_agreement(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def _run() -> int:
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     sheet_path = exports / "validator-audit-sheet.md"
     if not sheet_path.exists():
         print("no audit sheet found — run `make validator-audit` first")

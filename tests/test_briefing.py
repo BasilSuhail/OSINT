@@ -15,6 +15,7 @@ from app.db_models import (
     StoryDisagreementRow,
     StoryRow,
 )
+from app.settings import settings
 
 NOW = datetime(2026, 7, 13, 6, 30, tzinfo=UTC)  # a Monday
 
@@ -144,7 +145,7 @@ def _seed(db_session: Session) -> None:
 def test_task_round_trip_writes_exports(db_session: Session, tmp_path, monkeypatch) -> None:
     from app.briefing import task as briefing_task
 
-    monkeypatch.setenv("OSINT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path))
     _seed(db_session)
     engine = db_session.get_bind()
     with patch.object(briefing_task, "get_engine", return_value=engine):

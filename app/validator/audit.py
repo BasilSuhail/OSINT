@@ -11,16 +11,15 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import random
 from datetime import UTC, datetime
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_engine
 from app.db_models import StoryClaimRow, StoryRow
+from app.paths import exports_dir
 from app.validator.claims import METHOD_VERSION
 
 SAMPLE_SIZE: int = 50
@@ -68,7 +67,7 @@ def _run() -> int:
         )
     lines.append("")
 
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     exports.mkdir(parents=True, exist_ok=True)
     path = exports / "validator-audit-sheet.md"
     path.write_text("\n".join(lines))

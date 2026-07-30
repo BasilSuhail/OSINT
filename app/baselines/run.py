@@ -11,10 +11,8 @@ window stays untouched per the pre-registered protocol in docs/methodology.md.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -27,6 +25,7 @@ from app.baselines.predictors import (
     score_random,
 )
 from app.baselines.targets import build_targets
+from app.paths import exports_dir
 
 EVAL_START = datetime(2015, 1, 1, tzinfo=UTC)
 EVAL_END = datetime(2022, 12, 1, tzinfo=UTC)
@@ -39,7 +38,7 @@ def _fmt(value: float | None) -> str:
 
 
 def _run() -> int:
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     panel_path = exports / "panel.parquet"
     if not panel_path.exists():
         print(f"{panel_path} not found — run `make panel` first.", file=sys.stderr)

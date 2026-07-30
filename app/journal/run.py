@@ -8,9 +8,7 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -20,6 +18,7 @@ from app.db import get_engine
 from app.db_models import PredictionRow
 from app.journal.scoreboard import build_scoreboard
 from app.journal.task import _journal_daily_body
+from app.paths import exports_dir
 
 
 def _fmt(value: float | None) -> str:
@@ -43,7 +42,7 @@ def _run() -> int:
     lines = build_scoreboard(rows)
 
     report = _render_markdown(lines, counters)
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     exports.mkdir(parents=True, exist_ok=True)
     (exports / "prediction-journal.md").write_text(report)
     (exports / "prediction-journal.json").write_text(

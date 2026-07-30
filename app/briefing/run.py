@@ -7,15 +7,13 @@ Usage:
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 from app.briefing.task import _briefing_body
+from app.paths import exports_dir
 
 
 def main() -> int:
     counters = _briefing_body()
-    exports = Path(os.environ.get("OSINT_DATA_DIR", "./data")) / "exports"
+    exports = exports_dir()
     print((exports / "weekly-briefing.md").read_text())
     print(
         f"written: {exports / 'weekly-briefing.md'} (+ .json) · "
