@@ -2,11 +2,9 @@
 
 import { useEffect } from "react"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
-import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { ClusterListPanel } from "../ClusterListPanel"
 import { CountrySidePanel } from "../CountrySidePanel"
 import { EventDetailCard } from "../EventDetailCard"
-import { StoryDetailCard } from "./StoryDetailCard"
 
 /**
  * The card that is not there most of the time (#699).
@@ -28,32 +26,15 @@ export function SelectionPanel() {
   const closeEntity = useRightPaneModeStore((s) => s.closeEntity)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
-  //: A clicked story is the same kind of event as a clicked country (#701), so
-  //: it lands here rather than in a second floating panel beside the deck.
-  const storyId = useStoryDetailStore((s) => s.storyId)
-  const closeStory = useStoryDetailStore((s) => s.closeStory)
 
-  const open = Boolean(entity || storyId)
   useEffect(() => {
-    if (!open) return
+    if (!entity) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return
-      closeStory()
-      closeEntity()
+      if (e.key === "Escape") closeEntity()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, closeEntity, closeStory])
-
-  //: A story wins when both are set: it is always the more recent click, since
-  //: opening one does not clear the other.
-  if (storyId) {
-    return (
-      <div className="absolute inset-0 overflow-y-auto bg-neutral-950">
-        <StoryDetailCard />
-      </div>
-    )
-  }
+  }, [entity, closeEntity])
 
   if (!entity) return null
 
