@@ -15,7 +15,12 @@ import pytest
 
 from app.composite.normalization import MIN_HISTORY
 from app.models import Category
-from app.sources.fred_fetcher import FredFetcher, _series_to_events
+from app.settings import settings
+from app.sources.fred_fetcher import (
+    SERIES_BY_COUNTRY,
+    FredFetcher,
+    _series_to_events,
+)
 
 NOW = datetime(2026, 7, 29, tzinfo=UTC)
 
@@ -184,6 +189,68 @@ class TestSeriesToEvents:
         )
         assert events[0].payload["units"] == "Index 1982-1984=100"
         assert events[0].payload["series_id"] == "CPIAUCSL"
+
+
+class TestSeriesCoverage:
+    """#690. The domain was configured for one country while the other three
+    covered ~170, so market had no say almost everywhere it would be tested."""
+
+    def test_the_panel_covers_more_than_the_united_states(self) -> None:
+        assert len(SERIES_BY_COUNTRY) > 20
+        for expected in ("US", "DE", "GB", "JP", "MX", "TR"):
+            assert expected in SERIES_BY_COUNTRY
+
+    def test_the_united_states_keeps_its_native_series(self) -> None:
+        # US has native equivalents (UNRATE, DGS10); adding the OECD harmonised
+        # versions on top would double-count the same economy.
+        us = dict(SERIES_BY_COUNTRY["US"])
+        assert "UNRATE" in us
+        assert "DGS10" in us
+        assert not any(sid.startswith("LRHUTTTT") for sid in us)
+
+    def test_oecd_ids_use_two_letter_codes(self) -> None:
+        # LRHUTTTTDEM156S, not LRHUTTTTDEUM156S. ISO3 returns "series does not
+        # exist" for every country, which reads exactly like missing data.
+        ids = [sid for series in SERIES_BY_COUNTRY.values() for sid, _ in series]
+        assert "LRHUTTTTDEM156S" in ids
+        assert not any(sid.startswith("LRHUTTTTDEU") for sid in ids)
+
+    def test_turkey_gets_unemployment_but_no_yield(self) -> None:
+        # Verified against the live API: TR publishes no long-yield series here.
+        tr = [sid for sid, _ in SERIES_BY_COUNTRY["TR"]]
+        assert "LRHUTTTTTRM156S" in tr
+        assert not any(sid.startswith("IRLTLT01TR") for sid in tr)
+
+    def test_every_series_id_is_unique(self) -> None:
+        ids = [sid for series in SERIES_BY_COUNTRY.values() for sid, _ in series]
+        assert len(ids) == len(set(ids))
+
+
+class TestFetchResilience:
+    def test_one_dead_series_does_not_lose_the_others(self, monkeypatch) -> None:
+        # 54 calls a run now. A single discontinued series used to raise straight
+        # out of fetch(), taking the whole market domain with it.
+        monkeypatch.setattr(settings, "fred_api_key", "test-key")
+        calls: list[str] = []
+
+        class _FakeFred:
+            def __init__(self, *_args, **_kwargs) -> None:
+                pass
+
+            def get_series(self, series_id: str, **_kwargs):
+                calls.append(series_id)
+                if series_id == "UNRATE":
+                    raise ValueError("Bad Request.  The series does not exist.")
+                return _make_series([4.0, 4.1, 3.9, 4.0, 9.0])
+
+        monkeypatch.setattr("app.sources.fred_fetcher.Fred", _FakeFred)
+
+        events = FredFetcher().fetch()
+
+        assert "UNRATE" in calls
+        assert len(calls) == sum(len(v) for v in SERIES_BY_COUNTRY.values())
+        assert events, "a single dead series must not empty the whole domain"
+        assert not any(e.payload["series_id"] == "UNRATE" for e in events)
 
 
 class TestFredFetcherContract:

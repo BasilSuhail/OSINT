@@ -9,13 +9,15 @@ normalises anything, so all 293 stored rows were silently discarded and the
 market domain ran on yfinance alone. The handoff described by that comment had
 no receiving end.
 
-FRED coverage is US-centric; non-US macro will arrive via a complementary
-source (ECB SDW, OECD MEI) tracked in a separate issue. Fixing severity
-therefore deepens the market domain for one country — it does not widen it.
+The panel covers 27 countries (#690): the US on its native series, plus 26 on
+the OECD harmonised unemployment and long-yield series FRED already publishes.
+Nine countries have no OECD series here — BR, CH, CN, CO, ID, IN, LT, NZ, ZA —
+and five of those already carry yfinance market data.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pandas as pd
@@ -26,6 +28,8 @@ from app.models import Category, Event
 from app.settings import settings
 from app.sources.base import Fetcher
 
+logger = logging.getLogger(__name__)
+
 #: Per-country FRED series tuples: (series_id, units description). The series
 #: identifiers are stable and documented on https://fred.stlouisfed.org/.
 SERIES_BY_COUNTRY: dict[str, list[tuple[str, str]]] = {
@@ -35,6 +39,55 @@ SERIES_BY_COUNTRY: dict[str, list[tuple[str, str]]] = {
         ("DGS10", "Percent"),  # 10-year Treasury constant maturity yield
     ],
 }
+
+#: OECD Main Economic Indicators, keyed by a **two-letter** country code (#690).
+#: `LRHUTTTTDEM156S`, not `LRHUTTTTDEUM156S` — building these with ISO3 returns
+#: "series does not exist" for every country, which reads exactly like the data
+#: being unavailable. It is not.
+_OECD_UNEMPLOYMENT: str = "LRHUTTTT{cc}M156S"
+_OECD_LONG_YIELD: str = "IRLTLT01{cc}M156N"
+
+#: Countries with a harmonised OECD unemployment series carrying at least four
+#: monthly observations since 2025-01, verified against the live API. The nine
+#: that failed — BR, CH, CN, CO, ID, IN, LT, NZ, ZA — need a different source;
+#: five of them already have yfinance market data.
+_OECD_UNEMPLOYMENT_COUNTRIES: tuple[str, ...] = (
+    "AT",
+    "AU",
+    "BE",
+    "CA",
+    "CL",
+    "CZ",
+    "DE",
+    "DK",
+    "ES",
+    "FI",
+    "FR",
+    "GB",
+    "GR",
+    "HU",
+    "IE",
+    "IL",
+    "IT",
+    "JP",
+    "KR",
+    "MX",
+    "NL",
+    "NO",
+    "PL",
+    "PT",
+    "SE",
+    "TR",
+)
+
+#: The same list minus Turkey, which publishes no long-yield series here.
+_OECD_YIELD_COUNTRIES: tuple[str, ...] = tuple(c for c in _OECD_UNEMPLOYMENT_COUNTRIES if c != "TR")
+
+for _cc in _OECD_UNEMPLOYMENT_COUNTRIES:
+    SERIES_BY_COUNTRY.setdefault(_cc, []).append((_OECD_UNEMPLOYMENT.format(cc=_cc), "Percent"))
+for _cc in _OECD_YIELD_COUNTRIES:
+    SERIES_BY_COUNTRY.setdefault(_cc, []).append((_OECD_LONG_YIELD.format(cc=_cc), "Percent"))
+del _cc
 
 
 #: |z| at or above this counts as maximally unusual. Three population standard
@@ -143,9 +196,20 @@ class FredFetcher(Fetcher):
         start_date = (now - timedelta(days=self.lookback_days)).date().isoformat()
 
         all_events: list[Event] = []
+        failed: list[str] = []
         for country, series_list in SERIES_BY_COUNTRY.items():
             for series_id, units in series_list:
-                data = fred.get_series(series_id, observation_start=start_date)
+                # Isolated per series (#690). This is 54 calls a run across 27
+                # countries, and OECD series are discontinued and renamed without
+                # notice. One dead id used to raise straight out of fetch() and
+                # take the entire market domain with it — a whole domain lost to
+                # one country's statistics office. Log and carry the rest.
+                try:
+                    data = fred.get_series(series_id, observation_start=start_date)
+                except Exception as exc:
+                    failed.append(series_id)
+                    logger.warning("fred: series %s unavailable: %s", series_id, exc)
+                    continue
                 all_events.extend(
                     _series_to_events(
                         data,
@@ -155,6 +219,13 @@ class FredFetcher(Fetcher):
                         fetched_at=now,
                     )
                 )
+        if failed:
+            logger.warning(
+                "fred: %d of %d series unavailable: %s",
+                len(failed),
+                sum(len(v) for v in SERIES_BY_COUNTRY.values()),
+                ", ".join(sorted(failed)),
+            )
         return all_events
 
     def archive_path(self) -> str:
