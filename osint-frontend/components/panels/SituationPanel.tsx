@@ -18,9 +18,11 @@ import {
 } from "@/lib/apiClient"
 import {
   fetchAuditLatest,
+  fetchContestedStories,
   fetchDevelopingStories,
   fetchTopStories,
   type AuditLatest,
+  type ContestedStory,
   type DevelopingStory,
   type StoryRow,
 } from "@/lib/analytics"
@@ -41,6 +43,10 @@ const NARRATIVE_REFRESH_MS = 5 * 60_000
 const STORIES_REFRESH_MS = 60_000
 //: The audit runs once a night, so anything faster is polling for nothing.
 const AUDIT_REFRESH_MS = 15 * 60_000
+//: Shown at a glance; the rest fold away behind a count (#695).
+const DEVELOPING_COLLAPSED = 3
+//: Fetched, so "show more" reveals rather than waits on a request.
+const DEVELOPING_FETCH = 12
 //: Older than this and the card says the brain is resting.
 const STALE_MS = 40 * 60_000
 const CHAT_STORAGE_KEY = "brain-chat-v1"
@@ -69,13 +75,19 @@ function DevelopingBlock({
   stories: DevelopingStory[]
   onOpen: (id: string) => void
 }) {
+  //: Three is the glance; the rest are fetched and folded away (#695). The pin
+  //: query already ranks them, so "more" is genuinely more of the same thing
+  //: rather than a different, looser list.
+  const [showAll, setShowAll] = useState(false)
   if (stories.length === 0) return null
+  const visible = showAll ? stories : stories.slice(0, DEVELOPING_COLLAPSED)
+  const hidden = stories.length - visible.length
   return (
     <div className="mb-2 border-b border-neutral-800 pb-2">
       <div className="mb-1 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
         developing
       </div>
-      {stories.map((s) => (
+      {visible.map((s) => (
         <button
           key={s.id}
           onClick={() => onOpen(s.id)}
@@ -97,6 +109,14 @@ function DevelopingBlock({
           </div>
         </button>
       ))}
+      {stories.length > DEVELOPING_COLLAPSED ? (
+        <button
+          onClick={() => setShowAll((v) => !v)}
+          className="font-mono text-[9px] uppercase tracking-widest text-amber-600/70 hover:text-amber-400"
+        >
+          {showAll ? "− fewer" : `+ ${hidden} more developing`}
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -378,6 +398,48 @@ function DataQualityLine({ audit }: { audit: AuditLatest | undefined }) {
   )
 }
 
+
+/**
+ * Most contested telling (#695) — the one block worth rescuing from the
+ * briefing card before it was folded away.
+ *
+ * Divergence 0 means the blocs word the story identically; 1 means they share
+ * nothing. It sits next to developing because the pair answers the question the
+ * card is for: what is growing, and what is being told two different ways.
+ */
+function ContestedBlock({
+  story,
+  onOpen,
+}: {
+  story: ContestedStory | undefined
+  onOpen: (id: string) => void
+}) {
+  if (!story) return null
+  const blocs = Object.keys(story.groups ?? {})
+  return (
+    <div className="mb-2 border-b border-neutral-800 pb-2">
+      <div className="mb-1 font-mono text-[9px] uppercase tracking-widest text-cyan-500/80">
+        most contested
+      </div>
+      <button onClick={() => onOpen(story.story_id)} className="block w-full text-left">
+        <div className="flex items-baseline gap-2">
+          <span className="shrink-0 font-mono text-[10px] text-cyan-400">
+            {story.divergence.toFixed(2)}
+          </span>
+          <span className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-neutral-100">
+            {story.title}
+          </span>
+        </div>
+        {blocs.length ? (
+          <div className="pl-4 font-mono text-[9px] text-neutral-500">
+            {blocs.join(" vs ")}
+          </div>
+        ) : null}
+      </button>
+    </div>
+  )
+}
+
 export function SituationPanel() {
   const { data } = useSWR("brain-narrative", fetchBrainNarrative, {
     refreshInterval: NARRATIVE_REFRESH_MS,
@@ -385,12 +447,15 @@ export function SituationPanel() {
   const { data: stories } = useSWR("situation-stories", () => fetchTopStories(72, 50), {
     refreshInterval: STORIES_REFRESH_MS,
   })
-  const { data: pinned } = useSWR("stories-developing", () => fetchDevelopingStories(3), {
+  const { data: pinned } = useSWR("stories-developing", () => fetchDevelopingStories(DEVELOPING_FETCH), {
     refreshInterval: STORIES_REFRESH_MS,
   })
   // The audit runs nightly, so polling it hard would be noise.
   const { data: audit } = useSWR("audit-latest", fetchAuditLatest, {
     refreshInterval: AUDIT_REFRESH_MS,
+  })
+  const { data: contested } = useSWR("situation-contested", fetchContestedStories, {
+    refreshInterval: STORIES_REFRESH_MS,
   })
   const openStory = useStoryDetailStore((s) => s.openStory)
   const [showOlder, setShowOlder] = useState(false)
@@ -462,6 +527,7 @@ export function SituationPanel() {
         ) : null}
 
         <DevelopingBlock stories={developing} onOpen={openStory} />
+        <ContestedBlock story={(contested ?? [])[0]} onOpen={openStory} />
 
         {rows.length > 0 ? (
           <div className="flex flex-col divide-y divide-neutral-800/60">

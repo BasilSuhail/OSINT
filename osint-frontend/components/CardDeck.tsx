@@ -16,6 +16,13 @@ export interface DeckCard {
   /** Plain node, or a function of whether this card is the active page —
    *  lets heavy content (the globe) pause itself while off-screen. */
   content: React.ReactNode | ((isActive: boolean) => React.ReactNode)
+  /** Shown instead of `content` while the deck is collapsed (#695).
+   *
+   *  The world card is a headline at deck size — totals and a sparkline — and
+   *  only becomes ranked countries, briefing and charts once expanded. Without
+   *  this the card would have to guess its own size, and a card that big at
+   *  deck scale is unreadable anyway. */
+  collapsedContent?: React.ReactNode | ((isActive: boolean) => React.ReactNode)
 }
 
 const SWIPE_FINGERS = 3
@@ -164,17 +171,23 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
               className="h-full w-full shrink-0 snap-start p-1.5 pt-0"
             >
               <div className="h-full w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/40">
-                {card.lazy && !visited.has(i) ? null : card.fill ? (
-                  <div className="relative h-full w-full">
-                    {typeof card.content === "function" ? card.content(i === active) : card.content}
-                  </div>
-                ) : (
-                  <div className="h-full w-full overflow-y-auto p-3">
-                    <div className="mx-auto w-full max-w-5xl">
-                      {typeof card.content === "function" ? card.content(i === active) : card.content}
+                {(() => {
+                  const body =
+                    !expanded && card.collapsedContent !== undefined
+                      ? card.collapsedContent
+                      : card.content
+                  return card.lazy && !visited.has(i) ? null : card.fill ? (
+                    <div className="relative h-full w-full">
+                      {typeof body === "function" ? body(i === active) : body}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="h-full w-full overflow-y-auto p-3">
+                      <div className="mx-auto w-full max-w-5xl">
+                        {typeof body === "function" ? body(i === active) : body}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             </section>
           ))}

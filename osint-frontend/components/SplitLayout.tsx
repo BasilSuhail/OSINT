@@ -9,9 +9,13 @@ import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
+import useSWR from "swr"
+import { fetchScoreboard } from "@/lib/analytics"
+import { scoreboardIsReady } from "@/lib/deckReadiness"
 import { CardDeck, type DeckCard } from "./CardDeck"
 import { FloatingPanel } from "./FloatingPanel"
 import { BriefingPanel } from "./panels/BriefingPanel"
+import { WorldHeadline } from "./WorldStatusPanel"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
@@ -106,16 +110,41 @@ export function SplitLayout() {
   // The right pane as a card deck (#328): console keeps its world-status /
   // entity surface and the analytical pages fill the rest. The globe card was
   // removed in #494 — its WebGL context was the tab's largest memory holder.
+  const { data: scoreboardRows } = useSWR("deck-scoreboard-ready", fetchScoreboard)
+  const scoreboardReady = scoreboardIsReady(scoreboardRows)
+
   const deckCards: DeckCard[] = [
     //: fill — the panel is its own scroll surface (live list + transcript) with
     //: a fixed ask-box footer; the deck's non-fill outer scroll would defeat it.
     { key: "situation", title: "situation", fill: true, content: <SituationPanel /> },
-    { key: "briefing", title: "briefing", content: <BriefingPanel /> },
-    { key: "console", title: "console", fill: true, content: <RightPane /> },
+    //: Was "console" (#695). A headline at deck size — totals and the trend —
+    //: and the whole world desk once expanded: ranked countries, the briefing
+    //: that used to be its own card, and the charts.
+    {
+      key: "world",
+      title: "world",
+      fill: true,
+      collapsedContent: <WorldHeadline />,
+      content: (
+        <div className="h-full w-full overflow-y-auto">
+          <RightPane />
+          <div className="mx-auto w-full max-w-5xl p-3">
+            <BriefingPanel />
+          </div>
+        </div>
+      ),
+    },
     { key: "stories", title: "stories", content: <StoriesPanel /> },
-    { key: "scoreboard", title: "scoreboard", content: <ScoreboardPanel /> },
     { key: "coverage", title: "coverage", content: <CoveragePanel /> },
   ]
+
+  //: The scoreboard shows itself once it has something graded (#694). Every
+  //: Brier is null today because nothing has matured, and an empty table
+  //: promising a track record is the one thing this card must never be. It
+  //: returns on its own — no flag to flip, nothing to remember.
+  if (scoreboardReady) {
+    deckCards.push({ key: "scoreboard", title: "scoreboard", content: <ScoreboardPanel /> })
+  }
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-100">
