@@ -159,7 +159,11 @@ function StoryLine({
 }
 
 /** Story clusters — one row per real-world story. Deck card / fullscreen body. */
-export function StoriesPanel() {
+export function StoriesPanel({ tuckRows = false }: { tuckRows?: boolean } = {}) {
+  //: On the world card the summary is the point (#699) — three counts, the
+  //: window, the owner floor, the confidence spread. Two hundred headlines
+  //: underneath is not a summary, so the rows fold away behind their own count.
+  const [rowsOpen, setRowsOpen] = useState(false)
   const [hours, setHours] = useState<number>(24)
   const [minOwners, setMinOwners] = useState<number>(1)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -265,7 +269,22 @@ export function StoriesPanel() {
         ))}
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/50">
+      {tuckRows ? (
+        <button
+          onClick={() => setRowsOpen((v) => !v)}
+          className="self-start font-mono text-[10px] uppercase tracking-widest text-neutral-500 hover:text-cyan-300"
+        >
+          {rowsOpen ? "− hide stories" : `+ show ${stories.length} stories`}
+        </button>
+      ) : null}
+
+      <section
+        className={
+          tuckRows && !rowsOpen
+            ? "hidden"
+            : "overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/50"
+        }
+      >
         {error ? (
           <p className="p-4 font-mono text-[11px] text-red-400">
             stories API unreachable — is the backend running?

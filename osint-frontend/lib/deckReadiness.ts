@@ -31,3 +31,24 @@ export function scoreboardIsReady(rows: ScoreboardReadinessRow[] | undefined): b
   if (!rows) return false
   return rows.some((r) => (r.graded ?? 0) > 0)
 }
+
+/** The deck's card keys, in order. */
+export type DeckKey = "situation" | "world" | "selection" | "scoreboard"
+
+/**
+ * Which cards the deck holds right now (#699).
+ *
+ * `selection` is the card that is not there most of the time: it appears when
+ * something on the map is picked and disappears on Escape. It sits after the
+ * two standing cards so those keep stable positions — a card that shoved the
+ * others sideways on every map click would stop the deck being a place.
+ */
+export function deckKeys(opts: {
+  hasSelection: boolean
+  scoreboardReady: boolean
+}): DeckKey[] {
+  const keys: DeckKey[] = ["situation", "world"]
+  if (opts.hasSelection) keys.push("selection")
+  if (opts.scoreboardReady) keys.push("scoreboard")
+  return keys
+}

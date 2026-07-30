@@ -1,6 +1,7 @@
 "use client"
 
 import { useWorldStats } from "@/lib/queries"
+import { useDeckExpandStore } from "@/stores/deckExpandStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 
 const regionNames =
@@ -99,9 +100,16 @@ function Sparkline({ points }: { points: number[] }) {
 export function WorldHeadline() {
   const { stats } = useWorldStats()
   const spark = stats?.spark ?? []
+  //: The graph is a door (#699). Clicking it opens the same full page the
+  //: expand control does — ranked countries, per-country coverage, briefing.
+  const setExpanded = useDeckExpandStore((s) => s.setExpanded)
 
   return (
-    <div className="flex h-full w-full flex-col justify-center bg-neutral-950 p-4">
+    <button
+      type="button"
+      onClick={() => setExpanded(true)}
+      title="open country detail and coverage"
+      className="flex h-full w-full flex-col justify-center bg-neutral-950 p-4 text-left transition-colors hover:bg-neutral-900/40">
       <h2 className="mb-3 text-[13px] font-semibold text-neutral-100">
         All events worldwide · <span className="text-emerald-400">live</span>
       </h2>
@@ -117,9 +125,9 @@ export function WorldHeadline() {
         <Sparkline points={spark} />
       </div>
       <p className="mt-4 font-mono text-[9px] uppercase tracking-widest text-neutral-600">
-        expand for ranked countries, briefing and charts
+        click for country detail, coverage and briefing
       </p>
-    </div>
+    </button>
   )
 }
 
