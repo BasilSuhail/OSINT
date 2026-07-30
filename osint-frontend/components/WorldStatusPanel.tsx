@@ -1,7 +1,7 @@
 "use client"
 
 import { useWorldStats } from "@/lib/queries"
-import { useDeckExpandStore } from "@/stores/deckExpandStore"
+import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 
 const regionNames =
@@ -100,14 +100,14 @@ function Sparkline({ points }: { points: number[] }) {
 export function WorldHeadline() {
   const { stats } = useWorldStats()
   const spark = stats?.spark ?? []
-  //: The graph is a door (#699). Clicking it opens the same full page the
-  //: expand control does — ranked countries, per-country coverage, briefing.
-  const setExpanded = useDeckExpandStore((s) => s.setExpanded)
+  //: The graph is a door (#699), and since #705 it opens beside the tile
+  //: rather than over it — the same shape a clicked story already uses.
+  const openWorld = useWorldDetailStore((s) => s.openWorld)
 
   return (
     <button
       type="button"
-      onClick={() => setExpanded(true)}
+      onClick={openWorld}
       title="open country detail and coverage"
       className="flex h-full w-full flex-col justify-center bg-neutral-950 p-4 text-left transition-colors hover:bg-neutral-900/40">
       <h2 className="mb-3 text-[13px] font-semibold text-neutral-100">

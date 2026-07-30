@@ -9,6 +9,7 @@ import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
+import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import useSWR from "swr"
 import { fetchScoreboard } from "@/lib/analytics"
 import { scoreboardIsReady } from "@/lib/deckReadiness"
@@ -17,6 +18,7 @@ import { FloatingPanel } from "./FloatingPanel"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
+import { WorldDetailCard } from "./panels/WorldDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
 import { SelectionPanel } from "./panels/SelectionPanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
@@ -61,6 +63,10 @@ export function SplitLayout() {
   // event id also expands its hazard footprint on the map.
   //: Story pop-out (#448): a second card left of the deck, same width.
   const storyDetailOpen = useStoryDetailStore((s) => s.storyId !== null)
+  const worldDetailOpen = useWorldDetailStore((s) => s.open)
+  //: One slot, whichever tile asked for it (#705). A story wins if both are
+  //: somehow set — opening one never closes the other, so it is the later click.
+  const sidePanel = storyDetailOpen ? "story" : worldDetailOpen ? "world" : null
   const entity = useRightPaneModeStore((s) => s.entity)
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
@@ -218,7 +224,13 @@ export function SplitLayout() {
               style={{ display: activePane === "right" ? "block" : "none" }}
             >
               <FloatingPanel className="h-full w-full">
-                {storyDetailOpen ? <StoryDetailCard /> : <CardDeck cards={deckCards} />}
+                {sidePanel === "story" ? (
+                  <StoryDetailCard />
+                ) : sidePanel === "world" ? (
+                  <WorldDetailCard />
+                ) : (
+                  <CardDeck cards={deckCards} />
+                )}
               </FloatingPanel>
             </div>
           </div>
@@ -236,7 +248,7 @@ export function SplitLayout() {
               {
                 "--panel-width": deckCollapsed
                   ? "0px"
-                  : storyDetailOpen
+                  : sidePanel
                     ? `calc(${PANEL_WIDTH} * 2 + 0.5rem)`
                     : PANEL_WIDTH,
               } as React.CSSProperties
@@ -256,12 +268,12 @@ export function SplitLayout() {
 
             {/* With a fixed deck width the pop-out's position is arithmetic
              *  rather than plumbing the panel's measured pixels. */}
-            {storyDetailOpen && !deckCollapsed ? (
+            {sidePanel && !deckCollapsed ? (
               <FloatingPanel
                 className="absolute bottom-3 top-3 z-30"
                 style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
               >
-                <StoryDetailCard />
+                {sidePanel === "story" ? <StoryDetailCard /> : <WorldDetailCard />}
               </FloatingPanel>
             ) : null}
 
