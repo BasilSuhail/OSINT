@@ -123,13 +123,33 @@ def test_polymarket_no_longer_claims_a_composite_role(db_session):
     assert "composite_reachability" not in checks_fired
 
 
-def test_the_fred_shape_is_caught_end_to_end(db_session):
-    """Declared severity none, and the composite therefore cannot read it."""
+def test_fred_scoring_its_own_history_is_clean(db_session):
+    """#715. This used to assert the opposite, and both were true in their turn.
+
+    FRED emitted severity None on every row behind a comment claiming the
+    composite normalised it, so composite_reachability fired and was correct.
+    #684 moved the computation into the fetcher and #691 widened the panel to 27
+    countries; the live table now carries 874 rows and 576 distinct severities.
+    The declaration follows the data.
+    """
+    for i, sev in enumerate([0.1, 0.4, 0.55, 0.8, 0.95] * 8):
+        _add(db_session, "fred", n=1, severity=sev + i * 1e-4, country="US", category="market")
+    # A quarter carry none, as the cold-start rule guarantees they always will.
+    _add(db_session, "fred", n=13, severity=None, country="US", category="market")
+
+    checks_fired = {f.check for f in run.audit(db_session, now=NOW) if f.source == "fred"}
+
+    assert checks_fired == set()
+
+
+def test_fred_losing_its_severity_entirely_is_still_caught(db_session):
+    # The declared floor relaxes the threshold; it must not remove the check.
     _add(db_session, "fred", n=50, severity=None, country="US", category="market")
 
     checks_fired = {f.check for f in run.audit(db_session, now=NOW) if f.source == "fred"}
 
-    assert checks_fired == {"composite_reachability"}
+    assert "severity_coverage" in checks_fired
+    assert "composite_reachability" in checks_fired
 
 
 def test_rss_sources_resolve_through_the_family_declaration(db_session):
