@@ -322,3 +322,30 @@ def test_region_point_never_overrides_an_agreeing_city() -> None:
 def test_ambiguous_story_gets_no_region_point() -> None:
     verdict = resolve_geo("Wales, Scotland and Bavaria all report drought")
     assert verdict.lat is None
+
+
+def test_england_names_the_country_but_claims_no_place() -> None:
+    # England is ~84% of the UK, so an England pin is a UK pin — the blob
+    # #719 removed. It stays valid country evidence and carries no point
+    # (#725).
+    verdict = resolve_geo("Ambulance delays worsen across England")
+    assert verdict.iso == "GB"
+    assert verdict.lat is None and verdict.lon is None
+
+
+def test_the_other_uk_nations_keep_their_points() -> None:
+    for title, iso in [
+        ("Drought declared across whole of Wales", "GB"),
+        ("Scotland reports record NHS waiting times", "GB"),
+        ("Northern Ireland assembly returns after recess", "GB"),
+    ]:
+        verdict = resolve_geo(title)
+        assert verdict.iso == iso, title
+        assert verdict.lat is not None, f"{title} should still pin"
+
+
+def test_a_placeable_nation_wins_over_england() -> None:
+    verdict = resolve_geo("England and Wales see drought spread")
+    assert verdict.iso == "GB"
+    # Wales is the one that knows where it is.
+    assert verdict.lat is not None

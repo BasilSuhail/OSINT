@@ -118,6 +118,28 @@ ALIASES = {
     "valencia": "valenciana",
 }
 
+#: Regions that stand in for their whole country, so a pin on them is a
+#: country pin by another name — the blob #719 removed.
+#:
+#: England holds ~84% of the United Kingdom's people and ~54% of its
+#: land, and its centroid lands 1.87° from the UK's own; 33 stories
+#: piled onto that single point in a week.
+#: In UK copy "England" is used the way "Britain" is. Wales, Scotland
+#: and Northern Ireland are each a genuinely distinct part of the
+#: country and keep their points — their centroids sit 3.4°, 2.98° and
+#: 3.1° from the UK's, against England's 1.87°.
+#:
+#: The test is share of the country, not distance from its centre: 24 of
+#: 256 regions sit within 1.6° of their country's centroid — Bekaa,
+#: Negev, Zurich canton, North Holland — and none of those is a stand-in
+#: for its state. In a small country a central region is simply where it
+#: is.
+#:
+#: Excluded here only. These stay in ``geo_terms.json`` and keep working
+#: as country evidence: "England beat Australia at Lord's" still resolves
+#: GB, it just does not claim to know where that happened.
+COUNTRY_SIZED = frozenset({("GB", "england")})
+
 #: Institutions are not regions; they sit in a capital. Pinning the
 #: Kremlin on Moscow is more useful than not pinning it at all.
 INSTITUTIONS = {
@@ -265,8 +287,12 @@ def main() -> None:
 
     out: dict[str, dict[str, list[float]]] = {}
     unmatched: list[str] = []
+    country_sized: list[str] = []
     for iso, groups in sorted(terms.items()):
         for region in groups.get("regions", []) or []:
+            if (iso, normalise(region)) in COUNTRY_SIZED:
+                country_sized.append(f"{iso}:{region}")
+                continue
             point = lookup(iso, region)
             if point is None:
                 unmatched.append(f"{iso}:{region}")
@@ -280,6 +306,9 @@ def main() -> None:
     matched = sum(len(v) for v in out.values())
     total = matched + len(unmatched)
     print(f"wrote {args.out}: {matched}/{total} regions ({matched / total:.0%})")
+    if country_sized:
+        print("held back as country-sized (keep a country, never a pin):")
+        print("  " + ", ".join(country_sized))
     if unmatched:
         print("unmatched (these keep a country but no point):")
         print("  " + ", ".join(unmatched))
