@@ -12,6 +12,7 @@
   {
     "source": "rss-bbc-uk",
     "url": "https://feeds.bbci.co.uk/news/uk/rss.xml",
+    "desk_country": "GB",
     "default_country": "GB",
     "pretty_name": "BBC UK",
     "cadence_min": 60,
@@ -265,6 +266,7 @@
   {
     "source": "rss-nation-kenya",
     "url": "https://nation.africa/kenya/rss.xml",
+    "desk_country": "KE",
     "default_country": "KE",
     "pretty_name": "Nation Kenya",
     "cadence_min": 60,
@@ -325,6 +327,7 @@
   {
     "source": "rss-scmp-china",
     "url": "https://www.scmp.com/rss/91/feed",
+    "desk_country": "CN",
     "default_country": "CN",
     "pretty_name": "SCMP China",
     "cadence_min": 60,

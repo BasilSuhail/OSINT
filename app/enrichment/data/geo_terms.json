@@ -1,0 +1,368 @@
+{
+  "GB": {
+    "aliases": ["britain", "great britain"],
+    "demonyms": ["british", "briton", "britons", "english", "scottish", "welsh"],
+    "abbrevs": ["UK", "U.K."],
+    "regions": ["england", "scotland", "wales", "northern ireland", "yorkshire", "cornwall", "westminster", "whitehall"]
+  },
+  "US": {
+    "aliases": ["united states", "america"],
+    "demonyms": ["american", "americans"],
+    "abbrevs": ["US", "U.S.", "USA", "U.S.A."],
+    "regions": ["california", "texas", "florida", "michigan", "alaska", "hawaii", "ohio", "illinois", "pennsylvania", "arizona", "colorado", "oregon", "nevada", "minnesota", "wisconsin", "missouri", "louisiana", "kentucky", "alabama", "oklahoma", "kansas", "iowa", "nebraska", "utah", "idaho", "montana", "wyoming", "vermont", "maine", "north dakota", "south dakota", "north carolina", "south carolina", "west virginia", "new hampshire", "rhode island", "new jersey", "new mexico", "massachusetts", "maryland", "virginia", "tennessee", "arkansas", "mississippi", "indiana", "connecticut", "delaware", "washington state", "pentagon", "white house", "capitol hill"]
+  },
+  "IN": {
+    "aliases": [],
+    "demonyms": ["indian", "indians"],
+    "abbrevs": [],
+    "regions": ["tamil nadu", "kerala", "karnataka", "maharashtra", "gujarat", "rajasthan", "west bengal", "andhra pradesh", "telangana", "uttar pradesh", "madhya pradesh", "bihar", "odisha", "assam", "jharkhand", "chhattisgarh", "haryana", "uttarakhand", "himachal pradesh", "goa", "manipur", "meghalaya", "nagaland", "tripura", "mizoram", "sikkim", "arunachal pradesh", "jammu and kashmir", "ladakh"]
+  },
+  "PK": {
+    "aliases": [],
+    "demonyms": ["pakistani", "pakistanis"],
+    "abbrevs": [],
+    "regions": ["sindh", "balochistan", "khyber pakhtunkhwa", "gilgit baltistan", "azad kashmir"]
+  },
+  "RU": {
+    "aliases": [],
+    "demonyms": ["russian", "russians"],
+    "abbrevs": [],
+    "regions": ["siberia", "kremlin", "chechnya", "dagestan", "tatarstan", "kaliningrad"]
+  },
+  "UA": {
+    "aliases": [],
+    "demonyms": ["ukrainian", "ukrainians"],
+    "abbrevs": [],
+    "regions": ["donetsk", "luhansk", "zaporizhzhia", "kherson", "kharkiv region", "crimea", "donbas"]
+  },
+  "CN": {
+    "aliases": [],
+    "demonyms": ["chinese"],
+    "abbrevs": [],
+    "regions": ["xinjiang", "tibet", "guangdong", "sichuan", "zhejiang", "shandong", "henan", "hunan", "fujian", "yunnan", "inner mongolia"]
+  },
+  "IL": {
+    "aliases": [],
+    "demonyms": ["israeli", "israelis"],
+    "abbrevs": ["IDF"],
+    "regions": ["knesset", "negev", "galilee", "golan heights"]
+  },
+  "PS": {
+    "aliases": ["palestine", "gaza", "gaza strip", "west bank"],
+    "demonyms": ["palestinian", "palestinians"],
+    "abbrevs": [],
+    "regions": ["rafah", "khan younis"]
+  },
+  "IR": {
+    "aliases": [],
+    "demonyms": ["iranian", "iranians"],
+    "abbrevs": ["IRGC"],
+    "regions": ["khuzestan", "isfahan province"]
+  },
+  "DE": {
+    "aliases": [],
+    "demonyms": ["german", "germans"],
+    "abbrevs": [],
+    "regions": ["bavaria", "saxony", "brandenburg", "hesse", "thuringia", "bundestag", "north rhine westphalia", "baden wurttemberg", "lower saxony", "rhineland palatinate", "schleswig holstein"]
+  },
+  "FR": {
+    "aliases": [],
+    "demonyms": ["french", "frenchman", "frenchwoman"],
+    "abbrevs": [],
+    "regions": ["normandy", "brittany", "corsica", "provence", "alsace", "elysee"]
+  },
+  "ES": {
+    "aliases": [],
+    "demonyms": ["spanish", "spaniard", "spaniards"],
+    "abbrevs": [],
+    "regions": ["catalonia", "andalusia", "basque country", "galicia", "valencia region", "canary islands"]
+  },
+  "IT": {
+    "aliases": [],
+    "demonyms": ["italian", "italians"],
+    "abbrevs": [],
+    "regions": ["sicily", "sardinia", "tuscany", "lombardy", "calabria", "veneto"]
+  },
+  "JP": {
+    "aliases": [],
+    "demonyms": ["japanese"],
+    "abbrevs": [],
+    "regions": ["hokkaido", "okinawa", "kyushu", "fukushima prefecture"]
+  },
+  "KR": {
+    "aliases": ["south korea"],
+    "demonyms": ["south korean", "south koreans"],
+    "abbrevs": [],
+    "regions": ["gyeonggi", "busan region"]
+  },
+  "KP": {
+    "aliases": ["north korea"],
+    "demonyms": ["north korean", "north koreans"],
+    "abbrevs": [],
+    "regions": []
+  },
+  "ID": {
+    "aliases": [],
+    "demonyms": ["indonesian", "indonesians"],
+    "abbrevs": [],
+    "regions": ["java", "sumatra", "sulawesi", "papua province", "bali"]
+  },
+  "AU": {
+    "aliases": [],
+    "demonyms": ["australian", "australians"],
+    "abbrevs": [],
+    "regions": ["queensland", "victoria state", "new south wales", "tasmania", "western australia", "south australia", "northern territory"]
+  },
+  "CA": {
+    "aliases": [],
+    "demonyms": ["canadian", "canadians"],
+    "abbrevs": [],
+    "regions": ["ontario", "quebec", "alberta", "manitoba", "saskatchewan", "british columbia", "nova scotia", "newfoundland", "yukon"]
+  },
+  "TR": {
+    "aliases": ["turkiye"],
+    "demonyms": ["turkish"],
+    "abbrevs": [],
+    "regions": ["anatolia", "kurdistan region of turkey"]
+  },
+  "ZA": {
+    "aliases": ["south africa"],
+    "demonyms": ["south african", "south africans"],
+    "abbrevs": [],
+    "regions": ["gauteng", "kwazulu natal", "western cape", "eastern cape", "limpopo", "mpumalanga"]
+  },
+  "KE": {
+    "aliases": [],
+    "demonyms": ["kenyan", "kenyans"],
+    "abbrevs": [],
+    "regions": ["mombasa county", "kisumu county", "rift valley"]
+  },
+  "NG": {
+    "aliases": [],
+    "demonyms": ["nigerian", "nigerians"],
+    "abbrevs": [],
+    "regions": ["borno", "kaduna", "kano state", "niger delta"]
+  },
+  "EG": {
+    "aliases": [],
+    "demonyms": ["egyptian", "egyptians"],
+    "abbrevs": [],
+    "regions": ["sinai", "upper egypt"]
+  },
+  "SA": {
+    "aliases": ["saudi arabia"],
+    "demonyms": ["saudi", "saudis"],
+    "abbrevs": [],
+    "regions": ["hijaz", "eastern province"]
+  },
+  "AE": {
+    "aliases": ["emirates", "united arab emirates"],
+    "demonyms": ["emirati", "emiratis"],
+    "abbrevs": ["UAE"],
+    "regions": ["dubai emirate", "abu dhabi emirate", "sharjah"]
+  },
+  "QA": {
+    "aliases": [],
+    "demonyms": ["qatari", "qataris"],
+    "abbrevs": [],
+    "regions": []
+  },
+  "BD": {
+    "aliases": [],
+    "demonyms": ["bangladeshi", "bangladeshis"],
+    "abbrevs": [],
+    "regions": ["chittagong division", "sylhet"]
+  },
+  "AF": {
+    "aliases": [],
+    "demonyms": ["afghan", "afghans"],
+    "abbrevs": [],
+    "regions": ["helmand", "kandahar province", "nangarhar"]
+  },
+  "BR": {
+    "aliases": [],
+    "demonyms": ["brazilian", "brazilians"],
+    "abbrevs": [],
+    "regions": ["amazonas", "bahia", "minas gerais", "parana", "pernambuco", "rio grande do sul"]
+  },
+  "MX": {
+    "aliases": [],
+    "demonyms": ["mexican", "mexicans"],
+    "abbrevs": [],
+    "regions": ["chiapas", "oaxaca", "sinaloa", "jalisco", "sonora", "yucatan"]
+  },
+  "AR": {
+    "aliases": [],
+    "demonyms": ["argentine", "argentinian", "argentines"],
+    "abbrevs": [],
+    "regions": ["patagonia", "cordoba province"]
+  },
+  "SG": {
+    "aliases": [],
+    "demonyms": ["singaporean", "singaporeans"],
+    "abbrevs": [],
+    "regions": []
+  },
+  "MY": {
+    "aliases": [],
+    "demonyms": ["malaysian", "malaysians"],
+    "abbrevs": [],
+    "regions": ["sabah", "sarawak", "penang", "johor"]
+  },
+  "PH": {
+    "aliases": ["philippines"],
+    "demonyms": ["filipino", "filipinos", "philippine"],
+    "abbrevs": [],
+    "regions": ["mindanao", "luzon", "visayas"]
+  },
+  "TH": {
+    "aliases": [],
+    "demonyms": ["thai"],
+    "abbrevs": [],
+    "regions": ["isan", "phuket province"]
+  },
+  "VN": {
+    "aliases": [],
+    "demonyms": ["vietnamese"],
+    "abbrevs": [],
+    "regions": ["mekong delta"]
+  },
+  "PL": {
+    "aliases": [],
+    "demonyms": ["polish", "poles"],
+    "abbrevs": [],
+    "regions": ["silesia", "lublin region", "masovia"]
+  },
+  "NL": {
+    "aliases": ["netherlands"],
+    "demonyms": ["dutch"],
+    "abbrevs": [],
+    "regions": ["north holland", "south holland"]
+  },
+  "SE": {
+    "aliases": [],
+    "demonyms": ["swedish", "swedes"],
+    "abbrevs": [],
+    "regions": ["scania"]
+  },
+  "NO": {
+    "aliases": [],
+    "demonyms": ["norwegian", "norwegians"],
+    "abbrevs": [],
+    "regions": ["svalbard"]
+  },
+  "GR": {
+    "aliases": [],
+    "demonyms": ["greek", "greeks"],
+    "abbrevs": [],
+    "regions": ["crete", "peloponnese", "thessaloniki region"]
+  },
+  "PT": {
+    "aliases": [],
+    "demonyms": ["portuguese"],
+    "abbrevs": [],
+    "regions": ["azores", "madeira"]
+  },
+  "CH": {
+    "aliases": [],
+    "demonyms": ["swiss"],
+    "abbrevs": [],
+    "regions": ["zurich canton", "geneva canton"]
+  },
+  "BE": {
+    "aliases": [],
+    "demonyms": ["belgian", "belgians"],
+    "abbrevs": [],
+    "regions": ["flanders", "wallonia"]
+  },
+  "IE": {
+    "aliases": [],
+    "demonyms": ["irish"],
+    "abbrevs": [],
+    "regions": ["dail", "munster", "leinster", "connacht"]
+  },
+  "ZW": {
+    "aliases": [],
+    "demonyms": ["zimbabwean", "zimbabweans"],
+    "abbrevs": [],
+    "regions": ["matabeleland", "mashonaland"]
+  },
+  "LK": {
+    "aliases": ["sri lanka"],
+    "demonyms": ["sri lankan", "sri lankans"],
+    "abbrevs": [],
+    "regions": ["jaffna"]
+  },
+  "NP": {
+    "aliases": [],
+    "demonyms": ["nepali", "nepalese"],
+    "abbrevs": [],
+    "regions": []
+  },
+  "MM": {
+    "aliases": ["myanmar", "burma"],
+    "demonyms": ["burmese", "myanmar military"],
+    "abbrevs": [],
+    "regions": ["rakhine", "shan state", "kachin"]
+  },
+  "SY": {
+    "aliases": [],
+    "demonyms": ["syrian", "syrians"],
+    "abbrevs": [],
+    "regions": ["idlib", "aleppo province"]
+  },
+  "LB": {
+    "aliases": [],
+    "demonyms": ["lebanese"],
+    "abbrevs": [],
+    "regions": ["bekaa"]
+  },
+  "IQ": {
+    "aliases": [],
+    "demonyms": ["iraqi", "iraqis"],
+    "abbrevs": [],
+    "regions": ["kurdistan region", "anbar", "basra province", "mosul region"]
+  },
+  "YE": {
+    "aliases": [],
+    "demonyms": ["yemeni", "yemenis"],
+    "abbrevs": [],
+    "regions": ["hodeidah", "marib"]
+  },
+  "SD": {
+    "aliases": [],
+    "demonyms": ["sudanese"],
+    "abbrevs": [],
+    "regions": ["darfur", "kordofan"]
+  },
+  "ET": {
+    "aliases": [],
+    "demonyms": ["ethiopian", "ethiopians"],
+    "abbrevs": [],
+    "regions": ["tigray", "amhara", "oromia"]
+  },
+  "VE": {
+    "aliases": [],
+    "demonyms": ["venezuelan", "venezuelans"],
+    "abbrevs": [],
+    "regions": ["zulia"]
+  },
+  "NZ": {
+    "aliases": ["new zealand"],
+    "demonyms": ["new zealander", "new zealanders", "kiwi"],
+    "abbrevs": [],
+    "regions": ["canterbury region", "otago"]
+  },
+  "HK": {
+    "aliases": ["hong kong"],
+    "demonyms": ["hong kongers"],
+    "abbrevs": [],
+    "regions": ["kowloon"]
+  },
+  "TW": {
+    "aliases": ["taiwan"],
+    "demonyms": ["taiwanese"],
+    "abbrevs": [],
+    "regions": []
+  }
+}
