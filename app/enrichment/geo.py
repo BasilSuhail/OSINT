@@ -37,11 +37,12 @@ from app.enrichment.geo_terms import (
     find_isos,
     leading_iso,
     normalise_keeping,
+    region_point_for,
 )
 
 #: Bumped with any change to weights, margin, or layer order. Stamped into
 #: payload.enrichment_meta so a re-run can be told apart from an old row.
-GEO_METHOD_VERSION: str = "geo.terms.v1.0"
+GEO_METHOD_VERSION: str = "geo.terms.v1.1"
 
 #: Score per term class when the match is in the title.
 TITLE_WEIGHTS: dict[TermClass, float] = {"name": 3.0, "abbrev": 3.0, "region": 2.0}
@@ -68,7 +69,7 @@ class GeoVerdict:
 
     #: ISO 3166-1 alpha-2, or None when the story has no resolvable country.
     iso: str | None
-    #: One of "term", "city", "desk", "ambiguous", "none".
+    #: One of "term", "region", "city", "desk", "ambiguous", "none".
     basis: str
     #: Matched city name, when one was found and agrees with ``iso``.
     city: str | None = None
@@ -223,6 +224,20 @@ def resolve_geo(
                 city=city.name,
                 lat=city.lat,
                 lon=city.lon,
+                runner_up=runner_up,
+            )
+        # No city, or a city in the wrong country. If the text named a
+        # region of the winning country — Wales, Bavaria, Kerala — pin
+        # there. Coarser than a city and still a true answer to "where",
+        # and since #719 a story with no point gets no dot at all, so
+        # this is the difference between a pin in Wales and nothing.
+        region = region_point_for(f"{title} {summary}".strip(), winner)
+        if region is not None:
+            return GeoVerdict(
+                iso=winner,
+                basis="region",
+                lat=region[0],
+                lon=region[1],
                 runner_up=runner_up,
             )
         return GeoVerdict(iso=winner, basis="term", runner_up=runner_up)
