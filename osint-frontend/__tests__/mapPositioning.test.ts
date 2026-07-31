@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isNews, positionForEvent } from "@/lib/mapPositioning"
+import { isNews, markerFamily, positionForEvent, shareBudget } from "@/lib/mapPositioning"
 import type { VisibleEvent } from "@/lib/queries"
 
 const CENTROIDS = new Map<string, [number, number]>([
@@ -88,5 +88,60 @@ describe("isNews", () => {
   it("does not count hazards or market rows", () => {
     expect(isNews(ev({ category: "hazard", source: "usgs-quake" }))).toBe(false)
     expect(isNews(ev({ category: "market", source: "yfinance" }))).toBe(false)
+  })
+})
+
+describe("shareBudget", () => {
+  it("does not let a large family zero out a smaller one", () => {
+    // The #721 shape: news arrives newer, GDELT in a daily batch.
+    const news = Array.from({ length: 330 }, (_, i) => `news${i}`)
+    const gdelt = Array.from({ length: 637 }, (_, i) => `gdelt${i}`)
+    const out = shareBudget(new Map([["news", news], ["gdelt", gdelt]]), 280)
+    const drawnGdelt = out.filter((x) => x.startsWith("gdelt")).length
+    expect(out).toHaveLength(280)
+    expect(drawnGdelt).toBeGreaterThan(0)
+    // Roughly even, rather than one family taking everything.
+    expect(drawnGdelt).toBeGreaterThan(100)
+  })
+
+  it("keeps each family's own order — newest first within a family", () => {
+    const out = shareBudget(new Map([["a", ["a0", "a1", "a2"]], ["b", ["b0", "b1"]]]), 10)
+    expect(out.filter((x) => x.startsWith("a"))).toEqual(["a0", "a1", "a2"])
+    expect(out.filter((x) => x.startsWith("b"))).toEqual(["b0", "b1"])
+  })
+
+  it("gives a short family's unused share back to the others", () => {
+    const out = shareBudget(new Map([["a", ["a0"]], ["b", ["b0", "b1", "b2", "b3"]]]), 5)
+    expect(out).toHaveLength(5)
+    expect(out.filter((x) => x.startsWith("b"))).toHaveLength(4)
+  })
+
+  it("spends the whole budget when there is enough to draw", () => {
+    const big = Array.from({ length: 500 }, (_, i) => `x${i}`)
+    expect(shareBudget(new Map([["x", big]]), 200)).toHaveLength(200)
+  })
+
+  it("returns everything when the budget exceeds what is available", () => {
+    const out = shareBudget(new Map([["a", ["a0", "a1"]], ["b", ["b0"]]]), 999)
+    expect(out).toHaveLength(3)
+  })
+
+  it("handles an exhausted or empty budget without looping", () => {
+    expect(shareBudget(new Map([["a", ["a0"]]]), 0)).toEqual([])
+    expect(shareBudget(new Map([["a", ["a0"]]]), -5)).toEqual([])
+    expect(shareBudget(new Map(), 100)).toEqual([])
+    expect(shareBudget(new Map([["a", []]]), 100)).toEqual([])
+  })
+})
+
+describe("markerFamily", () => {
+  it("separates GDELT from news so they cannot starve each other", () => {
+    expect(markerFamily(ev({ source: "gdelt", category: "geopolitical" }))).toBe("gdelt")
+    expect(markerFamily(ev({ source: "rss-bbc-uk", category: "news" }))).toBe("news")
+    expect(markerFamily(ev({ source: "rss-tass-en", category: "news" }))).toBe("news")
+  })
+
+  it("keeps other clusterable sources in their own family", () => {
+    expect(markerFamily(ev({ source: "uk-police", category: "crime" }))).toBe("uk-police")
   })
 })

@@ -36,3 +36,55 @@ export function positionForEvent(
   if (!c) return null
   return { lat: c[1], lon: c[0] }
 }
+
+/**
+ * Which competing family a clusterable row belongs to, for budget sharing.
+ *
+ * Only used to keep one family from starving another — it is not a
+ * category, and nothing downstream renders differently because of it.
+ */
+export function markerFamily(ev: VisibleEvent): string {
+  const source = (ev.source ?? "").toLowerCase()
+  if (source === "gdelt") return "gdelt"
+  if (isNews(ev)) return "news"
+  return source || "other"
+}
+
+/**
+ * Share `budget` across families by round-robin, newest-first within each.
+ *
+ * The map caps total markers, and the rows competing for that cap arrive
+ * ordered by `occurred_at` alone. That ordering is not neutral between
+ * sources: news is minute-fresh, while GDELT publishes in daily batches
+ * and so timestamps its newest row at midnight. Draining one flat
+ * `occurred_at`-ordered list therefore let news take every slot and cut
+ * GDELT to zero — 0 of 637 rows on a measured pull (#721).
+ *
+ * This is the same starvation the two-bucket split already fixed once for
+ * hazards; it reappeared one level down between news and GDELT. Rather
+ * than add a third special case, share what remains: take one row from
+ * each family in turn, so a family's share degrades gradually with
+ * pressure and no publishing cadence can zero another out. Families that
+ * run short give their remainder back to the others automatically.
+ */
+export function shareBudget<T>(byFamily: Map<string, T[]>, budget: number): T[] {
+  if (budget <= 0) return []
+  const queues = [...byFamily.values()].filter((q) => q.length > 0)
+  if (queues.length === 0) return []
+  const out: T[] = []
+  let cursor = 0
+  // Stop when the budget is spent or every queue is drained.
+  while (out.length < budget) {
+    let drewAny = false
+    for (const queue of queues) {
+      if (out.length >= budget) break
+      if (cursor < queue.length) {
+        out.push(queue[cursor])
+        drewAny = true
+      }
+    }
+    if (!drewAny) break
+    cursor += 1
+  }
+  return out
+}
