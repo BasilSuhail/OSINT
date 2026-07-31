@@ -140,3 +140,34 @@ def test_revived_feeds_use_live_urls() -> None:
     urls = {c.source: c.url for c in load_feed_configs(enabled_only=True)}
     assert urls["rss-kyiv-independent"] == "https://kyivindependent.com/feed/rss/"
     assert urls["rss-tribune-pk"] == "https://tribune.com.pk/feed/latest"
+
+
+def test_desk_country_map_covers_only_country_section_feeds() -> None:
+    from app.sources.rss_registry import desk_country_map
+
+    assert desk_country_map() == {
+        "rss-bbc-uk": "GB",
+        "rss-nation-kenya": "KE",
+        "rss-scmp-china": "CN",
+    }
+
+
+def test_world_desks_declare_no_desk_country() -> None:
+    from app.sources.rss_registry import desk_country_map
+
+    desks = desk_country_map()
+    for world_feed in (
+        "rss-nyt-world",
+        "rss-cbc-world",
+        "rss-dw-world",
+        "rss-straits-times-world",
+        "rss-bbc-world",
+    ):
+        assert world_feed not in desks
+
+
+def test_every_desk_country_is_a_valid_iso2() -> None:
+    from app.sources.rss_registry import desk_country_map
+
+    for source, iso in desk_country_map().items():
+        assert len(iso) == 2 and iso.isupper(), f"{source} has a malformed desk_country"

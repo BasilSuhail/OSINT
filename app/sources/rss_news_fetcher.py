@@ -17,14 +17,17 @@ helpers below.
 
 Country tagging:
 
-- Country is taken from the city matched in the headline (see
-  ``app/enrichment/city.py``). The feed's ``default_country`` only biases
-  that match (Cambridge UK > Cambridge MA on a BBC UK feed); it is **not**
-  used as a blanket fallback. National papers (Dawn, Geo) republish world
-  news, so feed-country tagging mislabelled foreign stories and polluted the
-  country panel — see migration ``0002`` and ``news_scope`` below.
-- No city match → country is None; downstream enrichment can attach one
-  later (URL hint, NER, etc.).
+- Country comes from ``app/enrichment/geo.py``, which scores country
+  names, demonyms, regions, then the city gazetteer, then the feed's
+  ``desk_country``. It answers "which country is this story about",
+  not "which city did the text name" — those diverge on most
+  foreign-desk journalism, which is what #717 measured.
+- A story naming several countries and being about none of them gets
+  no country at all. Absence is a real answer; roughly 40% of
+  headlines have no geography.
+- ``default_country`` still only biases city-name collisions
+  (Cambridge UK over Cambridge MA). It is never a blanket fallback —
+  see migration ``0002`` and ``news_scope``.
 
 Geolocation:
 
@@ -45,7 +48,7 @@ from typing import Any, Final
 import feedparser
 import httpx
 
-from app.enrichment.city import city_for
+from app.enrichment.geo import GEO_METHOD_VERSION, resolve_geo, resolved_news_scope
 from app.enrichment.ner import (
     NER_METHOD_VERSION,
     entities_to_payload,
@@ -110,6 +113,10 @@ class RssFeedConfig:
     default_country: str | None
     #: Pretty name for keyword tagging.
     pretty_name: str
+    #: ISO2 this feed's *section* is about, when the feed is a country desk
+    #: (BBC /news/uk → GB). Used only as the resolver's last resort. None
+    #: for world desks and general national papers. See #717.
+    desk_country: str | None = None
 
 
 def _strip_html(text: str) -> str:
@@ -156,37 +163,26 @@ def entry_to_event(
     # states its reason. The LLM batch pass upgrades it afterwards.
     verdict = news_severity.keyword_verdict(title, summary)
 
-    # Offline city pinpoint: scan title + summary for any of ~1.2 k known
-    # populated places. When the feed declares a default country, prefer
-    # cities in that country on name collisions (Cambridge UK > Cambridge MA
-    # on a BBC UK feed). See app/enrichment/city.py + issue #112.
-    city = city_for(f"{title} {summary}", country_hint=config.default_country)
-    lat = city.lat if city else None
-    lon = city.lon if city else None
-    # Country comes from the matched city only — never the feed's
-    # default_country. National papers (Dawn, Geo) republish world news
-    # (foreign quakes, Oscars); blanket-tagging uncitied items with the feed
-    # country polluted that country's panel (#166 stopped the map blob, but
-    # the rows still carried country='PK'). No city → no country.
-    country = city.iso if city else None
+    # Which country is this story *about*? Scored over title + summary:
+    # country names and demonyms, then regions, then the city gazetteer,
+    # then the feed's own desk. A story naming several countries and being
+    # about none of them resolves to nothing on purpose. See
+    # app/enrichment/geo.py + issue #717.
+    geo = resolve_geo(
+        title,
+        summary,
+        desk_country=config.desk_country,
+        city_hint=config.default_country,
+    )
+    country = geo.iso
+    lat = geo.lat
+    lon = geo.lon
 
-    # News scope classifier (#166): a Pakistani-paper headline mentioning
-    # a US politician is "world", not "local". Drives the map render —
-    # local stories pin at their city, world stories never fall back to
-    # the feed-country centroid (which created the 92-row blob over PK).
-    #
-    # - city in the feed's default_country → local
-    # - city in a different country → world
-    # - no city match but feed has a default_country → unknown
-    #   (treated like world on the map; surfaced on the country aggregate)
-    # - feed has no default_country (BBC World, Reuters World) → city
-    #   match counts as local to that city; otherwise unknown
-    if city is None:
-        news_scope = "unknown"
-    elif config.default_country is None or city.iso == config.default_country:
-        news_scope = "local"
-    else:
-        news_scope = "world"
+    # news_scope keeps its three values because MapPane reads it to decide
+    # the country-centroid fallback (#166). See
+    # app.enrichment.geo.resolved_news_scope for why "local" also requires
+    # coordinates, not just a matching country.
+    news_scope = resolved_news_scope(country, lat, lon, config.default_country)
 
     # VADER sentiment over title + summary. ``compound`` ∈ [-1, 1].
     # See app/enrichment/sentiment.py + issue #126. Label is a UI
@@ -205,7 +201,8 @@ def entry_to_event(
         "feed_name": config.pretty_name,
         "published_at": occurred_at.isoformat(),
         "guid": guid or None,
-        "city": city.name if city else None,
+        "city": geo.city,
+        "geo_basis": geo.basis,
         "image_url": image_url,
         "sentiment": sentiment.compound if sentiment else None,
         "sentiment_label": sentiment.label if sentiment else None,
@@ -215,6 +212,7 @@ def entry_to_event(
         "enrichment_meta": {
             "sentiment_model": SENTIMENT_METHOD_VERSION,
             "ner_model": NER_METHOD_VERSION if ner_available() else "none",
+            "geo_model": GEO_METHOD_VERSION,
         },
     }
 
@@ -304,6 +302,7 @@ class BBCUKNewsFetcher(RssNewsFetcher):
         url="https://feeds.bbci.co.uk/news/uk/rss.xml",
         default_country="GB",
         pretty_name="BBC UK",
+        desk_country="GB",
     )
 
 

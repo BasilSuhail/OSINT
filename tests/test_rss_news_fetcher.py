@@ -240,3 +240,155 @@ class TestFetcherHttp:
         )
         with pytest.raises(httpx.HTTPStatusError):
             BBCWorldNewsFetcher().fetch()
+
+
+def test_country_comes_from_the_resolver_not_the_city() -> None:
+    from app.sources.rss_news_fetcher import RssFeedConfig, entry_to_event
+
+    config = RssFeedConfig(
+        source="rss-test",
+        url="https://example.invalid/feed",
+        default_country=None,
+        pretty_name="Test",
+        desk_country=None,
+    )
+    entry = {
+        "title": "Can the West really decouple from China?",
+        "summary": "Written from London.",
+        "link": "https://example.invalid/1",
+    }
+    event = entry_to_event(entry, config=config, fetched_at=datetime(2026, 7, 30, tzinfo=UTC))
+
+    assert event is not None
+    assert event.country == "CN"
+    assert event.payload["geo_basis"] == "term"
+    # London is in the text but disagrees with the resolved country.
+    assert event.lat is None
+    assert event.lon is None
+
+
+def test_ambiguous_story_is_written_without_a_country() -> None:
+    from app.sources.rss_news_fetcher import RssFeedConfig, entry_to_event
+
+    config = RssFeedConfig(
+        source="rss-test",
+        url="https://example.invalid/feed",
+        default_country=None,
+        pretty_name="Test",
+        desk_country=None,
+    )
+    entry = {
+        "title": "France, Spain and Greece battle wildfires",
+        "summary": "",
+        "link": "https://example.invalid/2",
+    }
+    event = entry_to_event(entry, config=config, fetched_at=datetime(2026, 7, 30, tzinfo=UTC))
+
+    assert event is not None
+    assert event.country is None
+    assert event.payload["geo_basis"] == "ambiguous"
+    assert event.payload["news_scope"] == "unknown"
+
+
+def test_desk_country_tags_a_placeless_domestic_story() -> None:
+    from app.sources.rss_news_fetcher import RssFeedConfig, entry_to_event
+
+    config = RssFeedConfig(
+        source="rss-bbc-uk",
+        url="https://feeds.bbci.co.uk/news/uk/rss.xml",
+        default_country="GB",
+        pretty_name="BBC UK",
+        desk_country="GB",
+    )
+    entry = {
+        "title": "The Papers: 'Future looking droughtful' and 'Dinghy flotilla'",
+        "summary": "",
+        "link": "https://example.invalid/3",
+    }
+    event = entry_to_event(entry, config=config, fetched_at=datetime(2026, 7, 30, tzinfo=UTC))
+
+    assert event is not None
+    assert event.country == "GB"
+    assert event.payload["geo_basis"] == "desk"
+    # The desk fallback never carries coordinates, so this is NOT "local"
+    # despite matching the feed's own country — "local" is a promise of
+    # real coordinates that MapPane relies on to skip the country-centroid
+    # fallback. A coordless row goes to "world", which worldNewsAggregates
+    # is built to carry as a country-only aggregate (#717 whole-branch
+    # review, Critical 1 — see app.enrichment.geo.resolved_news_scope).
+    assert event.lat is None
+    assert event.lon is None
+    assert event.payload["news_scope"] == "world"
+
+
+def test_countried_coordless_term_row_is_world_not_local() -> None:
+    """A resolved country with no coordinates must never be "local".
+
+    Before #717, "local" was only reachable through a matched city, so
+    coordinates always came along for free. The term layer can now name
+    a country with no city at all. If such a row were tagged "local",
+    MapPane would fall back to the country centroid for it — stacking
+    every such row from every feed onto the same point, exactly the
+    #166 blob this branch must not reopen.
+    """
+    from app.sources.rss_news_fetcher import RssFeedConfig, entry_to_event
+
+    config = RssFeedConfig(
+        source="rss-test",
+        url="https://example.invalid/feed",
+        default_country="CN",
+        pretty_name="Test",
+        desk_country=None,
+    )
+    entry = {
+        "title": "Can the West really decouple from China?",
+        "summary": "Written from London.",
+        "link": "https://example.invalid/5",
+    }
+    event = entry_to_event(entry, config=config, fetched_at=datetime(2026, 7, 30, tzinfo=UTC))
+
+    assert event is not None
+    assert event.country == "CN"
+    assert event.lat is None
+    assert event.lon is None
+    assert event.payload["news_scope"] == "world"
+
+
+def test_news_scope_marks_foreign_coverage_as_world() -> None:
+    from app.sources.rss_news_fetcher import RssFeedConfig, entry_to_event
+
+    config = RssFeedConfig(
+        source="rss-geo-english",
+        url="https://www.geo.tv/rss/1/0",
+        default_country="PK",
+        pretty_name="Geo English",
+        desk_country=None,
+    )
+    entry = {
+        "title": "Ukrainian drone attacks reported overnight",
+        "summary": "",
+        "link": "https://example.invalid/4",
+    }
+    event = entry_to_event(entry, config=config, fetched_at=datetime(2026, 7, 30, tzinfo=UTC))
+
+    assert event is not None
+    assert event.country == "UA"
+    assert event.payload["news_scope"] == "world"
+
+
+def test_enrichment_meta_records_the_geo_method() -> None:
+    from app.enrichment.geo import GEO_METHOD_VERSION
+    from app.sources.rss_news_fetcher import RssFeedConfig, entry_to_event
+
+    config = RssFeedConfig(
+        source="rss-test",
+        url="https://example.invalid/feed",
+        default_country=None,
+        pretty_name="Test",
+        desk_country=None,
+    )
+    entry = {"title": "Karachi blast wounds five", "summary": "", "link": "x"}
+    event = entry_to_event(entry, config=config, fetched_at=datetime(2026, 7, 30, tzinfo=UTC))
+
+    assert event is not None
+    assert event.payload["enrichment_meta"]["geo_model"] == GEO_METHOD_VERSION

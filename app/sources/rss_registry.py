@@ -47,6 +47,7 @@ def load_feed_configs(*, enabled_only: bool = False) -> list[RssFeedConfig]:
                 url=entry["url"],
                 default_country=entry.get("default_country"),
                 pretty_name=entry["pretty_name"],
+                desk_country=entry.get("desk_country"),
             )
         )
     return out
@@ -80,6 +81,26 @@ def outlet_country_map() -> dict[str, str]:
     """
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
     return {entry["source"]: entry["country"] for entry in raw}
+
+
+def desk_country_map() -> dict[str, str]:
+    """Source slug → the country this feed's *section* is about, ISO2 (#717).
+
+    Distinct from both ``country`` (where the editorial voice sits) and
+    ``default_country`` (a geotagging bias). ``desk_country`` is the much
+    narrower claim that every story in the feed is about one country,
+    because the feed URL is that country's section — BBC's /news/uk, the
+    Nation's /kenya, SCMP's China desk.
+
+    ``app.enrichment.geo`` uses it as a last resort, only when a headline
+    yields no geography at all. Applied any wider it re-creates the #166
+    centroid blob, where a national paper's world coverage was stamped
+    with the paper's own flag.
+
+    Feeds without the key are absent from the mapping.
+    """
+    raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
+    return {entry["source"]: entry["desk_country"] for entry in raw if entry.get("desk_country")}
 
 
 def outlet_class_map() -> dict[str, str]:
