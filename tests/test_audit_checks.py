@@ -57,6 +57,46 @@ def test_partial_severity_coverage_is_a_finding():
     assert "severity_coverage" in _names(findings)
 
 
+def test_a_declared_coverage_floor_is_respected():
+    """FRED (#715): its first observations legitimately carry no severity.
+
+    `_series_to_events` emits None until a series has MIN_HISTORY + 1 points to
+    judge against, and the fetcher re-reads a rolling window, so roughly a
+    quarter of its rows are permanently unscored by design. Measured live: 635
+    of 874. Holding it to the 99% default would report a defect that is really
+    the cold-start rule working.
+    """
+    lenient = Expectation(
+        severity="continuous",
+        country="required",
+        feeds_composite=True,
+        severity_coverage_floor=0.70,
+    )
+    findings = checks.run_all(_stats(severity_present=727), lenient, now=NOW)
+
+    assert "severity_coverage" not in _names(findings)
+
+
+def test_a_declared_floor_still_catches_a_source_that_falls_below_it():
+    # The check has to stay able to fail, or the floor is just a mute button.
+    lenient = Expectation(
+        severity="continuous",
+        country="required",
+        feeds_composite=True,
+        severity_coverage_floor=0.70,
+    )
+    findings = checks.run_all(_stats(severity_present=500), lenient, now=NOW)
+
+    assert "severity_coverage" in _names(findings)
+
+
+def test_sources_without_a_declared_floor_keep_the_strict_default():
+    # One source relaxing its floor must not relax everyone else's.
+    findings = checks.run_all(_stats(severity_present=900), CONTINUOUS, now=NOW)
+
+    assert "severity_coverage" in _names(findings)
+
+
 def test_declared_continuous_but_only_two_values_is_a_finding():
     """Every RSS row in the system is 0.35 or 0.65."""
     findings = checks.run_all(

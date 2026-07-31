@@ -58,14 +58,18 @@ def check_no_data(stats: SourceStats, expectation: Expectation) -> Finding | Non
 def check_severity_coverage(stats: SourceStats, expectation: Expectation) -> Finding | None:
     if expectation.severity == "none":
         return None
-    if stats.severity_coverage >= MIN_COVERAGE:
+    #: A source may declare a lower floor when some of its rows legitimately
+    #: cannot be scored — FRED's cold starts (#715). It still has to clear the
+    #: floor it declared, so this relaxes the threshold without muting the check.
+    floor = expectation.severity_coverage_floor or MIN_COVERAGE
+    if stats.severity_coverage >= floor:
         return None
     return Finding(
         stats.source,
         "severity_coverage",
         f"declares severity {expectation.severity!r} but only "
         f"{stats.severity_present:,}/{stats.rows:,} rows carry one "
-        f"({_pct(stats.severity_coverage)})",
+        f"({_pct(stats.severity_coverage)}, floor {_pct(floor)})",
     )
 
 

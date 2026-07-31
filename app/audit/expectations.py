@@ -38,6 +38,11 @@ class Expectation:
     #: Whether the composite is supposed to read this source. False is not a
     #: judgement about worth — most sources legitimately sit outside it.
     feeds_composite: bool
+    #: Fraction of rows that must carry a severity before the coverage check
+    #: complains. Defaults to the strict shared threshold; a source only lowers
+    #: it when some of its rows legitimately cannot be scored, and says why in
+    #: the note. A floor is not a mute button — the check still fails below it.
+    severity_coverage_floor: float | None = None
     #: Why, when the declaration is surprising.
     note: str = ""
 
@@ -62,14 +67,19 @@ EXPECTATIONS: dict[str, Expectation] = {
         note="Drawdown against a rolling 30d max, saturating at 30%.",
     ),
     "fred": Expectation(
-        severity="none",
+        severity="continuous",
         country="required",
         feeds_composite=True,
+        severity_coverage_floor=0.70,
         note=(
-            "The fetcher sets severity None and its docstring says the composite "
-            "normalises it. The composite contains no such code, so this declares "
-            "the fetcher's actual behaviour and composite_reachability is left to "
-            "fail — which is the true statement about today."
+            "Severity is computed in the fetcher from each series' own recent "
+            "history (#684), and the panel covers 27 countries since #691 — 874 "
+            "rows, 576 distinct severities, no value holding more than 7%. The "
+            "floor is lowered because a quarter of the rows legitimately carry "
+            "none: _series_to_events emits None until a series has MIN_HISTORY + 1 "
+            "observations to judge against, and the fetcher re-reads a rolling "
+            "365-day window, so the first few points of each of the 54 series are "
+            "always unscored. Measured 635 of 874 (#715)."
         ),
     ),
     "polymarket": Expectation(
