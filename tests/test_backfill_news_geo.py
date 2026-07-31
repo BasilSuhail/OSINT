@@ -13,7 +13,10 @@ def test_resolves_from_stored_payload() -> None:
     }
     verdict = resolve_row(payload, default_country="GB", desk_country="GB")
     assert verdict.iso == "GB"
-    assert verdict.basis == "term"
+    # Wales carries a point, so this reads as "region" rather than a bare
+    # "term" — same country, plus somewhere to draw it (#717).
+    assert verdict.basis == "region"
+    assert verdict.lat is not None
 
 
 def test_desk_country_applies_to_a_placeless_stored_row() -> None:

@@ -41,6 +41,8 @@ from typing import Literal
 from app.enrichment.country import _names_by_iso
 
 _DATA_PATH = Path(__file__).parent / "data" / "geo_terms.json"
+#: Region → point, built by scripts/build_region_coords.py (#717).
+_REGION_POINTS_PATH = Path(__file__).parent / "data" / "region_coords.json"
 
 #: Term classes, in descending weight order. Scoring lives in ``geo.py``.
 TermClass = Literal["name", "abbrev", "region"]
@@ -204,6 +206,48 @@ def _find_isos_cached(text: str) -> dict[str, frozenset[TermClass]]:
         if hits:
             found.setdefault(term.iso, set()).add(term.term_class)
     return {iso: frozenset(classes) for iso, classes in found.items()}
+
+
+@lru_cache(maxsize=1)
+def _region_points() -> dict[str, dict[str, tuple[float, float]]]:
+    """ISO2 → normalised region name → (lat, lon).
+
+    Built by ``scripts/build_region_coords.py`` from Natural Earth's
+    admin-1 label anchors. Absent or unreadable, regions simply carry no
+    point and the resolver behaves as it did before (#717).
+    """
+    try:
+        with _REGION_POINTS_PATH.open(encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return {
+        iso: {name: (float(p[0]), float(p[1])) for name, p in regions.items()}
+        for iso, regions in raw.items()
+    }
+
+
+@lru_cache(maxsize=8192)
+def region_point_for(text: str, iso: str) -> tuple[float, float] | None:
+    """Coordinates of the largest region of ``iso`` named in ``text``.
+
+    Longest-first, so "north yorkshire" is preferred over "yorkshire"
+    when both appear. Returns None when the text names no region of that
+    country, or when the region has no point in the bundled table (20 of
+    276 do not — they keep a country and no pin, as before).
+    """
+    regions = _region_points().get(iso.upper()) if iso else None
+    if not regions or not text:
+        return None
+    haystack = _normalise(text)
+    for pattern, term in _compiled():
+        if term.term_class != "region" or term.iso != iso.upper():
+            continue
+        if pattern.search(haystack):
+            point = regions.get(term.text)
+            if point is not None:
+                return point
+    return None
 
 
 def find_isos(text: str) -> dict[str, frozenset[TermClass]]:

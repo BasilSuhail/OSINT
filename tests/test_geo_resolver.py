@@ -28,7 +28,10 @@ from app.enrichment.geo import resolve_geo
 def test_single_country_in_title_resolves(title: str, expected: str) -> None:
     verdict = resolve_geo(title)
     assert verdict.iso == expected
-    assert verdict.basis == "term"
+    # "term" or "region" — a story naming a region (Wales, Bavaria) resolves
+    # the same country and additionally earns a point, which reads as
+    # "region". The country is what this test is about.
+    assert verdict.basis in {"term", "region"}
 
 
 # --- Precision: the 12-of-19 wrong GB rows ------------------------------
@@ -272,3 +275,50 @@ def test_multi_candidate_tie_still_blocks_the_city_layer() -> None:
     verdict = resolve_geo("France, Spain and Greece battle wildfires", "Reported from London.")
     assert verdict.iso is None
     assert verdict.basis == "ambiguous"
+
+
+# --- Region coordinates (#717) -----------------------------------------
+
+
+def test_region_supplies_a_point_when_no_city_does() -> None:
+    verdict = resolve_geo("Drought declared across whole of Wales")
+    assert verdict.iso == "GB"
+    assert verdict.basis == "region"
+    # Mid-Wales, not the UK centroid and not London.
+    assert verdict.lat is not None and verdict.lon is not None
+    assert 51.0 < verdict.lat < 53.5
+    assert -5.0 < verdict.lon < -2.5
+
+
+def test_two_regions_of_one_country_pin_in_different_places() -> None:
+    kerala = resolve_geo("Kerala HC directs State to operationalise NDPS Courts")
+    karnataka = resolve_geo("Karnataka govt. sets up panel for recruitment reforms")
+    assert kerala.iso == karnataka.iso == "IN"
+    assert (kerala.lat, kerala.lon) != (karnataka.lat, karnataka.lon)
+
+
+def test_a_city_still_beats_its_region() -> None:
+    # The city gazetteer is more precise; a region is the fallback.
+    verdict = resolve_geo("Karachi blast wounds five")
+    assert verdict.basis == "city"
+    assert verdict.city == "Karachi"
+
+
+def test_country_without_a_region_keeps_no_point() -> None:
+    # "Britain" names no region, so there is nothing finer to pin on.
+    verdict = resolve_geo("A man died in Britain yesterday")
+    assert verdict.iso == "GB"
+    assert verdict.basis == "term"
+    assert verdict.lat is None
+
+
+def test_region_point_never_overrides_an_agreeing_city() -> None:
+    verdict = resolve_geo("Bavaria police close Munich road after crash")
+    assert verdict.iso == "DE"
+    assert verdict.basis == "term"
+    assert verdict.city == "Munich"
+
+
+def test_ambiguous_story_gets_no_region_point() -> None:
+    verdict = resolve_geo("Wales, Scotland and Bavaria all report drought")
+    assert verdict.lat is None
