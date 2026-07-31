@@ -21,7 +21,7 @@ import {
   type HazardIcon,
 } from "@/lib/hazardSymbols"
 import { hazardFootprintCollections } from "@/lib/mapFootprints"
-import { positionForEvent } from "@/lib/mapPositioning"
+import { markerFamily, positionForEvent, shareBudget } from "@/lib/mapPositioning"
 import { addMissingStyleImagePlaceholder } from "@/lib/mapStyleImages"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
@@ -352,17 +352,28 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     // non-clusterable rows (hazards, quakes, market, EONET) and spend the cap
     // only on the clusterable firehose.
     const priority: Positioned[] = []
-    const fill: Positioned[] = []
+    const fill = new Map<string, Positioned[]>()
     for (const ev of events) {
       // A news dot is a place; an unplaceable story gets no dot and stays
       // reachable by clicking its country. Hazards keep the country-centroid
       // fallback. See lib/mapPositioning.ts for why (#717).
       const at = positionForEvent(ev, centroids)
       if (!at) continue
-      ;(isClusterable(ev) ? fill : priority).push({ ev, lat: at.lat, lon: at.lon })
+      const row = { ev, lat: at.lat, lon: at.lon }
+      if (!isClusterable(ev)) {
+        priority.push(row)
+        continue
+      }
+      // Keep the clusterable firehose split by family. Draining it as one
+      // occurred_at-ordered list let minute-fresh news take every slot and
+      // cut GDELT's daily batch to zero (#721).
+      const family = markerFamily(ev)
+      const queue = fill.get(family)
+      if (queue) queue.push(row)
+      else fill.set(family, [row])
     }
-    // All priority rows, then clusterable until the total budget is spent.
-    return priority.concat(fill.slice(0, Math.max(0, MAX_MARKERS - priority.length)))
+    // All priority rows, then the remaining budget shared across families.
+    return priority.concat(shareBudget(fill, MAX_MARKERS - priority.length))
   }, [events, centroids])
 
   /** Footprints for all hazards. Non-selected ones are revealed on zoom-in
