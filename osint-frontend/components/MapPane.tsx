@@ -21,12 +21,8 @@ import {
   type HazardIcon,
 } from "@/lib/hazardSymbols"
 import { hazardFootprintCollections } from "@/lib/mapFootprints"
+import { positionForEvent } from "@/lib/mapPositioning"
 import { addMissingStyleImagePlaceholder } from "@/lib/mapStyleImages"
-import {
-  isWorldScopeNews,
-  worldNewsAggregates,
-  type WorldNewsAggregate,
-} from "@/lib/worldNewsAggregates"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
@@ -89,6 +85,7 @@ function isClusterable(ev: VisibleEvent): boolean {
   if (source === "gdelt") return true
   return false
 }
+
 
 /** Zoom → quantisation precision in degrees. Bigger cells when zoomed out,
  *  finer cells when zoomed in. At zoom ~7 the cell is small enough that
@@ -229,40 +226,6 @@ function ClusterChip({
   )
 }
 
-function WorldAggregateChip({
-  aggregate,
-  onClick,
-}: {
-  aggregate: WorldNewsAggregate
-  onClick: (aggregate: WorldNewsAggregate) => void
-}) {
-  const n = aggregate.events.length
-  // Proportional symbol, no digit (count in the right pane). Slate fill marks
-  // it as world-scope news, distinct from the source-coloured local clusters.
-  const size = circleSizeForCount(n)
-  return (
-    <Marker longitude={aggregate.lon} latitude={aggregate.lat} anchor="center">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClick(aggregate)
-        }}
-        className="rounded-full"
-        style={{
-          width: size,
-          height: size,
-          backgroundColor: "rgba(148,163,184,0.28)",
-          border: "1px solid rgba(203,213,225,0.7)",
-          cursor: "pointer",
-          padding: 0,
-        }}
-        aria-label={`${n} world news in ${aggregate.country} — open list`}
-      />
-    </Marker>
-  )
-}
-
 export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount, onSelectEvent, selectedEventId }: MapPaneProps) {
   const { events, windowEnd, total } = useEventsInWindow(useStore)
   const { byCountry } = useLatestScores()
@@ -391,40 +354,16 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     const priority: Positioned[] = []
     const fill: Positioned[] = []
     for (const ev of events) {
-      if (isWorldScopeNews(ev)) continue
-      let lat = ev.lat
-      let lon = ev.lon
-      if (lat == null || lon == null) {
-        // Skip the country-centroid fallback for clusterable rows whose
-        // payload.news_scope is "world" or "unknown" (#166). Dawn / Geo
-        // republish world news; stacking those at the PK centroid
-        // produced the 92-row blob screenshotted on the issue. Local-only
-        // news + non-news rows still get the centroid fallback so quakes /
-        // fires / hazards stay visible.
-        const p = (ev.payload ?? {}) as Record<string, unknown>
-        const scope = typeof p?.news_scope === "string" ? (p.news_scope as string) : null
-        const isWorldOrUnknownNews =
-          isClusterable(ev) && scope !== "local" && (ev.source ?? "").startsWith("rss-")
-        if (isWorldOrUnknownNews) continue
-        if (ev.country) {
-          const c = centroids.get(ev.country)
-          if (c) {
-            lon = c[0]
-            lat = c[1]
-          }
-        }
-      }
-      if (lat == null || lon == null) continue
-      ;(isClusterable(ev) ? fill : priority).push({ ev, lat, lon })
+      // A news dot is a place; an unplaceable story gets no dot and stays
+      // reachable by clicking its country. Hazards keep the country-centroid
+      // fallback. See lib/mapPositioning.ts for why (#717).
+      const at = positionForEvent(ev, centroids)
+      if (!at) continue
+      ;(isClusterable(ev) ? fill : priority).push({ ev, lat: at.lat, lon: at.lon })
     }
     // All priority rows, then clusterable until the total budget is spent.
     return priority.concat(fill.slice(0, Math.max(0, MAX_MARKERS - priority.length)))
   }, [events, centroids])
-
-  const worldAggregates = useMemo(
-    () => worldNewsAggregates(events, centroids),
-    [events, centroids],
-  )
 
   /** Footprints for all hazards. Non-selected ones are revealed on zoom-in
    *  (opacity ramps 4→6); the SELECTED event's footprint is tagged `selected`
@@ -519,12 +458,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       }
     },
     [mapRef, openClusterInPane],
-  )
-
-  /** Country news pile ("world" scope RSS) → its list in the right pane. */
-  const handleWorldAggregateClick = useCallback(
-    (a: WorldNewsAggregate) => openClusterInPane(a.country, a.events),
-    [openClusterInPane],
   )
 
   return (
@@ -660,13 +593,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         ))}
         {clusters.map((c) => (
           <ClusterChip key={c.key} cluster={c} onClick={handleClusterClick} />
-        ))}
-        {worldAggregates.map((aggregate) => (
-          <WorldAggregateChip
-            key={aggregate.country}
-            aggregate={aggregate}
-            onClick={handleWorldAggregateClick}
-          />
         ))}
       </MapGL>
 
