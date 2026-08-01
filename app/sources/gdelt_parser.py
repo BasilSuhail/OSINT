@@ -24,6 +24,14 @@ COL_EVENT_ROOT_CODE: Final[int] = 28
 COL_GOLDSTEIN: Final[int] = 30
 COL_NUM_MENTIONS: Final[int] = 31
 COL_AVG_TONE: Final[int] = 34
+#: ActionGeo_Type — GDELT's own statement of how precisely it placed the
+#: event. 1 country, 2 US state, 3 US city, 4 world city, 5 world state.
+#: Without it a "somewhere in Russia" coordinate is indistinguishable from
+#: a street in Kharkiv, and both get drawn as pins (#727).
+COL_ACTION_GEO_TYPE: Final[int] = 51
+#: ActionGeo_FullName — free text, "Tehran, Tehran, Iran" or bare "Iran".
+#: Named COL_ACTION_COUNTRY historically and read as a FIPS code, which it
+#: has never been; see the note in ``row_to_event``.
 COL_ACTION_COUNTRY: Final[int] = 52
 COL_ACTION_LAT: Final[int] = 56
 COL_ACTION_LON: Final[int] = 57
@@ -40,6 +48,50 @@ def _parse_optional_float(raw: str) -> float | None:
         return float(raw)
     except (TypeError, ValueError):
         return None
+
+
+def _parse_optional_int(raw: str) -> int | None:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+#: ActionGeo_Type values that mean GDELT placed the event in a settlement.
+_CITY_GEO_TYPES: Final[frozenset[int]] = frozenset({3, 4})  # US city, world city
+#: …in a first-order administrative area.
+_ADMIN_GEO_TYPES: Final[frozenset[int]] = frozenset({2, 5})  # US state, world state
+
+
+def geo_precision(geo_type: int | None, geo_name: str | None) -> str:
+    """How precisely GDELT placed this event: city, admin, country, unknown.
+
+    A country-level row's coordinate means "somewhere in Russia" — a real
+    number that is not a real place. Drawn as a pin it stacks with every
+    other unplaceable event from that country: measured over three days,
+    admin-level rows piled 21 deep on a single point and country-level rows
+    10 deep, while city-level rows spread 4,165 events over 1,085 distinct
+    places. Keeping the distinction is what lets the map draw only the
+    third kind (#727).
+
+    Falls back to counting the parts of ``ActionGeo_FullName`` when the type
+    column is absent, so rows stored before the type was read ("Tehran,
+    Tehran, Iran" → city, bare "Iran" → country) still classify.
+    """
+    if geo_type in _CITY_GEO_TYPES:
+        return "city"
+    if geo_type in _ADMIN_GEO_TYPES:
+        return "admin"
+    if geo_type == 1:
+        return "country"
+    if not geo_name:
+        return "unknown"
+    parts = [p for p in geo_name.split(",") if p.strip()]
+    if len(parts) >= 3:
+        return "city"
+    if len(parts) == 2:
+        return "admin"
+    return "country"
 
 
 def _goldstein_to_severity(goldstein: float) -> float:
@@ -88,12 +140,17 @@ def row_to_event(fields: list[str], *, fetched_at: datetime) -> Event | None:
     lat = _parse_optional_float(fields[COL_ACTION_LAT])
     lon = _parse_optional_float(fields[COL_ACTION_LON])
 
-    # GDELT's action-country column is a free-text "city, region, country"
-    # string when the event is geocoded to a city — `fips_to_iso` returns None
-    # in that common case. Fall back to a polygon lookup on the action lat/lon
-    # so events still get tagged with a country (and reach the composite).
+    # Column 52 is ActionGeo_FullName, not a FIPS code — "Tehran, Tehran,
+    # Iran" or a bare "Iran". `fips_to_iso` therefore returns None for
+    # essentially every row and the polygon lookup below is what actually
+    # assigns the country. The real ActionGeo_CountryCode is column 53;
+    # correcting that moves country attribution for every GDELT row, so it
+    # is deliberately left alone here and measured separately (#727).
     if country is None and lat is not None and lon is not None:
         country = country_for(lat, lon)
+    geo_name = fields[COL_ACTION_COUNTRY].strip() or None
+    geo_type = _parse_optional_int(fields[COL_ACTION_GEO_TYPE])
+
     num_mentions = _parse_optional_float(fields[COL_NUM_MENTIONS])
     avg_tone = _parse_optional_float(fields[COL_AVG_TONE])
     source_url = fields[COL_SOURCE_URL].strip() or None
@@ -105,7 +162,12 @@ def row_to_event(fields: list[str], *, fetched_at: datetime) -> Event | None:
         "goldstein": goldstein_raw,
         "num_mentions": num_mentions,
         "avg_tone": avg_tone,
-        "country_fips": fields[COL_ACTION_COUNTRY].strip() or None,
+        "geo_name": geo_name,
+        "geo_type": geo_type,
+        "geo_precision": geo_precision(geo_type, geo_name),
+        # Kept under its old (wrong) name so existing readers and stored rows
+        # stay consistent until they migrate to geo_name.
+        "country_fips": geo_name,
         "source_url": source_url,
     }
 

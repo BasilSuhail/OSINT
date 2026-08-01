@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { isNews, markerFamily, positionForEvent, shareBudget } from "@/lib/mapPositioning"
+import {
+  hasPlaceLevelCoords,
+  isNews,
+  markerFamily,
+  positionForEvent,
+  shareBudget,
+} from "@/lib/mapPositioning"
 import type { VisibleEvent } from "@/lib/queries"
 
 const CENTROIDS = new Map<string, [number, number]>([
@@ -143,5 +149,42 @@ describe("markerFamily", () => {
 
   it("keeps other clusterable sources in their own family", () => {
     expect(markerFamily(ev({ source: "uk-police", category: "crime" }))).toBe("uk-police")
+  })
+})
+
+describe("hasPlaceLevelCoords", () => {
+  const gdelt = (payload: Record<string, unknown>) =>
+    ev({ source: "gdelt", category: "geopolitical", lat: 60, lon: 100, payload })
+
+  it("keeps a city-level GDELT event", () => {
+    expect(hasPlaceLevelCoords(gdelt({ geo_precision: "city" }))).toBe(true)
+  })
+
+  it("drops country- and admin-level GDELT events", () => {
+    // Their coordinate means "somewhere in Russia" — 10 and 21 such rows
+    // stacked on a single point in the measured window.
+    expect(hasPlaceLevelCoords(gdelt({ geo_precision: "country" }))).toBe(false)
+    expect(hasPlaceLevelCoords(gdelt({ geo_precision: "admin" }))).toBe(false)
+    expect(hasPlaceLevelCoords(gdelt({ geo_precision: "unknown" }))).toBe(false)
+  })
+
+  it("classifies rows stored before the precision field existed", () => {
+    expect(hasPlaceLevelCoords(gdelt({ country_fips: "Tehran, Tehran, Iran" }))).toBe(true)
+    expect(hasPlaceLevelCoords(gdelt({ country_fips: "Iran" }))).toBe(false)
+    expect(hasPlaceLevelCoords(gdelt({ country_fips: "California, United States" }))).toBe(false)
+    expect(hasPlaceLevelCoords(gdelt({}))).toBe(false)
+  })
+
+  it("leaves every other source alone", () => {
+    // News is held to this standard by the resolver; hazards are coarse by
+    // nature and too few to stack.
+    expect(hasPlaceLevelCoords(ev({ source: "rss-bbc-uk", category: "news" }))).toBe(true)
+    expect(hasPlaceLevelCoords(ev({ source: "gdacs", category: "hazard" }))).toBe(true)
+    expect(hasPlaceLevelCoords(ev({ source: "usgs-quake", category: "hazard" }))).toBe(true)
+  })
+
+  it("keeps a country-level GDELT row off the map entirely", () => {
+    const at = positionForEvent(gdelt({ geo_precision: "country" }), CENTROIDS)
+    expect(at).toBeNull()
   })
 })

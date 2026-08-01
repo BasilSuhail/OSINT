@@ -150,3 +150,79 @@ class TestParseCsvBody:
         events = parse_csv_body(body, fetched_at=datetime.now(UTC))
         assert events[0].severity == 1.0  # most escalatory
         assert events[1].severity == pytest.approx(0.25)  # (10-5)/20
+
+
+# --- Geo precision (#727) ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "geo_type,expected",
+    [(3, "city"), (4, "city"), (2, "admin"), (5, "admin"), (1, "country")],
+)
+def test_geo_type_decides_precision(geo_type: int, expected: str) -> None:
+    from app.sources.gdelt_parser import geo_precision
+
+    # The name is deliberately misleading here — the type column wins.
+    assert geo_precision(geo_type, "Somewhere, Somewhere, Somewhere") == expected
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Tehran, Tehran, Iran", "city"),
+        ("Washington, District of Columbia, United States", "city"),
+        ("California, United States", "admin"),
+        ("Iran", "country"),
+        ("United States", "country"),
+        (None, "unknown"),
+        ("", "unknown"),
+    ],
+)
+def test_name_classifies_rows_stored_before_the_type_was_read(
+    name: str | None, expected: str
+) -> None:
+    from app.sources.gdelt_parser import geo_precision
+
+    assert geo_precision(None, name) == expected
+
+
+def test_row_carries_geo_precision_and_name() -> None:
+    from app.sources.gdelt_parser import MIN_FIELD_COUNT, row_to_event
+
+    fields = [""] * MIN_FIELD_COUNT
+    fields[0] = "1000000002"
+    fields[1] = "20260618"
+    fields[28] = "18"
+    fields[30] = "-8.0"
+    fields[31] = "12"
+    fields[51] = "4"  # world city
+    fields[52] = "Kharkiv, Kharkivs'ka Oblast', Ukraine"
+    fields[56] = "50.0"
+    fields[57] = "36.25"
+
+    event = row_to_event(fields, fetched_at=datetime.now(UTC))
+    assert event is not None
+    assert event.payload["geo_precision"] == "city"
+    assert event.payload["geo_type"] == 4
+    assert event.payload["geo_name"] == "Kharkiv, Kharkivs'ka Oblast', Ukraine"
+
+
+def test_a_country_level_row_is_marked_as_such() -> None:
+    # Its coordinate means "somewhere in Russia" — a real number that is not
+    # a real place. The map must be able to tell.
+    from app.sources.gdelt_parser import MIN_FIELD_COUNT, row_to_event
+
+    fields = [""] * MIN_FIELD_COUNT
+    fields[0] = "1000000003"
+    fields[1] = "20260618"
+    fields[28] = "18"
+    fields[30] = "-8.0"
+    fields[31] = "12"
+    fields[51] = "1"  # country
+    fields[52] = "Russia"
+    fields[56] = "60.0"
+    fields[57] = "100.0"
+
+    event = row_to_event(fields, fetched_at=datetime.now(UTC))
+    assert event is not None
+    assert event.payload["geo_precision"] == "country"
