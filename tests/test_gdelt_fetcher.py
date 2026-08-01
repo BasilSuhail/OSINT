@@ -19,7 +19,7 @@ from app.sources.gdelt_fetcher import (
     parse_lastupdate,
     read_zip_csv,
 )
-from app.sources.gdelt_parser import MIN_FIELD_COUNT
+from app.sources.gdelt_parser import GDELT_COLUMN_COUNT
 
 
 def _build_zip(csv_body: str, inner_filename: str = "export.CSV") -> bytes:
@@ -30,7 +30,7 @@ def _build_zip(csv_body: str, inner_filename: str = "export.CSV") -> bytes:
 
 
 def _conflict_row(global_event_id: str = "1000000001") -> str:
-    fields = [""] * MIN_FIELD_COUNT
+    fields = [""] * GDELT_COLUMN_COUNT
     fields[0] = global_event_id
     fields[1] = "20260618"
     fields[28] = "18"  # ASSAULT (conflict)
@@ -40,7 +40,8 @@ def _conflict_row(global_event_id: str = "1000000001") -> str:
     fields[52] = "UP"  # FIPS Ukraine
     fields[56] = "50.45"
     fields[57] = "30.52"
-    fields[59] = "https://example.com/a"
+    fields[59] = "20260618094500"  # DATEADDED
+    fields[60] = "https://example.com/a"
     return "\t".join(fields)
 
 

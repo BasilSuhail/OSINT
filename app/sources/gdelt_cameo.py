@@ -23,6 +23,53 @@ CAMEO_CONFLICT_ROOT_CODES: frozenset[int] = frozenset(
     }
 )
 
+#: CAMEO root code → a short human label, from the CAMEO 2.0 codebook's
+#: twenty root categories (Schrodt). GDELT's event export carries no
+#: headline — it is a structured record of actor, action and place — so
+#: without this a dot on the map renders as the literal string "gdelt"
+#: and tells the reader nothing (#733).
+#:
+#: All twenty are here, not just the conflict subset the composite keeps,
+#: so the label stays correct if the ingest filter is ever widened.
+CAMEO_ROOT_LABELS: dict[int, str] = {
+    1: "Public statement",
+    2: "Appeal",
+    3: "Express intent to cooperate",
+    4: "Consult",
+    5: "Diplomatic cooperation",
+    6: "Material cooperation",
+    7: "Provide aid",
+    8: "Yield",
+    9: "Investigate",
+    10: "Demand",
+    11: "Disapprove",
+    12: "Reject",
+    13: "Threaten",
+    14: "Protest",
+    15: "Exhibit force posture",
+    16: "Reduce relations",
+    17: "Coerce",
+    18: "Assault",
+    19: "Fight",
+    20: "Mass violence",
+}
+
+
+def cameo_root_label(event_root_code: str | int | None) -> str | None:
+    """Short human label for a CAMEO root code, or None if unrecognised.
+
+    Returning None rather than a placeholder keeps the caller honest: a
+    row whose code we cannot read should not claim to describe an action.
+    """
+    if event_root_code is None:
+        return None
+    try:
+        code = int(str(event_root_code).strip())
+    except (TypeError, ValueError):
+        return None
+    return CAMEO_ROOT_LABELS.get(code)
+
+
 #: FIPS 10-4 country code → ISO 3166-1 alpha-2 code. GDELT v2 reports the
 #: action-country in the legacy FIPS notation; the composite worker and the
 #: events table speak ISO. This table covers the panel countries plus the

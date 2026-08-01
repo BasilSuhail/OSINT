@@ -11,7 +11,18 @@ function itemTitle(ev: VisibleEvent): string {
     (typeof p.title === "string" && p.title) ||
     (typeof p.headline === "string" && p.headline) ||
     null
-  return title ?? ev.source
+  if (title) return title
+  // GDELT carries no headline — its export is a structured record of actor,
+  // action and place. Falling through to the source name printed the literal
+  // word "gdelt" on every row, which told the reader nothing. The CAMEO
+  // action plus where it happened is the most this record can honestly say
+  // (#733).
+  const label = typeof p.action_label === "string" ? p.action_label : null
+  if (label) {
+    const where = typeof p.geo_name === "string" ? p.geo_name.split(",")[0]?.trim() : null
+    return where ? `${label} · ${where}` : label
+  }
+  return ev.source
 }
 
 /** The right-pane view for a clicked map cluster / country news pile (#252):
