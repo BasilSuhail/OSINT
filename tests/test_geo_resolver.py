@@ -349,3 +349,39 @@ def test_a_placeable_nation_wins_over_england() -> None:
     assert verdict.iso == "GB"
     # Wales is the one that knows where it is.
     assert verdict.lat is not None
+
+
+# --- Territories that are places, not countries (#737) ------------------
+
+
+def test_a_palestinian_territory_carries_a_point() -> None:
+    verdict = resolve_geo("Palestinian children detained in West Bank raids")
+    assert verdict.iso == "PS"
+    assert verdict.lat is not None and verdict.lon is not None
+    # The West Bank, not the middle of a country.
+    assert 31.3 < verdict.lat < 32.6
+    assert 34.9 < verdict.lon < 35.6
+
+
+def test_gaza_and_the_west_bank_are_different_places() -> None:
+    gaza = resolve_geo("Palestinian families flee northern Gaza")
+    west_bank = resolve_geo("Palestinian villagers blocked in the West Bank")
+    assert gaza.lat is not None and west_bank.lat is not None
+    assert (gaza.lat, gaza.lon) != (west_bank.lat, west_bank.lon)
+
+
+def test_a_territory_point_never_becomes_a_country_pin() -> None:
+    # The England rule (#725): naming a whole country is not knowing where.
+    for title in [
+        "Israel says it killed three Hezbollah fighters",
+        "Ambulance delays across England",
+    ]:
+        assert resolve_geo(title).lat is None, title
+
+
+def test_a_passing_mention_of_a_territory_does_not_move_the_pin() -> None:
+    # China is the subject; Gaza is scenery. Pinning this in Gaza would be
+    # the "mentioned vs about" error the margin exists to prevent.
+    verdict = resolve_geo("China unveils new trade policy as Gaza ceasefire holds elsewhere")
+    assert verdict.iso == "CN"
+    assert verdict.lat is None
