@@ -3,8 +3,10 @@ import {
   hasPlaceLevelCoords,
   isNews,
   markerFamily,
+  padBounds,
   positionForEvent,
   shareBudget,
+  withinBounds,
 } from "@/lib/mapPositioning"
 import type { VisibleEvent } from "@/lib/queries"
 
@@ -186,5 +188,67 @@ describe("hasPlaceLevelCoords", () => {
   it("keeps a country-level GDELT row off the map entirely", () => {
     const at = positionForEvent(gdelt({ geo_precision: "country" }), CENTROIDS)
     expect(at).toBeNull()
+  })
+})
+
+describe("withinBounds", () => {
+  const uk = { west: -11, south: 49, east: 2, north: 61 }
+
+  it("keeps points inside and drops points outside", () => {
+    expect(withinBounds(55.95, -3.19, uk)).toBe(true) // Edinburgh
+    expect(withinBounds(51.5, -0.12, uk)).toBe(true) // London
+    expect(withinBounds(48.86, 2.35, uk)).toBe(false) // Paris — south of the box
+    expect(withinBounds(40.42, -3.7, uk)).toBe(false) // Madrid
+  })
+
+  it("handles a viewport crossing the antimeridian", () => {
+    // MapLibre reports west > east here; the longitude test must be an OR.
+    const pacific = { west: 170, south: -20, east: -170, north: 20 }
+    expect(withinBounds(-18, 178, pacific)).toBe(true) // Fiji
+    expect(withinBounds(0, -175, pacific)).toBe(true)
+    expect(withinBounds(0, 0, pacific)).toBe(false) // opposite side of the world
+    expect(withinBounds(0, 100, pacific)).toBe(false)
+  })
+
+  it("lets everything through once the box spans the globe", () => {
+    const world = { west: -200, south: -90, east: 200, north: 90 }
+    expect(withinBounds(0, 0, world)).toBe(true)
+    expect(withinBounds(-33.9, 151.2, world)).toBe(true)
+    expect(withinBounds(64, -21, world)).toBe(true)
+  })
+
+  it("rejects on latitude regardless of longitude", () => {
+    expect(withinBounds(80, -3, uk)).toBe(false)
+    expect(withinBounds(10, -3, uk)).toBe(false)
+  })
+})
+
+describe("padBounds", () => {
+  it("grows the box by a fraction of its own size", () => {
+    const p = padBounds({ west: -10, south: 50, east: 0, north: 60 }, 0.25)
+    expect(p.west).toBeCloseTo(-12.5)
+    expect(p.east).toBeCloseTo(2.5)
+    expect(p.south).toBeCloseTo(47.5)
+    expect(p.north).toBeCloseTo(62.5)
+  })
+
+  it("keeps latitude inside the poles", () => {
+    const p = padBounds({ west: -10, south: -88, east: 10, north: 88 }, 0.5)
+    expect(p.south).toBe(-90)
+    expect(p.north).toBe(90)
+  })
+
+  it("pads a box that crosses the antimeridian by its true width", () => {
+    // 170 to -170 is 20 degrees wide, not 340.
+    const p = padBounds({ west: 170, south: -10, east: -170, north: 10 }, 0.25)
+    expect(p.west).toBeCloseTo(165)
+    expect(p.east).toBeCloseTo(-165)
+  })
+
+  it("admits a point just outside the raw viewport, so panning does not flicker", () => {
+    const raw = { west: -11, south: 49, east: 2, north: 61 }
+    const justOutside = { lat: 62, lon: 0 }
+    expect(withinBounds(justOutside.lat, justOutside.lon, raw)).toBe(false)
+    expect(withinBounds(justOutside.lat, justOutside.lon, padBounds(raw))).toBe(true)
   })
 })
