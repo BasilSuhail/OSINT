@@ -29,12 +29,40 @@ export function positionForEvent(
   ev: VisibleEvent,
   centroids: Map<string, [number, number]>,
 ): { lat: number; lon: number } | null {
+  if (!hasPlaceLevelCoords(ev)) return null
   if (ev.lat != null && ev.lon != null) return { lat: ev.lat, lon: ev.lon }
   if (isNews(ev)) return null
   if (!ev.country) return null
   const c = centroids.get(ev.country)
   if (!c) return null
   return { lat: c[1], lon: c[0] }
+}
+
+/**
+ * Does this row's coordinate mean a place, or just a country?
+ *
+ * GDELT states how precisely it geocoded each event, and a country-level
+ * row's lat/lon means "somewhere in Russia" — a real number that is not a
+ * real place. Drawn as a pin it stacks with every other unplaceable event
+ * from that country. Measured over three days: admin-level rows piled 21
+ * deep on one point and country-level rows 10 deep, against 3.8 for
+ * city-level. Those piles are the large circles on the map (#727).
+ *
+ * Only GDELT is filtered here. News carries no such flag and is already
+ * held to the same standard by the resolver (#717). Hazards are coarse by
+ * nature — an epicentre or a fire perimeter is not a town — and a handful
+ * of them never stacks, so they are left alone.
+ */
+export function hasPlaceLevelCoords(ev: VisibleEvent): boolean {
+  if ((ev.source ?? "").toLowerCase() !== "gdelt") return true
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  const precision = typeof p.geo_precision === "string" ? p.geo_precision : null
+  if (precision) return precision === "city"
+  // Rows stored before the precision was recorded: ActionGeo_FullName is
+  // "Tehran, Tehran, Iran" for a city and a bare "Iran" for a country.
+  const name = typeof p.geo_name === "string" ? p.geo_name : p.country_fips
+  if (typeof name !== "string" || !name) return false
+  return name.split(",").filter((s) => s.trim()).length >= 3
 }
 
 /**
