@@ -87,10 +87,21 @@ Single rule: every event has a stable `(source, source_event_id)` pair. Inserts 
 
 ```sql
 INSERT INTO events (source, source_event_id, ...) VALUES (...)
-ON CONFLICT (source, source_event_id) DO NOTHING;
+ON CONFLICT (source, source_event_id) DO UPDATE ...;
 ```
 
 The `UNIQUE INDEX events_source_id_idx (source, source_event_id)` enforces it.
+Conflict refreshes update changing source fields without creating another row.
+Geography has two ownership rules:
+
+- RSS fetchers run the news resolver before persistence, so their incoming
+  `country`, `lat`, and `lon` replace the stored values even when null. A null
+  means the latest text withdrew an old location.
+- Other sources may acquire geography after ingestion. Their incoming nulls
+  preserve the stored enrichment, while a supplied position still wins.
+
+Payload refreshes shallow-merge incoming keys over the stored object so later
+enrichment such as hazard footprints is not erased by a repeated snapshot.
 
 Per-source dedup-key recipe:
 
