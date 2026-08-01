@@ -7,6 +7,7 @@ beat task in `app.tasks` and by the `make journal` CLI.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -29,16 +30,27 @@ logger = logging.getLogger(__name__)
 _SCORE_NAME = "composite"
 
 
-def _journal_daily_body() -> dict[str, Any]:
+def _journal_daily_body(*, now: datetime | None = None) -> dict[str, Any]:
     """Emit + grade once; returns counters for logging/inspection."""
     from app.jobs.heartbeat import job_run
 
     factory = sessionmaker(bind=get_engine(), expire_on_commit=False, future=True)
     with job_run("journal", session_factory=factory):
-        return _journal_daily_inner()
+        return _journal_daily_inner(now=now)
 
 
-def _journal_daily_inner() -> dict[str, Any]:
+def _journal_daily_inner(*, now: datetime | None = None) -> dict[str, Any]:
+    """``now`` overrides the issuance clock, defaulting to the real one.
+
+    The hindcast guard in ``predictions_from_scores`` compares each score's
+    month against the issuance month, so whichever clock this stage reads
+    decides what gets issued. Taking it as a parameter — the way
+    ``_cluster_stories_body`` and ``_disagreement_body`` already do — lets a
+    caller hold all three stages to one clock. Without it a test could pin
+    the first two and leave this one reading the wall clock, which is how
+    #729 passed for three weeks and then failed permanently at a month
+    boundary.
+    """
     engine = get_engine()
     with Session(engine) as session:
         scores = [
@@ -68,7 +80,7 @@ def _journal_daily_inner() -> dict[str, Any]:
             label=f"{_SCORE_NAME} {DEFAULT_METHOD_VERSION}",
         )
         if refusal is None:
-            issued = upsert_predictions(predictions_from_scores(scores), session)
+            issued = upsert_predictions(predictions_from_scores(scores, now=now), session)
         else:
             issued = 0
             logger.warning("journal: not issuing composite predictions — %s", refusal)
@@ -91,7 +103,7 @@ def _journal_daily_inner() -> dict[str, Any]:
             ).scalars()
         )
         issued_disagreement = upsert_predictions(
-            predictions_from_scores(exposures, source="disagreement"), session
+            predictions_from_scores(exposures, source="disagreement", now=now), session
         )
 
         graded = 0
