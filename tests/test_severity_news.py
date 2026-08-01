@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from app.severity import news, scale
+from app.severity.news import keyword_verdict
 
 
 class TestParsing:
@@ -140,3 +141,70 @@ class TestRubricNumeralsAreNotInventions:
         )
 
         assert verdict is None
+
+
+# --- Word boundaries and the missing tenses (#739) ----------------------
+
+
+@pytest.mark.parametrize(
+    "headline",
+    [
+        "Company sets deadline for merger talks",
+        "Software update improves battery life",
+        "Met Office issues weather warning for Tuesday",
+        "Toward a warmer relationship with Beijing",
+        "Steward guides crowd through the gates",
+    ],
+)
+def test_a_spelling_coincidence_is_not_violence(headline: str) -> None:
+    # A plain substring test read "dead" inside deadline and "war" inside
+    # software, warning and toward — 875 stories in a week raised on a
+    # coincidence.
+    assert keyword_verdict(headline, "").value == 0.15
+
+
+@pytest.mark.parametrize(
+    "headline",
+    [
+        "Israeli Forces Kill Three Palestinians in Gaza",
+        "Hamas fighters kill three Israelis in Ashkelon",
+        "Man charged with murder after city centre incident",
+        "Gunman kills two at railway station",
+        "Winner Dom Taylor dies at 44",
+    ],
+)
+def test_a_death_reads_as_a_death_in_any_tense(headline: str) -> None:
+    assert keyword_verdict(headline, "").value >= scale.LETHAL_FLOOR
+
+
+@pytest.mark.parametrize(
+    "headline",
+    [
+        "Blast rips through market, dozens hurt",
+        "Police investigate rape allegation",
+        "Terror suspect arrested at airport",
+        "Two hostages freed after standoff",
+    ],
+)
+def test_violence_without_a_death_still_registers(headline: str) -> None:
+    assert keyword_verdict(headline, "").value == 0.50
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        (
+            "Israeli forces kill three Palestinians in Gaza",
+            "Hamas fighters kill three Israelis in Ashkelon",
+        ),
+        (
+            "Russian strike kills civilians in Kharkiv",
+            "Ukrainian drone kills civilians in Belgorod",
+        ),
+        ("US airstrike kills 12 in Yemen", "Houthi missile kills 12 in Saudi Arabia"),
+    ],
+)
+def test_the_same_act_scores_the_same_in_either_direction(a: str, b: str) -> None:
+    # The lists name what happened, never who did it. Harm is harm whoever
+    # caused it, and the score must not depend on which side is the actor.
+    assert keyword_verdict(a, "").value == keyword_verdict(b, "").value

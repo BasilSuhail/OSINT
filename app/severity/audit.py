@@ -60,12 +60,16 @@ def looks_lethal(headline: str) -> bool:
     sheet would measure precision while claiming to measure missed harm.
 
     `news._LETHAL_WORDS` owes nothing to the model — it is the fixed list the
-    ingest-path fallback uses. It has blind spots (#649 found `dies at 44`,
-    since the list carries `died` and not `dies`), so this block is *enriched*,
-    never exhaustive, and the random block stays to cover what it cannot see.
+    ingest-path fallback uses. It is still *enriched*, never exhaustive: a
+    death can be reported without any of its words, as "Body found in river"
+    or "Toll rises to nine" do, so the random block stays to cover what this
+    cannot see.
+
+    Matched through the same word-boundary pattern the fallback uses, so
+    the sheet is not filled with headlines whose only claim to death is the
+    word *deadline* (#739).
     """
-    lowered = headline.lower()
-    return any(word in lowered for word in news._LETHAL_WORDS)
+    return news._pattern(news._LETHAL_WORDS).search(headline.lower()) is not None
 
 
 def _band_guide() -> list[str]:

@@ -60,10 +60,15 @@ class TestSelectingTheLethalBlock:
         assert audit.looks_lethal.__code__.co_argcount == 1
 
     def test_the_keyword_rule_has_blind_spots_and_that_is_why_both_blocks_exist(self):
-        # #649 found this one: the list carries `died`, not `dies`. The lethal
-        # block is enriched, never exhaustive — the random block is what keeps
-        # the sheet honest about what the keyword rule cannot see.
-        assert audit.looks_lethal("'Five Star Chef' winner Dom Taylor dies at 44") is False
+        # #649 found `dies at 44`, which #739 closed by adding the tense.
+        # The point survives the fix: a death can be reported without any
+        # word from the list, and no list closes that. The lethal block is
+        # enriched, never exhaustive — the random block is what keeps the
+        # sheet honest about what the keyword rule cannot see.
+        assert audit.looks_lethal("Body found in river after two-day search") is False
+        assert audit.looks_lethal("Toll rises to nine after building collapse") is False
+        # And the fix itself holds: the tense that started #649 is now seen.
+        assert audit.looks_lethal("'Five Star Chef' winner Dom Taylor dies at 44") is True
 
 
 class TestScoringTheTwoBlocks:
