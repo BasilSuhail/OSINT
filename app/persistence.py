@@ -15,7 +15,7 @@ from __future__ import annotations
 import contextlib
 from typing import Any, Final
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -62,13 +62,26 @@ _REFRESH_COLS: Final = (
     "keywords",
 )
 
-#: Columns refreshed only when the incoming row actually carries a value. Geo
-#: can be derived after ingestion — `enrich_country.py` reverse-geocodes country
-#: from lat/lon, `backfill_news_cities.py` writes a city match onto all three —
-#: and the feed that publishes the item sends none of it. Replacing on refresh
-#: therefore undid that work for any row still live in its feed (#618). A source
-#: that does report a position still wins, so a moving cyclone keeps moving.
-_COALESCE_COLS: Final = ("country", "lat", "lon")
+#: Geography columns have source-specific ownership. RSS rows replace them
+#: because the news resolver has already produced an authoritative verdict.
+#: Other feeds may acquire geography after ingestion, so their nulls preserve
+#: that enrichment (#618). A supplied position always wins.
+_GEO_COLS: Final = ("country", "lat", "lon")
+
+
+def _geo_refresh(excluded: Any, col: str) -> Any:
+    """Refresh one geography column under the source's ownership rule.
+
+    RSS rows run the news resolver before persistence, so a null is an
+    authoritative withdrawal: the latest text no longer supports the old
+    country or point. Other sources can acquire geography after ingestion;
+    for them an upstream null still means "not supplied" and must preserve the
+    enriched value (#618).
+    """
+    return case(
+        (excluded.source.like("rss-%"), excluded[col]),
+        else_=func.coalesce(excluded[col], getattr(EventRow, col)),
+    )
 
 
 #: Payload keys written AFTER ingestion — by the enrichment tasks and the
@@ -141,9 +154,7 @@ def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) ->
         )
 
     refreshed: dict[str, Any] = {col: base.excluded[col] for col in _REFRESH_COLS}
-    refreshed.update(
-        {col: func.coalesce(base.excluded[col], getattr(EventRow, col)) for col in _COALESCE_COLS}
-    )
+    refreshed.update({col: _geo_refresh(base.excluded, col) for col in _GEO_COLS})
     refreshed["payload"] = _payload_refresh(base.excluded, dialect)
     stmt = base.on_conflict_do_update(
         index_elements=["source", "source_event_id"],
