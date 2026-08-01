@@ -163,3 +163,70 @@ export function withinBounds(lat: number, lon: number, bounds: MapBounds): boole
   const x = ((lon + 180) % 360 + 360) % 360 - 180
   return west <= east ? x >= west && x <= east : x >= west || x <= east
 }
+
+/** A point with whatever payload the caller is grouping. */
+export interface Located {
+  lat: number
+  lon: number
+}
+
+/** The place a row claims to be, lowercased, or null if it names none. */
+export function placeName(ev: VisibleEvent): string | null {
+  const p = (ev.payload ?? {}) as Record<string, unknown>
+  // GDELT: "Tehran, Tehran, Iran" — the settlement is the first part.
+  const geo = typeof p.geo_name === "string" ? p.geo_name.split(",")[0] : null
+  const city = typeof p.city === "string" ? p.city : null
+  const name = (geo || city || "").trim().toLowerCase()
+  return name || null
+}
+
+/** Kilometres between two points. Equirectangular — exact enough under a
+ *  few hundred km, which is all this is asked to judge. */
+export function approxKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const dLat = bLat - aLat
+  const dLon = (bLon - aLon) * Math.cos(((aLat + bLat) / 2) * (Math.PI / 180))
+  return Math.hypot(dLat, dLon) * 111.19
+}
+
+/**
+ * Merge marks that are the same named place, sitting close together.
+ *
+ * GDELT ships its own coordinate per event; news rows take theirs from
+ * the bundled gazetteer. The two never agree exactly, so every city both
+ * sources cover drew as a pair of overlapping circles — London 250 m
+ * apart, and the same for Kyiv, Moscow, Delhi, Tehran and every other
+ * busy city (#735).
+ *
+ * Both tests are needed, and neither alone is safe:
+ *
+ *   London / Twickenham   different names, 20 km apart — stay separate.
+ *                         A radius wide enough to merge London's own
+ *                         spread would have swallowed Twickenham too.
+ *   Springfield x3        same name, different states — stay separate.
+ *                         There are many Springfields.
+ *   London / London       same name, 250 m apart — one mark.
+ *
+ * Rows naming no place are never merged: without a name there is no
+ * evidence they are the same place, and guessing from distance alone is
+ * how distinct neighbourhoods get collapsed.
+ */
+export function mergeSamePlace<T extends Located & { ev: VisibleEvent }>(
+  items: T[],
+  toleranceKm = 25,
+): T[][] {
+  const groups: { name: string; lat: number; lon: number; members: T[] }[] = []
+  const out: T[][] = []
+  for (const item of items) {
+    const name = placeName(item.ev)
+    if (!name) {
+      out.push([item])
+      continue
+    }
+    const hit = groups.find(
+      (g) => g.name === name && approxKm(g.lat, g.lon, item.lat, item.lon) <= toleranceKm,
+    )
+    if (hit) hit.members.push(item)
+    else groups.push({ name, lat: item.lat, lon: item.lon, members: [item] })
+  }
+  return out.concat(groups.map((g) => g.members))
+}
