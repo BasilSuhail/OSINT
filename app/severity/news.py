@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from functools import lru_cache
 from typing import Any
 
 from app.brain import numerals
@@ -215,42 +216,124 @@ def _guarded(value: float, rationale: str, *, headline: str, method: str) -> sca
     return scale.Verdict(value=value, rationale=rationale.strip(), method=method)
 
 
-#: Words that indicate someone died. Distinct from "violent but not fatal" so
-#: the fallback can respect the lethal floor instead of collapsing everything
-#: into one value.
+#: Words that indicate someone died.
+#:
+#: Matched on word boundaries, never as substrings. A plain ``in`` test
+#: read "dead" inside *deadline* and "war" inside *software*, *warning*
+#: and *toward* — 875 stories in a week raised to violent or lethal by a
+#: spelling coincidence, while "Israeli Forces Kill Three Palestinians"
+#: sat at 0.15 because the list held only the past tense (#739).
+#:
+#: Harm is harm whoever caused it. These lists name what happened, never
+#: who did it, so the same act scores the same from any source and in
+#: either direction.
 _LETHAL_WORDS: tuple[str, ...] = (
     "killed",
+    "kill",
+    "kills",
+    "killing",
+    "killings",
     "dead",
+    "death",
     "deaths",
-    "fatal",
-    "massacre",
     "died",
+    "dies",
+    "dying",
+    "fatal",
+    "fatally",
+    "fatality",
+    "fatalities",
+    "massacre",
+    "massacred",
     "slain",
+    "murder",
+    "murders",
+    "murdered",
+    "assassinated",
+    "assassination",
+    "homicide",
+    "manslaughter",
+    "executed",
+    "beheaded",
+    "lynched",
 )
 
 _VIOLENT_WORDS: tuple[str, ...] = (
     "attack",
+    "attacks",
+    "attacked",
     "explosion",
+    "explosions",
+    "blast",
+    "blasts",
+    "bomb",
+    "bombs",
     "bombing",
+    "bombings",
+    "bombed",
     "shooting",
+    "shootings",
+    "shot",
+    "gunfire",
+    "gunmen",
+    "gunman",
     "stabbed",
+    "stabbing",
+    "rape",
+    "raped",
+    "rapes",
+    "torture",
+    "tortured",
+    "terror",
+    "terrorist",
+    "terrorists",
+    "terrorism",
+    "kidnapped",
+    "kidnapping",
+    "abducted",
+    "hostage",
+    "hostages",
     "wounded",
     "injured",
-    "gunmen",
     "airstrike",
+    "airstrikes",
+    "shelling",
     "war",
+    "wars",
 )
 
 _DISRUPTION_WORDS: tuple[str, ...] = (
     "protest",
+    "protests",
+    "protesters",
     "strike",
+    "strikes",
     "evacuated",
+    "evacuation",
     "earthquake",
     "flood",
+    "floods",
+    "flooding",
     "wildfire",
+    "wildfires",
     "riot",
+    "riots",
     "sanctions",
+    "curfew",
+    "looting",
 )
+
+
+@lru_cache(maxsize=3)
+def _pattern(words: tuple[str, ...]) -> re.Pattern[str]:
+    """One alternation over a word list, anchored on word boundaries.
+
+    Built once per list. Longest first so the rationale names the fuller
+    match — "bombing" rather than "bomb" — which is what a reader checking
+    the score wants to see.
+    """
+    ordered = sorted(words, key=len, reverse=True)
+    return re.compile(r"\b(" + "|".join(re.escape(w) for w in ordered) + r")\b")
 
 
 def keyword_verdict(title: str, summary: str) -> scale.Verdict:
@@ -262,27 +345,34 @@ def keyword_verdict(title: str, summary: str) -> scale.Verdict:
     """
     text = f"{title} {summary}".lower()
 
-    for word in _LETHAL_WORDS:
-        if word in text:
-            return scale.Verdict(
-                value=scale.LETHAL_FLOOR,
-                rationale=f"headline reports death ({word!r}) — keyword rule, not yet graded",
-                method=FALLBACK_METHOD,
-            )
-    for word in _VIOLENT_WORDS:
-        if word in text:
-            return scale.Verdict(
-                value=0.50,
-                rationale=f"headline reports violence ({word!r}) — keyword rule, not yet graded",
-                method=FALLBACK_METHOD,
-            )
-    for word in _DISRUPTION_WORDS:
-        if word in text:
-            return scale.Verdict(
-                value=0.30,
-                rationale=f"headline reports disruption ({word!r}) — keyword rule, not yet graded",
-                method=FALLBACK_METHOD,
-            )
+    lethal = _pattern(_LETHAL_WORDS).search(text)
+    if lethal:
+        return scale.Verdict(
+            value=scale.LETHAL_FLOOR,
+            rationale=(
+                f"headline reports death ({lethal.group(1)!r}) — keyword rule, not yet graded"
+            ),
+            method=FALLBACK_METHOD,
+        )
+    violent = _pattern(_VIOLENT_WORDS).search(text)
+    if violent:
+        return scale.Verdict(
+            value=0.50,
+            rationale=(
+                f"headline reports violence ({violent.group(1)!r}) — keyword rule, not yet graded"
+            ),
+            method=FALLBACK_METHOD,
+        )
+    disruption = _pattern(_DISRUPTION_WORDS).search(text)
+    if disruption:
+        return scale.Verdict(
+            value=0.30,
+            rationale=(
+                f"headline reports disruption ({disruption.group(1)!r})"
+                " — keyword rule, not yet graded"
+            ),
+            method=FALLBACK_METHOD,
+        )
     return scale.Verdict(
         value=0.15,
         rationale="no harm indicator in the headline — keyword rule, not yet graded",
