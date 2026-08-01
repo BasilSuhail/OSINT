@@ -78,7 +78,7 @@ def test_journal_issues_disagreement_predictions(db_session: Session) -> None:
         disagreement_task._disagreement_body(now=NOW)
 
     with patch.object(journal_task, "get_engine", return_value=engine):
-        counters = journal_task._journal_daily_inner()
+        counters = journal_task._journal_daily_inner(now=NOW)
 
     rows = (
         db_session.execute(select(PredictionRow).where(PredictionRow.source == "disagreement"))
@@ -110,7 +110,7 @@ def test_hindcast_guard_applies_to_disagreement(db_session: Session) -> None:
 
     engine = db_session.get_bind()
     with patch.object(journal_task, "get_engine", return_value=engine):
-        journal_task._journal_daily_inner()
+        journal_task._journal_daily_inner(now=NOW)
 
     rows = (
         db_session.execute(select(PredictionRow).where(PredictionRow.source == "disagreement"))
