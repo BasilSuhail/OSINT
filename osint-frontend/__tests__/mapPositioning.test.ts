@@ -3,7 +3,9 @@ import {
   hasPlaceLevelCoords,
   isNews,
   markerFamily,
+  mergeSamePlace,
   padBounds,
+  placeName,
   positionForEvent,
   shareBudget,
   withinBounds,
@@ -250,5 +252,78 @@ describe("padBounds", () => {
     const justOutside = { lat: 62, lon: 0 }
     expect(withinBounds(justOutside.lat, justOutside.lon, raw)).toBe(false)
     expect(withinBounds(justOutside.lat, justOutside.lon, padBounds(raw))).toBe(true)
+  })
+})
+
+describe("mergeSamePlace", () => {
+  const at = (lat: number, lon: number, place: string | null, key = "geo_name") =>
+    ({
+      ev: ev({ payload: place ? { [key]: place } : {} }),
+      lat,
+      lon,
+    })
+
+  it("merges one city that two sources place slightly differently", () => {
+    // GDELT's London and the gazetteer's London, 250m apart.
+    const groups = mergeSamePlace([
+      at(51.5, -0.117, "London, London, City of, United Kingdom"),
+      at(51.502, -0.119, null, "city"),
+    ])
+    // second row names London via payload.city
+    const named = mergeSamePlace([
+      at(51.5, -0.117, "London, London, City of, United Kingdom"),
+      { ev: ev({ payload: { city: "London" } }), lat: 51.502, lon: -0.119 },
+    ])
+    expect(named).toHaveLength(1)
+    expect(named[0]).toHaveLength(2)
+    expect(groups.length).toBeGreaterThan(0)
+  })
+
+  it("keeps a different place in the same city apart", () => {
+    // Twickenham is 20km from London. A radius wide enough to merge
+    // London's own spread would have swallowed it.
+    const groups = mergeSamePlace([
+      at(51.5, -0.117, "London, London, City of, United Kingdom"),
+      at(51.433, -0.317, "Twickenham, Richmond, United Kingdom"),
+      at(51.5, -0.067, "Bermondsey, Southwark, United Kingdom"),
+    ])
+    expect(groups).toHaveLength(3)
+  })
+
+  it("keeps same-named places in different regions apart", () => {
+    // There are many Springfields.
+    const groups = mergeSamePlace([
+      at(39.8, -89.65, "Springfield, Illinois, United States"),
+      at(42.1, -72.59, "Springfield, Massachusetts, United States"),
+      at(37.21, -93.29, "Springfield, Missouri, United States"),
+    ])
+    expect(groups).toHaveLength(3)
+  })
+
+  it("never merges rows that name no place", () => {
+    // Without a name there is no evidence they are the same place, even
+    // sitting on the same coordinate.
+    const groups = mergeSamePlace([at(51.5, -0.117, null), at(51.5, -0.117, null)])
+    expect(groups).toHaveLength(2)
+  })
+
+  it("puts the merged mark on the first member's coordinate", () => {
+    const groups = mergeSamePlace([
+      at(51.5, -0.117, "London, London, City of, United Kingdom"),
+      at(51.502, -0.119, "London, Greater London, United Kingdom"),
+    ])
+    expect(groups[0][0].lat).toBe(51.5)
+  })
+})
+
+describe("placeName", () => {
+  it("takes the settlement from a GDELT full name", () => {
+    expect(placeName(ev({ payload: { geo_name: "Tehran, Tehran, Iran" } }))).toBe("tehran")
+  })
+  it("falls back to a news row's city", () => {
+    expect(placeName(ev({ payload: { city: "Karachi" } }))).toBe("karachi")
+  })
+  it("is null when the row names nowhere", () => {
+    expect(placeName(ev({ payload: {} }))).toBeNull()
   })
 })

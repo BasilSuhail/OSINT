@@ -23,6 +23,7 @@ import {
 import { hazardFootprintCollections } from "@/lib/mapFootprints"
 import {
   markerFamily,
+  mergeSamePlace,
   padBounds,
   positionForEvent,
   shareBudget,
@@ -428,7 +429,23 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     const p = cellPrecision(zoom)
     const cells = new Map<string, Positioned[]>()
     const singlesOut: Positioned[] = []
-    for (const item of positioned) {
+    // One place, one coordinate. GDELT ships its own point per event and
+    // news rows take theirs from the gazetteer; the two differ by a few
+    // hundred metres, so every city both sources covered drew as two
+    // overlapping circles — London, Kyiv, Moscow, Delhi, all of them.
+    // Snapping same-named nearby marks together fixes that without
+    // touching Twickenham, which keeps its own name and its own dot (#735).
+    const snapped: Positioned[] = []
+    for (const group of mergeSamePlace(positioned)) {
+      const [first] = group
+      for (const member of group) {
+        // A new object, never a mutation: `positioned` is also what feeds
+        // hazardFootprintCollections, and moving a row in place would drag
+        // its footprint polygon along with it.
+        snapped.push(member === first ? member : { ...member, lat: first.lat, lon: first.lon })
+      }
+    }
+    for (const item of snapped) {
       if (!isClusterable(item.ev)) {
         singlesOut.push(item)
         continue
