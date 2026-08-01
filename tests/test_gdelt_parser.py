@@ -12,6 +12,7 @@ import pytest
 
 from app.models import Category
 from app.sources.gdelt_parser import (
+    GDELT_COLUMN_COUNT,
     MIN_FIELD_COUNT,
     _goldstein_to_severity,
     parse_csv_body,
@@ -32,7 +33,9 @@ def _make_row(
     action_lon: str = "30.52",
     source_url: str = "https://example.com/a",
 ) -> list[str]:
-    fields = [""] * MIN_FIELD_COUNT
+    # A real export row has 61 columns; sizing the fixture from
+    # MIN_FIELD_COUNT is what let the URL sit in the DATEADDED slot (#733).
+    fields = [""] * GDELT_COLUMN_COUNT
     fields[0] = global_event_id
     fields[1] = day
     fields[28] = event_root_code
@@ -42,7 +45,8 @@ def _make_row(
     fields[52] = action_country
     fields[56] = action_lat
     fields[57] = action_lon
-    fields[59] = source_url
+    fields[59] = "20260618094500"  # DATEADDED
+    fields[60] = source_url
     return fields
 
 
@@ -187,7 +191,7 @@ def test_name_classifies_rows_stored_before_the_type_was_read(
 
 
 def test_row_carries_geo_precision_and_name() -> None:
-    from app.sources.gdelt_parser import MIN_FIELD_COUNT, row_to_event
+    from app.sources.gdelt_parser import row_to_event
 
     fields = [""] * MIN_FIELD_COUNT
     fields[0] = "1000000002"
@@ -210,7 +214,7 @@ def test_row_carries_geo_precision_and_name() -> None:
 def test_a_country_level_row_is_marked_as_such() -> None:
     # Its coordinate means "somewhere in Russia" — a real number that is not
     # a real place. The map must be able to tell.
-    from app.sources.gdelt_parser import MIN_FIELD_COUNT, row_to_event
+    from app.sources.gdelt_parser import row_to_event
 
     fields = [""] * MIN_FIELD_COUNT
     fields[0] = "1000000003"
@@ -226,3 +230,61 @@ def test_a_country_level_row_is_marked_as_such() -> None:
     event = row_to_event(fields, fetched_at=datetime.now(UTC))
     assert event is not None
     assert event.payload["geo_precision"] == "country"
+
+
+# --- Article URL and action label (#733) --------------------------------
+
+
+def _geo_row(*, source_url: str | None = "https://example.com/story") -> list[str]:
+    """A full 61-column row, the shape GDELT actually publishes."""
+    fields = [""] * GDELT_COLUMN_COUNT
+    fields[0] = "1000000010"
+    fields[1] = "20260618"
+    fields[28] = "17"  # COERCE
+    fields[30] = "-5.0"
+    fields[31] = "3"
+    fields[51] = "4"
+    fields[52] = "Glasgow, Glasgow City, United Kingdom"
+    fields[56] = "55.86"
+    fields[57] = "-4.25"
+    fields[59] = "20260801094500"  # DATEADDED — what was being read as the URL
+    if source_url is not None:
+        fields[60] = source_url
+    return fields
+
+
+def test_source_url_is_the_article_not_the_export_timestamp() -> None:
+    event = row_to_event(_geo_row(), fetched_at=datetime.now(UTC))
+    assert event is not None
+    assert event.payload["source_url"] == "https://example.com/story"
+
+
+def test_a_row_missing_only_its_url_is_still_placed() -> None:
+    # MIN_FIELD_COUNT is the geo columns, not the last column, so a short
+    # row loses its link rather than the whole event.
+    short = _geo_row()[:58]
+    event = row_to_event(short, fetched_at=datetime.now(UTC))
+    assert event is not None
+    assert event.lat == pytest.approx(55.86)
+    assert event.payload["source_url"] is None
+
+
+def test_row_carries_a_human_action_label() -> None:
+    event = row_to_event(_geo_row(), fetched_at=datetime.now(UTC))
+    assert event is not None
+    assert event.payload["action_label"] == "Coerce"
+
+
+def test_unknown_root_code_gets_no_label_rather_than_a_placeholder() -> None:
+    from app.sources.gdelt_cameo import cameo_root_label
+
+    assert cameo_root_label("99") is None
+    assert cameo_root_label(None) is None
+    assert cameo_root_label("") is None
+
+
+def test_every_conflict_code_we_ingest_has_a_label() -> None:
+    from app.sources.gdelt_cameo import CAMEO_CONFLICT_ROOT_CODES, cameo_root_label
+
+    for code in CAMEO_CONFLICT_ROOT_CODES:
+        assert cameo_root_label(code), f"root {code} reaches the map with no label"

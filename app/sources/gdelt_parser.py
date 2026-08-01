@@ -14,7 +14,7 @@ from typing import Final
 
 from app.enrichment.country import country_for
 from app.models import Category, Event
-from app.sources.gdelt_cameo import fips_to_iso, is_conflict_event
+from app.sources.gdelt_cameo import cameo_root_label, fips_to_iso, is_conflict_event
 
 #: Tab-separated column indices for the GDELT v2 export schema. Only the
 #: fields the fetcher actually reads are named here.
@@ -35,12 +35,23 @@ COL_ACTION_GEO_TYPE: Final[int] = 51
 COL_ACTION_COUNTRY: Final[int] = 52
 COL_ACTION_LAT: Final[int] = 56
 COL_ACTION_LON: Final[int] = 57
-COL_SOURCE_URL: Final[int] = 59
+#: DATEADDED — the id of the 15-minute export file, not a link. Read as
+#: the article URL until #733; every stored row's ``source_url`` is a
+#: 14-digit timestamp because of it.
+COL_DATE_ADDED: Final[int] = 59
+#: SOURCEURL — the article. Last column of the schema.
+COL_SOURCE_URL: Final[int] = 60
 
-#: Min field count a valid GDELT row exposes. The schema has 61 columns;
-#: GDELT occasionally publishes rows with trailing-tab oddities — we require
-#: at least up to the source-URL column so the parser is robust.
-MIN_FIELD_COUNT: Final[int] = COL_SOURCE_URL + 1
+#: Columns a full GDELT 2.0 export row carries.
+GDELT_COLUMN_COUNT: Final[int] = 61
+
+#: Min field count a valid GDELT row exposes. The schema has 61 columns,
+#: but a row only has to reach the action lat/lon for us to place it —
+#: GDELT occasionally publishes rows with trailing-tab oddities, and a row
+#: missing only its URL is still a usable event. Deriving this from the
+#: last column instead is what made the URL unreachable: the floor and the
+#: index moved together, so raising one silently raised the other.
+MIN_FIELD_COUNT: Final[int] = COL_ACTION_LON + 1
 
 
 def _parse_optional_float(raw: str) -> float | None:
@@ -153,7 +164,8 @@ def row_to_event(fields: list[str], *, fetched_at: datetime) -> Event | None:
 
     num_mentions = _parse_optional_float(fields[COL_NUM_MENTIONS])
     avg_tone = _parse_optional_float(fields[COL_AVG_TONE])
-    source_url = fields[COL_SOURCE_URL].strip() or None
+    # Beyond MIN_FIELD_COUNT, so absent on short rows rather than a parse error.
+    source_url = fields[COL_SOURCE_URL].strip() or None if len(fields) > COL_SOURCE_URL else None
 
     payload = {
         "global_event_id": global_event_id,
@@ -162,6 +174,7 @@ def row_to_event(fields: list[str], *, fetched_at: datetime) -> Event | None:
         "goldstein": goldstein_raw,
         "num_mentions": num_mentions,
         "avg_tone": avg_tone,
+        "action_label": cameo_root_label(event_root_code),
         "geo_name": geo_name,
         "geo_type": geo_type,
         "geo_precision": geo_precision(geo_type, geo_name),
