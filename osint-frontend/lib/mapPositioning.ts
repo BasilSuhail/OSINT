@@ -116,3 +116,50 @@ export function shareBudget<T>(byFamily: Map<string, T[]>, budget: number): T[] 
   }
   return out
 }
+
+/** West/south/east/north in degrees, as MapLibre reports them. */
+export interface MapBounds {
+  west: number
+  south: number
+  east: number
+  north: number
+}
+
+/**
+ * Grow a viewport by a fraction of its own size.
+ *
+ * The budget is spent on what is inside the box, so a marker just outside
+ * it does not exist yet. Without a margin those markers appear the instant
+ * they cross the edge during a pan, which reads as flicker. A margin means
+ * the map has already drawn what is just off-screen.
+ */
+export function padBounds(bounds: MapBounds, fraction = 0.25): MapBounds {
+  const dLat = (bounds.north - bounds.south) * fraction
+  const spanLon = bounds.east - bounds.west
+  const dLon = (spanLon >= 0 ? spanLon : spanLon + 360) * fraction
+  return {
+    south: Math.max(-90, bounds.south - dLat),
+    north: Math.min(90, bounds.north + dLat),
+    west: bounds.west - dLon,
+    east: bounds.east + dLon,
+  }
+}
+
+/**
+ * Is this point inside the viewport?
+ *
+ * Handles a box that crosses the antimeridian, where MapLibre reports a
+ * west greater than its east (say 170 to -170); the longitude test then
+ * has to be an "or" rather than an "and". Once the padded box spans 360
+ * degrees or more, everything is in view and the test is skipped — which
+ * is the world view, where a viewport filter has nothing to do.
+ */
+export function withinBounds(lat: number, lon: number, bounds: MapBounds): boolean {
+  if (lat < bounds.south || lat > bounds.north) return false
+  const span = bounds.east - bounds.west
+  if (span >= 360 || span <= -360) return true
+  const west = ((bounds.west + 180) % 360 + 360) % 360 - 180
+  const east = ((bounds.east + 180) % 360 + 360) % 360 - 180
+  const x = ((lon + 180) % 360 + 360) % 360 - 180
+  return west <= east ? x >= west && x <= east : x >= west || x <= east
+}

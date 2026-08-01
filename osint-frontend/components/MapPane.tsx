@@ -21,7 +21,14 @@ import {
   type HazardIcon,
 } from "@/lib/hazardSymbols"
 import { hazardFootprintCollections } from "@/lib/mapFootprints"
-import { markerFamily, positionForEvent, shareBudget } from "@/lib/mapPositioning"
+import {
+  markerFamily,
+  padBounds,
+  positionForEvent,
+  shareBudget,
+  withinBounds,
+  type MapBounds,
+} from "@/lib/mapPositioning"
 import { addMissingStyleImagePlaceholder } from "@/lib/mapStyleImages"
 import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
@@ -86,6 +93,20 @@ function isClusterable(ev: VisibleEvent): boolean {
   return false
 }
 
+
+/** Padded viewport of a live map, or null if it cannot be read yet. */
+function readBounds(map: { getBounds?: () => unknown } | undefined): MapBounds | null {
+  const raw = map?.getBounds?.() as
+    | { getWest(): number; getSouth(): number; getEast(): number; getNorth(): number }
+    | undefined
+  if (!raw?.getWest) return null
+  return padBounds({
+    west: raw.getWest(),
+    south: raw.getSouth(),
+    east: raw.getEast(),
+    north: raw.getNorth(),
+  })
+}
 
 /** Zoom → quantisation precision in degrees. Bigger cells when zoomed out,
  *  finer cells when zoomed in. At zoom ~7 the cell is small enough that
@@ -237,6 +258,9 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const [styleReloadToken, setStyleReloadToken] = useState(0)
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
+  /** Padded viewport the marker budget is spent inside (#731). Null until
+   *  the map settles once, which means "everywhere" — the world view. */
+  const [bounds, setBounds] = useState<MapBounds | null>(null)
   const openClusterInPane = useRightPaneModeStore((s) => s.openCluster)
   const consumedMinWheelRef = useRef(false)
 
@@ -359,6 +383,12 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       // fallback. See lib/mapPositioning.ts for why (#717).
       const at = positionForEvent(ev, centroids)
       if (!at) continue
+      // Spend the budget on what is actually in view. Chosen globally, the
+      // 700 markers were shared out by how much of the world each region
+      // occupies, so the UK got about eight of them however far you zoomed
+      // in — the events were discarded three steps before zoom was ever
+      // consulted (#731).
+      if (bounds && !withinBounds(at.lat, at.lon, bounds)) continue
       const row = { ev, lat: at.lat, lon: at.lon }
       if (!isClusterable(ev)) {
         priority.push(row)
@@ -374,7 +404,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     }
     // All priority rows, then the remaining budget shared across families.
     return priority.concat(shareBudget(fill, MAX_MARKERS - priority.length))
-  }, [events, centroids])
+  }, [events, centroids, bounds])
 
   /** Footprints for all hazards. Non-selected ones are revealed on zoom-in
    *  (opacity ramps 4→6); the SELECTED event's footprint is tagged `selected`
@@ -495,7 +525,10 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         interactiveLayerIds={scoredGeo ? ["country-fill"] : []}
         onClick={handleClick}
         onLoad={handleStyleLoad}
-        onMoveEnd={(e) => setZoom(e.viewState.zoom)}
+        onMoveEnd={(e) => {
+          setZoom(e.viewState.zoom)
+          setBounds(readBounds(e.target))
+        }}
         onError={handleMapError}
         attributionControl={false}
         dragRotate={false}
