@@ -50,12 +50,15 @@ class Expectation:
 #: RSS feeds all run the same enrichment path, so they share one declaration.
 RSS_FAMILY = Expectation(
     severity="continuous",
-    country="optional",
+    country="required",
     feeds_composite=False,
     note=(
         "Sentiment-derived, so nominally continuous. Measured live it takes "
         "exactly two values, 0.35 and 0.65, across all 19,722 rows — the audit "
-        "should say so rather than the table being edited to match."
+        "should say so rather than the table being edited to match. Country is "
+        "required because the map uses it for news navigation (#717). Resolver "
+        "ambiguity can still leave honest nulls; those shortfalls must remain "
+        "visible findings instead of being muted as optional."
     ),
 )
 
