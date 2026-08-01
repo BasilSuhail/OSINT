@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.audit import checks
-from app.audit.expectations import Expectation
+from app.audit.expectations import Expectation, for_source
 from app.audit.stats import SourceStats
 
 NOW = datetime(2026, 7, 22, tzinfo=UTC)
@@ -169,6 +169,17 @@ def test_severity_declared_absent_and_absent_is_clean():
 
 def test_missing_country_when_required_is_a_finding():
     findings = checks.run_all(_stats(country_present=0), CONTINUOUS, now=NOW)
+
+    assert "country_coverage" in _names(findings)
+
+
+def test_rss_family_reports_missing_country_coverage():
+    expectation = for_source("rss-example")
+    assert expectation is not None
+
+    findings = checks.run_all(
+        _stats(source="rss-example", country_present=680), expectation, now=NOW
+    )
 
     assert "country_coverage" in _names(findings)
 

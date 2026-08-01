@@ -351,8 +351,11 @@ volume across 93 ingested archive days.
 
 `scripts/data_audit.py` (#580) is the companion to this table: it reports not
 how *many* rows a source has but whether they mean anything — whether severity
-parses, varies, and reaches anything downstream. Its first run returned 50
-findings across 47 sources.
+parses, varies, and reaches anything downstream, and whether country fields
+required by navigation remain populated. RSS country coverage is required
+because the map uses it to retrieve news by country (#717); unresolved rows are
+reported as findings rather than hidden behind an optional declaration. Its
+first run returned 50 findings across 47 sources.
 
 **"Span held" is not "span covered."** The events table is a rolling window,
 not an archive. GDELT's eleven years of history exists as monthly aggregate
