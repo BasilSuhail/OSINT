@@ -140,6 +140,27 @@ ALIASES = {
 #: GB, it just does not claim to know where that happened.
 COUNTRY_SIZED = frozenset({("GB", "england")})
 
+#: Terms classed as *names* of a country that are nonetheless territories
+#: within it, small enough to be a real place. They keep full name weight
+#: for country resolution and gain a point so they can be drawn (#737).
+#:
+#: Gaza is 41 km long and the West Bank about 100 km — both far smaller
+#: than the states beside them, and both among the most-reported places on
+#: the platform. Middle East copy names nations and actors far more often
+#: than towns, so a territory is frequently the finest location a story
+#: offers: 68 stories named Gaza and 60 named the West Bank in one week,
+#: none of which could be drawn.
+#:
+#: A country's own name must never appear here. That is the England rule
+#: from #725 — a pin on the whole country is the blob #719 removed.
+TERRITORY_NAMES: dict[str, dict[str, str]] = {
+    "PS": {
+        "gaza": "Gaza Strip",
+        "gaza strip": "Gaza Strip",
+        "west bank": "West Bank",
+    },
+}
+
 #: Institutions are not regions; they sit in a capital. Pinning the
 #: Kremlin on Moscow is more useful than not pinning it at all.
 INSTITUTIONS = {
@@ -288,6 +309,16 @@ def main() -> None:
     out: dict[str, dict[str, list[float]]] = {}
     unmatched: list[str] = []
     country_sized: list[str] = []
+    territories: list[str] = []
+    for iso, names in TERRITORY_NAMES.items():
+        for term, ne_name in names.items():
+            point = lookup(iso, ne_name) or lookup(iso, term)
+            if point is None:
+                unmatched.append(f"{iso}:{term} (territory)")
+                continue
+            out.setdefault(iso, {})[normalise(term)] = [round(point[0], 4), round(point[1], 4)]
+            territories.append(f"{iso}:{term}")
+
     for iso, groups in sorted(terms.items()):
         for region in groups.get("regions", []) or []:
             if (iso, normalise(region)) in COUNTRY_SIZED:
@@ -306,6 +337,8 @@ def main() -> None:
     matched = sum(len(v) for v in out.values())
     total = matched + len(unmatched)
     print(f"wrote {args.out}: {matched}/{total} regions ({matched / total:.0%})")
+    if territories:
+        print(f"territories given a point: {', '.join(territories)}")
     if country_sized:
         print("held back as country-sized (keep a country, never a pin):")
         print("  " + ", ".join(country_sized))
