@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,30 @@ def _make_event(source_event_id: str, *, severity: float = 0.5) -> Event:
         country="US",
         keywords=["SPY", "etf"],
         payload={"ticker": "SPY", "close": 500.0},
+    )
+
+
+def _make_news_event(
+    source_event_id: str,
+    *,
+    basis: str,
+    country: str | None,
+    lat: float | None,
+    lon: float | None,
+) -> Event:
+    now = datetime.now(UTC)
+    return Event(
+        source="rss-dawn",
+        source_event_id=source_event_id,
+        occurred_at=now,
+        fetched_at=now,
+        category=Category.NEWS,
+        severity=0.15,
+        country=country,
+        lat=lat,
+        lon=lon,
+        keywords=["news", "rss-dawn"],
+        payload={"title": "A story", "geo_basis": basis},
     )
 
 
@@ -142,7 +167,7 @@ class TestUpsertEvents:
         assert row.payload["close"] == 500.0, "stale local value shadowed the upstream one"
         assert row.payload["alert_level"] == "Green"
 
-    def test_refresh_keeps_geocoded_coordinates_when_upstream_sends_none(
+    def test_non_news_refresh_keeps_geocoded_coordinates_when_upstream_sends_none(
         self, db_session: Session
     ) -> None:
         # enrich_country and backfill_news_cities write derived geo onto the
@@ -166,6 +191,62 @@ class TestUpsertEvents:
         row = db_session.execute(select(EventRow)).scalars().one()
         assert (row.lat, row.lon, row.country) == (57.14, -2.09, "GB"), "geocode was wiped"
         assert row.severity == 0.9, "upstream refresh no longer lands"
+
+    @pytest.mark.parametrize("basis", ["ambiguous", "none"])
+    def test_news_refresh_clears_geography_when_resolution_is_withdrawn(
+        self, db_session: Session, basis: str
+    ) -> None:
+        original = _make_news_event(
+            "article:1",
+            basis="city",
+            country="IN",
+            lat=32.7137,
+            lon=74.8448,
+        )
+        upsert_events([original], db_session)
+        db_session.commit()
+
+        ambiguous = _make_news_event(
+            "article:1",
+            basis=basis,
+            country=None,
+            lat=None,
+            lon=None,
+        )
+        upsert_events([ambiguous], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        assert row.payload["geo_basis"] == basis
+        assert (row.country, row.lat, row.lon) == (None, None, None)
+
+    def test_country_only_news_refresh_clears_the_old_point(self, db_session: Session) -> None:
+        original = _make_news_event(
+            "article:1",
+            basis="city",
+            country="GB",
+            lat=51.5019,
+            lon=-0.1187,
+        )
+        upsert_events([original], db_session)
+        db_session.commit()
+
+        country_only = _make_news_event(
+            "article:1",
+            basis="term",
+            country="GB",
+            lat=None,
+            lon=None,
+        )
+        upsert_events([country_only], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        assert row.payload["geo_basis"] == "term"
+        assert row.country == "GB"
+        assert (row.lat, row.lon) == (None, None)
 
     def test_upstream_coordinates_still_win_over_the_stored_ones(self, db_session: Session) -> None:
         # Preserving must not freeze a moving event: a cyclone that reports a
@@ -234,8 +315,6 @@ class TestUpsertEvents:
         assert len(rows) == 50_000
 
     def test_batch_size_must_be_positive(self, db_session: Session) -> None:
-        import pytest
-
         with pytest.raises(ValueError):
             upsert_events([_make_event("X")], db_session, batch_size=0)
 
