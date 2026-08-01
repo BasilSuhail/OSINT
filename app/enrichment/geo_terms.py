@@ -229,19 +229,28 @@ def _region_points() -> dict[str, dict[str, tuple[float, float]]]:
 
 @lru_cache(maxsize=8192)
 def region_point_for(text: str, iso: str) -> tuple[float, float] | None:
-    """Coordinates of the largest region of ``iso`` named in ``text``.
+    """Coordinates of the largest sub-national place of ``iso`` named in ``text``.
 
     Longest-first, so "north yorkshire" is preferred over "yorkshire"
-    when both appear. Returns None when the text names no region of that
-    country, or when the region has no point in the bundled table (20 of
-    276 do not — they keep a country and no pin, as before).
+    when both appear. Returns None when the text names no such place, or
+    when it has no point in the bundled table (20 of 276 do not — they
+    keep a country and no pin, as before).
+
+    The point table decides what may be pinned, not the term's scoring
+    class. Gaza and the West Bank are classed as *names* of Palestine, so
+    a story about either resolves to PS at full name weight — but they are
+    territories, not the country, and small enough to be real places, so
+    they carry a point too (#737). Tying the pin to the class instead
+    would force a choice between weighing them correctly and drawing them
+    at all. ``build_region_coords`` is what refuses a point to anything
+    country-sized.
     """
     regions = _region_points().get(iso.upper()) if iso else None
     if not regions or not text:
         return None
     haystack = _normalise(text)
     for pattern, term in _compiled():
-        if term.term_class != "region" or term.iso != iso.upper():
+        if term.iso != iso.upper():
             continue
         if pattern.search(haystack):
             point = regions.get(term.text)
