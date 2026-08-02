@@ -2,8 +2,10 @@
 
 import { formatDistanceToNowStrict } from "date-fns"
 import { X } from "lucide-react"
+import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import type { VisibleEvent } from "@/lib/queries"
 import { colorForEvent } from "@/lib/types"
+import type { EventSelection } from "@/stores/rightPaneModeStore"
 
 function itemTitle(ev: VisibleEvent): string {
   const p = (ev.payload ?? {}) as Record<string, unknown>
@@ -30,13 +32,13 @@ function itemTitle(ev: VisibleEvent): string {
  *  single event's detail. Esc / × (handled by the parent) returns to base. */
 export function ClusterListPanel({
   label,
-  events,
+  selections,
   onSelectEvent,
   onClose,
 }: {
   label: string
-  events: VisibleEvent[]
-  onSelectEvent: (ev: VisibleEvent) => void
+  selections: EventSelection[]
+  onSelectEvent: (ev: VisibleEvent, location?: MarkerLocationContext) => void
   onClose: () => void
 }) {
   return (
@@ -44,7 +46,7 @@ export function ClusterListPanel({
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col">
           <span className="font-mono text-lg font-semibold tabular-nums leading-none text-cyan-400">
-            {events.length.toLocaleString()}
+            {selections.length.toLocaleString()}
           </span>
           <span className="mt-1 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
             events · {label}
@@ -61,11 +63,11 @@ export function ClusterListPanel({
       </div>
 
       <ul className="-mx-1 flex-1 space-y-0.5 overflow-y-auto pr-1">
-        {events.map((ev) => (
+        {selections.map(({ event: ev, location }) => (
           <li key={ev.id}>
             <button
               type="button"
-              onClick={() => onSelectEvent(ev)}
+              onClick={() => onSelectEvent(ev, location)}
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-neutral-800/60"
             >
               <span

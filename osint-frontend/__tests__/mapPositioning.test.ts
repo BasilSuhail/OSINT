@@ -123,12 +123,34 @@ describe("positionsForEvent", () => {
         lat: 51.5009,
         lon: -0.1774,
         place: "royal albert hall",
+        location: {
+          checkedAt: null,
+          description: null,
+          lat: 51.5009,
+          lon: -0.1774,
+          model: null,
+          name: "Royal Albert Hall",
+          precision: null,
+          source: "wikidata",
+          wikidataId: "Q187868",
+        },
       },
       {
         key: "story:wikidata:Q193633",
         lat: 51.556,
         lon: -0.2796,
         place: "wembley stadium",
+        location: {
+          checkedAt: null,
+          description: null,
+          lat: 51.556,
+          lon: -0.2796,
+          model: null,
+          name: "Wembley Stadium",
+          precision: null,
+          source: "wikidata",
+          wikidataId: "Q193633",
+        },
       },
     ])
   })
@@ -159,6 +181,28 @@ describe("positionsForEvent", () => {
         CENTROIDS,
       ),
     ).toEqual([{ key: "legacy", lat: 55.95, lon: -3.19 }])
+  })
+
+  it("labels a synthetic hazard point as a country-centroid fallback", () => {
+    expect(
+      positionsForEvent(
+        ev({ id: "hazard", source: "gdacs", category: "hazard", country: "GB" }),
+        CENTROIDS,
+      ),
+    ).toEqual([
+      {
+        key: "hazard",
+        lat: 54,
+        lon: -2,
+        location: {
+          lat: 54,
+          lon: -2,
+          name: "GB",
+          precision: "unknown",
+          source: "country-centroid",
+        },
+      },
+    ])
   })
 })
 

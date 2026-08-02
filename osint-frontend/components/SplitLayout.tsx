@@ -5,6 +5,7 @@ import dynamic from "next/dynamic"
 import { useCallback, useEffect, useState } from "react"
 import { useConfigured } from "@/app/providers"
 import type { VisibleEvent } from "@/lib/queries"
+import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
@@ -107,8 +108,8 @@ export function SplitLayout() {
     [openCountry, isNarrow],
   )
   const onSelectEvent = useCallback(
-    (ev: VisibleEvent) => {
-      openEvent(ev)
+    (ev: VisibleEvent, location?: MarkerLocationContext) => {
+      openEvent(ev, location)
       if (isNarrow) setActivePane("right")
     },
     [openEvent, isNarrow],

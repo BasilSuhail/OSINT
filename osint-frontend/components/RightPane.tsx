@@ -38,13 +38,14 @@ export function RightPane() {
           ) : entity.kind === "cluster" ? (
             <ClusterListPanel
               label={entity.label}
-              events={entity.events}
+              selections={entity.selections}
               onSelectEvent={openEvent}
               onClose={closeEntity}
             />
           ) : (
             <EventDetailCard
               event={entity.event}
+              location={entity.location}
               embedded
               onClose={closeEntity}
               onSelectCountry={(iso) => openCountry(iso)}

@@ -1,4 +1,5 @@
 import type { VisibleEvent } from "./queries"
+import type { MarkerLocationContext } from "./locationProvenance"
 
 /** A news story, by category or by RSS source. */
 export function isNews(ev: VisibleEvent): boolean {
@@ -43,6 +44,7 @@ export interface EventMarkerPosition {
   lat: number
   lon: number
   place?: string
+  location?: MarkerLocationContext
 }
 
 /** Expand one database story into every independently verified map point.
@@ -88,12 +90,39 @@ export function positionsForEvent(
         lat,
         lon,
         place: label ? label.toLowerCase() : undefined,
+        location: {
+          lat,
+          lon,
+          name: label || null,
+          precision: typeof location.precision === "string" ? location.precision : null,
+          source: "wikidata",
+          wikidataId: id,
+          description:
+            typeof location.description === "string" ? location.description : null,
+          checkedAt: typeof location.checked_at === "string" ? location.checked_at : null,
+          model: typeof location.model === "string" ? location.model : null,
+        },
       })
     }
     if (positions.length > 0) return positions
   }
   const at = positionForEvent(ev, centroids)
-  return at ? [{ key: String(ev.id), ...at }] : []
+  if (!at) return []
+  const usedCountryFallback = ev.lat == null || ev.lon == null
+  return [
+    {
+      key: String(ev.id),
+      ...at,
+      location: usedCountryFallback
+        ? {
+            ...at,
+            name: ev.country,
+            precision: "unknown",
+            source: "country-centroid",
+          }
+        : undefined,
+    },
+  ]
 }
 
 /**
