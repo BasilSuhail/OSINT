@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -85,6 +86,25 @@ class MappedWikidataClient(FakeWikidataClient):
         return super().get(url, params=params)
 
 
+class LanguageMappedWikidataClient(FakeWikidataClient):
+    """Return one search fixture per candidate language."""
+
+    def __init__(
+        self,
+        searches: dict[str, list[dict[str, Any]]],
+        entities: dict[str, Any],
+        countries: dict[str, Any],
+    ) -> None:
+        super().__init__([], entities, countries)
+        self.searches = searches
+
+    def get(self, url: str, *, params: dict[str, Any]) -> FakeResponse:
+        if params["action"] == "wbsearchentities":
+            self.calls.append(params)
+            return FakeResponse({"search": self.searches.get(str(params["language"]), [])})
+        return super().get(url, params=params)
+
+
 class FailingWikidataClient:
     def get(self, _url: str, *, params: dict[str, Any]) -> FakeResponse:
         raise httpx.ReadTimeout("temporary Wikidata timeout")
@@ -95,11 +115,17 @@ class MaxlagWikidataClient:
         return FakeResponse({"error": {"code": "maxlag", "info": "replicas are behind"}})
 
 
-def _search_item(entity_id: str, text: str = "King's Theatre") -> dict[str, Any]:
+def _search_item(
+    entity_id: str,
+    text: str = "King's Theatre",
+    *,
+    language: str = "en",
+    match_type: str = "label",
+) -> dict[str, Any]:
     return {
         "id": entity_id,
         "label": text,
-        "match": {"type": "label", "language": "en", "text": text},
+        "match": {"type": match_type, "language": language, "text": text},
     }
 
 
@@ -326,6 +352,59 @@ def test_two_explicit_places_remain_two_candidates() -> None:
     )
 
 
+def test_extracts_bounded_accented_and_local_script_places() -> None:
+    cases = (
+        (
+            "Hôpital Saint-Louis rouvre après travaux",
+            PlaceCandidate("Hôpital Saint-Louis", "building", ("fr",)),
+        ),
+        (
+            "стадион Лужники вновь открыт после ремонта",
+            PlaceCandidate("стадион Лужники", "building", ("ru",)),
+        ),
+        (
+            "إغلاق مطار بغداد الدولي بعد إنذار",
+            PlaceCandidate("مطار بغداد الدولي", "building", ("ar",)),
+        ),
+        (
+            "इंदिरा गांधी अंतरराष्ट्रीय हवाई अड्डा बंद",
+            PlaceCandidate(
+                "इंदिरा गांधी अंतरराष्ट्रीय हवाई अड्डा",
+                "building",
+                ("hi",),
+            ),
+        ),
+    )
+
+    for title, expected in cases:
+        assert extract_place_candidates({"title": title, "summary": ""}) == (expected,)
+
+
+def test_shared_kind_uses_only_its_bounded_language_fallback() -> None:
+    candidates = extract_place_candidates({"title": "Avenida Paulista reabre hoy", "summary": ""})
+
+    assert candidates == (PlaceCandidate("Avenida Paulista", "street", ("es", "pt")),)
+    assert lookup_key(candidates[0], PlaceContext(country="ES")) != lookup_key(
+        PlaceCandidate("Avenida Paulista", "street", ("es",)),
+        PlaceContext(country="ES"),
+    )
+
+
+def test_unsupported_script_without_supported_place_kind_stays_absent() -> None:
+    payload = {"title": "北京大学发布新研究", "summary": "", "entities": []}
+
+    assert extract_place_candidates(payload) == ()
+
+
+def test_candidate_rejects_unbounded_language_fallback() -> None:
+    try:
+        PlaceCandidate("Hospital Universitario", "building", ("es", "pt", "fr", "de"))
+    except ValueError as exc:
+        assert "exceeds" in str(exc)
+    else:
+        raise AssertionError("unbounded Wikidata fallback was accepted")
+
+
 def test_resolver_selects_exact_edininburgh_building_not_search_rank() -> None:
     client = FakeWikidataClient(
         [_search_item("Q38280594"), _search_item("Q6411122"), _search_item("Q6411121")],
@@ -377,6 +456,85 @@ def test_resolver_rejects_non_exact_search_match_without_entity_fetch() -> None:
 
     assert verdict.status == "no_match"
     assert len(client.calls) == 1
+
+
+def test_resolver_accepts_exact_local_alias_and_preserves_local_label() -> None:
+    candidate = PlaceCandidate("стадион Лужники", "building", ("ru",))
+    entity = _entity("Luzhniki Stadium", "stadium in Moscow", 55.7158, 37.5537, "Q159")
+    entity["labels"]["ru"] = {"value": "стадион Лужники"}
+    entity["descriptions"]["ru"] = {"value": "стадион в Москве"}
+    client = FakeWikidataClient(
+        [_search_item("Q142536", candidate.name, language="ru", match_type="alias")],
+        {"Q142536": entity},
+        countries={"Q159": {"claims": {"P297": [{"mainsnak": {"datavalue": {"value": "RU"}}}]}}},
+    )
+
+    verdict = resolve_wikidata_place(
+        candidate,
+        PlaceContext(country="RU"),
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert verdict.status == "resolved"
+    assert verdict.resolution is not None
+    assert verdict.resolution.label == "стадион Лужники"
+    assert client.calls[0]["search"] == candidate.name
+    assert client.calls[0]["language"] == "ru"
+    assert client.calls[1]["languages"] == "ru|en"
+
+
+def test_resolver_rejects_transliteration_as_identity_proof() -> None:
+    client = FakeWikidataClient(
+        [_search_item("Q1", "Baghdad International Airport", language="ar")]
+    )
+
+    verdict = resolve_wikidata_place(
+        PlaceCandidate("مطار بغداد الدولي", "building", ("ar",)),
+        PlaceContext(country="IQ"),
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert verdict.status == "no_match"
+    assert len(client.calls) == 1
+
+
+def test_resolver_rejects_exact_text_from_unqueried_language() -> None:
+    client = FakeWikidataClient([_search_item("Q1", "مطار بغداد الدولي", language="en")])
+
+    verdict = resolve_wikidata_place(
+        PlaceCandidate("مطار بغداد الدولي", "building", ("ar",)),
+        PlaceContext(country="IQ"),
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert verdict.status == "no_match"
+    assert len(client.calls) == 1
+
+
+def test_resolver_keeps_cross_language_exact_entities_ambiguous() -> None:
+    entities = {
+        "Q1": _entity("Paulista Avenue", "avenue in São Paulo", -23.56, -46.65, "Q155"),
+        "Q2": _entity("Paulista Avenue", "former avenue in São Paulo", -23.57, -46.64, "Q155"),
+    }
+    for entity in entities.values():
+        entity["labels"]["es"] = {"value": "Avenida Paulista"}
+    client = LanguageMappedWikidataClient(
+        {
+            "es": [_search_item("Q1", "Avenida Paulista", language="es")],
+            "pt": [_search_item("Q2", "Avenida Paulista", language="pt")],
+        },
+        entities,
+        countries={"Q155": {"claims": {"P297": [{"mainsnak": {"datavalue": {"value": "BR"}}}]}}},
+    )
+
+    verdict = resolve_wikidata_place(
+        PlaceCandidate("Avenida Paulista", "street", ("es", "pt")),
+        PlaceContext(country="BR"),
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert verdict.status == "ambiguous"
+    assert [call["language"] for call in client.calls[:2]] == ["es", "pt"]
 
 
 def test_resolver_treats_http_200_maxlag_as_retry_not_no_match() -> None:
@@ -762,10 +920,12 @@ def test_worker_leaves_multi_place_row_pending_when_lookup_budget_runs_out(
     assert row.payload["place_verified_count"] == 2
 
 
-def test_worker_reuses_v11_candidate_cache_while_stamping_v12_payload(
+def test_worker_preserves_v11_english_cache_after_language_rules_change(
     db_session: Session,
 ) -> None:
     cache = _resolved_country_cache("Royal Albert Hall", "Q187868", 51.5009, -0.1774)
+    old_material = "|".join(("place.wikidata.v1.1", "royal albert hall", "GB", ""))
+    cache.lookup_key = hashlib.sha256(old_material.encode()).hexdigest()
     cache.resolver_version = "place.wikidata.v1.1"
     db_session.add_all([cache, _country_only_row("reuse", "Royal Albert Hall announces event")])
     db_session.commit()
@@ -781,9 +941,11 @@ def test_worker_reuses_v11_candidate_cache_while_stamping_v12_payload(
 
     row = db_session.execute(select(EventRow)).scalars().one()
     assert stats["cache_hits"] == 1
+    assert stats["lookups"] == 0
     assert stats["errors"] == 0
     assert row.payload["place_model"] == PLACE_METHOD_VERSION
     assert row.payload["place_locations"][0]["model"] == "place.wikidata.v1.1"
+    assert len(db_session.execute(select(PlaceLookupRow)).scalars().all()) == 1
 
 
 def test_multi_place_cache_survives_refresh_then_withdraws(db_session: Session) -> None:

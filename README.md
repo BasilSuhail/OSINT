@@ -545,7 +545,10 @@ streets, and sites against Wikidata and upgrades markers only after exact name
 and country matches (#745, #747, #748). For a single-place story, the entity
 must also match its city anchor and sit within 75 km. Several
 candidates use country-only gates because one row-level city cannot govern all
-of them. Search rank never decides identity. Distinct verified places are
+of them. Accented Latin, Cyrillic, Arabic, and Devanagari kind words select a
+bounded local-language Wikidata search; an exact local label or alias is still
+required, so transliteration alone never proves identity (#749). Search rank
+never decides identity. Distinct verified places are
 stored on one story row and rendered as separate markers; aliases resolving to
 one Wikidata ID collapse. Partial proof draws only proven points. Positive and
 negative results are cached in Postgres, and each verified marker carries its
