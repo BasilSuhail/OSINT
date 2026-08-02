@@ -109,7 +109,7 @@ Coverage varies with the live corpus. A miss has no invented country-centre
 point; it remains reachable through the country panel when country evidence
 exists, but only rows with a supported coordinate draw a news marker.
 
-## Named-place resolution — Wikidata v1.2
+## Named-place resolution — Wikidata v1.3
 
 `app/enrichment/place.py`, scheduled every 30 minutes. This pass upgrades an
 explicit building, venue, street, or site to the named place's own coordinate.
@@ -118,8 +118,10 @@ an RSS request.
 
 Each candidate moves only when all gates pass:
 
-1. the text contains a conservative named-place candidate;
-2. Wikidata returns an exact label or alias match with `P625` coordinates;
+1. the text contains a conservative named-place candidate, using English or a
+   supported accented Latin, Cyrillic, Arabic, or Devanagari place-kind word;
+2. Wikidata returns an exact label or alias match in one of that kind word's
+   bounded search languages, with `P625` coordinates;
 3. its `P17` country resolves through `P297` to the row's ISO country; and
 4. exactly one entity survives those checks for that candidate.
 
@@ -140,7 +142,12 @@ open the same story row, and a cluster list deduplicates that story.
 
 Positive and negative results live in `place_lookups`, keyed by normalized
 name, country, optional city, and lookup-key version. v1.2 reuses v1.1 candidate
-cache entries because the identity gates did not change. The task spends at
+cache entries because the identity gates did not change. v1.3 includes the
+candidate's inferred search languages for new multilingual keys while retaining
+v1.1 keys for unchanged English candidates. It preserves Unicode in the query
+and requires the returned label or alias to equal that local-script name; a
+transliteration is never sufficient. Each candidate uses no more than three
+languages. The task spends at
 most ten sequential uncached candidate lookups per run and sends a descriptive
 user agent. Ingestion reads this cache before every RSS upsert, so unchanged
 stories retain all exact points while changed text withdraws stale enrichment.

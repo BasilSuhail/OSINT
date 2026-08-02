@@ -27,11 +27,12 @@ from sqlalchemy.orm import Session
 from app.db_models import EventRow, PlaceLookupRow
 from app.models import Category, Event
 
-PLACE_METHOD_VERSION: Final[str] = "place.wikidata.v1.2"
-# Individual candidate identity rules did not change in v1.2. Keeping the
-# lookup-key version stable lets the multi-place worker reuse every v1.1 cache
-# entry instead of re-querying Wikidata after deployment.
-PLACE_LOOKUP_KEY_VERSION: Final[str] = "place.wikidata.v1.1"
+PLACE_METHOD_VERSION: Final[str] = "place.wikidata.v1.3"
+# English candidate identity is unchanged and keeps its v1.1 cache material.
+# Newly extracted local-language candidates use v1.3 keys that also include
+# their bounded language list.
+PLACE_LOOKUP_KEY_VERSION: Final[str] = PLACE_METHOD_VERSION
+ENGLISH_LOOKUP_KEY_VERSION: Final[str] = "place.wikidata.v1.1"
 WIKIDATA_API_URL: Final[str] = "https://www.wikidata.org/w/api.php"
 WIKIDATA_USER_AGENT: Final[str] = (
     "OSINT-ground-truth/1.0 "
@@ -40,11 +41,13 @@ WIKIDATA_USER_AGENT: Final[str] = (
 MAX_LOCALITY_DISTANCE_KM: Final[float] = 75.0
 NEGATIVE_CACHE_TTL: Final[timedelta] = timedelta(days=30)
 SEARCH_LIMIT: Final[int] = 10
+MAX_SEARCH_LANGUAGES: Final[int] = 3
 WIKIDATA_MAXLAG: Final[int] = 15
 PLACE_SCAN_LIMIT: Final[int] = 2000
 
 PlacePrecision = Literal["building", "street", "site"]
 LookupStatus = Literal["resolved", "no_match", "ambiguous"]
+TermPosition = Literal["prefix", "suffix", "both"]
 
 _STREET_SUFFIXES: Final[frozenset[str]] = frozenset(
     {"avenue", "boulevard", "drive", "lane", "road", "square", "street"}
@@ -113,11 +116,132 @@ _CANDIDATE_RE = re.compile(
     rf"(?i:{'|'.join(sorted(_PLACE_SUFFIXES, key=len, reverse=True))}))\b",
 )
 
+# These are physical-place kind words, not a general language detector. A
+# candidate is assigned only the bounded Wikidata languages implied by the
+# kind word that made it extractable. Shared spellings intentionally carry at
+# most two languages; the resolver never fans out across this whole table.
+_MultilingualTerm = tuple[str, PlacePrecision, tuple[str, ...], TermPosition]
+_MULTILINGUAL_TERMS: Final[tuple[_MultilingualTerm, ...]] = (
+    # French — accented forms are useful evidence that English-only matching
+    # currently drops, while unaccented shared words remain deliberately out.
+    ("aéroport", "building", ("fr",), "prefix"),
+    ("hôpital", "building", ("fr",), "prefix"),
+    ("université", "building", ("fr",), "prefix"),
+    ("cathédrale", "building", ("fr",), "prefix"),
+    ("église", "building", ("fr",), "prefix"),
+    ("musée", "building", ("fr",), "prefix"),
+    ("théâtre", "building", ("fr",), "prefix"),
+    ("gare", "building", ("fr",), "prefix"),
+    ("rue", "street", ("fr",), "prefix"),
+    # Spanish / Portuguese shared forms stay bounded to two searches.
+    ("aeropuerto", "building", ("es",), "prefix"),
+    ("aeroporto", "building", ("pt",), "prefix"),
+    ("universidad", "building", ("es",), "prefix"),
+    ("universidade", "building", ("pt",), "prefix"),
+    ("estadio", "building", ("es",), "prefix"),
+    ("estádio", "building", ("pt",), "prefix"),
+    ("estación", "building", ("es",), "prefix"),
+    ("estação", "building", ("pt",), "prefix"),
+    ("cárcel", "building", ("es",), "prefix"),
+    ("prisão", "building", ("pt",), "prefix"),
+    ("calle", "street", ("es",), "prefix"),
+    ("rua", "street", ("pt",), "prefix"),
+    ("avenida", "street", ("es", "pt"), "prefix"),
+    # German kind words may precede or follow the proper name.
+    ("flughafen", "building", ("de",), "both"),
+    ("bahnhof", "building", ("de",), "both"),
+    ("krankenhaus", "building", ("de",), "both"),
+    ("universität", "building", ("de",), "both"),
+    ("gefängnis", "building", ("de",), "both"),
+    ("brücke", "building", ("de",), "both"),
+    ("straße", "street", ("de",), "both"),
+    ("strasse", "street", ("de",), "both"),
+    # Russian and Ukrainian use distinct local-script searches when the kind
+    # word identifies one language; shared forms query both, still bounded.
+    ("аэропорт", "building", ("ru",), "both"),
+    ("аеропорт", "building", ("uk",), "both"),
+    ("больница", "building", ("ru",), "both"),
+    ("лікарня", "building", ("uk",), "both"),
+    ("университет", "building", ("ru",), "both"),
+    ("університет", "building", ("uk",), "both"),
+    ("стадион", "building", ("ru",), "both"),
+    ("стадіон", "building", ("uk",), "both"),
+    ("вокзал", "building", ("ru", "uk"), "both"),
+    ("музей", "building", ("ru", "uk"), "both"),
+    ("мост", "building", ("ru",), "both"),
+    ("міст", "building", ("uk",), "both"),
+    ("улица", "street", ("ru",), "both"),
+    ("вулиця", "street", ("uk",), "both"),
+    ("площадь", "site", ("ru",), "both"),
+    ("площа", "site", ("uk",), "both"),
+    # Arabic and Devanagari have no case distinction, so extraction also uses
+    # short language-specific stopword lists below.
+    ("مطار", "building", ("ar",), "prefix"),
+    ("مستشفى", "building", ("ar",), "prefix"),
+    ("جامعة", "building", ("ar",), "prefix"),
+    ("ملعب", "building", ("ar",), "prefix"),
+    ("محطة", "building", ("ar",), "prefix"),
+    ("متحف", "building", ("ar",), "prefix"),
+    ("مسجد", "building", ("ar",), "prefix"),
+    ("كنيسة", "building", ("ar",), "prefix"),
+    ("جسر", "building", ("ar",), "prefix"),
+    ("شارع", "street", ("ar",), "prefix"),
+    ("ميناء", "site", ("ar",), "prefix"),
+    ("ساحة", "site", ("ar",), "prefix"),
+    ("हवाई अड्डा", "building", ("hi",), "suffix"),
+    ("अस्पताल", "building", ("hi",), "both"),
+    ("विश्वविद्यालय", "building", ("hi",), "both"),
+    ("स्टेडियम", "building", ("hi",), "both"),
+    ("संग्रहालय", "building", ("hi",), "both"),
+    ("स्टेशन", "building", ("hi",), "both"),
+    ("पुल", "building", ("hi",), "both"),
+    ("सड़क", "street", ("hi",), "both"),
+)
+_NO_CASE_LANGUAGES: Final[frozenset[str]] = frozenset({"ar", "hi"})
+_LANGUAGE_STOPWORDS: Final[dict[str, frozenset[str]]] = {
+    "ar": frozenset({"بعد", "ضد", "عبر", "عند", "على", "عن", "في", "من", "نحو", "و", "وسط"}),
+    "hi": frozenset({"और", "के", "की", "को", "का", "पर", "में", "से", "बाद", "लिए", "ने"}),
+}
+_TOKEN_RE = re.compile(r"[^\s,;:!?()\[\]{}<>\"“”]+", re.UNICODE)
+_HARD_BOUNDARY_RE = re.compile(r"[,;:!?()\[\]{}<>\n]")
+_NAME_JOINERS: Final[frozenset[str]] = frozenset(
+    {
+        "al",
+        "am",
+        "an",
+        "and",
+        "da",
+        "das",
+        "de",
+        "del",
+        "der",
+        "des",
+        "di",
+        "do",
+        "dos",
+        "du",
+        "la",
+        "le",
+        "of",
+        "the",
+        "von",
+        "und",
+        "имени",
+    }
+)
+
 
 @dataclass(frozen=True)
 class PlaceCandidate:
     name: str
     precision: PlacePrecision
+    search_languages: tuple[str, ...] = ("en",)
+
+    def __post_init__(self) -> None:
+        if not self.search_languages:
+            raise ValueError("at least one Wikidata search language is required")
+        if len(self.search_languages) > MAX_SEARCH_LANGUAGES:
+            raise ValueError("Wikidata search-language fallback exceeds its bound")
 
 
 @dataclass(frozen=True)
@@ -149,10 +273,25 @@ class PlaceVerdict:
 
 
 def normalise_place_name(text: str) -> str:
-    """Accent-insensitive comparison form for names and descriptions."""
+    """Comparison form that folds Latin accents without damaging other scripts."""
     folded = unicodedata.normalize("NFKD", text.replace(_CURLY_APOSTROPHE, "'").casefold())
-    asciiish = "".join(char for char in folded if not unicodedata.combining(char))
-    return " ".join(re.sub(r"[^\w]+", " ", asciiish).split())
+    output: list[str] = []
+    previous_base_was_latin = False
+    for char in folded:
+        category = unicodedata.category(char)
+        if category.startswith(("L", "N")):
+            output.append(char)
+            previous_base_was_latin = "LATIN" in unicodedata.name(char, "")
+        elif category.startswith("M"):
+            # NFKD turns é into e + accent. Dropping only Latin marks keeps the
+            # established accent-insensitive behaviour while retaining Arabic
+            # and Devanagari marks that are part of the written name.
+            if not previous_base_was_latin:
+                output.append(char)
+        else:
+            output.append(" ")
+            previous_base_was_latin = False
+    return " ".join("".join(output).split())
 
 
 def _precision_for(name: str) -> PlacePrecision:
@@ -165,7 +304,7 @@ def _precision_for(name: str) -> PlacePrecision:
 
 
 def _clean_candidate(name: str, city: str | None) -> str:
-    punctuation = " ,:;-\N{EN DASH}\N{EM DASH}"
+    punctuation = " .,:;!?-\N{EN DASH}\N{EM DASH}"
     cleaned = " ".join(name.strip(punctuation).split())
     cleaned = re.sub(r"^(?:the|and)\s+", "", cleaned, flags=re.IGNORECASE)
     if city:
@@ -175,6 +314,161 @@ def _clean_candidate(name: str, city: str | None) -> str:
             # "Edinburgh King's Theatre" carries context plus the actual name.
             cleaned = cleaned.split(maxsplit=len(city.split()))[-1]
     return cleaned
+
+
+@dataclass(frozen=True)
+class _TextToken:
+    value: str
+    literal: str
+    normalised: str
+    start: int
+    end: int
+
+
+def _text_tokens(text: str) -> list[_TextToken]:
+    tokens: list[_TextToken] = []
+    trim = ".'\N{RIGHT SINGLE QUOTATION MARK}\N{HORIZONTAL ELLIPSIS}-\N{EN DASH}\N{EM DASH}"
+    for match in _TOKEN_RE.finditer(text):
+        raw = match.group(0)
+        value = raw.strip(trim)
+        if not value:
+            continue
+        left = len(raw) - len(raw.lstrip(trim))
+        right = len(raw) - len(raw.rstrip(trim))
+        tokens.append(
+            _TextToken(
+                value=value,
+                literal=unicodedata.normalize("NFC", value).casefold(),
+                normalised=normalise_place_name(value),
+                start=match.start() + left,
+                end=match.end() - right,
+            )
+        )
+    return tokens
+
+
+def _crosses_boundary(text: str, left: _TextToken, right: _TextToken) -> bool:
+    return bool(_HARD_BOUNDARY_RE.search(text[left.end : right.start]))
+
+
+def _first_letter(token: str) -> str:
+    return next((char for char in token if char.isalpha()), "")
+
+
+def _script_matches(token: str, language: str) -> bool:
+    script = {"ar": "ARABIC", "hi": "DEVANAGARI"}.get(language)
+    first = _first_letter(token)
+    return bool(first and script and script in unicodedata.name(first, ""))
+
+
+def _is_name_token(token: _TextToken, languages: tuple[str, ...], *, have_name: bool) -> bool:
+    no_case = next((language for language in languages if language in _NO_CASE_LANGUAGES), None)
+    if no_case:
+        stopwords = _LANGUAGE_STOPWORDS[no_case]
+        return token.normalised not in stopwords and _script_matches(token.value, no_case)
+    first = _first_letter(token.value)
+    return bool(first and (first.isupper() or (have_name and token.normalised in _NAME_JOINERS)))
+
+
+def _adjacent_name_indexes(
+    text: str,
+    tokens: list[_TextToken],
+    *,
+    start: int,
+    step: int,
+    languages: tuple[str, ...],
+) -> list[int]:
+    indexes: list[int] = []
+    index = start
+    while 0 <= index < len(tokens) and len(indexes) < 6:
+        previous = index - step
+        if 0 <= previous < len(tokens):
+            left, right = sorted((tokens[index], tokens[previous]), key=lambda token: token.start)
+            if _crosses_boundary(text, left, right):
+                break
+        if not _is_name_token(tokens[index], languages, have_name=bool(indexes)):
+            break
+        indexes.append(index)
+        index += step
+    if step < 0:
+        indexes.reverse()
+    # A joiner is valid only inside a name, never at its outside edge.
+    while indexes and tokens[indexes[0]].normalised in _NAME_JOINERS:
+        indexes.pop(0)
+    while indexes and tokens[indexes[-1]].normalised in _NAME_JOINERS:
+        indexes.pop()
+    return indexes
+
+
+def _multilingual_candidates(text: str) -> list[PlaceCandidate]:
+    tokens = _text_tokens(text)
+    candidates: list[PlaceCandidate] = []
+    for term, precision, languages, position in _MULTILINGUAL_TERMS:
+        # Extraction needs the written kind word itself. Accent folding is for
+        # identity comparison, not for deciding that English "theatre" is the
+        # French kind word "théâtre" or Portuguese "estadio" is "estádio".
+        term_words = unicodedata.normalize("NFC", term).casefold().split()
+        width = len(term_words)
+        for index in range(len(tokens) - width + 1):
+            if [token.literal for token in tokens[index : index + width]] != term_words:
+                continue
+            term_first = tokens[index]
+            term_last = tokens[index + width - 1]
+            if position in {"prefix", "both"}:
+                names = _adjacent_name_indexes(
+                    text,
+                    tokens,
+                    start=index + width,
+                    step=1,
+                    languages=languages,
+                )
+                if names:
+                    candidates.append(
+                        PlaceCandidate(
+                            text[term_first.start : tokens[names[-1]].end],
+                            precision,
+                            languages,
+                        )
+                    )
+            if position in {"suffix", "both"}:
+                names = _adjacent_name_indexes(
+                    text,
+                    tokens,
+                    start=index - 1,
+                    step=-1,
+                    languages=languages,
+                )
+                if names:
+                    candidates.append(
+                        PlaceCandidate(
+                            text[tokens[names[0]].start : term_last.end],
+                            precision,
+                            languages,
+                        )
+                    )
+    return candidates
+
+
+def _merge_candidate(
+    candidates: list[PlaceCandidate],
+    positions: dict[str, int],
+    candidate: PlaceCandidate,
+) -> None:
+    key = normalise_place_name(candidate.name)
+    if not key or len(key.split()) < 2:
+        return
+    existing_index = positions.get(key)
+    if existing_index is None:
+        positions[key] = len(candidates)
+        candidates.append(candidate)
+        return
+    existing = candidates[existing_index]
+    languages = tuple(dict.fromkeys((*existing.search_languages, *candidate.search_languages)))
+    candidates[existing_index] = PlaceCandidate(
+        existing.name,
+        existing.precision,
+        languages[:MAX_SEARCH_LANGUAGES],
+    )
 
 
 def extract_place_candidates(
@@ -203,29 +497,44 @@ def extract_place_candidates(
                 names.append(name)
 
     candidates: list[PlaceCandidate] = []
-    seen: set[str] = set()
+    positions: dict[str, int] = {}
     for raw_name in names:
         name = _clean_candidate(raw_name, city)
         key = normalise_place_name(name)
-        if not key or key in seen or len(key.split()) < 2:
+        if not key or len(key.split()) < 2:
             continue
         suffix = key.rsplit(" ", 1)[-1]
         if suffix not in _PLACE_SUFFIXES:
             continue
-        seen.add(key)
-        candidates.append(PlaceCandidate(name=name, precision=_precision_for(name)))
+        _merge_candidate(
+            candidates,
+            positions,
+            PlaceCandidate(name=name, precision=_precision_for(name)),
+        )
+    for candidate in _multilingual_candidates(text):
+        name = _clean_candidate(candidate.name, city)
+        _merge_candidate(
+            candidates,
+            positions,
+            PlaceCandidate(name, candidate.precision, candidate.search_languages),
+        )
     return tuple(candidates)
 
 
 def lookup_key(candidate: PlaceCandidate, context: PlaceContext) -> str:
-    material = "|".join(
+    components = [
         (
-            PLACE_LOOKUP_KEY_VERSION,
-            normalise_place_name(candidate.name),
-            context.country.upper(),
-            normalise_place_name(context.city or ""),
-        )
-    )
+            ENGLISH_LOOKUP_KEY_VERSION
+            if candidate.search_languages == ("en",)
+            else PLACE_LOOKUP_KEY_VERSION
+        ),
+        normalise_place_name(candidate.name),
+        context.country.upper(),
+        normalise_place_name(context.city or ""),
+    ]
+    if candidate.search_languages != ("en",):
+        components.append(",".join(candidate.search_languages))
+    material = "|".join(components)
     return hashlib.sha256(material.encode()).hexdigest()
 
 
@@ -316,46 +625,51 @@ def resolve_wikidata_place(
     *,
     client: httpx.Client,
 ) -> PlaceVerdict:
-    """Resolve one candidate without trusting search rank."""
-    search_response = client.get(
-        WIKIDATA_API_URL,
-        params={
-            "action": "wbsearchentities",
-            "search": candidate.name,
-            "language": "en",
-            "uselang": "en",
-            "type": "item",
-            "limit": SEARCH_LIMIT,
-            "format": "json",
-            "maxlag": WIKIDATA_MAXLAG,
-        },
-    )
-    body = _response_object(search_response)
-    results = body.get("search")
-    if not isinstance(results, list):
-        raise ValueError("Wikidata search response has no result list")
-
+    """Resolve one candidate without trusting rank or transliteration."""
     expected_name = normalise_place_name(candidate.name)
-    exact: dict[str, dict[str, Any]] = {}
-    for result in results:
-        if not isinstance(result, dict):
-            continue
-        match = result.get("match")
-        matched_text = match.get("text") if isinstance(match, dict) else None
-        entity_id = result.get("id")
-        is_exact = normalise_place_name(str(matched_text or "")) == expected_name
-        if isinstance(entity_id, str) and is_exact:
-            exact[entity_id] = result
+    exact: dict[str, tuple[dict[str, Any], str]] = {}
+    for language in candidate.search_languages:
+        search_response = client.get(
+            WIKIDATA_API_URL,
+            params={
+                "action": "wbsearchentities",
+                "search": candidate.name,
+                "language": language,
+                "uselang": language,
+                "type": "item",
+                "limit": SEARCH_LIMIT,
+                "format": "json",
+                "maxlag": WIKIDATA_MAXLAG,
+            },
+        )
+        body = _response_object(search_response)
+        results = body.get("search")
+        if not isinstance(results, list):
+            raise ValueError("Wikidata search response has no result list")
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            match = result.get("match")
+            matched_text = match.get("text") if isinstance(match, dict) else None
+            match_language = match.get("language") if isinstance(match, dict) else None
+            entity_id = result.get("id")
+            is_exact = (
+                match_language == language
+                and normalise_place_name(str(matched_text or "")) == expected_name
+            )
+            if isinstance(entity_id, str) and is_exact:
+                exact.setdefault(entity_id, (result, language))
     if not exact:
         return PlaceVerdict(status="no_match")
 
+    entity_languages = tuple(dict.fromkeys((*candidate.search_languages, "en")))
     entity_response = client.get(
         WIKIDATA_API_URL,
         params={
             "action": "wbgetentities",
             "ids": "|".join(exact),
             "props": "labels|descriptions|claims",
-            "languages": "en",
+            "languages": "|".join(entity_languages),
             "format": "json",
             "maxlag": WIKIDATA_MAXLAG,
         },
@@ -373,30 +687,49 @@ def resolve_wikidata_place(
         coordinate = _coordinate(entity)
         if coordinate is None:
             continue
-        description_data = entity.get("descriptions", {}).get("en", {})
-        description = str(description_data.get("value") or "")
+        descriptions = entity.get("descriptions")
+        description_values = (
+            {
+                language: str(value.get("value") or "")
+                for language, value in descriptions.items()
+                if isinstance(language, str) and isinstance(value, dict)
+            }
+            if isinstance(descriptions, dict)
+            else {}
+        )
+        preferred_languages = (*candidate.search_languages, "en")
+        description = next(
+            (
+                description_values[language]
+                for language in preferred_languages
+                if description_values.get(language)
+            ),
+            "",
+        )
         lat, lon = coordinate
         if context.has_city_anchor:
-            description_words = f" {normalise_place_name(description)} "
-            if f" {context_city} " not in description_words:
+            description_forms = (
+                f" {normalise_place_name(value)} " for value in description_values.values()
+            )
+            if not any(f" {context_city} " in words for words in description_forms):
                 continue
             assert context.lat is not None and context.lon is not None
             if _haversine_km(context.lat, context.lon, lat, lon) > MAX_LOCALITY_DISTANCE_KM:
                 continue
-        country_ids = _entity_ids(entity, "P17")
-        if not country_ids:
+        entity_country_ids = _entity_ids(entity, "P17")
+        if not entity_country_ids:
             continue
-        potential.append((entity_id, entity, lat, lon, description, country_ids))
+        potential.append((entity_id, entity, lat, lon, description, entity_country_ids))
 
     if not potential:
         return PlaceVerdict(status="no_match")
 
-    country_ids = sorted({country_id for item in potential for country_id in item[5]})
+    all_country_ids = sorted({country_id for item in potential for country_id in item[5]})
     country_response = client.get(
         WIKIDATA_API_URL,
         params={
             "action": "wbgetentities",
-            "ids": "|".join(country_ids),
+            "ids": "|".join(all_country_ids),
             "props": "claims",
             "format": "json",
             "maxlag": WIKIDATA_MAXLAG,
@@ -419,8 +752,25 @@ def resolve_wikidata_place(
         }
         if context.country.upper() not in supported_isos:
             continue
-        label_data = entity.get("labels", {}).get("en", {})
-        label = str(label_data.get("value") or exact[entity_id].get("label") or candidate.name)
+        search_result, matched_language = exact[entity_id]
+        labels = entity.get("labels")
+        label_values = (
+            {
+                language: str(value.get("value") or "")
+                for language, value in labels.items()
+                if isinstance(language, str) and isinstance(value, dict)
+            }
+            if isinstance(labels, dict)
+            else {}
+        )
+        label = next(
+            (
+                label_values[language]
+                for language in (matched_language, *candidate.search_languages, "en")
+                if label_values.get(language)
+            ),
+            str(search_result.get("label") or candidate.name),
+        )
         matches.append(
             PlaceResolution(
                 wikidata_id=entity_id,
