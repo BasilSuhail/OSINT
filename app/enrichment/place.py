@@ -27,7 +27,11 @@ from sqlalchemy.orm import Session
 from app.db_models import EventRow, PlaceLookupRow
 from app.models import Category, Event
 
-PLACE_METHOD_VERSION: Final[str] = "place.wikidata.v1.1"
+PLACE_METHOD_VERSION: Final[str] = "place.wikidata.v1.2"
+# Individual candidate identity rules did not change in v1.2. Keeping the
+# lookup-key version stable lets the multi-place worker reuse every v1.1 cache
+# entry instead of re-querying Wikidata after deployment.
+PLACE_LOOKUP_KEY_VERSION: Final[str] = "place.wikidata.v1.1"
 WIKIDATA_API_URL: Final[str] = "https://www.wikidata.org/w/api.php"
 WIKIDATA_USER_AGENT: Final[str] = (
     "OSINT-ground-truth/1.0 "
@@ -216,7 +220,7 @@ def extract_place_candidates(
 def lookup_key(candidate: PlaceCandidate, context: PlaceContext) -> str:
     material = "|".join(
         (
-            PLACE_METHOD_VERSION,
+            PLACE_LOOKUP_KEY_VERSION,
             normalise_place_name(candidate.name),
             context.country.upper(),
             normalise_place_name(context.city or ""),
@@ -442,6 +446,9 @@ _PLACE_PAYLOAD_KEYS: Final[tuple[str, ...]] = (
     "place_checked_at",
     "place_model",
     "place_resolution",
+    "place_locations",
+    "place_candidate_count",
+    "place_verified_count",
 )
 
 
@@ -456,24 +463,82 @@ def _base_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return clean
 
 
-def _payload_for_cache(payload: dict[str, Any], cache: PlaceLookupRow) -> dict[str, Any]:
+def _resolved_caches(caches: list[PlaceLookupRow | None]) -> list[PlaceLookupRow]:
+    """Return resolved places in candidate order, once per Wikidata entity."""
+    resolved: list[PlaceLookupRow] = []
+    seen: set[str] = set()
+    for cache in caches:
+        if cache is None or cache.status != "resolved" or not cache.wikidata_id:
+            continue
+        if cache.wikidata_id in seen:
+            continue
+        seen.add(cache.wikidata_id)
+        resolved.append(cache)
+    return resolved
+
+
+def _checked_at_utc(cache: PlaceLookupRow) -> datetime:
+    checked_at = cache.checked_at
+    return checked_at if checked_at.tzinfo is not None else checked_at.replace(tzinfo=UTC)
+
+
+def _location_payload(cache: PlaceLookupRow) -> dict[str, Any]:
+    return {
+        "name": cache.label,
+        "wikidata_id": cache.wikidata_id,
+        "description": cache.description,
+        "lat": cache.lat,
+        "lon": cache.lon,
+        "precision": cache.precision,
+        "checked_at": _checked_at_utc(cache).isoformat(),
+        "model": cache.resolver_version,
+    }
+
+
+def _payload_for_caches(
+    payload: dict[str, Any],
+    caches: list[PlaceLookupRow | None],
+    *,
+    complete: bool,
+) -> dict[str, Any]:
+    """Apply all independently verified places without duplicating the story."""
     enriched = _base_payload(payload)
+    available = [cache for cache in caches if cache is not None]
+    resolved = _resolved_caches(caches)
+    all_resolved = (
+        complete and bool(available) and all(cache.status == "resolved" for cache in available)
+    )
+    if not complete:
+        status = "pending"
+    elif resolved and all_resolved:
+        status = "resolved" if len(resolved) == 1 else "resolved_multiple"
+    elif resolved:
+        status = "resolved_partial"
+    elif any(cache.status == "ambiguous" for cache in available):
+        status = "ambiguous"
+    else:
+        status = "no_match"
+    checked_at = max((_checked_at_utc(cache) for cache in available), default=None)
     enriched.update(
         {
-            "place_checked_at": cache.checked_at.isoformat(),
-            "place_model": cache.resolver_version,
-            "place_resolution": cache.status,
+            "place_checked_at": checked_at.isoformat() if checked_at else None,
+            "place_model": PLACE_METHOD_VERSION if complete else None,
+            "place_resolution": status,
+            "place_locations": [_location_payload(cache) for cache in resolved],
+            "place_candidate_count": len(caches),
+            "place_verified_count": len(resolved),
         }
     )
-    if cache.status == "resolved":
+    if resolved:
+        primary = resolved[0]
         enriched.update(
             {
                 "geo_basis": "place",
-                "geo_precision": cache.precision,
+                "geo_precision": primary.precision,
                 "geo_source": "wikidata",
-                "place_name": cache.label,
-                "place_wikidata_id": cache.wikidata_id,
-                "place_description": cache.description,
+                "place_name": primary.label,
+                "place_wikidata_id": primary.wikidata_id,
+                "place_description": primary.description,
             }
         )
     return enriched
@@ -482,10 +547,7 @@ def _payload_for_cache(payload: dict[str, Any], cache: PlaceLookupRow) -> dict[s
 def _cache_is_usable(cache: PlaceLookupRow, now: datetime) -> bool:
     if cache.status == "resolved":
         return True
-    checked_at = cache.checked_at
-    if checked_at.tzinfo is None:
-        checked_at = checked_at.replace(tzinfo=UTC)
-    return checked_at >= now - NEGATIVE_CACHE_TTL
+    return _checked_at_utc(cache) >= now - NEGATIVE_CACHE_TTL
 
 
 def _event_context(event: Event) -> PlaceContext | None:
@@ -497,6 +559,16 @@ def _event_context(event: Event) -> PlaceContext | None:
     return PlaceContext(country=event.country)
 
 
+def _candidate_context(
+    context: PlaceContext,
+    candidates: tuple[PlaceCandidate, ...],
+) -> PlaceContext:
+    """Do not pretend one row-level city governs several named places."""
+    if len(candidates) > 1:
+        return PlaceContext(country=context.country)
+    return context
+
+
 def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
     """Reapply cached truth before every RSS upsert.
 
@@ -504,23 +576,22 @@ def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
     and exact point; changed text has no matching key and the ordinary RSS
     resolver authoritatively withdraws the old point (#741).
     """
-    prepared: list[tuple[Event, PlaceContext | None, PlaceCandidate | None, str | None]] = []
+    prepared: list[tuple[Event, PlaceContext | None, tuple[PlaceCandidate, ...], list[str]]] = []
     keys: set[str] = set()
     for event in events:
         if not event.source.startswith("rss-") or event.category != Category.NEWS:
-            prepared.append((event, None, None, None))
+            prepared.append((event, None, (), []))
             continue
         context = _event_context(event)
         candidates = extract_place_candidates(event.payload, city=context.city if context else None)
-        candidate = candidates[0] if context is not None and len(candidates) == 1 else None
-        key = (
-            lookup_key(candidate, context)
-            if candidate is not None and context is not None
-            else None
+        lookup_context = _candidate_context(context, candidates) if context else None
+        event_keys = (
+            [lookup_key(candidate, lookup_context) for candidate in candidates]
+            if lookup_context
+            else []
         )
-        if key:
-            keys.add(key)
-        prepared.append((event, context, candidate, key))
+        keys.update(event_keys)
+        prepared.append((event, context, candidates, event_keys))
 
     caches = (
         {
@@ -535,19 +606,27 @@ def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
 
     now = datetime.now(UTC)
     output: list[Event] = []
-    for event, _context, _candidate, key in prepared:
+    for event, context, candidates, event_keys in prepared:
         if not event.source.startswith("rss-") or event.category != Category.NEWS:
             output.append(event)
             continue
-        cache = caches.get(key) if key else None
-        if cache is not None and not _cache_is_usable(cache, now):
-            cache = None
+        candidate_caches = [caches.get(key) for key in event_keys]
+        candidate_caches = [
+            cache if cache is not None and _cache_is_usable(cache, now) else None
+            for cache in candidate_caches
+        ]
+        complete = bool(context and candidates) and all(
+            cache is not None for cache in candidate_caches
+        )
         payload = (
-            _payload_for_cache(event.payload, cache) if cache else _base_payload(event.payload)
+            _payload_for_caches(event.payload, candidate_caches, complete=complete)
+            if context and candidates
+            else _base_payload(event.payload)
         )
         update: dict[str, Any] = {"payload": payload}
-        if cache is not None and cache.status == "resolved":
-            update.update({"lat": cache.lat, "lon": cache.lon})
+        resolved = _resolved_caches(candidate_caches)
+        if resolved:
+            update.update({"lat": resolved[0].lat, "lon": resolved[0].lon})
         output.append(event.model_copy(update=update))
     return output
 
@@ -561,13 +640,32 @@ def _row_context(row: EventRow) -> PlaceContext | None:
     return PlaceContext(country=row.country)
 
 
-def _apply_cache_to_row(row: EventRow, cache: PlaceLookupRow) -> bool:
-    payload = _payload_for_cache(dict(row.payload or {}), cache)
-    moved = cache.status == "resolved" and (row.lat, row.lon) != (cache.lat, cache.lon)
-    if cache.status == "resolved":
-        row.lat, row.lon = cache.lat, cache.lon
+def _apply_caches_to_row(
+    row: EventRow,
+    caches: list[PlaceLookupRow | None],
+    *,
+    complete: bool,
+) -> bool:
+    before = (
+        row.lat,
+        row.lon,
+        tuple(
+            str(item.get("wikidata_id"))
+            for item in (row.payload or {}).get("place_locations") or []
+            if isinstance(item, dict)
+        ),
+    )
+    resolved = _resolved_caches(caches)
+    payload = _payload_for_caches(dict(row.payload or {}), caches, complete=complete)
+    if resolved:
+        row.lat, row.lon = resolved[0].lat, resolved[0].lon
     row.payload = payload
-    return moved
+    after = (
+        row.lat,
+        row.lon,
+        tuple(str(cache.wikidata_id) for cache in resolved),
+    )
+    return before != after
 
 
 def _cache_row(
@@ -622,8 +720,10 @@ def enrich_news_places(
         "lookups": 0,
         "cache_hits": 0,
         "enriched": 0,
+        "multiple": 0,
+        "partial": 0,
+        "verified_locations": 0,
         "no_candidate": 0,
-        "ambiguous_text": 0,
         "no_context": 0,
         "errors": 0,
     }
@@ -646,56 +746,70 @@ def enrich_news_places(
             continue
 
         candidates = extract_place_candidates(payload, city=context.city)
-        if len(candidates) != 1:
+        if not candidates:
             payload = _base_payload(payload)
-            status = "no_candidate" if not candidates else "ambiguous_text"
             payload.update(
                 {
                     "place_checked_at": now.isoformat(),
                     "place_model": PLACE_METHOD_VERSION,
-                    "place_resolution": status,
+                    "place_resolution": "no_candidate",
                 }
             )
             row.payload = payload
-            stats[status] += 1
+            stats["no_candidate"] += 1
             continue
+        stats["multiple"] += int(len(candidates) > 1)
+        lookup_context = _candidate_context(context, candidates)
 
-        candidate = candidates[0]
-        key = lookup_key(candidate, context)
-        cache = memory_cache.get(key) or session.get(PlaceLookupRow, key)
-        if cache is not None and _cache_is_usable(cache, now):
+        candidate_caches: list[PlaceLookupRow | None] = []
+        for candidate in candidates:
+            key = lookup_key(candidate, lookup_context)
+            cache = memory_cache.get(key) or session.get(PlaceLookupRow, key)
+            if cache is not None and _cache_is_usable(cache, now):
+                memory_cache[key] = cache
+                stats["cache_hits"] += 1
+                candidate_caches.append(cache)
+                continue
+
+            if stats["lookups"] >= limit:
+                # A None slot keeps the row eligible and preserves candidate order.
+                candidate_caches.append(None)
+                continue
+            stats["lookups"] += 1
+            try:
+                verdict = resolve_wikidata_place(candidate, lookup_context, client=client)
+            except (httpx.HTTPError, ValueError, TypeError):
+                stats["errors"] += 1
+                candidate_caches.append(None)
+                continue
+
+            if cache is None:
+                cache = _cache_row(key, candidate, lookup_context, verdict, now)
+                session.add(cache)
+            else:
+                replacement = _cache_row(key, candidate, lookup_context, verdict, now)
+                for field in (
+                    "status",
+                    "lat",
+                    "lon",
+                    "precision",
+                    "wikidata_id",
+                    "label",
+                    "description",
+                    "checked_at",
+                    "resolver_version",
+                ):
+                    setattr(cache, field, getattr(replacement, field))
             memory_cache[key] = cache
-            stats["cache_hits"] += 1
-            stats["enriched"] += int(_apply_cache_to_row(row, cache))
-            continue
+            candidate_caches.append(cache)
 
-        if stats["lookups"] >= limit:
-            # Leave unstamped. It remains eligible for the next bounded run.
-            continue
-        stats["lookups"] += 1
-        try:
-            verdict = resolve_wikidata_place(candidate, context, client=client)
-        except (httpx.HTTPError, ValueError, TypeError):
-            stats["errors"] += 1
-            continue
-
-        if cache is None:
-            cache = _cache_row(key, candidate, context, verdict, now)
-            session.add(cache)
-        else:
-            replacement = _cache_row(key, candidate, context, verdict, now)
-            for field in (
-                "status",
-                "lat",
-                "lon",
-                "precision",
-                "wikidata_id",
-                "label",
-                "description",
-                "checked_at",
-                "resolver_version",
-            ):
-                setattr(cache, field, getattr(replacement, field))
-        memory_cache[key] = cache
-        stats["enriched"] += int(_apply_cache_to_row(row, cache))
+        complete = all(cache is not None for cache in candidate_caches)
+        resolved = _resolved_caches(candidate_caches)
+        stats["verified_locations"] += len(resolved)
+        stats["partial"] += int(
+            complete
+            and bool(resolved)
+            and any(cache is not None and cache.status != "resolved" for cache in candidate_caches)
+        )
+        stats["enriched"] += int(_apply_caches_to_row(row, candidate_caches, complete=complete))
     return stats

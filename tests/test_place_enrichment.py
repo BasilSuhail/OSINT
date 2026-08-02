@@ -66,6 +66,25 @@ class FakeWikidataClient:
         return FakeResponse({"entities": self.entities})
 
 
+class MappedWikidataClient(FakeWikidataClient):
+    """Return candidate-specific searches while sharing fetched entities."""
+
+    def __init__(
+        self,
+        searches: dict[str, list[dict[str, Any]]],
+        entities: dict[str, Any],
+        countries: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__([], entities, countries)
+        self.searches = searches
+
+    def get(self, url: str, *, params: dict[str, Any]) -> FakeResponse:
+        if params["action"] == "wbsearchentities":
+            self.calls.append(params)
+            return FakeResponse({"search": self.searches.get(str(params["search"]), [])})
+        return super().get(url, params=params)
+
+
 class FailingWikidataClient:
     def get(self, _url: str, *, params: dict[str, Any]) -> FakeResponse:
         raise httpx.ReadTimeout("temporary Wikidata timeout")
@@ -163,7 +182,13 @@ def _event(source_event_id: str, title: str) -> Event:
     )
 
 
-def _country_only_row(source_event_id: str, title: str) -> EventRow:
+def _country_only_row(
+    source_event_id: str,
+    title: str,
+    *,
+    country: str = "GB",
+    entities: list[dict[str, str]] | None = None,
+) -> EventRow:
     return EventRow(
         source="rss-bbc-uk",
         source_event_id=source_event_id,
@@ -172,19 +197,25 @@ def _country_only_row(source_event_id: str, title: str) -> EventRow:
         category="news",
         severity=0.3,
         keywords=[],
-        country="GB",
+        country=country,
         lat=None,
         lon=None,
         payload={
             "title": title,
             "summary": "",
             "geo_basis": "term",
-            "entities": [],
+            "entities": entities or [],
         },
     )
 
 
-def _country_only_event(source_event_id: str, title: str) -> Event:
+def _country_only_event(
+    source_event_id: str,
+    title: str,
+    *,
+    country: str = "GB",
+    entities: list[dict[str, str]] | None = None,
+) -> Event:
     return Event(
         source="rss-bbc-uk",
         source_event_id=source_event_id,
@@ -192,14 +223,14 @@ def _country_only_event(source_event_id: str, title: str) -> Event:
         fetched_at=NOW,
         category=Category.NEWS,
         severity=0.3,
-        country="GB",
+        country=country,
         lat=None,
         lon=None,
         payload={
             "title": title,
             "summary": "",
             "geo_basis": "term",
-            "entities": [],
+            "entities": entities or [],
         },
     )
 
@@ -237,6 +268,30 @@ def _country_only_resolved_cache(title: str = "Wembley Stadium") -> PlaceLookupR
         wikidata_id="Q193633",
         label="Wembley Stadium",
         description="football stadium in London, England",
+        checked_at=NOW,
+        resolver_version=PLACE_METHOD_VERSION,
+    )
+
+
+def _resolved_country_cache(
+    name: str,
+    wikidata_id: str,
+    lat: float,
+    lon: float,
+) -> PlaceLookupRow:
+    candidate = PlaceCandidate(name, "building")
+    return PlaceLookupRow(
+        lookup_key=lookup_key(candidate, COUNTRY_ONLY_GB),
+        query_text=name,
+        context_country="GB",
+        context_city="",
+        status="resolved",
+        lat=lat,
+        lon=lon,
+        precision="building",
+        wikidata_id=wikidata_id,
+        label=name,
+        description=f"verified {name}",
         checked_at=NOW,
         resolver_version=PLACE_METHOD_VERSION,
     )
@@ -539,6 +594,232 @@ def test_worker_resolves_country_only_story_and_caches_empty_city(db_session: Se
     assert (row.lat, row.lon) == (51.556, -0.2796)
     assert row.payload["geo_basis"] == "place"
     assert cache.context_city == ""
+
+
+def test_worker_collapses_nested_aliases_that_resolve_to_one_entity(
+    db_session: Session,
+) -> None:
+    db_session.add(
+        _country_only_row(
+            "nested",
+            "IRGC says fighters destroyed at Jordan's Al-Azraq Base",
+            country="JO",
+            entities=[{"text": "Al-Azraq Base", "label": "FAC"}],
+        )
+    )
+    db_session.commit()
+    client = MappedWikidataClient(
+        {
+            "Jordan's Al-Azraq Base": [_search_item("Q4688334", "Jordan's Al-Azraq Base")],
+            "Al-Azraq Base": [_search_item("Q4688334", "Al-Azraq Base")],
+        },
+        {
+            "Q4688334": _entity(
+                "Al-Azraq Air Base",
+                "air base in Jordan",
+                31.8333,
+                36.7833,
+                country_id="Q810",
+            )
+        },
+        countries={"Q810": {"claims": {"P297": [{"mainsnak": {"datavalue": {"value": "JO"}}}]}}},
+    )
+
+    stats = enrich_news_places(
+        db_session,
+        limit=10,
+        client=client,  # type: ignore[arg-type]
+        now=NOW,
+    )
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert stats["multiple"] == 1
+    assert stats["verified_locations"] == 1
+    assert row.payload["place_resolution"] == "resolved"
+    assert row.payload["place_candidate_count"] == 2
+    assert row.payload["place_verified_count"] == 1
+    assert [item["wikidata_id"] for item in row.payload["place_locations"]] == ["Q4688334"]
+
+
+def test_worker_preserves_two_independently_verified_places(db_session: Session) -> None:
+    db_session.add(
+        _rss_row(
+            "two-places",
+            "Royal Albert Hall and Wembley Stadium announce joint event",
+        )
+    )
+    db_session.commit()
+    client = MappedWikidataClient(
+        {
+            "Royal Albert Hall": [_search_item("Q187868", "Royal Albert Hall")],
+            "Wembley Stadium": [_search_item("Q193633", "Wembley Stadium")],
+        },
+        {
+            "Q187868": _entity("Royal Albert Hall", "concert hall in London", 51.5009, -0.1774),
+            "Q193633": _entity("Wembley Stadium", "football stadium in London", 51.556, -0.2796),
+        },
+    )
+
+    stats = enrich_news_places(
+        db_session,
+        limit=10,
+        client=client,  # type: ignore[arg-type]
+        now=NOW,
+    )
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    locations = row.payload["place_locations"]
+    assert stats["multiple"] == 1
+    assert stats["verified_locations"] == 2
+    assert row.payload["place_resolution"] == "resolved_multiple"
+    assert [item["wikidata_id"] for item in locations] == ["Q187868", "Q193633"]
+    assert (row.lat, row.lon) == (51.5009, -0.1774)
+    assert {
+        cache.context_city for cache in db_session.execute(select(PlaceLookupRow)).scalars().all()
+    } == {""}
+
+
+def test_worker_keeps_verified_subset_when_another_place_is_unverified(
+    db_session: Session,
+) -> None:
+    db_session.add(
+        _country_only_row(
+            "partial",
+            "Royal Albert Hall and Wembley Stadium announce joint event",
+        )
+    )
+    db_session.commit()
+    client = MappedWikidataClient(
+        {
+            "Royal Albert Hall": [_search_item("Q187868", "Royal Albert Hall")],
+            "Wembley Stadium": [],
+        },
+        {"Q187868": _entity("Royal Albert Hall", "concert hall in London", 51.5009, -0.1774)},
+    )
+
+    stats = enrich_news_places(
+        db_session,
+        limit=10,
+        client=client,  # type: ignore[arg-type]
+        now=NOW,
+    )
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert stats["partial"] == 1
+    assert row.payload["place_resolution"] == "resolved_partial"
+    assert row.payload["place_candidate_count"] == 2
+    assert row.payload["place_verified_count"] == 1
+    assert [item["wikidata_id"] for item in row.payload["place_locations"]] == ["Q187868"]
+
+
+def test_worker_leaves_multi_place_row_pending_when_lookup_budget_runs_out(
+    db_session: Session,
+) -> None:
+    db_session.add(
+        _country_only_row(
+            "budgeted",
+            "Royal Albert Hall and Wembley Stadium announce joint event",
+        )
+    )
+    db_session.commit()
+    first_client = MappedWikidataClient(
+        {"Royal Albert Hall": [_search_item("Q187868", "Royal Albert Hall")]},
+        {"Q187868": _entity("Royal Albert Hall", "concert hall in London", 51.5009, -0.1774)},
+    )
+
+    first = enrich_news_places(
+        db_session,
+        limit=1,
+        client=first_client,  # type: ignore[arg-type]
+        now=NOW,
+    )
+    db_session.commit()
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert first["lookups"] == 1
+    assert row.payload["place_resolution"] == "pending"
+    assert row.payload["place_model"] is None
+    assert row.payload["place_verified_count"] == 1
+
+    second_client = MappedWikidataClient(
+        {"Wembley Stadium": [_search_item("Q193633", "Wembley Stadium")]},
+        {"Q193633": _entity("Wembley Stadium", "football stadium in London", 51.556, -0.2796)},
+    )
+    second = enrich_news_places(
+        db_session,
+        limit=1,
+        client=second_client,  # type: ignore[arg-type]
+        now=NOW + timedelta(minutes=30),
+    )
+    db_session.commit()
+    db_session.expire_all()
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert second["cache_hits"] == 1
+    assert second["lookups"] == 1
+    assert row.payload["place_resolution"] == "resolved_multiple"
+    assert row.payload["place_verified_count"] == 2
+
+
+def test_worker_reuses_v11_candidate_cache_while_stamping_v12_payload(
+    db_session: Session,
+) -> None:
+    cache = _resolved_country_cache("Royal Albert Hall", "Q187868", 51.5009, -0.1774)
+    cache.resolver_version = "place.wikidata.v1.1"
+    db_session.add_all([cache, _country_only_row("reuse", "Royal Albert Hall announces event")])
+    db_session.commit()
+    client = FailingWikidataClient()
+
+    stats = enrich_news_places(
+        db_session,
+        limit=10,
+        client=client,  # type: ignore[arg-type]
+        now=NOW,
+    )
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert stats["cache_hits"] == 1
+    assert stats["errors"] == 0
+    assert row.payload["place_model"] == PLACE_METHOD_VERSION
+    assert row.payload["place_locations"][0]["model"] == "place.wikidata.v1.1"
+
+
+def test_multi_place_cache_survives_refresh_then_withdraws(db_session: Session) -> None:
+    db_session.add_all(
+        [
+            _resolved_country_cache("Royal Albert Hall", "Q187868", 51.5009, -0.1774),
+            _resolved_country_cache("Wembley Stadium", "Q193633", 51.556, -0.2796),
+        ]
+    )
+    db_session.commit()
+
+    upsert_events(
+        [
+            _country_only_event(
+                "multi-story",
+                "Royal Albert Hall and Wembley Stadium announce joint event",
+            )
+        ],
+        db_session,
+    )
+    db_session.commit()
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert row.payload["place_resolution"] == "resolved_multiple"
+    assert len(row.payload["place_locations"]) == 2
+    assert (row.lat, row.lon) == (51.5009, -0.1774)
+
+    upsert_events(
+        [_country_only_event("multi-story", "Britain publishes venue guidance")],
+        db_session,
+    )
+    db_session.commit()
+    db_session.expire_all()
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert (row.lat, row.lon) == (None, None)
+    assert row.payload.get("place_locations") is None
+    assert row.payload["geo_basis"] == "term"
 
 
 def test_country_only_cached_place_survives_refresh_then_withdraws(

@@ -26,6 +26,20 @@ payload = {
     "place_name": str | None,
     "place_wikidata_id": str | None,
     "place_resolution": str | None,
+    "place_locations": [          # every independently verified point (#748)
+        {
+            "name": str,
+            "wikidata_id": str,
+            "description": str,
+            "lat": float,
+            "lon": float,
+            "precision": "building" | "street" | "site",
+            "checked_at": str,
+            "model": str,
+        }
+    ],
+    "place_candidate_count": int | None,
+    "place_verified_count": int | None,
     "image_url": str | None,     # thumbnail (#133)
     "sentiment": float | None,   # VADER compound [-1, 1] (#131)
     "sentiment_label": str | None,
@@ -95,32 +109,41 @@ Coverage varies with the live corpus. A miss has no invented country-centre
 point; it remains reachable through the country panel when country evidence
 exists, but only rows with a supported coordinate draw a news marker.
 
-## Named-place resolution — Wikidata v1.1
+## Named-place resolution — Wikidata v1.2
 
 `app/enrichment/place.py`, scheduled every 30 minutes. This pass upgrades an
 explicit building, venue, street, or site to the named place's own coordinate.
 It accepts either a city anchor or country-only context and never runs inside
 an RSS request.
 
-A candidate moves only when all gates pass:
+Each candidate moves only when all gates pass:
 
-1. the text contains exactly one conservative named-place candidate;
+1. the text contains a conservative named-place candidate;
 2. Wikidata returns an exact label or alias match with `P625` coordinates;
 3. its `P17` country resolves through `P297` to the row's ISO country; and
-4. exactly one entity survives those checks.
+4. exactly one entity survives those checks for that candidate.
 
-When the row also has a city anchor, two stronger locality gates remain: the
-entity description must name that city and its coordinate must lie within 75
-km. Country-only mode never uses a country centroid or search rank as a point;
-the exact entity coordinate is the only point it can add.
+For a single candidate with a city anchor, two stronger locality gates remain:
+the entity description must name that city and its coordinate must lie within
+75 km. Several candidates cannot all inherit one row-level city, so each uses
+the country-only gate instead. Country-only mode never uses a country centroid
+or search rank as a point; the exact entity coordinate is the only point it
+can add.
 
 Search order is not evidence. Two surviving entities are ambiguous and leave
-the marker unchanged. Positive and negative results live in `place_lookups`,
-keyed by normalized name, country, optional city, and resolver version. The
-task spends at most ten sequential uncached lookups per run and sends a
-descriptive user agent. Ingestion reads this cache before every RSS upsert, so
-unchanged stories retain their exact point while changed text withdraws stale
-enrichment.
+that candidate unresolved. Distinct verified candidates are stored together in
+`place_locations`; aliases that resolve to the same Wikidata ID collapse to one
+location. A partially verified story keeps only its proven points. Its first
+verified candidate remains the row's primary `lat`/`lon` for API compatibility,
+while the map projects every verified location into its own marker. All markers
+open the same story row, and a cluster list deduplicates that story.
+
+Positive and negative results live in `place_lookups`, keyed by normalized
+name, country, optional city, and lookup-key version. v1.2 reuses v1.1 candidate
+cache entries because the identity gates did not change. The task spends at
+most ten sequential uncached candidate lookups per run and sends a descriptive
+user agent. Ingestion reads this cache before every RSS upsert, so unchanged
+stories retain all exact points while changed text withdraws stale enrichment.
 
 ## News scope classifier — `local | world | unknown`
 

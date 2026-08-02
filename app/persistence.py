@@ -112,6 +112,9 @@ ENRICHMENT_PAYLOAD_KEYS: Final = (
     "place_checked_at",
     "place_model",
     "place_resolution",
+    "place_locations",  # every independently verified point for one story (#748)
+    "place_candidate_count",
+    "place_verified_count",
 )
 
 

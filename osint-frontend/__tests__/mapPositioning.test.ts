@@ -7,6 +7,7 @@ import {
   padBounds,
   placeName,
   positionForEvent,
+  positionsForEvent,
   shareBudget,
   withinBounds,
 } from "@/lib/mapPositioning"
@@ -86,6 +87,78 @@ describe("positionForEvent", () => {
     expect(
       positionForEvent(ev({ source: "gdacs", category: "hazard", country: "ZZ" }), CENTROIDS),
     ).toBeNull()
+  })
+})
+
+describe("positionsForEvent", () => {
+  it("expands one story into every verified place marker", () => {
+    const positions = positionsForEvent(
+      ev({
+        id: "story",
+        lat: 51.5009,
+        lon: -0.1774,
+        payload: {
+          place_locations: [
+            {
+              name: "Royal Albert Hall",
+              wikidata_id: "Q187868",
+              lat: 51.5009,
+              lon: -0.1774,
+            },
+            {
+              name: "Wembley Stadium",
+              wikidata_id: "Q193633",
+              lat: 51.556,
+              lon: -0.2796,
+            },
+          ],
+        },
+      }),
+      CENTROIDS,
+    )
+
+    expect(positions).toEqual([
+      {
+        key: "story:wikidata:Q187868",
+        lat: 51.5009,
+        lon: -0.1774,
+        place: "royal albert hall",
+      },
+      {
+        key: "story:wikidata:Q193633",
+        lat: 51.556,
+        lon: -0.2796,
+        place: "wembley stadium",
+      },
+    ])
+  })
+
+  it("deduplicates one verified entity and rejects malformed locations", () => {
+    const positions = positionsForEvent(
+      ev({
+        id: "story",
+        payload: {
+          place_locations: [
+            { name: "Kigali Arena", wikidata_id: "Q1", lat: -1.953, lon: 30.1155 },
+            { name: "same entity", wikidata_id: "Q1", lat: 0, lon: 0 },
+            { name: "invalid", wikidata_id: "Q2", lat: 120, lon: 0 },
+          ],
+        },
+      }),
+      CENTROIDS,
+    )
+
+    expect(positions).toHaveLength(1)
+    expect(positions[0].key).toBe("story:wikidata:Q1")
+  })
+
+  it("falls back to the legacy primary coordinate without verified locations", () => {
+    expect(
+      positionsForEvent(
+        ev({ id: "legacy", lat: 55.95, lon: -3.19, payload: { place_locations: [] } }),
+        CENTROIDS,
+      ),
+    ).toEqual([{ key: "legacy", lat: 55.95, lon: -3.19 }])
   })
 })
 
@@ -313,6 +386,15 @@ describe("mergeSamePlace", () => {
       at(51.502, -0.119, "London, Greater London, United Kingdom"),
     ])
     expect(groups[0][0].lat).toBe(51.5)
+  })
+
+  it("uses each marker's place when one story has several locations", () => {
+    const story = ev({ payload: { place_name: "Royal Albert Hall" } })
+    const groups = mergeSamePlace([
+      { ev: story, lat: 51.5009, lon: -0.1774, place: "royal albert hall" },
+      { ev: story, lat: 51.556, lon: -0.2796, place: "wembley stadium" },
+    ])
+    expect(groups).toHaveLength(2)
   })
 })
 

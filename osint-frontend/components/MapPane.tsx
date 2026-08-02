@@ -25,7 +25,7 @@ import {
   markerFamily,
   mergeSamePlace,
   padBounds,
-  positionForEvent,
+  positionsForEvent,
   shareBudget,
   withinBounds,
   type MapBounds,
@@ -68,8 +68,10 @@ interface MapPaneProps {
 
 interface Positioned {
   ev: VisibleEvent
+  markerKey: string
   lat: number
   lon: number
+  place?: string
 }
 
 interface ClusterMarker {
@@ -382,26 +384,32 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       // A news dot is a place; an unplaceable story gets no dot and stays
       // reachable by clicking its country. Hazards keep the country-centroid
       // fallback. See lib/mapPositioning.ts for why (#717).
-      const at = positionForEvent(ev, centroids)
-      if (!at) continue
-      // Spend the budget on what is actually in view. Chosen globally, the
-      // 700 markers were shared out by how much of the world each region
-      // occupies, so the UK got about eight of them however far you zoomed
-      // in — the events were discarded three steps before zoom was ever
-      // consulted (#731).
-      if (bounds && !withinBounds(at.lat, at.lon, bounds)) continue
-      const row = { ev, lat: at.lat, lon: at.lon }
-      if (!isClusterable(ev)) {
-        priority.push(row)
-        continue
+      for (const at of positionsForEvent(ev, centroids)) {
+        // Spend the budget on what is actually in view. Chosen globally, the
+        // 700 markers were shared out by how much of the world each region
+        // occupies, so the UK got about eight of them however far you zoomed
+        // in — the events were discarded three steps before zoom was ever
+        // consulted (#731).
+        if (bounds && !withinBounds(at.lat, at.lon, bounds)) continue
+        const row = {
+          ev,
+          markerKey: at.key,
+          lat: at.lat,
+          lon: at.lon,
+          place: at.place,
+        }
+        if (!isClusterable(ev)) {
+          priority.push(row)
+          continue
+        }
+        // Keep the clusterable firehose split by family. Draining it as one
+        // occurred_at-ordered list let minute-fresh news take every slot and
+        // cut GDELT's daily batch to zero (#721).
+        const family = markerFamily(ev)
+        const queue = fill.get(family)
+        if (queue) queue.push(row)
+        else fill.set(family, [row])
       }
-      // Keep the clusterable firehose split by family. Draining it as one
-      // occurred_at-ordered list let minute-fresh news take every slot and
-      // cut GDELT's daily batch to zero (#721).
-      const family = markerFamily(ev)
-      const queue = fill.get(family)
-      if (queue) queue.push(row)
-      else fill.set(family, [row])
     }
     // All priority rows, then the remaining budget shared across families.
     return priority.concat(shareBudget(fill, MAX_MARKERS - priority.length))
@@ -505,10 +513,10 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
    *  the right pane holds the full list for the ones that stay dense. */
   const handleClusterClick = useCallback(
     (c: ClusterMarker) => {
-      openClusterInPane(
-        c.events[0]?.ev.country ?? "cluster",
-        c.events.map((p) => p.ev),
-      )
+      const uniqueEvents = [
+        ...new Map(c.events.map((position) => [position.ev.id, position.ev])).values(),
+      ]
+      openClusterInPane(c.events[0]?.ev.country ?? "cluster", uniqueEvents)
       if (mapRef) {
         const map = mapRef.getMap()
         const target = Math.min(8, map.getZoom() + 2)
@@ -649,8 +657,8 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           />
         </Source>
 
-        {singles.map(({ ev, lat, lon }) => (
-          <EventMarker key={ev.id} ev={ev} lat={lat} lon={lon} onSelect={handleSelectMarker} />
+        {singles.map(({ ev, markerKey, lat, lon }) => (
+          <EventMarker key={markerKey} ev={ev} lat={lat} lon={lon} onSelect={handleSelectMarker} />
         ))}
         {clusters.map((c) => (
           <ClusterChip key={c.key} cluster={c} onClick={handleClusterClick} />

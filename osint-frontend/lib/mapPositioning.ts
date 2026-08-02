@@ -38,6 +38,64 @@ export function positionForEvent(
   return { lat: c[1], lon: c[0] }
 }
 
+export interface EventMarkerPosition {
+  key: string
+  lat: number
+  lon: number
+  place?: string
+}
+
+/** Expand one database story into every independently verified map point.
+ *
+ * The backend deliberately keeps one RSS row per article. Exact multi-place
+ * evidence lives in `payload.place_locations`; this projection creates the
+ * extra markers only at render time, so panels, counts, retention and refresh
+ * identity never duplicate the story (#748).
+ */
+export function positionsForEvent(
+  ev: VisibleEvent,
+  centroids: Map<string, [number, number]>,
+): EventMarkerPosition[] {
+  const payload = (ev.payload ?? {}) as Record<string, unknown>
+  const raw = payload.place_locations
+  if (Array.isArray(raw)) {
+    const positions: EventMarkerPosition[] = []
+    const seen = new Set<string>()
+    for (const value of raw) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue
+      const location = value as Record<string, unknown>
+      const id = typeof location.wikidata_id === "string" ? location.wikidata_id.trim() : ""
+      const lat = location.lat
+      const lon = location.lon
+      if (
+        !id ||
+        seen.has(id) ||
+        typeof lat !== "number" ||
+        !Number.isFinite(lat) ||
+        lat < -90 ||
+        lat > 90 ||
+        typeof lon !== "number" ||
+        !Number.isFinite(lon) ||
+        lon < -180 ||
+        lon > 180
+      ) {
+        continue
+      }
+      seen.add(id)
+      const label = typeof location.name === "string" ? location.name.trim() : ""
+      positions.push({
+        key: `${ev.id}:wikidata:${id}`,
+        lat,
+        lon,
+        place: label ? label.toLowerCase() : undefined,
+      })
+    }
+    if (positions.length > 0) return positions
+  }
+  const at = positionForEvent(ev, centroids)
+  return at ? [{ key: String(ev.id), ...at }] : []
+}
+
 /**
  * Does this row's coordinate mean a place, or just a country?
  *
@@ -168,6 +226,8 @@ export function withinBounds(lat: number, lon: number, bounds: MapBounds): boole
 export interface Located {
   lat: number
   lon: number
+  /** Optional marker-specific name when one story owns several points. */
+  place?: string | null
 }
 
 /** The place a row claims to be, lowercased, or null if it names none. */
@@ -217,7 +277,7 @@ export function mergeSamePlace<T extends Located & { ev: VisibleEvent }>(
   const groups: { name: string; lat: number; lon: number; members: T[] }[] = []
   const out: T[][] = []
   for (const item of items) {
-    const name = placeName(item.ev)
+    const name = item.place ?? placeName(item.ev)
     if (!name) {
       out.push([item])
       continue
