@@ -140,6 +140,16 @@ verified candidate remains the row's primary `lat`/`lon` for API compatibility,
 while the map projects every verified location into its own marker. All markers
 open the same story row, and a cluster list deduplicates that story.
 
+The selected-marker UI renders a separate `Location evidence` block. It states
+`exact-place`, `city`, `region`, or `unknown` precision; identifies the
+coordinate source; and links a Wikidata entity when one supplied the point.
+Natural Earth city and region points are labelled as gazetteer coordinates,
+while missing precision or provenance remains explicitly unknown. A marker's
+own `place_locations` entry travels with the selection, so clicking the second
+place in a multi-place story shows that place's name, coordinates, entity ID,
+resolver version, and verification time instead of the row's first/primary
+place.
+
 Positive and negative results live in `place_lookups`, keyed by normalized
 name, country, optional city, and lookup-key version. v1.2 reuses v1.1 candidate
 cache entries because the identity gates did not change. v1.3 includes the

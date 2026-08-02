@@ -14,6 +14,7 @@ import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
+import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import {
   hazardColor,
   hazardIcon,
@@ -61,7 +62,7 @@ interface MapPaneProps {
   onSelectCountry: (iso: string) => void
   onCount: (n: number) => void
   /** Bubble a clicked event up to the shared centred detail overlay. */
-  onSelectEvent: (ev: VisibleEvent) => void
+  onSelectEvent: (ev: VisibleEvent, location?: MarkerLocationContext) => void
   /** Id of the currently-selected event (drives the expanded cyclone footprint). */
   selectedEventId: VisibleEvent["id"] | null
 }
@@ -72,6 +73,7 @@ interface Positioned {
   lat: number
   lon: number
   place?: string
+  location?: MarkerLocationContext
 }
 
 interface ClusterMarker {
@@ -133,12 +135,14 @@ function EventMarker({
   ev,
   lat,
   lon,
+  location,
   onSelect,
 }: {
   ev: VisibleEvent
   lat: number
   lon: number
-  onSelect: (ev: VisibleEvent) => void
+  location?: MarkerLocationContext
+  onSelect: (ev: VisibleEvent, location?: MarkerLocationContext) => void
 }) {
   const style = markerStyle(ev)
   // News / GDELT singletons render as a soft, semi-transparent dot — never a
@@ -154,7 +158,7 @@ function EventMarker({
       anchor="center"
       onClick={(e) => {
         e.originalEvent.stopPropagation()
-        onSelect(ev)
+        onSelect(ev, location)
       }}
     >
       <div
@@ -397,6 +401,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           lat: at.lat,
           lon: at.lon,
           place: at.place,
+          location: at.location,
         }
         if (!isClusterable(ev)) {
           priority.push(row)
@@ -499,10 +504,10 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   )
 
   const handleSelectMarker = useCallback(
-    (ev: VisibleEvent) => {
+    (ev: VisibleEvent, location?: MarkerLocationContext) => {
       // Bubble up to the shared centred detail overlay (#207); the map no longer
       // renders its own popup. Selecting a cyclone also expands its footprint.
-      onSelectEvent(ev)
+      onSelectEvent(ev, location)
     },
     [onSelectEvent],
   )
@@ -513,10 +518,24 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
    *  the right pane holds the full list for the ones that stay dense. */
   const handleClusterClick = useCallback(
     (c: ClusterMarker) => {
-      const uniqueEvents = [
-        ...new Map(c.events.map((position) => [position.ev.id, position.ev])).values(),
-      ]
-      openClusterInPane(c.events[0]?.ev.country ?? "cluster", uniqueEvents)
+      const byEvent = new Map<VisibleEvent["id"], { event: VisibleEvent; location?: MarkerLocationContext }>()
+      for (const position of c.events) {
+        const id = position.ev.id
+        if (!byEvent.has(id)) {
+          byEvent.set(id, { event: position.ev, location: position.location })
+          continue
+        }
+        byEvent.set(id, {
+          event: position.ev,
+          location: {
+            name: "Multiple verified places",
+            precision: "unknown",
+            source: "multiple-marker-cluster",
+          },
+        })
+      }
+      const uniqueSelections = [...byEvent.values()]
+      openClusterInPane(c.events[0]?.ev.country ?? "cluster", uniqueSelections)
       if (mapRef) {
         const map = mapRef.getMap()
         const target = Math.min(8, map.getZoom() + 2)
@@ -657,8 +676,15 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           />
         </Source>
 
-        {singles.map(({ ev, markerKey, lat, lon }) => (
-          <EventMarker key={markerKey} ev={ev} lat={lat} lon={lon} onSelect={handleSelectMarker} />
+        {singles.map(({ ev, markerKey, lat, lon, location }) => (
+          <EventMarker
+            key={markerKey}
+            ev={ev}
+            lat={lat}
+            lon={lon}
+            location={location}
+            onSelect={handleSelectMarker}
+          />
         ))}
         {clusters.map((c) => (
           <ClusterChip key={c.key} cluster={c} onClick={handleClusterClick} />

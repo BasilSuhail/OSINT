@@ -4,12 +4,18 @@ import { useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { ChevronDown, Copy, ExternalLink, X } from "lucide-react"
 import { cameoLabel } from "@/lib/cameo"
+import {
+  locationProvenanceForEvent,
+  type MarkerLocationContext,
+} from "@/lib/locationProvenance"
 import { colorForEvent, type EventRow } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { SourceSignals } from "./SourceSignals"
 
 interface EventDetailCardProps {
   event: EventRow
+  /** Evidence for the exact rendered marker when one story owns several. */
+  location?: MarkerLocationContext
   /** Optional ISO if known, opens CountrySidePanel. */
   onSelectCountry?: (iso: string) => void
   onClose: () => void
@@ -152,6 +158,13 @@ function severityBarColor(s: number): string {
   return "#22c55e"
 }
 
+function provenanceTime(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? value
+    : `${date.toISOString().replace("T", " ").slice(0, 16)} UTC`
+}
+
 function CopyButton({
   text,
   label,
@@ -219,6 +232,7 @@ function ScoreGauge({ severity }: { severity: number }) {
 
 export function EventDetailCard({
   event,
+  location,
   onSelectCountry,
   onClose,
   embedded = false,
@@ -231,6 +245,7 @@ export function EventDetailCard({
   const flag = countryFlagEmoji(event.country)
   const sev = typeof event.severity === "number" ? event.severity : 0
   const p = (event.payload ?? {}) as Record<string, unknown>
+  const provenance = locationProvenanceForEvent(event, location)
   const isHazard = event.category === "hazard" || event.category === "weather"
   const payloadJson = useMemo(() => {
     const raw = JSON.stringify(event.payload ?? {}, null, 2)
@@ -292,6 +307,78 @@ export function EventDetailCard({
         </span>
       </div>
 
+      {/* The visible point's evidence. Marker context is deliberately kept
+          separate from the story row because a multi-place story has one row
+          but several independently verified dots (#750). */}
+      <section className="mt-3 rounded border border-neutral-800 bg-neutral-900/60 p-2">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-mono text-[10px] uppercase tracking-widest text-neutral-400">
+            Location evidence
+          </h3>
+          <span
+            className={cn(
+              "rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider",
+              provenance.precision === "exact-place"
+                ? "bg-cyan-950 text-cyan-300"
+                : provenance.precision === "unknown"
+                  ? "bg-neutral-800 text-neutral-400"
+                  : "bg-amber-950 text-amber-300",
+            )}
+          >
+            {provenance.precision}
+            {provenance.precisionDetail ? ` · ${provenance.precisionDetail}` : ""}
+          </span>
+        </div>
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[10px]">
+          <dt className="text-neutral-500">
+            {provenance.sourceId ? "resolved name" : "location name"}
+          </dt>
+          <dd className="min-w-0 truncate text-neutral-200" title={provenance.name ?? undefined}>
+            {provenance.name ?? "Not recorded"}
+          </dd>
+
+          <dt className="text-neutral-500">coordinate source</dt>
+          <dd className="min-w-0 text-neutral-200">
+            {provenance.sourceUrl ? (
+              <a
+                href={provenance.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300"
+              >
+                {provenance.sourceLabel}
+                {provenance.sourceId ? ` · ${provenance.sourceId}` : ""}
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            ) : (
+              provenance.sourceLabel
+            )}
+          </dd>
+
+          {provenance.checkedAt && (
+            <>
+              <dt className="text-neutral-500">verified</dt>
+              <dd className="text-neutral-300">{provenanceTime(provenance.checkedAt)}</dd>
+            </>
+          )}
+
+          {provenance.model && (
+            <>
+              <dt className="text-neutral-500">resolver</dt>
+              <dd className="truncate text-neutral-300" title={provenance.model}>
+                {provenance.model}
+              </dd>
+            </>
+          )}
+        </dl>
+        {provenance.description && (
+          <p className="mt-2 text-[10px] leading-snug text-neutral-400">
+            {provenance.description}
+          </p>
+        )}
+        <p className="mt-2 text-[10px] leading-snug text-neutral-500">{provenance.note}</p>
+      </section>
+
       {/* GDACS-style 0–3 score gauge + hazard metadata */}
       {isHazard && (
         <>
@@ -336,14 +423,14 @@ export function EventDetailCard({
           </>
         )}
 
-        {event.lat != null && event.lon != null && (
+        {provenance.lat != null && provenance.lon != null && (
           <>
             <dt className="text-neutral-500">lat / lon</dt>
             <dd className="flex items-center gap-2 text-neutral-300">
               <span>
-                {event.lat.toFixed(3)}, {event.lon.toFixed(3)}
+                {provenance.lat.toFixed(3)}, {provenance.lon.toFixed(3)}
               </span>
-              <CopyButton text={`${event.lat},${event.lon}`} label="latlon" />
+              <CopyButton text={`${provenance.lat},${provenance.lon}`} label="latlon" />
             </dd>
           </>
         )}
