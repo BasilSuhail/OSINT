@@ -4,10 +4,10 @@ The ingest-time resolver can truthfully place a story at a city or region.
 This module is the slower second pass: it upgrades an explicit venue, building,
 street, or site to its own coordinate when Wikidata proves the identity.
 
-The gate is deliberately narrow. A result must match the extracted name, name
-the already-resolved city in its description, carry coordinates, and sit near
-that city. Search rank never decides identity. Unknown and ambiguous places do
-not move the marker.
+The gate is deliberately narrow. A result must match the extracted name, carry
+coordinates, and agree with the story country. When city context exists, it
+must also name that city in its description and sit nearby. Search rank never
+decides identity. Unknown and ambiguous places do not move the marker.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from app.db_models import EventRow, PlaceLookupRow
 from app.models import Category, Event
 
-PLACE_METHOD_VERSION: Final[str] = "place.wikidata.v1.0"
+PLACE_METHOD_VERSION: Final[str] = "place.wikidata.v1.1"
 WIKIDATA_API_URL: Final[str] = "https://www.wikidata.org/w/api.php"
 WIKIDATA_USER_AGENT: Final[str] = (
     "OSINT-ground-truth/1.0 "
@@ -119,9 +119,13 @@ class PlaceCandidate:
 @dataclass(frozen=True)
 class PlaceContext:
     country: str
-    city: str
-    lat: float
-    lon: float
+    city: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+
+    @property
+    def has_city_anchor(self) -> bool:
+        return self.city is not None and self.lat is not None and self.lon is not None
 
 
 @dataclass(frozen=True)
@@ -215,7 +219,7 @@ def lookup_key(candidate: PlaceCandidate, context: PlaceContext) -> str:
             PLACE_METHOD_VERSION,
             normalise_place_name(candidate.name),
             context.country.upper(),
-            normalise_place_name(context.city),
+            normalise_place_name(context.city or ""),
         )
     )
     return hashlib.sha256(material.encode()).hexdigest()
@@ -357,7 +361,7 @@ def resolve_wikidata_place(
     if not isinstance(entities, dict):
         raise ValueError("Wikidata entity response has no entity object")
 
-    context_city = normalise_place_name(context.city)
+    context_city = normalise_place_name(context.city or "")
     potential: list[tuple[str, dict[str, Any], float, float, str, set[str]]] = []
     for entity_id, entity in entities.items():
         if entity_id not in exact or not isinstance(entity, dict):
@@ -367,12 +371,14 @@ def resolve_wikidata_place(
             continue
         description_data = entity.get("descriptions", {}).get("en", {})
         description = str(description_data.get("value") or "")
-        description_words = f" {normalise_place_name(description)} "
-        if f" {context_city} " not in description_words:
-            continue
         lat, lon = coordinate
-        if _haversine_km(context.lat, context.lon, lat, lon) > MAX_LOCALITY_DISTANCE_KM:
-            continue
+        if context.has_city_anchor:
+            description_words = f" {normalise_place_name(description)} "
+            if f" {context_city} " not in description_words:
+                continue
+            assert context.lat is not None and context.lon is not None
+            if _haversine_km(context.lat, context.lon, lat, lon) > MAX_LOCALITY_DISTANCE_KM:
+                continue
         country_ids = _entity_ids(entity, "P17")
         if not country_ids:
             continue
@@ -484,9 +490,11 @@ def _cache_is_usable(cache: PlaceLookupRow, now: datetime) -> bool:
 
 def _event_context(event: Event) -> PlaceContext | None:
     city = event.payload.get("city")
-    if not event.country or not city or event.lat is None or event.lon is None:
+    if not event.country:
         return None
-    return PlaceContext(country=event.country, city=str(city), lat=event.lat, lon=event.lon)
+    if city and event.lat is not None and event.lon is not None:
+        return PlaceContext(country=event.country, city=str(city), lat=event.lat, lon=event.lon)
+    return PlaceContext(country=event.country)
 
 
 def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
@@ -546,9 +554,11 @@ def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
 
 def _row_context(row: EventRow) -> PlaceContext | None:
     city = (row.payload or {}).get("city")
-    if not row.country or not city or row.lat is None or row.lon is None:
+    if not row.country:
         return None
-    return PlaceContext(country=row.country, city=str(city), lat=row.lat, lon=row.lon)
+    if city and row.lat is not None and row.lon is not None:
+        return PlaceContext(country=row.country, city=str(city), lat=row.lat, lon=row.lon)
+    return PlaceContext(country=row.country)
 
 
 def _apply_cache_to_row(row: EventRow, cache: PlaceLookupRow) -> bool:
@@ -572,7 +582,7 @@ def _cache_row(
         lookup_key=key,
         query_text=candidate.name,
         context_country=context.country,
-        context_city=context.city,
+        context_city=context.city or "",
         status=verdict.status,
         lat=resolution.lat if resolution else None,
         lon=resolution.lon if resolution else None,

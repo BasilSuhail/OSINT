@@ -25,6 +25,7 @@ from app.persistence import upsert_events
 
 NOW = datetime(2026, 8, 2, 12, tzinfo=UTC)
 EDINBURGH = PlaceContext(country="GB", city="Edinburgh", lat=55.9483, lon=-3.2191)
+COUNTRY_ONLY_GB = PlaceContext(country="GB")
 
 
 class FakeResponse:
@@ -162,6 +163,47 @@ def _event(source_event_id: str, title: str) -> Event:
     )
 
 
+def _country_only_row(source_event_id: str, title: str) -> EventRow:
+    return EventRow(
+        source="rss-bbc-uk",
+        source_event_id=source_event_id,
+        occurred_at=NOW - timedelta(minutes=5),
+        fetched_at=NOW,
+        category="news",
+        severity=0.3,
+        keywords=[],
+        country="GB",
+        lat=None,
+        lon=None,
+        payload={
+            "title": title,
+            "summary": "",
+            "geo_basis": "term",
+            "entities": [],
+        },
+    )
+
+
+def _country_only_event(source_event_id: str, title: str) -> Event:
+    return Event(
+        source="rss-bbc-uk",
+        source_event_id=source_event_id,
+        occurred_at=NOW,
+        fetched_at=NOW,
+        category=Category.NEWS,
+        severity=0.3,
+        country="GB",
+        lat=None,
+        lon=None,
+        payload={
+            "title": title,
+            "summary": "",
+            "geo_basis": "term",
+            "entities": [],
+        },
+    )
+
+
 def _resolved_cache(title: str = "King's Theatre") -> PlaceLookupRow:
     candidate = PlaceCandidate(title, "building")
     return PlaceLookupRow(
@@ -176,6 +218,25 @@ def _resolved_cache(title: str = "King's Theatre") -> PlaceLookupRow:
         wikidata_id="Q6411122",
         label="King's Theatre",
         description="theatre in Edinburgh, Scotland, UK",
+        checked_at=NOW,
+        resolver_version=PLACE_METHOD_VERSION,
+    )
+
+
+def _country_only_resolved_cache(title: str = "Wembley Stadium") -> PlaceLookupRow:
+    candidate = PlaceCandidate(title, "building")
+    return PlaceLookupRow(
+        lookup_key=lookup_key(candidate, COUNTRY_ONLY_GB),
+        query_text=title,
+        context_country="GB",
+        context_city="",
+        status="resolved",
+        lat=51.556,
+        lon=-0.2796,
+        precision="building",
+        wikidata_id="Q193633",
+        label="Wembley Stadium",
+        description="football stadium in London, England",
         checked_at=NOW,
         resolver_version=PLACE_METHOD_VERSION,
     )
@@ -319,6 +380,73 @@ def test_resolver_rejects_place_in_wrong_country_even_when_city_text_matches() -
     assert verdict.status == "no_match"
 
 
+def test_country_only_resolver_selects_one_exact_country_match() -> None:
+    client = FakeWikidataClient(
+        [_search_item("Q193633", "Wembley Stadium")],
+        {
+            "Q193633": _entity(
+                "Wembley Stadium",
+                "football stadium in London, England",
+                51.556,
+                -0.2796,
+            )
+        },
+    )
+
+    verdict = resolve_wikidata_place(
+        PlaceCandidate("Wembley Stadium", "building"),
+        COUNTRY_ONLY_GB,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert verdict.status == "resolved"
+    assert verdict.resolution is not None
+    assert verdict.resolution.wikidata_id == "Q193633"
+
+
+def test_country_only_resolver_keeps_same_country_names_ambiguous() -> None:
+    client = FakeWikidataClient(
+        [_search_item("Q1"), _search_item("Q2")],
+        {
+            "Q1": _entity("King's Theatre", "theatre in Edinburgh", 55.941, -3.20),
+            "Q2": _entity("King's Theatre", "theatre in Glasgow", 55.864, -4.252),
+        },
+    )
+
+    verdict = resolve_wikidata_place(
+        PlaceCandidate("King's Theatre", "building"),
+        COUNTRY_ONLY_GB,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert verdict.status == "ambiguous"
+    assert verdict.resolution is None
+
+
+def test_country_only_resolver_rejects_country_conflict() -> None:
+    client = FakeWikidataClient(
+        [_search_item("Q1", "Wembley Stadium")],
+        {
+            "Q1": _entity(
+                "Wembley Stadium",
+                "stadium in another country",
+                40.0,
+                -75.0,
+                country_id="Q16",
+            )
+        },
+        countries={"Q16": {"claims": {"P297": [{"mainsnak": {"datavalue": {"value": "CA"}}}]}}},
+    )
+
+    verdict = resolve_wikidata_place(
+        PlaceCandidate("Wembley Stadium", "building"),
+        COUNTRY_ONLY_GB,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert verdict.status == "no_match"
+
+
 def test_worker_resolves_once_then_reuses_cache_for_same_place(db_session: Session) -> None:
     db_session.add_all(
         [
@@ -379,6 +507,59 @@ def test_worker_negative_result_is_cached(db_session: Session) -> None:
     assert stats["cache_hits"] == 1
     assert len(client.calls) == 1
     assert db_session.execute(select(PlaceLookupRow)).scalars().one().status == "no_match"
+
+
+def test_worker_resolves_country_only_story_and_caches_empty_city(db_session: Session) -> None:
+    db_session.add(_country_only_row("one", "Wembley Stadium hosts final"))
+    db_session.commit()
+    client = FakeWikidataClient(
+        [_search_item("Q193633", "Wembley Stadium")],
+        {
+            "Q193633": _entity(
+                "Wembley Stadium",
+                "football stadium in London, England",
+                51.556,
+                -0.2796,
+            )
+        },
+    )
+
+    stats = enrich_news_places(
+        db_session,
+        limit=10,
+        client=client,  # type: ignore[arg-type]
+        now=NOW,
+    )
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    cache = db_session.execute(select(PlaceLookupRow)).scalars().one()
+    assert stats["enriched"] == 1
+    assert stats["no_context"] == 0
+    assert (row.lat, row.lon) == (51.556, -0.2796)
+    assert row.payload["geo_basis"] == "place"
+    assert cache.context_city == ""
+
+
+def test_country_only_cached_place_survives_refresh_then_withdraws(
+    db_session: Session,
+) -> None:
+    db_session.add(_country_only_resolved_cache())
+    db_session.commit()
+
+    upsert_events([_country_only_event("story", "Wembley Stadium hosts final")], db_session)
+    db_session.commit()
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert (row.lat, row.lon) == (51.556, -0.2796)
+    assert row.payload["geo_basis"] == "place"
+
+    upsert_events([_country_only_event("story", "Britain publishes sports budget")], db_session)
+    db_session.commit()
+    db_session.expire_all()
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert (row.lat, row.lon) == (None, None)
+    assert row.payload["geo_basis"] == "term"
+    assert row.payload.get("place_wikidata_id") is None
 
 
 def test_worker_does_not_cache_network_error_and_retries_next_run(db_session: Session) -> None:
