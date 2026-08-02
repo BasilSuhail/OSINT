@@ -542,10 +542,12 @@ not quietly empty the map (#617/#620).
 RSS feeds rarely supply coordinates. The fast resolver uses bundled city and
 region data; `enrich_news_places` then checks one explicit named building,
 street, or site against Wikidata and upgrades the marker only after an exact
-name, city, country, and distance match (#745). Search rank never decides identity.
-Ambiguous and unknown places do not move. Positive and negative results are
-cached in Postgres, and each verified marker carries its place label, Wikidata
-ID, precision, source, check time, and resolver version.
+name and country match (#745, #747). When a city anchor exists, the entity must
+also name that city and sit within 75 km. Without a city, exactly one entity
+must survive the country gate. Search rank never decides identity. Ambiguous
+and unknown places do not move. Positive and negative results are cached in
+Postgres, and each verified marker carries its place label, Wikidata ID,
+precision, source, check time, and resolver version.
 
 ---
 

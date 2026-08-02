@@ -95,27 +95,32 @@ Coverage varies with the live corpus. A miss has no invented country-centre
 point; it remains reachable through the country panel when country evidence
 exists, but only rows with a supported coordinate draw a news marker.
 
-## Named-place resolution — Wikidata v1.0
+## Named-place resolution — Wikidata v1.1
 
 `app/enrichment/place.py`, scheduled every 30 minutes. This pass upgrades an
-explicit building, venue, street, or site from its city anchor to the named
-place's own coordinate. It never runs inside an RSS request.
+explicit building, venue, street, or site to the named place's own coordinate.
+It accepts either a city anchor or country-only context and never runs inside
+an RSS request.
 
 A candidate moves only when all gates pass:
 
 1. the text contains exactly one conservative named-place candidate;
 2. Wikidata returns an exact label or alias match with `P625` coordinates;
-3. the entity description names the already-resolved city;
-4. its `P17` country resolves through `P297` to the row's ISO country;
-5. the coordinate lies within 75 km of that city; and
-6. exactly one entity survives those checks.
+3. its `P17` country resolves through `P297` to the row's ISO country; and
+4. exactly one entity survives those checks.
+
+When the row also has a city anchor, two stronger locality gates remain: the
+entity description must name that city and its coordinate must lie within 75
+km. Country-only mode never uses a country centroid or search rank as a point;
+the exact entity coordinate is the only point it can add.
 
 Search order is not evidence. Two surviving entities are ambiguous and leave
 the marker unchanged. Positive and negative results live in `place_lookups`,
-keyed by normalized name, country, city, and resolver version. The task spends
-at most ten sequential uncached lookups per run and sends a descriptive user
-agent. Ingestion reads this cache before every RSS upsert, so unchanged stories
-retain their exact point while changed text withdraws stale enrichment.
+keyed by normalized name, country, optional city, and resolver version. The
+task spends at most ten sequential uncached lookups per run and sends a
+descriptive user agent. Ingestion reads this cache before every RSS upsert, so
+unchanged stories retain their exact point while changed text withdraws stale
+enrichment.
 
 ## News scope classifier — `local | world | unknown`
 
