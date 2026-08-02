@@ -40,6 +40,7 @@ HEAVY_TASKS: tuple[str, ...] = (
     "app.tasks.compute_composite",
     "app.tasks.compute_cii",
     "app.tasks.enrich_footprints",
+    "app.tasks.enrich_news_places",
     "app.tasks.run_housekeeping",
     "app.tasks.brain_narrate",
     "app.tasks.brain_enrich",

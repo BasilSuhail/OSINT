@@ -104,6 +104,14 @@ ENRICHMENT_PAYLOAD_KEYS: Final = (
     "sentiment_label",
     "entities",  # scripts/backfill_news_ner.py
     "enrichment_meta",  # which enricher/model wrote the above
+    "geo_precision",  # exactness of the coordinate, including named places (#745)
+    "geo_source",  # authority that supplied the coordinate (#745)
+    "place_name",  # verified physical location label (#745)
+    "place_wikidata_id",  # auditable external identity (#745)
+    "place_description",
+    "place_checked_at",
+    "place_model",
+    "place_resolution",
 )
 
 
@@ -189,6 +197,12 @@ def upsert_events(
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
 
+    # New network lookups only happen in the bounded enrichment worker. This
+    # cache-only pass makes an unchanged RSS refresh reproduce the exact point;
+    # changed text has a different key and withdraws the stale point (#741).
+    from app.enrichment.place import apply_cached_places
+
+    events = apply_cached_places(events, session)
     rows = [_event_to_row(e) for e in events]
     dialect = session.get_bind().dialect.name
 

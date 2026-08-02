@@ -178,7 +178,7 @@ Beat is declarative. All schedules live in `app/tasks.py` so they are auditable.
 | `gdacs` | every 15 min, offset +4 m | `fast` | hazard |
 | `nasa-firms` | hourly | `slow` | hazard |
 | `eonet` | every 30 min | `slow` | hazard |
-| `rss-*` × 25 | hourly, staggered by feed index | `slow` | news |
+| `rss-*` × 44 | hourly, staggered by feed index | `slow` | news |
 | `uk-police` | daily 06:00 UTC | `slow` | news/crime |
 | `opensky-adsb` | hourly | `fast` | tracking |
 | `abuse-ch-urlhaus` | every 15 min | `slow` | cyber |
@@ -186,6 +186,7 @@ Beat is declarative. All schedules live in `app/tasks.py` so they are auditable.
 | `polymarket` | every 30 min | `slow` | market |
 | `compute_composite` | hourly @ minute 10 | — | scoring |
 | `compute_cii` | hourly @ minute 25 | — | scoring |
+| `enrich_news_places` | every 30 min @ :13/:43 | analytics | news enrichment |
 | `ingest_watchdog` | every 15 min | — | observability |
 | `run_housekeeping` | daily 03:00 UTC | — | retention |
 
@@ -198,7 +199,7 @@ Coverage exists because staleness alone missed #604 completely — GDACS kept
 answering on cadence for weeks while every refresh deleted the geometry behind
 it, so ingest health stayed green while the map drew synthesized circles.
 
-The 25 RSS feeds are not enumerated individually — they're generated from `app/sources/rss_feeds.json` via `feed_cadence_map()` (issue #158). Adding a new feed = one JSON entry.
+The 44 RSS feeds are not enumerated individually — they're generated from `app/sources/rss_feeds.json` via `feed_cadence_map()` (issue #158). Adding a new feed = one JSON entry.
 
 WebSocket consumers (none active yet — AIS deferred to a follow-up issue) would run as their own systemd-managed worker with auto-reconnect rather than via Beat.
 

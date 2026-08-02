@@ -204,3 +204,21 @@ def test_footprint_task_uses_configured_limit(monkeypatch) -> None:
     tasks.enrich_footprints()
 
     assert captured == {"limit": 17}
+
+
+def test_named_place_task_is_scheduled_and_uses_configured_limit(monkeypatch) -> None:
+    entry = tasks.app.conf.beat_schedule["enrich-news-places-30min"]
+    assert entry["task"] == "app.tasks.enrich_news_places"
+
+    captured: dict[str, int] = {}
+    monkeypatch.setattr(tasks.runtime_load, "busy_reason", lambda: None)
+    monkeypatch.setattr(tasks.settings, "place_enrichment_limit", 7)
+    monkeypatch.setattr(
+        tasks,
+        "_enrich_news_places_body",
+        lambda *, limit: captured.setdefault("limit", limit) or {"ok": 1},
+    )
+
+    tasks.enrich_news_places_task()
+
+    assert captured == {"limit": 7}
