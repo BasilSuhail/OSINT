@@ -2,7 +2,7 @@
 
 Used by the RSS news fetchers so each news event lands on a real city pin
 rather than at the country centroid. Pure offline lookup against a bundled
-Natural Earth 50m populated-places table (~1.2 k cities, ~100 KB JSON,
+Natural Earth 10m populated-places table (~7.5 k cities, ~670 KB JSON,
 sorted by population so the first match favours the major city when names
 collide).
 

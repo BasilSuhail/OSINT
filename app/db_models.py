@@ -76,6 +76,39 @@ class EventRow(Base):
     )
 
 
+class PlaceLookupRow(Base):
+    """Persistent positive/negative cache for strict named-place lookups (#745)."""
+
+    __tablename__ = "place_lookups"
+
+    lookup_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    context_country: Mapped[str] = mapped_column(String(2), nullable=False)
+    context_city: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    precision: Mapped[str] = mapped_column(Text, nullable=False)
+    wikidata_id: Mapped[str | None] = mapped_column(Text)
+    label: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolver_version: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('resolved', 'no_match', 'ambiguous')",
+            name="place_lookups_status_allowed",
+        ),
+        CheckConstraint(
+            "(status = 'resolved' AND lat IS NOT NULL AND lon IS NOT NULL "
+            "AND wikidata_id IS NOT NULL AND label IS NOT NULL) OR status != 'resolved'",
+            name="place_lookups_resolved_complete",
+        ),
+        Index("place_lookups_checked_idx", "checked_at"),
+    )
+
+
 class ScoreRow(Base):
     __tablename__ = "scores"
 

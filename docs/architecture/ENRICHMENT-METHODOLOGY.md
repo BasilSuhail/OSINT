@@ -4,10 +4,11 @@ How news rows get enriched on ingest, what gets stamped on each row, and
 why.
 
 **Modules:** `app.enrichment.sentiment`, `app.enrichment.ner`,
-`app.enrichment.city`.
+`app.enrichment.city`, `app.enrichment.geo`, `app.enrichment.place`.
 
-**Wired into:** `app.sources.rss_news_fetcher.entry_to_event` — every RSS
-feed shares the same enrichment pass so the contract stays consistent.
+**Wired into:** `app.sources.rss_news_fetcher.entry_to_event` for deterministic
+ingest enrichment, then the bounded `app.tasks.enrich_news_places` pass for
+verified external place identities.
 
 ## What lands on `payload`
 
@@ -19,6 +20,12 @@ payload = {
     "feed_name": str,
     "published_at": str,         # ISO 8601
     "city": str | None,          # offline city pinpoint (#113)
+    "geo_basis": "place" | "city" | "region" | "term" | ...,
+    "geo_precision": "building" | "street" | "site" | "city" | "region" | None,
+    "geo_source": "wikidata" | "natural-earth" | None,
+    "place_name": str | None,
+    "place_wikidata_id": str | None,
+    "place_resolution": str | None,
     "image_url": str | None,     # thumbnail (#133)
     "sentiment": float | None,   # VADER compound [-1, 1] (#131)
     "sentiment_label": str | None,
@@ -77,20 +84,38 @@ keeps passing without the model + prod ships the real signal.
 for a transformer NER, deterministic, no GPU. Wikidata link resolution
 is a follow-up (post-NER, depends on this) — separate issue.
 
-## City pinpoint — offline Natural Earth 50m
+## City pinpoint — offline Natural Earth 10m
 
-`app/enrichment/city.py`. ~1.2 k populated places shipped as a
-~100 KB JSON. Substring scan against tokenised lowercase headline +
+`app/enrichment/city.py`. 7,484 populated places ship as a ~670 KB JSON.
+Substring scan against tokenised lowercase headline +
 summary, country-hint disambiguation (Cambridge UK > Cambridge MA
 when feed's `default_country = "GB"`).
 
-Coverage: ~30% hit rate against RSS headlines. Misses fall back to
-the country centroid in the old map path; **post-#166** they get
-tagged `news_scope = "unknown"` and skipped by the map (still shown
-in the bottom-page news cards).
+Coverage varies with the live corpus. A miss has no invented country-centre
+point; it remains reachable through the country panel when country evidence
+exists, but only rows with a supported coordinate draw a news marker.
 
-A NE 10m city upgrade (~1.2 k → ~15 k cities) is tracked as a
-follow-up — bigger JSON but better hit rate.
+## Named-place resolution — Wikidata v1.0
+
+`app/enrichment/place.py`, scheduled every 30 minutes. This pass upgrades an
+explicit building, venue, street, or site from its city anchor to the named
+place's own coordinate. It never runs inside an RSS request.
+
+A candidate moves only when all gates pass:
+
+1. the text contains exactly one conservative named-place candidate;
+2. Wikidata returns an exact label or alias match with `P625` coordinates;
+3. the entity description names the already-resolved city;
+4. its `P17` country resolves through `P297` to the row's ISO country;
+5. the coordinate lies within 75 km of that city; and
+6. exactly one entity survives those checks.
+
+Search order is not evidence. Two surviving entities are ambiguous and leave
+the marker unchanged. Positive and negative results live in `place_lookups`,
+keyed by normalized name, country, city, and resolver version. The task spends
+at most ten sequential uncached lookups per run and sends a descriptive user
+agent. Ingestion reads this cache before every RSS upsert, so unchanged stories
+retain their exact point while changed text withdraws stale enrichment.
 
 ## News scope classifier — `local | world | unknown`
 
@@ -129,8 +154,8 @@ impact = 0.30 × |sentiment|
 
 - **`sentiment.v2.0`** = distilbert SST-2 via ONNX (#155). Drops in
   with no payload schema change because the field is just a float.
-- **`ner.v1.1`** = Wikidata linking on top of spaCy. Adds a `wikidata`
-  field per entity.
+- Wider entity linking beyond conservative physical-place candidates remains a
+  separate NER follow-up.
 - **`city.v2.0`** = NE 10m upgrade (~15 k cities).
 - **`news_scope.v2.0`** = BERT-classifier instead of city-match
   heuristic. Higher recall on headlines that don't mention a city

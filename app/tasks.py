@@ -436,6 +436,40 @@ def _enrich_footprints_body(
     return {"scanned": scanned, "enriched": enriched}
 
 
+def _enrich_news_places_body(*, limit: int, client: httpx.Client | None = None) -> dict[str, int]:
+    """Upgrade explicit RSS place names through the persistent cache (#745)."""
+    from app.enrichment.place import WIKIDATA_USER_AGENT, enrich_news_places
+
+    owns_client = client is None
+    if client is None:
+        client = httpx.Client(
+            timeout=20.0,
+            follow_redirects=True,
+            headers={"User-Agent": WIKIDATA_USER_AGENT},
+        )
+    try:
+        with session_scope() as session:
+            return enrich_news_places(session, limit=limit, client=client)
+    finally:
+        if owns_client:
+            client.close()
+
+
+@app.task(
+    name="app.tasks.enrich_news_places",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=3,
+)
+def enrich_news_places_task(limit: int | None = None) -> dict[str, Any]:
+    """Celery entry point for strict named-place enrichment (#745)."""
+    if skipped := _skip_optional_heavy():
+        return skipped
+    return _enrich_news_places_body(limit=limit or settings.place_enrichment_limit)
+
+
 @app.task(
     name="app.tasks.enrich_footprints",
     autoretry_for=(Exception,),
@@ -614,6 +648,12 @@ app.conf.beat_schedule = {
     "enrich-footprints-15min": {
         "task": "app.tasks.enrich_footprints",
         "schedule": crontab(minute="11,26,41,56"),
+    },
+    # Named buildings/streets/sites are resolved after RSS ingest, never inline.
+    # Ten sequential uncached names per tick; cache hits do not spend the budget.
+    "enrich-news-places-30min": {
+        "task": "app.tasks.enrich_news_places",
+        "schedule": crontab(minute="13,43"),
     },
     "ingest-watchdog-15min": {
         "task": "app.tasks.ingest_watchdog",

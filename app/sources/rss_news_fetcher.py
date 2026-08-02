@@ -31,10 +31,10 @@ Country tagging:
 
 Geolocation:
 
-- Most RSS items have no lat/lon. We do **not** try to geocode the
-  headline at fetch time (rate limits, API costs). The map renderer
-  falls back to country centroid if lat/lon are null and country is set,
-  via the existing ``centroids`` lookup.
+- Most RSS items have no upstream lat/lon. Fetch time uses only bundled city
+  and region data. The bounded ``enrich_news_places`` worker may later upgrade
+  one explicit named building/street/site through the persistent Wikidata
+  cache (#745). Unknown never gets an invented country-centre marker.
 """
 
 from __future__ import annotations

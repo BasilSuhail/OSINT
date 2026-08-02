@@ -321,6 +321,7 @@ Once `make up` runs, the scheduler fires these forever:
 | ACLED | conflict events | manual drop-folder + opt-in API (see 3.3) | hourly check |
 | OpenSky | aircraft states | REST API | 2 min |
 | abuse.ch / Polymarket / UK Police | cyber / prediction markets / crime | official APIs | 15 min – daily |
+| named-place enrichment | verified RSS buildings/streets/sites | Wikidata API + persistent cache | 30 min, bounded |
 
 Every fetched row gets a **fingerprint** `(source, source_event_id)` — the
 database rejects the same real-world record twice no matter how often it is
@@ -535,6 +536,16 @@ and footprints **survive a later refresh** of the same event instead of being
 overwritten back to a bare point (#604/#611/#618/#621). A watchdog alerts if
 footprint coverage suddenly collapses — a silent upstream format change should
 not quietly empty the map (#617/#620).
+
+### 3.7 Ground-level news coordinates
+
+RSS feeds rarely supply coordinates. The fast resolver uses bundled city and
+region data; `enrich_news_places` then checks one explicit named building,
+street, or site against Wikidata and upgrades the marker only after an exact
+name, city, country, and distance match (#745). Search rank never decides identity.
+Ambiguous and unknown places do not move. Positive and negative results are
+cached in Postgres, and each verified marker carries its place label, Wikidata
+ID, precision, source, check time, and resolver version.
 
 ---
 
@@ -1179,7 +1190,9 @@ Every news row gets the following stamped on `payload` at fetch time. See [`docs
 - VADER sentiment v1.0 (`compound ∈ [-1, 1]` + label).
 - spaCy NER v1.0 (optional dep) — `entities = [{text, label}, …]`.
 - News-scope classifier (`local | world | unknown`) — distinguishes a Dawn-published US story from a Karachi street-level event.
-- Offline city pinpoint (Natural Earth 50m, ~1.2 k cities) — drives map lat/lon.
+- Offline city pinpoint (Natural Earth 10m, 7,484 cities) — drives map lat/lon.
+- Bounded named-place verification — exact Wikidata point for one unambiguous
+  building, street, or site; persistent positive and negative cache.
 - Image URL (media:thumbnail / media:content / enclosure / first `<img>` fallback).
 - News-scope-aware impact ranking (NIP §3 formula) — `0.30 |sentiment| + 0.25 cluster + 0.25 sourceWeight + 0.20 recency`.
 
