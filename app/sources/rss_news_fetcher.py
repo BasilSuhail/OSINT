@@ -61,6 +61,7 @@ from app.enrichment.sentiment import SENTIMENT_METHOD_VERSION, score_text
 from app.models import Category, Event
 from app.severity import news as news_severity
 from app.sources.base import Fetcher
+from app.sources.rss_identity import canonical_rss_event_id
 
 RSS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
 
@@ -154,9 +155,14 @@ def entry_to_event(
     summary = _strip_html(raw_summary) if raw_summary else ""
     image_url = _extract_image_url(entry, raw_summary)
 
-    occurred_at = _parse_published(entry) or fetched_at
+    published_at = _parse_published(entry)
+    occurred_at = published_at or fetched_at
     guid = (entry.get("id") or entry.get("guid") or "").strip()
-    source_event_id = guid or _hash_event_id(config.source, link or "", title)
+    source_event_id = (
+        canonical_rss_event_id(guid, link)
+        if guid
+        else _hash_event_id(config.source, link or "", title)
+    )
 
     # Graded fallback on the ingest path (#591): separates fatal from violent
     # from disruptive instead of flattening all three onto one value, and
@@ -200,6 +206,7 @@ def entry_to_event(
         "summary": summary[:500] if summary else None,
         "feed_name": config.pretty_name,
         "published_at": occurred_at.isoformat(),
+        "published_from_feed": published_at is not None,
         "guid": guid or None,
         "city": geo.city,
         "geo_basis": geo.basis,
