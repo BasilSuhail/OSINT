@@ -540,14 +540,16 @@ not quietly empty the map (#617/#620).
 ### 3.7 Ground-level news coordinates
 
 RSS feeds rarely supply coordinates. The fast resolver uses bundled city and
-region data; `enrich_news_places` then checks one explicit named building,
-street, or site against Wikidata and upgrades the marker only after an exact
-name and country match (#745, #747). When a city anchor exists, the entity must
-also name that city and sit within 75 km. Without a city, exactly one entity
-must survive the country gate. Search rank never decides identity. Ambiguous
-and unknown places do not move. Positive and negative results are cached in
-Postgres, and each verified marker carries its place label, Wikidata ID,
-precision, source, check time, and resolver version.
+region data; `enrich_news_places` then checks explicit named buildings,
+streets, and sites against Wikidata and upgrades markers only after exact name
+and country matches (#745, #747, #748). For a single-place story, the entity
+must also match its city anchor and sit within 75 km. Several
+candidates use country-only gates because one row-level city cannot govern all
+of them. Search rank never decides identity. Distinct verified places are
+stored on one story row and rendered as separate markers; aliases resolving to
+one Wikidata ID collapse. Partial proof draws only proven points. Positive and
+negative results are cached in Postgres, and each verified marker carries its
+place label, Wikidata ID, precision, source, check time, and resolver version.
 
 ---
 
