@@ -145,6 +145,8 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
       ? `country:${e.iso}`
       : e.kind === "cluster"
         ? `cluster:${e.label}`
+        : e.kind === "area"
+          ? `area:${e.lat}:${e.lon}:${e.radiusKm}`
         : `event:${e.event.id}`
   })
   const selectionIndex = cards.findIndex((c) => c.key === "selection")

@@ -35,6 +35,14 @@ playback appends only the newly entered time slice
 every two seconds and pages revisions since the prior snapshot, avoiding
 repeated full-window reads without losing late-ingested or backfilled rows.
 
+Map clicks are local selections, not implicit country selections. Event dots
+and clusters keep first priority. Any other click resolves the most specific
+rendered building, street, neighbourhood, town, or city label; unlabeled ground
+uses its coordinates. The selection card lists deduplicated positioned events
+inside a visible zoom-scaled boundary, nearest first, and refreshes when the
+complete selected-area snapshot arrives. Country aggregation remains available
+only through explicit country navigation such as the world list or future search.
+
 ## Phase 1 — pages
 
 | Page | What it shows | Data |

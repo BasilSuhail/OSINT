@@ -69,7 +69,6 @@ export function SplitLayout() {
   //: somehow set — opening one never closes the other, so it is the later click.
   const sidePanel = storyDetailOpen ? "story" : worldDetailOpen ? "world" : null
   const entity = useRightPaneModeStore((s) => s.entity)
-  const openCountry = useRightPaneModeStore((s) => s.openCountry)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
   const selectedEventId = entity?.kind === "event" ? entity.event.id : null
 
@@ -100,13 +99,6 @@ export function SplitLayout() {
 
   // Selecting anything locks the right pane to that entity; on the narrow
   // single-column layout, reveal the right pane so the detail is visible.
-  const onSelectCountry = useCallback(
-    (iso: string) => {
-      openCountry(iso)
-      if (isNarrow) setActivePane("right")
-    },
-    [openCountry, isNarrow],
-  )
   const onSelectEvent = useCallback(
     (ev: VisibleEvent, location?: MarkerLocationContext) => {
       openEvent(ev, location)
@@ -114,6 +106,9 @@ export function SplitLayout() {
     },
     [openEvent, isNarrow],
   )
+  const onOpenMapSelection = useCallback(() => {
+    if (isNarrow) setActivePane("right")
+  }, [isNarrow])
 
   // The right pane as a card deck (#328): console keeps its world-status /
   // entity surface and the analytical pages fill the rest. The globe card was
@@ -217,8 +212,8 @@ export function SplitLayout() {
                 useStore={useLeftPaneStore}
                 railOpen={leftRailOpen}
                 onRailOpenChange={setLeftRailOpen}
-                onSelectCountry={onSelectCountry}
                 onCount={setLeftCount}
+                onOpenSelection={onOpenMapSelection}
                 onSelectEvent={onSelectEvent}
                 selectedEventId={selectedEventId}
               />
@@ -263,8 +258,8 @@ export function SplitLayout() {
                 useStore={useLeftPaneStore}
                 railOpen={leftRailOpen}
                 onRailOpenChange={setLeftRailOpen}
-                onSelectCountry={onSelectCountry}
                 onCount={setLeftCount}
+                onOpenSelection={onOpenMapSelection}
                 onSelectEvent={onSelectEvent}
                 selectedEventId={selectedEventId}
               />
