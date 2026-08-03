@@ -5,7 +5,7 @@
 ## Problem
 
 Labels now exist (#284) and scores accumulate, but every analysis would have to re-join
-them from Postgres. The thesis needs one canonical dataset artifact: a country-month
+them from Postgres. The project needs one canonical dataset artifact: a country-month
 panel that every statistic, baseline, and chart loads from a single file.
 
 ## Scope

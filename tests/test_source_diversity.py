@@ -1,6 +1,6 @@
 """Source diversity: outlet classes + voices in Q&A (#477).
 
-Basil's accuracy clause: trust needs comparison across mainstream,
+The accuracy clause: trust needs comparison across mainstream,
 state, regional, and independent voices — coverage volume is not proof.
 """
 

@@ -1,6 +1,6 @@
 # Situation panel v3 — live list + persistent chat (#439)
 
-Date: 2026-07-16 · Status: approved (Basil, in-session)
+Date: 2026-07-16 · Status: approved (The operator, in-session)
 
 ## Problem
 
@@ -13,7 +13,7 @@ The Situation card (v2, #417) shows stale, truncated news and an amnesiac ask bo
 3. `AskBox` keeps only the last Q&A inside the fixed footer — no history, no
    scrollback, no clear.
 
-## Decisions (confirmed with Basil)
+## Decisions (confirmed with The operator)
 
 - **Ordering: latest activity first** — sort by `last_seen` desc. A story that gains
   a new article jumps back to the top (live-ticker feel).
@@ -50,7 +50,7 @@ One scroll container; header and footer fixed:
 - SWR 60 s refresh re-sorts new activity to the top automatically.
 - **Day markers** (added in review): a tiny `yesterday` / `wed 8 jul` label where
   a row starts an earlier day, so HH:MM never reads out of order across midnight.
-- **Older stories collapsed** (Basil, in-session): default view shows only
+- **Older stories collapsed** (The operator, in-session): default view shows only
   today + yesterday; a `+ N older stories` button reveals the rest of the 72 h
   window, `− hide older stories` collapses again. A quiet spell (nothing from
   today/yesterday) shows all rows rather than a blank card.

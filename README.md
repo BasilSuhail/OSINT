@@ -290,7 +290,7 @@ We can't compute "truth", so we compute three honest proxies **per story**:
 | WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
 | WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward evaluation (#374) |
 | WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 full-panel, but fades to ~0.53 on the fair onset evaluation and even beats the composite that contains it (#376, #573) |
-| WS-G local AI checker | Ollama claim extraction w/ measured error rate | 🔨 machinery done (#386) — awaiting Basil's filled audit sheet |
+| WS-G local AI checker | Ollama claim extraction w/ measured error rate | 🔨 machinery done (#386) — awaiting The operator's filled audit sheet |
 
 The living log of all of this is pinned issue
 [#282](https://github.com/BasilSuhail/OSINT/issues/282).
@@ -473,7 +473,7 @@ We take the `export` line only. (GDELT publishes those MD5 hashes; we do not
 verify them yet — a cheap integrity upgrade on the list.)
 
 "Pulling" is a plain HTTP GET via `httpx` with an honest User-Agent
-(`OSINT-thesis-project (academic)`), a 120 s timeout, and 3 retries with
+(`OSINT-project-project (academic)`), a 120 s timeout, and 3 retries with
 backoff on the history path — no browser, no scraping, no auth. The zip is
 unzipped **in memory**, rows are split on tabs, three columns are kept, the
 rest is discarded.
@@ -1210,7 +1210,6 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 ## Documentation index
 
 - **[`docs/storage.md`](docs/storage.md)** — local storage & data: `OSINT_DATA_DIR`, where the live DB lives vs backups vs the config pointer, retention, move/back-up/restore/wipe
-- **[`docs/requirements.md`](docs/requirements.md)** — system requirements spec, three-layer scope analysis, deliverable checklist
 - **[`docs/methodology.md`](docs/methodology.md)**
   - Part A — pre-registered evaluation protocol (ground truth, splits, baselines, metrics, sensitivity, reporting checklist)
   - Part B — literature baseline (citations, reading priority, BibTeX snippets)

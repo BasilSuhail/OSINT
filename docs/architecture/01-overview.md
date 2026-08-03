@@ -51,7 +51,7 @@ Why the frontend builds off-Pi: 8 GB RAM is tight when Postgres, Redis, FastAPI,
 
 ## Module map
 
-Thesis modules map 1:1 to dedicated Celery queues. Each queue is a separate worker process so a single bad fetcher cannot bring down the system.
+Project modules map 1:1 to dedicated Celery queues. Each queue is a separate worker process so a single bad fetcher cannot bring down the system.
 
 | Master-plan module | Worker queue | Fetch tier | Purpose |
 |---|---|---|---|
@@ -62,7 +62,7 @@ Thesis modules map 1:1 to dedicated Celery queues. Each queue is a separate work
 | Pushover dispatch | `worker-notify` | event-triggered | Notification fan-out (decoupled so retries don't block composite) |
 | Ground-truth labels | `worker-labels` | daily | Pulls ACLED + NBER + IMF currency-crisis + EM-DAT for the hybrid evaluation ground truth |
 
-**Layer 3 (post-thesis additions)** — these add workers, never touch core:
+**Layer 3 (post-project additions)** — these add workers, never touch core:
 
 - `worker-flights` (OpenSky + adsb.lol)
 - `worker-ships` (AISStream)
@@ -93,9 +93,9 @@ These are invariants. The system stays sane only if they hold.
 
 ## Feed taxonomy
 
-Critical split: **not every feed feeds the composite stress index.** The thesis defends a multi-modal composite over three input domains (geopolitical / market / hazard) with documented methodology; the rest of the feeds are dashboard, situational awareness, and personal use. Mixing them would explode the methodology and make the evaluation indefensible.
+Critical split: **not every feed feeds the composite stress index.** The project defends a multi-modal composite over three input domains (geopolitical / market / hazard) with documented methodology; the rest of the feeds are dashboard, situational awareness, and personal use. Mixing them would explode the methodology and make the evaluation indefensible.
 
-### Tier 1 — Thesis core (multi-modal composite inputs + ground truth)
+### Tier 1 — Project core (multi-modal composite inputs + ground truth)
 
 | Feed | Module / role | Purpose | Free? |
 |---|---|---|---|
@@ -151,7 +151,7 @@ Three input domains (A + B + C), three label domains. The composite is evaluated
 
 ### Tier 3 — Out of scope
 
-Explicitly not building (be honest with examiners):
+Explicitly not building (be honest about scope):
 
 - Palantir-style entity resolution / ontology across feeds
 - Commercial satellite imagery (Maxar, Planet — $$$)
@@ -163,6 +163,6 @@ Explicitly not building (be honest with examiners):
 ## What this system is NOT
 
 - It is not Palantir Foundry. No ontology, no analyst workflows, no enterprise auth.
-- It is not Shadowbroker. No mesh layer, no agentic AI channel, no decentralised governance. (Those can be added in Layer 3 if Basil wants, but they are not architectural commitments.)
+- It is not Shadowbroker. No mesh layer, no agentic AI channel, no decentralised governance. (Those can be added in Layer 3 if The operator wants, but they are not architectural commitments.)
 - It is not a prediction system. The composite reports stress level; it does not claim to forecast specific events. The evaluation in [`../methodology.md`](../methodology.md) tests **discrimination** (does high stress correlate with later labelled instability events across the three domains) rather than **prediction accuracy** in the strict sense.
-- It is not finance-anchored. An earlier draft framed the thesis as a finance-led composite. The current re-anchor treats market signals as one of three equal input domains in the multi-modal composite; finance is not the headline contribution.
+- It is not finance-anchored. An earlier draft framed the project as a finance-led composite. The current re-anchor treats market signals as one of three equal input domains in the multi-modal composite; finance is not the headline contribution.

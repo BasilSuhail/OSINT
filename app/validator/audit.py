@@ -1,7 +1,7 @@
 """Audit sheet — the ~50-story human check that gates all downstream use.
 
 Emits a markdown sheet of model-extracted claims with blank human columns.
-Basil fills the human columns once; a later WS-G step computes and publishes
+The reviewer fills the human columns once; a later WS-G step computes and publishes
 the agreement rate. Until then the validator's rows feed nothing.
 
 Usage:

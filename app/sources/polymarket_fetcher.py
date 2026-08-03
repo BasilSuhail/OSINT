@@ -34,7 +34,7 @@ from app.models import Category, Event
 from app.sources.base import Fetcher
 
 POLYMARKET_URL: Final[str] = "https://gamma-api.polymarket.com/markets"
-POLYMARKET_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+POLYMARKET_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 
 def _safe_first_price(prices_raw: Any) -> float | None:

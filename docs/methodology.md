@@ -1,14 +1,14 @@
 # Methodology — Composite Design, Pre-Registered Evaluation, Literature Baseline
 
-*Single source of truth for the academic spine of the thesis. Three parts: (A) the pre-registered evaluation protocol (locked with Marco before any composite output is examined); (B) the literature backbone the thesis cites; (C) per-step methodology choices traced to that literature.*
+*Single source of truth for the academic spine of the project. Three parts: (A) the pre-registered evaluation protocol (locked with The reviewer before any composite output is examined); (B) the literature backbone the report cites; (C) per-step methodology choices traced to that literature.*
 
-Companion to the top-level [`README.md`](../README.md) (project plan), [`requirements.md`](requirements.md) (PX5928 university spec), and the [`architecture/`](architecture/) directory (how the system is built).
+Companion to the top-level [`README.md`](../README.md) (project plan), and the [`architecture/`](architecture/) directory (how the system is built).
 
 ---
 
 # Part A — Evaluation Protocol (Pre-Registered)
 
-**Critical rule**: this protocol is finalised with Marco at the first supervisory meeting. Once locked, it does not change based on what the data shows. Changes after data inspection must be documented as exploratory, not confirmatory.
+**Critical rule**: this protocol is finalised with The reviewer at the first review meeting. Once locked, it does not change based on what the data shows. Changes after data inspection must be documented as exploratory, not confirmatory.
 
 ---
 
@@ -29,7 +29,7 @@ Companion to the top-level [`README.md`](../README.md) (project plan), [`require
 
 ## Step 1 — Why pre-register
 
-"We found cases where the composite preceded events" is **post-hoc cherry-picking**. Examiners and reviewers spot this instantly. The fix:
+"We found cases where the composite preceded events" is **post-hoc cherry-picking**. readers and reviewers spot this instantly. The fix:
 
 - Decide the evaluation question *before* looking at composite output
 - Pick metrics standard in the field ([ViEWS][views-paper] uses AUROC/AUPR/Brier — so do you)
@@ -126,7 +126,7 @@ The composite must **beat** these to be worth keeping. List finalised before eva
 | `B7` | **Composite — PCA weights** | Module D, weights from first PCA loading across A, B, C. |
 | `B8` | **Composite — geometric mean** | Module D, geometric aggregation (less-compensatory robustness alternative). |
 
-**Required result for thesis credibility**: `B6` or `B7` (or `B8`) strictly dominate **each** of `B3`, `B4`, `B5` on AUROC AND AUPR for the primary multi-label target. If they don't, the multi-modal claim fails — that is itself a defensible thesis result (negative findings count), and the Discussion must report it honestly. Per-domain subtasks (Step 4) are reported separately and are not required to beat the single-domain baseline of that same domain.
+**Required result for project credibility**: `B6` or `B7` (or `B8`) strictly dominate **each** of `B3`, `B4`, `B5` on AUROC AND AUPR for the primary multi-label target. If they don't, the multi-modal claim fails — that is itself a defensible project result (negative findings count), and the Discussion must report it honestly. Per-domain subtasks (Step 4) are reported separately and are not required to beat the single-domain baseline of that same domain.
 
 > **Amendment 2026-07-07 (geopolitical signal backfill, issue #330 — declared before the
 > head-to-head is re-run)**: the historical geopolitical input (2014-01 → 2024-12) is
@@ -167,7 +167,7 @@ Report **all four**, per baseline, per horizon. Tables go in Results section.
 
 ## Step 7 — Detection delay analysis
 
-Per Marco's brief: "detection delay, false positives, missed events."
+Per The reviewer's brief: "detection delay, false positives, missed events."
 
 **Definition**: for each true positive event, lead time = months between first composite-threshold breach and ACLED-confirmed event.
 
@@ -192,9 +192,9 @@ Per Marco's brief: "detection delay, false positives, missed events."
 - 1 × **false positive** — composite breached, no labelled event followed in horizon; analyse why
 - 1 × **missed event** — labelled event occurred (any domain), composite did not breach; analyse why
 
-**Selection method**: pick the densest event by primary-domain magnitude (ACLED fatalities for P1-3; max drawdown for P4; affected population for P5) in the test window, prior to running the composite. List candidate events here once Marco confirms.
+**Selection method**: pick the densest event by primary-domain magnitude (ACLED fatalities for P1-3; max drawdown for P4; affected population for P5) in the test window, prior to running the composite. List candidate events here once The reviewer confirms.
 
-Pre-specified candidate countries (placeholder — finalise with Marco):
+Pre-specified candidate countries (placeholder — finalise with The reviewer):
 1. _____________________
 2. _____________________
 3. _____________________
@@ -233,11 +233,11 @@ Before submission, the Results section must contain:
 - [ ] Source-ablation table (two-domain composites vs full three-domain)
 - [ ] Country-LOOCV table or boxplot
 - [ ] Explicit list of **limitations** (FinBERT validity as auxiliary signal, GDELT noise, hazard-induced-disruption filter sensitivity, market-coverage gaps for emerging markets, ACLED coverage gaps in some regions, short test window)
-- [ ] Statement on industrial applications (Marco's brief requirement)
+- [ ] Statement on industrial applications (The reviewer's brief requirement)
 
 ---
 
-## Open questions for Marco (raise at first meeting)
+## Open questions for The reviewer (raise at first meeting)
 
 1. Is ACLED + NBER + IMF + EM-DAT the right combined ground-truth set for a multi-modal composite, or would he prefer a single-domain ground truth with multi-domain inputs?
 2. Is the 2015-2021 / 2022 / 2023-2024 split acceptable? Any specific historical event period he wants forced into the test window?
@@ -250,19 +250,19 @@ Before submission, the Results section must contain:
 
 ## Document version (Part A)
 
-- **v1.0** — initial draft. **Lock with Marco before Week 4 (start of evaluation harness coding).**
+- **v1.0** — initial draft. **Lock with The reviewer before Week 4 (start of evaluation harness coding).**
 
 ---
 
 # Part B — Literature Baseline
 
-The literature backbone that turns the project from "cool dashboard" into "defensible MSc thesis." If a reviewer asks "what literature is your work built on?", this part is the answer.
+The literature backbone that turns the project from "cool dashboard" into "defensible piece of work." If a reviewer asks "what literature is your work built on?", this part is the answer.
 
 **Use this as**: (1) reading list, ordered by priority; (2) citation reservoir for Introduction + Discussion; (3) quick-reference for methodology choices.
 
 ## B.1 — Conflict Early Warning Systems (the field)
 
-The peer-reviewed field your thesis sits in. Cite all four. The first is non-negotiable.
+The peer-reviewed field your project sits in. Cite all four. The first is non-negotiable.
 
 | # | Reference | Why |
 |---|---|---|
@@ -271,11 +271,11 @@ The peer-reviewed field your thesis sits in. Cite all four. The first is non-neg
 | 1.3 | **Goldstone et al. (2010)** — [A Global Model for Forecasting Political Instability][goldstone-pitf] (*American J. of Political Science*) | Foundational PITF paper. Cite when introducing instability prediction as a field. |
 | 1.4 | **ViEWS Forecasting site** — [viewsforecasting.org][views-site] | Live system. Useful for showing the reviewer the state-of-the-art baseline you're aware of. |
 
-**Use in thesis**: Introduction → "Modern CEWS methodology is established by Hegre et al. (2019) and surveyed by Davies et al. (2023)..." Discussion → "Unlike ViEWS, which uses [X], our approach..."
+**Use in project**: Introduction → "Modern CEWS methodology is established by Hegre et al. (2019) and surveyed by Davies et al. (2023)..." Discussion → "Unlike ViEWS, which uses [X], our approach..."
 
 ## B.2 — Composite Indicators (the methodology authority)
 
-Every composite-scoring choice in the thesis must trace back to this handbook.
+Every composite-scoring choice in the project must trace back to this handbook.
 
 | # | Reference | Why |
 |---|---|---|
@@ -312,7 +312,7 @@ Module A's intellectual foundation, including the honest acknowledgement of limi
 | 4.3 | **MDPI (2025)** — [Fine-Tuning and Explaining FinBERT for Sector-Specific Financial News][finbert-finetune] | Sector-aware fine-tuning, macro F1 = 0.707 with fine-tuning vs 0.555 zero-shot. Useful if you fine-tune. |
 | 4.4 | **Zebrowski & Afli (2024)** — [Predicting Country Instability Using Bayesian Deep Learning and Random Forest][instability-arxiv] | GDELT + GTD ground truth. Methodologically closer to your work than WorldMonitor. Cite as a comparison point. |
 
-**Phrasing for thesis** (use verbatim): "We use FinBERT (Araci, 2019) as an auxiliary news-tone signal within Module A. We note that FinBERT-derived sentiment has limited direct predictive power for market prices (R² ≈ 0.01 in Yang et al., 2024); accordingly, we use it as one input to the market component of a multi-modal composite stress index rather than a standalone market predictor."
+**Phrasing for project** (use verbatim): "We use FinBERT (Araci, 2019) as an auxiliary news-tone signal within Module A. We note that FinBERT-derived sentiment has limited direct predictive power for market prices (R² ≈ 0.01 in Yang et al., 2024); accordingly, we use it as one input to the market component of a multi-modal composite stress index rather than a standalone market predictor."
 
 ## B.5 — Instability indices in use (composite comparators)
 

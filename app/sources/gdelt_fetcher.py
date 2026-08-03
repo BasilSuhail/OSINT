@@ -24,7 +24,7 @@ from app.sources.base import Fetcher
 from app.sources.gdelt_parser import parse_csv_body
 
 GDELT_LASTUPDATE_URL: Final[str] = "http://data.gdeltproject.org/gdeltv2/lastupdate.txt"
-GDELT_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+GDELT_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 
 def parse_lastupdate(text: str) -> str | None:

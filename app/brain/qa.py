@@ -1372,7 +1372,7 @@ def has_relevant_evidence(
 def build_no_evidence_answer(stories: list[dict[str, Any]]) -> str:
     """Honest last resort when a draft can be neither salvaged nor repaired.
 
-    Replaces the old "The retrieved story is: ..." template (#446) — Basil
+    Replaces the old "The retrieved story is: ..." template (#446) — the operator
     never wanted a robotic dump in place of the answer. Split into two modes
     (#413 item 3): with plausibly relevant retrieval the closest stories stay
     visible as sources; with weak retrieval the answer must not lean on them

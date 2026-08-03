@@ -41,7 +41,7 @@ from app.sources.base import Fetcher
 FIRMS_URL_TEMPLATE: Final[str] = (
     "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{map_key}/VIIRS_SNPP_NRT/world/1/{date}"
 )
-FIRMS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+FIRMS_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 #: VIIRS reports confidence as a single letter, MODIS as 0-100, and the words
 #: appear in some exports. Only the words were mapped, so `float("n")` raised

@@ -18,7 +18,7 @@
 - **Cross-dialect** (Postgres prod, SQLite tests); dialect-aware inserts + `LIKE` that works on both.
 - **CI lints `app/ tests/`** with BOTH `ruff check` and `ruff format --check`; run both on changed files before each commit (watch RUF059 in tests).
 - **No Claude attribution** in commits or the PR body.
-- **1 issue (#413) → 1 branch (`feat/brain-enrichment`) → 1 PR.** Basil merges.
+- **1 issue (#413) → 1 branch (`feat/brain-enrichment`) → 1 PR.** The maintainer merges.
 
 ---
 
@@ -1087,7 +1087,7 @@ gh pr create --title "feat(brain): story enrichment — gist + tags per new stor
   --body "Closes #413. Phase 3 of the brain: an idle-gated brain_enrich pass gives each new story a one-line gist + two enum tags (category, escalating) from the 1.5b model, surfaced on the Stories card. Idempotent per story, 30-day retention. Generalizes the Phase 1 gate self-exemption to all brain- jobs so enrich doesn't self-block. Design: docs/superpowers/specs/2026-07-13-brain-enrichment-design.md."
 ```
 
-- [ ] **Step 6: Post the close-out comment on #413** — what shipped, the enum vocabulary, `make enrich`, and that per-event enrichment / gist-fed-context / filtering-UI remain deferred. Basil merges.
+- [ ] **Step 6: Post the close-out comment on #413** — what shipped, the enum vocabulary, `make enrich`, and that per-event enrichment / gist-fed-context / filtering-UI remain deferred. The maintainer merges.
 
 ---
 

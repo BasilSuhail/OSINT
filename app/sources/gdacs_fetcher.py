@@ -25,7 +25,7 @@ from app.severity import scale
 from app.sources.base import Fetcher
 
 GDACS_FEED_URL: Final[str] = "https://www.gdacs.org/xml/rss.xml"
-GDACS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+GDACS_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 #: GDACS event-list search API. Unlike the 4-day ``rss.xml`` alert feed (which
 #: carries no volcanoes and only the 1-2 most recent cyclones), this returns the

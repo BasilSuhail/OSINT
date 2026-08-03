@@ -9,7 +9,7 @@
 A daily, per-country instability index in the OECD/JRC composite-indicator
 tradition. Modelled on koala73/worldmonitor's CII v8 algorithm
 (`docs/algorithms.mdx` § Country Instability Index), reduced to a v1
-fit-for-OSINT scope that runs on the events Basil's pipeline already
+fit-for-OSINT scope that runs on the events The operator's pipeline already
 ingests.
 
 The score is published alongside the existing `composite` rows in the

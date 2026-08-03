@@ -1,4 +1,4 @@
-"""The report is the thesis artifact, so it must be self-describing (#524)."""
+"""The report is the project artifact, so it must be self-describing (#524)."""
 
 from __future__ import annotations
 

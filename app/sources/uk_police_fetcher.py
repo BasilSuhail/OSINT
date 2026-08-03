@@ -31,7 +31,7 @@ from app.models import Category, Event
 from app.sources.base import Fetcher
 
 DATA_POLICE_BASE: Final[str] = "https://data.police.uk/api"
-UK_POLICE_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+UK_POLICE_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 #: Severity table per upstream category. Values tuned so violent / weapons
 #: events dominate the colour scale while bicycle theft / public order

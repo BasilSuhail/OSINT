@@ -720,7 +720,7 @@ With the full stack up (postgres/redis/worker/beat/api on :8000 + `pnpm dev` on 
 git push origin fix/map-terrain-hillshade
 gh pr edit 204 --body "..."  # note the new markers/footprints/gauge alongside the topo basemap
 ```
-Do NOT merge — Basil merges.
+Do NOT merge — The maintainer merges.
 
 ---
 

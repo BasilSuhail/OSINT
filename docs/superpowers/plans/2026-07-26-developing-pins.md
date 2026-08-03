@@ -841,7 +841,7 @@ git commit -m "feat(situation): #449 pinned developing block above the activity 
 ```
 
 **Visual verification:** there is no browser automation or DOM test infrastructure in
-this repo, so the rendered block ships unverified. Say so in the PR and ask Basil to
+this repo, so the rendered block ships unverified. Say so in the PR and ask The operator to
 look at the card.
 
 ---
@@ -946,9 +946,9 @@ gh pr create --title "feat(situation): #449 pin developing international stories
 The PR body must state: what the naive rule pinned and why it was rejected, the four
 gates with their calibration numbers, that corroboration is shown and not gated, the
 France-wildfires false negative and its cause, and that the rendered block is visually
-unverified because the repo has no browser automation — asking Basil to look at the card.
+unverified because the repo has no browser automation — asking The operator to look at the card.
 
-Do **not** merge. Basil merges every PR himself.
+Do **not** merge. The maintainer merges every PR himself.
 
 ---
 

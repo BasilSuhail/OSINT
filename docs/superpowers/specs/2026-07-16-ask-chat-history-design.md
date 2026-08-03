@@ -1,6 +1,6 @@
 # Ask chat history — anchored follow-ups (#444)
 
-Date: 2026-07-16 · Status: approved (Basil, in-session — "go on whats next")
+Date: 2026-07-16 · Status: approved (The operator, in-session — "go on whats next")
 
 ## Problem
 

@@ -1,6 +1,6 @@
 # Semantic ask retrieval (retrieval v2)
 
-Date: 2026-07-16 · Status: approved (Basil, in-session)
+Date: 2026-07-16 · Status: approved (The operator, in-session)
 
 ## Problem
 
@@ -20,7 +20,7 @@ Net effect: the 6 selected stories are irrelevant, and the QA prompt then
 (correctly) forces "I don't have data on that." The model isn't dumb — the
 retrieval starves it.
 
-## Decisions (confirmed with Basil)
+## Decisions (confirmed with The operator)
 
 - **Real fix now: embedding-based retrieval.** Backend-only (issue A); passing
   chat history into ask is issue B, after PR #440's transcript merged (it has).

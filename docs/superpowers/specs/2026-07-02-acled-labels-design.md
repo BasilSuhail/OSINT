@@ -6,7 +6,7 @@
 
 The `labels` table (`app/db_models.py:106`) exists in the schema but nothing writes or
 reads it. Without ground-truth labels the composite score can only be reported, never
-graded — no prediction task, no baselines, no thesis result. This is the first blocking
+graded — no prediction task, no baselines, no project result. This is the first blocking
 step of the analytical-agenda roadmap.
 
 ## Scope

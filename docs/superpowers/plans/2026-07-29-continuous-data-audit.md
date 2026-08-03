@@ -11,10 +11,10 @@
 ## Global Constraints
 
 - **Issue:** #669. **Branch:** `669-audit-on-a-clock` (already created, spec already committed).
-- **Worktree:** `/private/tmp/claude-501/-Users-basilsuhail-folders-OSINT/de0f87f7-7f7e-4ba0-ae61-88152ec0506e/scratchpad/wt-669` — run every command there, never in `/Users/basilsuhail/folders/OSINT` (Basil's jobs are live against that checkout).
+- **Worktree:** `/private/tmp/claude-501/-Users-basilsuhail-folders-OSINT/de0f87f7-7f7e-4ba0-ae61-88152ec0506e/scratchpad/wt-669` — run every command there, never in `/Users/basilsuhail/folders/OSINT` (The operator's jobs are live against that checkout).
 - **Spec:** `docs/superpowers/specs/2026-07-29-continuous-data-audit-design.md`.
 - **Detect only.** No quarantine, no auto-correction, no auto-disable, no dashboard work. If a step tempts you toward "and then fix the data", stop — that is a separate issue on purpose.
-- **1 issue → 1 branch → 1 PR → 1 commit.** Commit after each task while working; the branch is squashed into one commit at PR time. Never merge — Basil merges.
+- **1 issue → 1 branch → 1 PR → 1 commit.** Commit after each task while working; the branch is squashed into one commit at PR time. Never merge — The maintainer merges.
 - **No Claude attribution** in commit messages or PR body. No `Co-Authored-By: Claude`, no "Generated with".
 - **Verify gates before pushing:** `.venv/bin/ruff check .` AND `.venv/bin/ruff format --check .` AND `.venv/bin/pytest`. Backend CI runs the format check too — `ruff check` alone passing is not enough.
 - **Tests are hermetic sqlite** via the `db_session` fixture in `tests/conftest.py`. No docker required for the unit suite.
@@ -22,9 +22,9 @@
 
 ## Three deliberate deviations from the spec
 
-All small, all flagged for Basil in the PR body:
+All small, all flagged for The operator in the PR body:
 
-1. **Column is `check_name`, not `check`.** `CHECK` is a reserved word in Postgres. SQLAlchemy would quote it, but the whole point of this table is that Basil can type ad-hoc trend queries against it — `SELECT check_name ...` beats `SELECT "check" ...`. The `Finding` dataclass attribute stays `check`; only the column differs.
+1. **Column is `check_name`, not `check`.** `CHECK` is a reserved word in Postgres. SQLAlchemy would quote it, but the whole point of this table is that The operator can type ad-hoc trend queries against it — `SELECT check_name ...` beats `SELECT "check" ...`. The `Finding` dataclass attribute stays `check`; only the column differs.
 2. **Crash signal is a missing row, not a NULL `finished_at`.** The spec described both. Doing both means two transactions for no gain: `job_run()` already records the failure in `job_runs`, and the #663 output watchdog watches `MAX(finished_at)`, which stops advancing either way. So the run row is written once, at the end, in a single transaction with its findings — a crashed audit writes nothing and pages via #663. The column stays nullable for the schema-level guarantee.
 
 3. **Two entry points with different semantics, stated plainly.** The spec said a hand-run must not shift the delta baseline. That holds for `python scripts/data_audit.py`, which stays read-only and writes nothing — look without touching. But `make data-audit` runs *the job*, so it does write a run row, and tomorrow's delta will diff against it rather than against last night. That is honest rather than a defect: the diff has always meant "new since the last completed run", and a noon run captures true state at noon. The rule to keep straight is one line, and it belongs in the PR body: **the script reports, the make target runs.**
@@ -1079,7 +1079,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Report to Basil and stop**
+- [ ] **Step 5: Report to The operator and stop**
 
 Tell him the PR number and the first-run numbers. Do **not** watch CI, do not poll, do not merge.
 

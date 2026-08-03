@@ -1,6 +1,6 @@
 """Render the gate backtest as a markdown report.
 
-This file is the artifact a thesis appendix quotes, so it has to survive being
+This file is the artifact an appendix quotes, so it has to survive being
 read six months later by someone who did not run it. The first real run
 reported "Events: 8" with a median lead of -27 days; only two of those eight
 produced a lead value at all, so the headline number was the midpoint of two

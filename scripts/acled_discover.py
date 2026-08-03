@@ -71,7 +71,7 @@ def extract_download_links(html: str, base_url: str) -> list[str]:
 
 def discover(urls: list[str], *, timeout: float) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    headers = {"User-Agent": "OSINT-thesis-project/0.0.1 (academic)"}
+    headers = {"User-Agent": "OSINT-project/0.0.1 (academic)"}
     with httpx.Client(follow_redirects=True, timeout=timeout, headers=headers) as client:
         for url in urls:
             result: dict[str, Any] = {"url": url, "downloads": []}

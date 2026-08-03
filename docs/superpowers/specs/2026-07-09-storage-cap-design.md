@@ -1,7 +1,7 @@
 # Storage cap + 30-day retention — design
 
 **Date:** 2026-07-09
-**Status:** approved (Basil, 2026-07-09)
+**Status:** approved (The operator, 2026-07-09)
 
 ## Problem
 
@@ -12,7 +12,7 @@ but throw away history the analytical agenda needs, and nothing guards against
 a source suddenly out-producing the windows (OpenSky ADS-B already writes
 ~1 M rows ≈ 650 MB/day including indexes — 94 % of all rows).
 
-## Decision (Basil's rule)
+## Decision (The operator's rule)
 
 Two rules, identical in every environment. No per-environment behavior.
 

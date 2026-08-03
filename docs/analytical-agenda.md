@@ -4,7 +4,7 @@
 > in plain language and carries the live workstream checklist. This document is the canonical
 > technical record; the issue is the trail.
 
-This document answers the critical-analysis questions — the professor's questions — one by one.
+This document answers the critical-analysis questions — the critical-analysis questions — one by one.
 The rule for every answer: **it must be a measurable statistic, not "use AI"**. Every claim below
 is something we can compute, validate, and be wrong about.
 
@@ -70,7 +70,7 @@ if audit quality ever degrades.) Evaluation: the #334/#335 hand-audit of ~30 str
 clusters confirmed the threshold — verdicts committed in
 [`audits/stories-threshold-audit.md`](audits/stories-threshold-audit.md).
 
-**Thesis claim it supports.** "The system measures event salience by *independent corroboration
+**Project claim it supports.** "The system measures event salience by *independent corroboration
 count*, not raw article volume."
 
 ---
@@ -101,7 +101,7 @@ feed it through the existing rolling z-score divergence engine
 against ground truth exactly as [methodology.md Step 7](methodology.md#step-7--detection-delay-analysis)
 prescribes.
 
-**Thesis claim it supports.** "Cross-source narrative divergence is an early-warning signal in
+**Project claim it supports.** "Cross-source narrative divergence is an early-warning signal in
 its own right, measurable without access to any proprietary data."
 
 ---
@@ -148,7 +148,7 @@ confirmation rates (reliability diagram, same toolkit as
 5. ⏳ **Surface it** — score on the /stories card + API; the `N src` badge becomes an honest
    confidence signal.
 
-**Thesis claim it supports.** "Cross-checking narrative claims against physical-sensor data
+**Project claim it supports.** "Cross-checking narrative claims against physical-sensor data
 yields a corroboration signal unavailable to news-only systems."
 
 ---
@@ -175,14 +175,14 @@ rather than against other countries — the per-entity rolling z-score machinery
 coverage-bias table (observed volume vs baseline, by source), so every score can be read
 alongside how over- or under-covered that country is.
 
-**Thesis claim it supports.** "Every component, weight, and known bias of the composite is
+**Project claim it supports.** "Every component, weight, and known bias of the composite is
 quantified and published — the index is auditable end to end."
 
 ---
 
 ## Q5 — "How do we validate? How do we predict instead of post-process?"
 
-**Why.** "The dashboard showed it after it happened" is reporting. A thesis needs forecasting
+**Why.** "The dashboard showed it after it happened" is reporting. A project needs forecasting
 with a scoreboard.
 
 **What / Where — backtest half exists.** Pre-registered protocol
@@ -198,12 +198,12 @@ graded against ground truth once the horizon passes. Report the Brier score of o
 forecasts, accumulating over time.
 
 **How.** One table (predictions journal) + one recurring grading job + one accumulating
-scorecard. Cheapest, highest-thesis-value item on this list: it converts the dashboard into a
+scorecard. Cheapest, highest-project-value item on this list: it converts the dashboard into a
 forecasting system with an auditable track record, and it is immune to the hindsight bias that
 [methodology.md Step 1](methodology.md#step-1--why-pre-register) warns about — the journal
 *is* pre-registration, continuously.
 
-**Thesis claim it supports.** "The system's live forecasts have a measured, timestamped track
+**Project claim it supports.** "The system's live forecasts have a measured, timestamped track
 record — not a retrospective narrative."
 
 ---
@@ -224,7 +224,7 @@ miniature. Dashboard reordering is later frontend work, out of scope for WS-F it
 **How.** Univariate AUROC (or mutual information) per indicator against the ground-truth
 labels, ranked. Publish the ranking; the dashboard eventually orders panels by it.
 
-**Thesis claim it supports.** "Indicator prominence is empirically justified — the system knows
+**Project claim it supports.** "Indicator prominence is empirically justified — the system knows
 which of its own numbers carry signal."
 
 ---

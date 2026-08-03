@@ -29,7 +29,7 @@ from app.sources.base import Fetcher
 
 ACLED_API_URL: Final[str] = "https://acleddata.com/api/acled/read"
 ACLED_TOKEN_URL: Final[str] = "https://acleddata.com/oauth/token"
-ACLED_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+ACLED_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 _LOCAL_EXTENSIONS: Final[tuple[str, ...]] = (".csv", ".xlsx")
 
 _EVENT_TYPE_SEVERITY: Final[dict[str, float]] = {

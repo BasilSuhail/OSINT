@@ -33,7 +33,7 @@ In short, the architecture's job is to make the evaluation **uninteresting to op
 
 ## Runtime validation
 
-Day-to-day "does this work" checks. None of these are part of the thesis evaluation; they exist so the system stays trustworthy.
+Day-to-day "does this work" checks. None of these are part of the project evaluation; they exist so the system stays trustworthy.
 
 ### Health endpoint
 
@@ -163,7 +163,7 @@ Implications:
 - Re-evaluation = `replay --method-version v1.1 --inputs /mnt/data/parquet/...` → writes new score rows; v1.0 scores remain untouched.
 - A reviewer asking "what if you used min-max instead of z-score?" can be answered with one command and a follow-up table.
 - A claim of cherry-picking is rebutted by showing every version's full results table, not just the favoured one.
-- The `labels/` partition is **append-only after lock**. Once `methodology.md` v1.0 is locked with Marco, no rows are deleted; new label sources are added as new `label_source` values, not by rewriting history.
+- The `labels/` partition is **append-only after lock**. Once `methodology.md` v1.0 is locked with The reviewer, no rows are deleted; new label sources are added as new `label_source` values, not by rewriting history.
 
 Replay scripts live in `scripts/replay/` and are committed alongside the spec, not invented at evaluation time.
 
@@ -173,7 +173,7 @@ Replay scripts live in `scripts/replay/` and are committed alongside the spec, n
 
 Before the formal evaluation pipeline runs (per [`../methodology.md`](../methodology.md) Part A), all of these must be true:
 
-- [ ] `method_version` for the composite is locked with Marco (v1.0)
+- [ ] `method_version` for the composite is locked with The reviewer (v1.0)
 - [ ] Historical backfill is complete and verified in Parquet for: GDELT events + GKG (2015-2024), yfinance + FRED time series (2015-2024), USGS Quake (2015-2024), GDACS alerts (2015-2024), NASA FIRMS (2015-2024)
 - [ ] Ground-truth backfill is complete and verified for: ACLED (2015-2024), NBER cycle dates, IMF currency-crisis dataset, FRED VIX series, EM-DAT disaster declarations (2015-2024), GDACS red-alert history
 - [ ] All nine baselines (B0..B8) are implemented as workers and produce scores into the `scores` table

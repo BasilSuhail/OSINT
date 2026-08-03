@@ -38,7 +38,7 @@ from app.models import Category, Event
 from app.sources.base import Fetcher
 
 OPENSKY_URL: Final[str] = "https://opensky-network.org/api/states/all"
-OPENSKY_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+OPENSKY_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 # OpenSky's state vector position is documented at
 # https://openskynetwork.github.io/opensky-api/rest.html#all-state-vectors

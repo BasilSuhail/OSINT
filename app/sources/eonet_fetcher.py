@@ -30,7 +30,7 @@ from app.models import Category, Event
 from app.sources.base import Fetcher
 
 EONET_FEED_URL: Final[str] = "https://eonet.gsfc.nasa.gov/api/v3/events"
-EONET_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+EONET_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 EONET_DEFAULT_DAYS: Final[int] = 7
 
 

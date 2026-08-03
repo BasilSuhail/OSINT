@@ -29,7 +29,7 @@ from app.sources.base import Fetcher
 USGS_FEED_URL: Final[str] = (
     "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson"
 )
-USGS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+USGS_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 _PAGER_ALERT_SEVERITY: Final[dict[str, float]] = {
     "red": 1.0,
