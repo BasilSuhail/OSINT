@@ -175,6 +175,10 @@ def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) ->
         )
 
     refreshed: dict[str, Any] = {col: base.excluded[col] for col in _REFRESH_COLS}
+    # PostgreSQL now() is fixed at transaction start. clock_timestamp() marks
+    # the actual upsert statement, preventing a long transaction from publishing
+    # a revision older than work that committed while it was running.
+    refreshed["updated_at"] = func.clock_timestamp() if dialect == "postgresql" else func.now()
     refreshed.update({col: _geo_refresh(base.excluded, col) for col in _GEO_COLS})
     refreshed["payload"] = _payload_refresh(base.excluded, dialect)
     stmt = base.on_conflict_do_update(

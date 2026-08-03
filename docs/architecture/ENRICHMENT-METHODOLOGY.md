@@ -154,6 +154,18 @@ verified candidate remains the row's primary `lat`/`lon` for API compatibility,
 while the map projects every verified location into its own marker. All markers
 open the same story row, and a cluster list deduplicates that story.
 
+The map sends every valid news and city-precision GDELT position in the active
+client event window to one MapLibre GeoJSON source. Native worker-side
+clustering changes only their presentation: it never applies a marker count
+budget, viewport sample, or coordinate snap. Cluster leaves retain the original
+marker key, so opening a cluster recovers every underlying story and
+marker-specific evidence. Sparse hazards remain in a separate marker and
+footprint layer. Client buffering also replaces a same-ID event when its
+coordinates, payload, or timestamps refresh; database identity does not make a
+rendered position immutable. Every event mutation advances the durable row
+`updated_at`; incremental polling uses that revision, so an older overlapping
+response cannot roll an exact marker back to its prior coordinates (#762).
+
 The selected-marker UI renders a separate `Location evidence` block. It states
 `exact-place`, `city`, `region`, or `unknown` precision; identifies the
 coordinate source; and links a Wikidata entity when one supplied the point.
@@ -191,8 +203,9 @@ stories retain all exact points while changed text withdraws stale enrichment.
 | Feed has no `default_country` + any city match | `local` (to that city) |
 | No city match | `unknown` |
 
-Used by `MapPane.positioned` to skip the centroid blob for world-scope
-news. See #166 PR text for the screenshot that motivated the rule.
+This field remains descriptive metadata. Map positioning does not use publisher
+scope: a supported story coordinate is rendered regardless of outlet, while a
+country-only story receives no invented centroid marker.
 
 ## Impact ranking — frontend
 

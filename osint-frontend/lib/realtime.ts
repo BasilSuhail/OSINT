@@ -11,10 +11,16 @@ export type ConnectionStatus =
 export interface ConnectionDiagnostics {
   status: ConnectionStatus
   reconnectAttempts: number
-  /** Last time an event of any kind arrived (insert or polled). */
+  /** Newest durable database revision represented in the client buffer. */
   lastEventAt: Date | null
   /** Last time we proved the realtime channel is alive (subscribed or got an event). */
   lastSeenAt: Date | null
+}
+
+export interface RevisionCursor {
+  /** Raw API timestamp. Keep PostgreSQL microseconds; Date truncates them. */
+  updatedAt: string
+  id: string
 }
 
 const MAX_EVENTS = CLIENT_LIMITS.eventBuffer
@@ -25,6 +31,63 @@ const MAX_RECONNECT_BEFORE_POLL = 3
  *  synchronously; only subscriber notifications are throttled, so the map
  *  doesn't re-filter/-cluster on every fetch tick. */
 const NOTIFY_THROTTLE_MS = 200
+
+function eventRevision(row: EventRow): string {
+  return JSON.stringify([
+    row.source,
+    row.source_event_id,
+    row.occurred_at,
+    row.fetched_at,
+    row.updated_at,
+    row.category,
+    row.severity,
+    row.keywords,
+    row.country,
+    row.lat,
+    row.lon,
+    row.payload,
+  ])
+}
+
+function validTimeMs(value: unknown): number | null {
+  if (typeof value !== "string") return null
+  if (!value) return null
+  const ms = new Date(value).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+function eventUpdateStamp(row: EventRow | undefined): string | null {
+  if (!row) return null
+  return row.updated_at ?? row.fetched_at ?? null
+}
+
+function idAfter(candidate: string, current: string): boolean {
+  return candidate.length !== current.length
+    ? candidate.length > current.length
+    : candidate > current
+}
+
+function revisionAfter(candidate: RevisionCursor, current: RevisionCursor): boolean {
+  const candidateMs = validTimeMs(candidate.updatedAt)
+  const currentMs = validTimeMs(current.updatedAt)
+  if (candidateMs === null || currentMs === null) return false
+  if (candidateMs !== currentMs) return candidateMs > currentMs
+  if (candidate.updatedAt !== current.updatedAt) return candidate.updatedAt > current.updatedAt
+  return idAfter(candidate.id, current.id)
+}
+
+function timestampAfter(candidate: string, current: string): boolean {
+  return revisionAfter(
+    { updatedAt: candidate, id: "0" },
+    { updatedAt: current, id: "0" },
+  )
+}
+
+function retentionTimeMs(row: EventRow): number {
+  const occurredMs = validTimeMs(row.occurred_at) ?? Number.NEGATIVE_INFINITY
+  const updateMs = validTimeMs(eventUpdateStamp(row)) ?? Number.NEGATIVE_INFINITY
+  return Math.max(occurredMs, updateMs)
+}
 
 /** High-volume feeds kept OUT of the main firehose so they can't saturate the
  *  buffer and starve the sparse displayable sources (gdelt / news / gdacs).
@@ -54,7 +117,8 @@ export const FIREHOSE_EXCLUDE = [
  */
 export class EventBuffer {
   private events: EventRow[] = []
-  private byId = new Set<string>()
+  private byId = new Map<string, EventRow>()
+  private revisions = new Map<string, string>()
   private listeners = new Set<() => void>()
   private statusListeners = new Set<(d: ConnectionDiagnostics) => void>()
   private source: EventSource | null = null
@@ -62,6 +126,7 @@ export class EventBuffer {
   private snapshot: EventRow[] = []
   private reconnectAttempts = 0
   private lastEventAt: Date | null = null
+  private revisionCursor: RevisionCursor | null = null
   private lastSeenAt: Date | null = null
 
   private pollTimer: ReturnType<typeof setInterval> | null = null
@@ -69,27 +134,74 @@ export class EventBuffer {
   private stopped = false
 
   /** Seed/merge a batch of events (e.g. from the initial query or SWR refetch). */
-  ingest(rows: EventRow[]): void {
+  ingest(rows: EventRow[], retainIds: ReadonlySet<string> = new Set()): void {
     let changed = false
     for (const row of rows) {
-      if (!row?.id || this.byId.has(row.id)) continue
+      if (!row?.id) continue
       // Skip events with no source toggle (aviation/cyber/etc.). They are
       // never rendered from this buffer, and high-frequency feeds like
       // opensky-adsb (~190k rows/day) would otherwise flood the live stream
       // and evict every displayable event under the MAX_EVENTS cap.
       if (sourceKeyForEvent(row) === null) continue
-      this.byId.add(row.id)
-      this.events.push(row)
-      this.lastEventAt = new Date()
+      const revision = eventRevision(row)
+      // Snapshot sources refresh hazards in place, and enrichment can move an
+      // RSS row from a city anchor to a verified building without changing its
+      // database ID. Treat ID as identity, not immutability: replace any row
+      // whose render-relevant representation changed. A stable serialization
+      // prevents the 30-second full-window poll from repainting unchanged data.
+      if (this.revisions.get(row.id) === revision) continue
+      const stored = this.byId.get(row.id)
+      const incomingUpdate = eventUpdateStamp(row)
+      const storedUpdate = eventUpdateStamp(stored)
+      // SWR, SSE backfills, and polling can resolve out of order. Never let an
+      // older valid snapshot roll exact coordinates/provenance back after a
+      // newer enrichment revision has already reached the buffer.
+      if (
+        incomingUpdate !== null &&
+        storedUpdate !== null &&
+        timestampAfter(storedUpdate, incomingUpdate)
+      ) {
+        continue
+      }
+      this.byId.set(row.id, row)
+      this.revisions.set(row.id, revision)
       changed = true
     }
     if (!changed) return
-    this.events.sort((a, b) => +new Date(b.occurred_at) - +new Date(a.occurred_at))
+    this.events = [...this.byId.values()]
     if (this.events.length > MAX_EVENTS) {
+      // A freshly enriched older story must survive a full recent-event buffer.
+      // Retention uses the newer of event time and durable revision, while the
+      // published snapshot remains ordered by the event's actual occurrence.
+      this.events.sort((a, b) => {
+        const protectedOrder = Number(retainIds.has(b.id)) - Number(retainIds.has(a.id))
+        return protectedOrder || retentionTimeMs(b) - retentionTimeMs(a)
+      })
       const removed = this.events.splice(MAX_EVENTS)
-      for (const r of removed) this.byId.delete(r.id)
+      for (const r of removed) {
+        this.byId.delete(r.id)
+        this.revisions.delete(r.id)
+      }
     }
+    this.events.sort((a, b) => +new Date(b.occurred_at) - +new Date(a.occurred_at))
     this.commit()
+  }
+
+  /** Merge one ordered incremental page and advance only its durable cursor.
+   * Snapshot/hazard/cyber pulls must never move this cursor: they do not prove
+   * that every earlier revision from the incremental source was consumed. */
+  ingestUpdated(rows: EventRow[]): void {
+    this.ingest(rows, new Set(rows.map((row) => row.id)))
+    for (const row of rows) {
+      if (!row.updated_at || validTimeMs(row.updated_at) === null) continue
+      const candidate = { updatedAt: row.updated_at, id: row.id }
+      if (!this.revisionCursor || revisionAfter(candidate, this.revisionCursor)) {
+        this.revisionCursor = candidate
+      }
+    }
+    this.lastEventAt = this.revisionCursor
+      ? new Date(this.revisionCursor.updatedAt)
+      : this.lastEventAt
   }
 
   private commit(): void {
@@ -106,6 +218,8 @@ export class EventBuffer {
   getSnapshot = (): EventRow[] => this.snapshot
 
   getStatus = (): ConnectionStatus => this.status
+
+  getRevisionCursor = (): RevisionCursor | null => this.revisionCursor
 
   getDiagnostics = (): ConnectionDiagnostics => ({
     status: this.status,
@@ -180,12 +294,18 @@ export class EventBuffer {
    * during polling fallback and immediately after a successful reconnect.
    */
   private async backfillSinceLastSeen(): Promise<void> {
-    const watermark = this.lastEventAt
-      ? this.lastEventAt.toISOString()
+    const cursor = this.revisionCursor
+    const watermark = cursor
+      ? cursor.updatedAt
       : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     try {
-      const rows = await fetchEvents({ fetchedSince: watermark, exclude: FIREHOSE_EXCLUDE, limit: 2000 })
-      if (rows.length) this.ingest(rows)
+      const rows = await fetchEvents({
+        updatedSince: watermark,
+        updatedAfterId: cursor?.id,
+        exclude: FIREHOSE_EXCLUDE,
+        limit: 2000,
+      })
+      if (rows.length) this.ingestUpdated(rows)
     } catch {
       // Network blip; next SSE message or poll tick retries.
     }

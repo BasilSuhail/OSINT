@@ -71,6 +71,8 @@ export interface EventRow {
   source_event_id: string | null
   occurred_at: string
   fetched_at: string | null
+  /** Durable row revision; optional only for pre-migration API compatibility. */
+  updated_at?: string | null
   category: Category | string
   severity: number
   keywords: string[] | null

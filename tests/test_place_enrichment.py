@@ -735,12 +735,14 @@ def test_country_only_resolver_rejects_country_conflict() -> None:
 
 
 def test_worker_resolves_once_then_reuses_cache_for_same_place(db_session: Session) -> None:
-    db_session.add_all(
-        [
-            _rss_row("one", "King's Theatre in Edinburgh re-opens"),
-            _rss_row("two", "Fire contained at King's Theatre in Edinburgh", minutes_old=6),
-        ]
-    )
+    initial_revision = NOW - timedelta(days=1)
+    rows_to_enrich = [
+        _rss_row("one", "King's Theatre in Edinburgh re-opens"),
+        _rss_row("two", "Fire contained at King's Theatre in Edinburgh", minutes_old=6),
+    ]
+    for row in rows_to_enrich:
+        row.updated_at = initial_revision
+    db_session.add_all(rows_to_enrich)
     db_session.commit()
     client = FakeWikidataClient(
         [_search_item("Q6411122")],
@@ -769,6 +771,7 @@ def test_worker_resolves_once_then_reuses_cache_for_same_place(db_session: Sessi
     assert {row.payload["geo_precision"] for row in rows} == {"building"}
     assert {row.payload["geo_source"] for row in rows} == {"wikidata"}
     assert {row.payload["place_wikidata_id"] for row in rows} == {"Q6411122"}
+    assert all(row.updated_at.replace(tzinfo=UTC) > initial_revision for row in rows)
     assert db_session.execute(select(PlaceLookupRow)).scalars().one().status == "resolved"
 
 

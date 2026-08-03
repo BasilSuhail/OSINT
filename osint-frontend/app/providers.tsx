@@ -35,6 +35,18 @@ async function fetchRecentEvents(): Promise<EventRow[]> {
   return fetchEvents({ since, exclude: FIREHOSE_EXCLUDE, limit: CLIENT_LIMITS.eventWindow })
 }
 
+async function fetchUpdatedEvents(buffer: EventBuffer): Promise<EventRow[]> {
+  const cursor = buffer.getRevisionCursor()
+  const updatedSince = cursor?.updatedAt
+    ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  return fetchEvents({
+    updatedSince,
+    updatedAfterId: cursor?.id,
+    exclude: FIREHOSE_EXCLUDE,
+    limit: 2000,
+  })
+}
+
 /** abuse.ch cyber (~20k rows) is dense enough to saturate the firehose, so it
  *  is excluded from the main pull and fetched here capped — enough to render
  *  the recent C2 layer on the map without bloating the shared buffer. */
@@ -74,6 +86,15 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     refreshInterval: 30_000,
     revalidateOnFocus: false,
     onSuccess: (rows) => buffer.ingest(rows),
+  })
+
+  // Enrichment mutates existing rows without changing their event time. Poll
+  // the durable database revision so an older row still reaches an open map
+  // even after it falls below the recent-window result cap (#762).
+  useSWR(isApiConfigured ? "events-updated" : null, () => fetchUpdatedEvents(buffer), {
+    refreshInterval: 30_000,
+    revalidateOnFocus: false,
+    onSuccess: (rows) => buffer.ingestUpdated(rows),
   })
 
   // Dedicated hazard poll so sparse GDACS / USGS / EONET events are never

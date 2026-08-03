@@ -67,12 +67,18 @@ def get_session() -> Iterator[Session]:
 
 
 def _event_dict(row: EventRow) -> dict:
+    updated_at = row.updated_at
+    if updated_at is not None and updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=UTC)
     return {
         "id": str(row.id),
         "source": row.source,
         "source_event_id": row.source_event_id,
         "occurred_at": row.occurred_at.isoformat(),
         "fetched_at": row.fetched_at.isoformat() if row.fetched_at else None,
+        # Canonical UTC preserves PostgreSQL microseconds for the composite
+        # revision cursor; JavaScript Date would truncate this boundary.
+        "updated_at": updated_at.astimezone(UTC).isoformat() if updated_at else None,
         "category": row.category,
         "severity": row.severity,
         "confidence": row.confidence,
@@ -303,22 +309,47 @@ def events(
     session: Session = Depends(get_session),
     since: datetime | None = Query(default=None),
     fetched_since: datetime | None = Query(default=None),
+    updated_since: datetime | None = Query(default=None),
+    updated_after_id: int | None = Query(default=None, ge=0),
     sources: str | None = Query(default=None),
     exclude: str | None = Query(default=None),
     country: str | None = Query(default=None),
     limit: int = Query(default=API_DEFAULT_LIMIT, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
-    stmt = select(EventRow).order_by(EventRow.occurred_at.desc()).limit(limit)
+    stmt = select(EventRow)
     if since is not None:
         stmt = stmt.where(EventRow.occurred_at >= since)
     if fetched_since is not None:
         stmt = stmt.where(EventRow.fetched_at >= fetched_since)
+    if updated_since is not None:
+        if updated_after_id is None:
+            stmt = stmt.where(EventRow.updated_at > updated_since)
+        else:
+            # PostgreSQL now() is transaction-scoped, so thousands of rows can
+            # share one revision. Pair the timestamp with the primary key or a
+            # limited page would permanently skip the rest of that boundary.
+            stmt = stmt.where(
+                sa.or_(
+                    EventRow.updated_at > updated_since,
+                    sa.and_(
+                        EventRow.updated_at == updated_since,
+                        EventRow.id > updated_after_id,
+                    ),
+                )
+            )
     if sources:
         stmt = stmt.where(EventRow.source.in_([s.strip() for s in sources.split(",")]))
     if exclude:
         stmt = stmt.where(EventRow.source.notin_([s.strip() for s in exclude.split(",")]))
     if country is not None:
         stmt = stmt.where(EventRow.country == country)
+    # Incremental consumers advance a high-water mark. Oldest-first prevents a
+    # burst larger than `limit` from skipping the middle when that mark moves.
+    if updated_since is not None:
+        stmt = stmt.order_by(EventRow.updated_at.asc(), EventRow.id.asc())
+    else:
+        stmt = stmt.order_by(EventRow.occurred_at.desc())
+    stmt = stmt.limit(limit)
     return [_event_dict(r) for r in session.execute(stmt).scalars()]
 
 
