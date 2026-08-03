@@ -40,6 +40,10 @@ payload = {
     ],
     "place_candidate_count": int | None,
     "place_verified_count": int | None,
+    "place_rejections": [        # deterministic pre-lookup refusals (#755)
+        {"name": str, "reason": "generic_institution_class"}
+    ],
+    "place_rejected_count": int | None,
     "image_url": str | None,     # thumbnail (#133)
     "sentiment": float | None,   # VADER compound [-1, 1] (#131)
     "sentiment_label": str | None,
@@ -109,7 +113,7 @@ Coverage varies with the live corpus. A miss has no invented country-centre
 point; it remains reachable through the country panel when country evidence
 exists, but only rows with a supported coordinate draw a news marker.
 
-## Named-place resolution — Wikidata v1.3
+## Named-place resolution — Wikidata v1.4
 
 `app/enrichment/place.py`, scheduled every 30 minutes. This pass upgrades an
 explicit building, venue, street, or site to the named place's own coordinate.
@@ -124,6 +128,16 @@ Each candidate moves only when all gates pass:
    bounded search languages, with `P625` coordinates;
 3. its `P17` country resolves through `P297` to the row's ISO country; and
 4. exactly one entity survives those checks for that candidate.
+
+Before any external lookup, v1.4 refuses bare institutional class names such
+as `Magistrates' Court`, `City Hall`, and `General Hospital`. Those phrases can
+describe many buildings; a top search result is not identity evidence. The row
+records `place_resolution="rejected"` plus a `generic_institution_class`
+reason, and any older cached match or exact-place point is withdrawn. The rule
+is intentionally narrow: proper modifiers remain valid, so `Karnataka High
+Court` and `King's Theatre` still enter the normal identity gates. This trades
+some recall for preventing one arbitrary member of a class from becoming
+ground-level truth.
 
 For a single candidate with a city anchor, two stronger locality gates remain:
 the entity description must name that city and its coordinate must lie within
@@ -154,12 +168,16 @@ Positive and negative results live in `place_lookups`, keyed by normalized
 name, country, optional city, and lookup-key version. v1.2 reuses v1.1 candidate
 cache entries because the identity gates did not change. v1.3 includes the
 candidate's inferred search languages for new multilingual keys while retaining
-v1.1 keys for unchanged English candidates. It preserves Unicode in the query
+v1.1 keys for unchanged English candidates. v1.4 keeps those valid cache
+identities but evicts generic-class entries regardless of their old resolver
+version. It preserves Unicode in the query
 and requires the returned label or alias to equal that local-script name; a
 transliteration is never sufficient. Each candidate uses no more than three
 languages. The task spends at
 most ten sequential uncached candidate lookups per run and sends a descriptive
-user agent. Ingestion reads this cache before every RSS upsert, so unchanged
+user agent. The task also runs the generic-class repair idempotently before its
+30-day scan, covering deployments that apply Alembic through offline SQL.
+Ingestion reads this cache before every RSS upsert, so unchanged
 stories retain all exact points while changed text withdraws stale enrichment.
 
 ## News scope classifier — `local | world | unknown`

@@ -115,6 +115,8 @@ ENRICHMENT_PAYLOAD_KEYS: Final = (
     "place_locations",  # every independently verified point for one story (#748)
     "place_candidate_count",
     "place_verified_count",
+    "place_rejections",  # deterministic refusal evidence for generic names (#755)
+    "place_rejected_count",
 )
 
 
