@@ -2,7 +2,7 @@
 # This file is the hand-pinned starter set used for local bring-up before pip-tools is wired in.
 
 fastapi>=0.115
-uvicorn[standard]>=0.32
+uvicorn[standard]>=0.50.0
 celery>=5.4
 redis>=5.2
 sqlalchemy>=2.0
