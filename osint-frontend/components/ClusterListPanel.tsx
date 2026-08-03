@@ -33,11 +33,19 @@ function itemTitle(ev: VisibleEvent): string {
 export function ClusterListPanel({
   label,
   selections,
+  area,
   onSelectEvent,
   onClose,
 }: {
   label: string
   selections: EventSelection[]
+  area?: {
+    lat: number
+    lon: number
+    radiusKm: number
+    labelKind: string
+    dataState: "loading" | "ready" | "error"
+  }
   onSelectEvent: (ev: VisibleEvent, location?: MarkerLocationContext) => void
   onClose: () => void
 }) {
@@ -49,8 +57,13 @@ export function ClusterListPanel({
             {selections.length.toLocaleString()}
           </span>
           <span className="mt-1 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-            events · {label}
+            {area ? "local events" : "events"} · {label}
           </span>
+          {area && (
+            <span className="mt-1 font-mono text-[9px] tabular-nums text-neutral-600">
+              {area.labelKind} · {area.lat.toFixed(5)}, {area.lon.toFixed(5)} · within {area.radiusKm.toLocaleString()} km
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -62,8 +75,22 @@ export function ClusterListPanel({
         </button>
       </div>
 
+      {area?.dataState === "loading" ? (
+        <p className="rounded-md border border-cyan-950 bg-cyan-950/20 px-3 py-4 text-xs leading-relaxed text-cyan-300/70">
+          Loading complete positioned events for this ground area…
+        </p>
+      ) : area?.dataState === "error" ? (
+        <p className="rounded-md border border-red-950 bg-red-950/20 px-3 py-4 text-xs leading-relaxed text-red-300/70">
+          Complete local events could not be loaded. Retained rows may be incomplete.
+        </p>
+      ) : selections.length === 0 && area ? (
+        <p className="rounded-md border border-neutral-800 bg-neutral-900/40 px-3 py-4 text-xs leading-relaxed text-neutral-500">
+          No positioned events inside this area for the active time window.
+        </p>
+      ) : null}
+
       <ul className="-mx-1 flex-1 space-y-0.5 overflow-y-auto pr-1">
-        {selections.map(({ event: ev, location }) => (
+        {selections.map(({ event: ev, location, distanceKm }) => (
           <li key={ev.id}>
             <button
               type="button"
@@ -74,8 +101,13 @@ export function ClusterListPanel({
                 className="h-2 w-2 shrink-0 rounded-full"
                 style={{ backgroundColor: colorForEvent(ev) }}
               />
-              <span className="w-16 shrink-0 whitespace-nowrap font-mono text-[10px] text-neutral-500">
-                {formatDistanceToNowStrict(new Date(ev.occurred_at), { addSuffix: false })}
+              <span className="flex w-20 shrink-0 flex-col whitespace-nowrap font-mono text-[10px] text-neutral-500">
+                {typeof distanceKm === "number" && (
+                  <span className="text-cyan-500/80">
+                    {distanceKm.toFixed(distanceKm < 1 ? 2 : 1)} km
+                  </span>
+                )}
+                <span>{formatDistanceToNowStrict(new Date(ev.occurred_at), { addSuffix: false })}</span>
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs text-neutral-200">{itemTitle(ev)}</span>

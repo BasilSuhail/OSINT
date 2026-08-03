@@ -42,6 +42,20 @@ export function RightPane() {
               onSelectEvent={openEvent}
               onClose={closeEntity}
             />
+          ) : entity.kind === "area" ? (
+            <ClusterListPanel
+              label={entity.label}
+              selections={entity.selections}
+              area={{
+                lat: entity.lat,
+                lon: entity.lon,
+                radiusKm: entity.radiusKm,
+                labelKind: entity.labelKind,
+                dataState: entity.dataState,
+              }}
+              onSelectEvent={openEvent}
+              onClose={closeEntity}
+            />
           ) : (
             <EventDetailCard
               event={entity.event}

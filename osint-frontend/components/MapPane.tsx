@@ -14,6 +14,14 @@ import { Activity, Droplets, Flame, Snowflake, Sun, Triangle, Wind } from "lucid
 import { useConfigured, useEvents } from "@/app/providers"
 import { fetchAllEventPages, fetchAllUpdatedEventPages } from "@/lib/apiClient"
 import { mergeEventRows } from "@/lib/eventMerge"
+import { circlePolygon } from "@/lib/footprints"
+import {
+  coordinateLabel,
+  localEventSelections,
+  localMapLabel,
+  localSelectionBounds,
+  localSelectionRadiusKm,
+} from "@/lib/localMapSelection"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
@@ -66,8 +74,8 @@ interface MapPaneProps {
   useStore: FilterStore
   railOpen: boolean
   onRailOpenChange: (open: boolean) => void
-  onSelectCountry: (iso: string) => void
   onCount: (n: number) => void
+  onOpenSelection: () => void
   /** Bubble a clicked event up to the shared centred detail overlay. */
   onSelectEvent: (ev: VisibleEvent, location?: MarkerLocationContext) => void
   /** Id of the currently-selected event (drives the expanded cyclone footprint). */
@@ -84,6 +92,15 @@ interface ViewportBounds {
 interface ViewportSnapshot {
   key: string
   scopeKey: string
+  windowEnd: number
+  windowOffsetMs: number
+  revisionSince: string
+  events: EventRow[]
+}
+
+interface AreaSnapshot {
+  scopeKey: string
+  windowLengthMs: number
   windowEnd: number
   windowOffsetMs: number
   revisionSince: string
@@ -184,7 +201,15 @@ function EventMarker({
   )
 }
 
-export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount, onSelectEvent, selectedEventId }: MapPaneProps) {
+export function MapPane({
+  useStore,
+  railOpen,
+  onRailOpenChange,
+  onCount,
+  onOpenSelection,
+  onSelectEvent,
+  selectedEventId,
+}: MapPaneProps) {
   const windowLengthMs = useStore((s) => s.windowLengthMs)
   const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
   const playing = useStore((s) => s.playing)
@@ -195,8 +220,24 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const [viewportErrorKey, setViewportErrorKey] = useState<string | null>(null)
   const [settledWindowOffsetMs, setSettledWindowOffsetMs] = useState(windowEndOffsetMs)
   const [viewportSyncTick, setViewportSyncTick] = useState(0)
+  const [areaSyncTick, setAreaSyncTick] = useState(0)
   const windowEndOffsetRef = useRef(windowEndOffsetMs)
   const viewportRequestRef = useRef<AbortController | null>(null)
+  const areaRequestRef = useRef<AbortController | null>(null)
+  const selectedArea = useRightPaneModeStore((s) =>
+    s.entity?.kind === "area" ? s.entity : null,
+  )
+  const selectedAreaLat = selectedArea?.lat
+  const selectedAreaLon = selectedArea?.lon
+  const selectedAreaRadiusKm = selectedArea?.radiusKm
+  const areaScopeKey =
+    typeof selectedAreaLat === "number" &&
+    typeof selectedAreaLon === "number" &&
+    typeof selectedAreaRadiusKm === "number"
+      ? JSON.stringify([selectedAreaLat, selectedAreaLon, selectedAreaRadiusKm])
+      : null
+  const [areaSnapshot, setAreaSnapshot] = useState<AreaSnapshot | null>(null)
+  const areaSnapshotRef = useRef<AreaSnapshot | null>(null)
   const viewportEnabled = zoom >= COMPLETE_VIEWPORT_ZOOM && viewport !== null
   const viewportScopeKey =
     viewportEnabled && viewport
@@ -222,12 +263,26 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     snapshotMatchesWindow
       ? viewportSnapshot.events
       : EMPTY_VIEWPORT_EVENTS
+  const areaSnapshotReady =
+    areaScopeKey !== null &&
+    areaSnapshot?.scopeKey === areaScopeKey &&
+    areaSnapshot.windowLengthMs === windowLengthMs &&
+    (areaSnapshot.windowOffsetMs === settledWindowOffsetMs ||
+      (playing &&
+        Math.abs(areaSnapshot.windowOffsetMs - settledWindowOffsetMs) < windowLengthMs))
+  const activeAreaEvents = areaSnapshotReady
+    ? areaSnapshot.events
+    : EMPTY_VIEWPORT_EVENTS
+  const supplementalEvents = useMemo(
+    () => mergeEventRows(activeViewportEvents, activeAreaEvents),
+    [activeAreaEvents, activeViewportEvents],
+  )
   const viewportLoading =
     viewportScopeKey !== null &&
     !snapshotMatchesWindow &&
     viewportErrorKey !== viewportQueryKey
   const viewportFailed = viewportQueryKey !== null && viewportErrorKey === viewportQueryKey
-  const { events, windowEnd, total } = useEventsInWindow(useStore, activeViewportEvents)
+  const { events, windowEnd, total } = useEventsInWindow(useStore, supplementalEvents)
   const { byCountry } = useLatestScores()
   const scoredGeo = useScoredGeo(byCountry)
   const { centroids } = useCountriesGeo()
@@ -237,6 +292,9 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const [styleReloadToken, setStyleReloadToken] = useState(0)
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const openClusterInPane = useRightPaneModeStore((s) => s.openCluster)
+  const openAreaInPane = useRightPaneModeStore((s) => s.openArea)
+  const updateAreaSelections = useRightPaneModeStore((s) => s.updateAreaSelections)
+  const setAreaDataState = useRightPaneModeStore((s) => s.setAreaDataState)
   const consumedMinWheelRef = useRef(false)
 
   useEffect(() => {
@@ -259,6 +317,18 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     }, playing ? PLAYBACK_VIEWPORT_SYNC_MS : IDLE_VIEWPORT_SYNC_MS)
     return () => window.clearInterval(interval)
   }, [playing, viewportEnabled])
+
+  useEffect(() => {
+    if (!areaScopeKey) return
+    const interval = window.setInterval(() => {
+      // Local selections remain live even after the operator zooms or pans
+      // away from the detailed viewport that originally opened them.
+      if (areaRequestRef.current) return
+      setSettledWindowOffsetMs(windowEndOffsetRef.current)
+      setAreaSyncTick((tick) => (tick + 1) % 1_000_000)
+    }, playing ? PLAYBACK_VIEWPORT_SYNC_MS : IDLE_VIEWPORT_SYNC_MS)
+    return () => window.clearInterval(interval)
+  }, [areaScopeKey, playing])
 
   useEffect(() => {
     if (!viewportEnabled || !viewport || !viewportScopeKey || !viewportQueryKey) return
@@ -345,6 +415,103 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     windowLengthMs,
     settledWindowOffsetMs,
     viewportQueryKey,
+  ])
+
+  // A selected place owns its own complete bbox snapshot. It must not lose
+  // events when the operator pans elsewhere and the viewport snapshot changes.
+  useEffect(() => {
+    if (
+      !areaScopeKey ||
+      typeof selectedAreaLat !== "number" ||
+      typeof selectedAreaLon !== "number" ||
+      typeof selectedAreaRadiusKm !== "number"
+    ) return
+
+    const requestController = new AbortController()
+    areaRequestRef.current = requestController
+    const requestStartedAt = new Date().toISOString()
+    const selectedWindowEnd = Date.now() - settledWindowOffsetMs
+    const selectedWindowStart = selectedWindowEnd - windowLengthMs
+    const previous = areaSnapshotRef.current
+    const canAppend =
+      previous?.scopeKey === areaScopeKey &&
+      previous.windowLengthMs === windowLengthMs &&
+      previous.windowEnd < selectedWindowEnd &&
+      previous.windowEnd >= selectedWindowStart
+    const since = canAppend ? previous.windowEnd : selectedWindowStart
+    if (!canAppend) setAreaDataState("loading")
+    const bounds = localSelectionBounds(
+      selectedAreaLat,
+      selectedAreaLon,
+      selectedAreaRadiusKm,
+    )
+
+    const boundedQuery = {
+      until: new Date(selectedWindowEnd).toISOString(),
+      ...bounds,
+      positionedOnly: true,
+      exclude: NON_MAP_VIEWPORT_SOURCES,
+    }
+    void Promise.all([
+      fetchAllEventPages(
+        { ...boundedQuery, since: new Date(since).toISOString() },
+        2000,
+        { signal: requestController.signal },
+      ),
+      previous?.scopeKey === areaScopeKey && previous.windowLengthMs === windowLengthMs
+        ? fetchAllUpdatedEventPages(
+            { ...boundedQuery, since: new Date(selectedWindowStart).toISOString() },
+            previous.revisionSince,
+            2000,
+            { signal: requestController.signal },
+          )
+        : Promise.resolve([]),
+    ])
+      .then(([rows, revisedRows]) => {
+        if (requestController.signal.aborted) return
+        const incomingRows = mergeEventRows(rows, revisedRows)
+        const snapshot: AreaSnapshot = {
+          scopeKey: areaScopeKey,
+          windowLengthMs,
+          windowEnd: selectedWindowEnd,
+          windowOffsetMs: settledWindowOffsetMs,
+          revisionSince: requestStartedAt,
+          events: canAppend
+            ? mergeEventRows(previous.events, incomingRows).filter((row) => {
+                const occurredAt = new Date(row.occurred_at).getTime()
+                return occurredAt >= selectedWindowStart && occurredAt <= selectedWindowEnd
+              })
+            : incomingRows,
+        }
+        areaSnapshotRef.current = snapshot
+        setAreaSnapshot(snapshot)
+      })
+      .catch((error) => {
+        if (requestController.signal.aborted) return
+        if (error instanceof DOMException && error.name === "AbortError") return
+        setAreaDataState("error")
+      })
+      .finally(() => {
+        if (areaRequestRef.current === requestController) {
+          areaRequestRef.current = null
+        }
+      })
+
+    return () => {
+      requestController.abort()
+      if (areaRequestRef.current === requestController) {
+        areaRequestRef.current = null
+      }
+    }
+  }, [
+    areaScopeKey,
+    selectedAreaLat,
+    selectedAreaLon,
+    selectedAreaRadiusKm,
+    settledWindowOffsetMs,
+    setAreaDataState,
+    areaSyncTick,
+    windowLengthMs,
   ])
 
   const captureViewport = useCallback((map: MapLibreMap) => {
@@ -484,6 +651,14 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     return out
   }, [events, centroids])
 
+  // Country centroids are display fallbacks for otherwise unpositioned
+  // non-news rows. They must never become evidence that an event occurred
+  // within a selected street, neighbourhood, or building radius.
+  const localPositioned = useMemo(
+    () => positioned.filter((item) => item.location?.source !== "country-centroid"),
+    [positioned],
+  )
+
   const { independent, clusteredByKey, clusteredData } = useMemo(() => {
     const independentRows: PositionedMapEvent[] = []
     const clusteredRows: PositionedMapEvent[] = []
@@ -502,6 +677,52 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       clusteredData: eventPointCollection(clusteredRows),
     }
   }, [positioned])
+
+  const selectedAreaFootprint = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features:
+        typeof selectedAreaLat === "number" &&
+        typeof selectedAreaLon === "number" &&
+        typeof selectedAreaRadiusKm === "number"
+          ? [
+              {
+                type: "Feature" as const,
+                properties: {},
+                geometry: {
+                  type: "Polygon" as const,
+                  coordinates: [
+                    circlePolygon(selectedAreaLon, selectedAreaLat, selectedAreaRadiusKm),
+                  ],
+                },
+              },
+            ]
+          : [],
+    }),
+    [selectedAreaLat, selectedAreaLon, selectedAreaRadiusKm],
+  )
+
+  // A detailed viewport snapshot can arrive after the click. Keep the local
+  // card tied to the complete positioned rows instead of freezing its initial
+  // (possibly still loading) contents (#774).
+  useEffect(() => {
+    if (
+      typeof selectedAreaLat !== "number" ||
+      typeof selectedAreaLon !== "number" ||
+      typeof selectedAreaRadiusKm !== "number"
+    ) return
+    updateAreaSelections(
+      localEventSelections(localPositioned, selectedAreaLat, selectedAreaLon, selectedAreaRadiusKm),
+      areaSnapshotReady ? "ready" : undefined,
+    )
+  }, [
+    areaSnapshotReady,
+    localPositioned,
+    selectedAreaLat,
+    selectedAreaLon,
+    selectedAreaRadiusKm,
+    updateAreaSelections,
+  ])
 
   /** Footprints for all hazards. Non-selected ones are revealed on zoom-in
    *  (opacity ramps 4→6); the SELECTED event's footprint is tagged `selected`
@@ -547,6 +768,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       }
       const uniqueSelections = [...byEvent.values()]
       openClusterInPane(positions[0]?.ev.country ?? "cluster", uniqueSelections)
+      onOpenSelection()
       if (mapRef) {
         const map = mapRef.getMap()
         // Supercluster emits individual leaves one zoom above clusterMaxZoom.
@@ -556,15 +778,44 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         map.flyTo({ center: [lon, lat], zoom: target, duration: 600 })
       }
     },
-    [mapRef, openClusterInPane],
+    [mapRef, onOpenSelection, openClusterInPane],
+  )
+
+  const handleAreaClick = useCallback(
+    (e: MapLayerMouseEvent) => {
+      if (!mapRef) return
+      const map = mapRef.getMap()
+      const clickedLabel = localMapLabel(map.queryRenderedFeatures(e.point))
+      const lat = e.lngLat.lat
+      const lon = e.lngLat.lng
+      // Below detailed zoom, first enter the completeness boundary. The area
+      // remains centred on the exact click and refreshes when its viewport rows
+      // arrive, so a world-level click never pretends the global buffer is a
+      // complete Brooklyn/Edinburgh result.
+      const localZoom = Math.max(map.getZoom(), COMPLETE_VIEWPORT_ZOOM)
+      const labelKind = clickedLabel?.kind ?? "coordinate"
+      const radiusKm = localSelectionRadiusKm(localZoom, labelKind)
+      openAreaInPane(
+        clickedLabel?.name ?? coordinateLabel(lat, lon),
+        labelKind,
+        lat,
+        lon,
+        radiusKm,
+        localEventSelections(localPositioned, lat, lon, radiusKm),
+      )
+      onOpenSelection()
+      if (map.getZoom() < COMPLETE_VIEWPORT_ZOOM) {
+        map.flyTo({ center: [lon, lat], zoom: COMPLETE_VIEWPORT_ZOOM, duration: 600 })
+      }
+    },
+    [localPositioned, mapRef, onOpenSelection, openAreaInPane],
   )
 
   const handleClick = useCallback(
     (e: MapLayerMouseEvent) => {
       const feature = e.features?.[0]
-      if (!feature) return
 
-      if (feature.layer.id === EVENT_POINT_LAYER_ID) {
+      if (feature?.layer.id === EVENT_POINT_LAYER_ID) {
         const markerKey = feature.properties?.markerKey
         if (typeof markerKey !== "string") return
         const item = clusteredByKey.get(markerKey)
@@ -572,7 +823,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         return
       }
 
-      if (feature.layer.id === EVENT_CLUSTER_LAYER_ID && mapRef) {
+      if (feature?.layer.id === EVENT_CLUSTER_LAYER_ID && mapRef) {
         const clusterId = Number(feature.properties?.cluster_id)
         const pointCount = Number(feature.properties?.point_count)
         const coordinates = feature.geometry.type === "Point" ? feature.geometry.coordinates : null
@@ -597,10 +848,9 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         return
       }
 
-      const iso = feature.properties?.__iso
-      if (typeof iso === "string") onSelectCountry(iso)
+      handleAreaClick(e)
     },
-    [clusteredByKey, handleClusterClick, handleSelectMarker, mapRef, onSelectCountry],
+    [clusteredByKey, handleAreaClick, handleClusterClick, handleSelectMarker, mapRef],
   )
 
   return (
@@ -627,7 +877,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         interactiveLayerIds={[
           EVENT_CLUSTER_LAYER_ID,
           EVENT_POINT_LAYER_ID,
-          ...(scoredGeo ? ["country-fill"] : []),
         ]}
         onClick={handleClick}
         onLoad={(e) => {
@@ -641,6 +890,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         onError={handleMapError}
         attributionControl={false}
         dragRotate={false}
+        cursor="pointer"
         style={{ position: "absolute", inset: 0 }}
       >
         {/* Terrain hillshade so quakes / hazards read against real ground —
@@ -718,6 +968,23 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             />
           </Source>
         )}
+        <Source id="selected-local-area" type="geojson" data={selectedAreaFootprint}>
+          <Layer
+            id="selected-local-area-fill"
+            type="fill"
+            paint={{ "fill-color": "#22d3ee", "fill-opacity": 0.08 }}
+          />
+          <Layer
+            id="selected-local-area-line"
+            type="line"
+            paint={{
+              "line-color": "#67e8f9",
+              "line-opacity": 0.9,
+              "line-width": 1.5,
+              "line-dasharray": [3, 2],
+            }}
+          />
+        </Source>
         {/* Selected event — rendered after country fill/lines and before
             markers, so real footprints stay visible while the detail card is
             open instead of being washed out by the choropleth layer. */}
@@ -812,6 +1079,11 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             onSelect={handleSelectMarker}
           />
         ))}
+        {typeof selectedAreaLat === "number" && typeof selectedAreaLon === "number" && (
+          <Marker longitude={selectedAreaLon} latitude={selectedAreaLat} anchor="center">
+            <span className="pointer-events-none block h-3 w-3 rounded-full border-2 border-cyan-200 bg-cyan-400/40 shadow-[0_0_8px_rgba(34,211,238,0.9)]" />
+          </Marker>
+        )}
       </MapGL>
 
       {!configured && (
@@ -870,7 +1142,7 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         useStore={useStore}
         open={railOpen}
         onOpenChange={onRailOpenChange}
-        supplementalEvents={activeViewportEvents}
+        supplementalEvents={supplementalEvents}
       />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
     </div>
