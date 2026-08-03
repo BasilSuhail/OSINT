@@ -15,10 +15,13 @@ from app.enrichment.place import (
     PLACE_METHOD_VERSION,
     WIKIDATA_MAXLAG,
     PlaceCandidate,
+    PlaceCandidateRejection,
     PlaceContext,
     enrich_news_places,
     extract_place_candidates,
+    extract_place_evidence,
     lookup_key,
+    repair_generic_place_names,
     resolve_wikidata_place,
 )
 from app.models import Category, Event
@@ -343,6 +346,37 @@ def test_extracts_named_street_and_strips_leading_city_context() -> None:
     )
 
 
+def test_preserves_city_prefix_when_it_distinguishes_generic_place_class() -> None:
+    cases = (
+        ("New York", "New York City Hall"),
+        ("Kolkata", "Kolkata High Court"),
+        ("Sydney", "Sydney Central Station"),
+        ("London", "London General Hospital"),
+    )
+
+    for city, name in cases:
+        evidence = extract_place_evidence(
+            {"title": f"Update from {name}", "summary": ""}, city=city
+        )
+        assert evidence.candidates == (PlaceCandidate(name, "building"),)
+        assert evidence.rejections == ()
+
+
+def test_does_not_join_title_city_to_generic_name_in_summary() -> None:
+    evidence = extract_place_evidence(
+        {
+            "title": "Breaking news in Liverpool",
+            "summary": "Magistrates' Court hearing adjourned",
+        },
+        city="Liverpool",
+    )
+
+    assert evidence.candidates == ()
+    assert evidence.rejections == (
+        PlaceCandidateRejection("Magistrates' Court", "generic_institution_class"),
+    )
+
+
 def test_two_explicit_places_remain_two_candidates() -> None:
     payload = {"title": "King's Theatre and Royal Albert Hall announce reopening", "summary": ""}
 
@@ -350,6 +384,46 @@ def test_two_explicit_places_remain_two_candidates() -> None:
         PlaceCandidate("King's Theatre", "building"),
         PlaceCandidate("Royal Albert Hall", "building"),
     )
+
+
+def test_rejects_bare_institution_classes_before_lookup() -> None:
+    names = (
+        "Magistrates' Court",
+        "City Hall",
+        "General Hospital",
+        "Central Station",
+        "Crown Court",
+        "County Jail",
+        "High Court",
+        "the Airport",
+    )
+
+    for name in names:
+        evidence = extract_place_evidence({"title": f"Incident reported at {name}", "summary": ""})
+        assert evidence.candidates == ()
+        assert len(evidence.rejections) == 1
+        assert evidence.rejections[0].reason == "generic_institution_class"
+
+
+def test_generic_rule_preserves_proper_place_names() -> None:
+    names = (
+        "Brooklyn Bridge",
+        "Atatürk Airport",
+        "Mullaperiyar Dam",
+        "BK Arena",
+        "Dalal Street",
+        "Damietta Port",
+        "Mahara Prison",
+        "Kaziranga National Park",
+        "Hongik University",
+        "Karnataka High Court",
+        "King's Theatre",
+    )
+
+    for name in names:
+        evidence = extract_place_evidence({"title": f"Update from {name}", "summary": ""})
+        assert evidence.candidates
+        assert evidence.rejections == ()
 
 
 def test_extracts_bounded_accented_and_local_script_places() -> None:
@@ -720,6 +794,334 @@ def test_worker_negative_result_is_cached(db_session: Session) -> None:
     assert stats["cache_hits"] == 1
     assert len(client.calls) == 1
     assert db_session.execute(select(PlaceLookupRow)).scalars().one().status == "no_match"
+
+
+def test_worker_records_generic_rejection_without_wikidata_call(db_session: Session) -> None:
+    db_session.add(_rss_row("generic", "Hearing at Magistrates' Court"))
+    db_session.commit()
+    client = FakeWikidataClient([])
+
+    stats = enrich_news_places(
+        db_session,
+        limit=10,
+        client=client,  # type: ignore[arg-type]
+        now=NOW,
+    )
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert stats["lookups"] == 0
+    assert client.calls == []
+    assert row.payload["place_resolution"] == "rejected"
+    assert row.payload["place_candidate_count"] == 0
+    assert row.payload["place_rejected_count"] == 1
+    assert row.payload["place_rejections"] == [
+        {"name": "Magistrates' Court", "reason": "generic_institution_class"}
+    ]
+    assert row.payload["geo_basis"] == "term"
+
+
+def test_worker_keeps_specific_candidate_beside_generic_rejection(
+    db_session: Session,
+) -> None:
+    db_session.add(_country_only_row("mixed", "Royal Albert Hall and City Hall announce closures"))
+    db_session.commit()
+    client = FakeWikidataClient(
+        [_search_item("Q187868", "Royal Albert Hall")],
+        {"Q187868": _entity("Royal Albert Hall", "concert hall in London", 51.5009, -0.1774)},
+    )
+
+    stats = enrich_news_places(
+        db_session,
+        limit=10,
+        client=client,  # type: ignore[arg-type]
+        now=NOW,
+    )
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert stats["lookups"] == 1
+    assert row.payload["place_resolution"] == "resolved"
+    assert row.payload["place_wikidata_id"] == "Q187868"
+    assert row.payload["place_rejections"] == [
+        {"name": "City Hall", "reason": "generic_institution_class"}
+    ]
+
+
+def test_repair_evicts_old_generic_cache_and_withdraws_false_point(
+    db_session: Session,
+) -> None:
+    for key, version in (("a" * 64, "place.wikidata.v1.0"), ("b" * 64, "place.wikidata.v1.2")):
+        db_session.add(
+            PlaceLookupRow(
+                lookup_key=key,
+                query_text="Magistrates' Court",
+                context_country="GB",
+                context_city="Liverpool",
+                status="resolved",
+                lat=53.3555,
+                lon=-2.8984,
+                precision="building",
+                wikidata_id="Q41957874",
+                label="Garston Reading Room",
+                description="building in Liverpool",
+                checked_at=NOW,
+                resolver_version=version,
+            )
+        )
+    db_session.add(
+        EventRow(
+            source="rss-bbc-uk",
+            source_event_id="false-building",
+            occurred_at=NOW,
+            fetched_at=NOW,
+            category="news",
+            severity=0.3,
+            keywords=[],
+            country="GB",
+            lat=53.3555,
+            lon=-2.8984,
+            payload={
+                "title": "Manhunt after prisoner escapes from van outside court",
+                "summary": (
+                    "A prisoner escaped while being taken to Liverpool Magistrates' Court."
+                ),
+                "city": "Liverpool",
+                "geo_basis": "place",
+                "news_scope": "local",
+                "place_name": "Garston Reading Room",
+                "place_wikidata_id": "Q41957874",
+                "place_model": "place.wikidata.v1.3",
+                "place_resolution": "resolved",
+            },
+        )
+    )
+    db_session.commit()
+
+    result = repair_generic_place_names(db_session, now=NOW)
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert result == {"cache_rows_evicted": 2, "event_rows_repaired": 1}
+    assert db_session.execute(select(PlaceLookupRow)).scalars().all() == []
+    assert row.country == "GB"
+    assert row.payload["city"] == "Liverpool"
+    assert (row.lat, row.lon) == (53.4179, -2.9199)
+    assert row.payload["geo_basis"] == "city"
+    assert row.payload["place_wikidata_id"] is None
+    assert row.payload["place_resolution"] == "pending"
+    assert row.payload["place_candidate_count"] == 1
+    assert row.payload["place_rejections"] == [
+        {"name": "Magistrates' Court", "reason": "generic_institution_class"}
+    ]
+    assert repair_generic_place_names(db_session, now=NOW) == {
+        "cache_rows_evicted": 0,
+        "event_rows_repaired": 0,
+    }
+
+
+def test_repair_removes_false_secondary_location_without_losing_valid_primary(
+    db_session: Session,
+) -> None:
+    db_session.add(
+        PlaceLookupRow(
+            lookup_key="c" * 64,
+            query_text="City Hall",
+            context_country="GB",
+            context_city="",
+            status="resolved",
+            lat=53.3555,
+            lon=-2.8984,
+            precision="building",
+            wikidata_id="Q41957874",
+            label="Garston Reading Room",
+            description="building in Liverpool",
+            checked_at=NOW,
+            resolver_version="place.wikidata.v1.2",
+        )
+    )
+    valid = {
+        "name": "Royal Albert Hall",
+        "wikidata_id": "Q187868",
+        "description": "concert hall in London",
+        "lat": 51.5009,
+        "lon": -0.1774,
+        "precision": "building",
+        "checked_at": NOW.isoformat(),
+        "model": "place.wikidata.v1.3",
+    }
+    false = {
+        "name": "Garston Reading Room",
+        "wikidata_id": "Q41957874",
+        "description": "building in Liverpool",
+        "lat": 53.3555,
+        "lon": -2.8984,
+        "precision": "building",
+        "checked_at": NOW.isoformat(),
+        "model": "place.wikidata.v1.2",
+    }
+    db_session.add(
+        EventRow(
+            source="rss-bbc-uk",
+            source_event_id="mixed-false-secondary",
+            occurred_at=NOW,
+            fetched_at=NOW,
+            category="news",
+            severity=0.3,
+            keywords=[],
+            country="GB",
+            lat=valid["lat"],
+            lon=valid["lon"],
+            payload={
+                "title": "Royal Albert Hall and City Hall issue updates",
+                "summary": "",
+                "city": "Liverpool",
+                "geo_basis": "place",
+                "place_name": valid["name"],
+                "place_wikidata_id": valid["wikidata_id"],
+                "place_description": valid["description"],
+                "place_locations": [valid, false],
+                "place_model": "place.wikidata.v1.3",
+                "place_resolution": "resolved_multiple",
+            },
+        )
+    )
+    db_session.commit()
+
+    result = repair_generic_place_names(db_session, now=NOW)
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert result == {"cache_rows_evicted": 1, "event_rows_repaired": 1}
+    assert (row.lat, row.lon) == (51.5009, -0.1774)
+    assert row.payload["geo_basis"] == "place"
+    assert row.payload["place_wikidata_id"] == "Q187868"
+    assert row.payload["place_locations"] == [valid]
+    assert row.payload["place_verified_count"] == 1
+    assert row.payload["place_rejected_count"] == 1
+    assert row.payload["place_resolution"] == "pending"
+    assert row.payload["place_model"] is None
+
+
+def test_repair_restores_desk_basis_without_inventing_term_evidence(
+    db_session: Session,
+) -> None:
+    db_session.add(
+        PlaceLookupRow(
+            lookup_key="d" * 64,
+            query_text="Magistrates' Court",
+            context_country="GB",
+            context_city="",
+            status="resolved",
+            lat=53.3555,
+            lon=-2.8984,
+            precision="building",
+            wikidata_id="Q41957874",
+            label="Garston Reading Room",
+            description="building in Liverpool",
+            checked_at=NOW,
+            resolver_version="place.wikidata.v1.2",
+        )
+    )
+    db_session.add(
+        EventRow(
+            source="rss-bbc-uk",
+            source_event_id="desk-fallback",
+            occurred_at=NOW,
+            fetched_at=NOW,
+            category="news",
+            severity=0.3,
+            keywords=[],
+            country="GB",
+            lat=53.3555,
+            lon=-2.8984,
+            payload={
+                "title": "Hearing adjourned at Magistrates' Court",
+                "summary": "",
+                "city": None,
+                "geo_basis": "place",
+                "place_name": "Garston Reading Room",
+                "place_wikidata_id": "Q41957874",
+            },
+        )
+    )
+    db_session.commit()
+
+    repair_generic_place_names(db_session, now=NOW)
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    assert row.country == "GB"
+    assert (row.lat, row.lon) == (None, None)
+    assert row.payload["geo_basis"] == "desk"
+    assert row.payload["place_resolution"] == "rejected"
+
+
+def test_repair_preserves_specific_cache_sharing_generic_point(db_session: Session) -> None:
+    point = (40.7127, -74.0060)
+    common = {
+        "context_country": "US",
+        "context_city": "",
+        "status": "resolved",
+        "lat": point[0],
+        "lon": point[1],
+        "precision": "building",
+        "wikidata_id": "Q543654",
+        "label": "New York City Hall",
+        "description": "government building in New York City",
+        "checked_at": NOW,
+        "resolver_version": "place.wikidata.v1.2",
+    }
+    db_session.add_all(
+        [
+            PlaceLookupRow(lookup_key="e" * 64, query_text="City Hall", **common),
+            PlaceLookupRow(lookup_key="f" * 64, query_text="New York City Hall", **common),
+        ]
+    )
+    location = {
+        "name": "New York City Hall",
+        "wikidata_id": "Q543654",
+        "description": "government building in New York City",
+        "lat": point[0],
+        "lon": point[1],
+        "precision": "building",
+        "checked_at": NOW.isoformat(),
+        "model": "place.wikidata.v1.2",
+    }
+    db_session.add(
+        EventRow(
+            source="rss-cnn-world",
+            source_event_id="shared-point",
+            occurred_at=NOW,
+            fetched_at=NOW,
+            category="news",
+            severity=0.3,
+            keywords=[],
+            country="US",
+            lat=point[0],
+            lon=point[1],
+            payload={
+                "title": "New York City Hall and City Hall publish updates",
+                "summary": "",
+                "geo_basis": "place",
+                "place_name": location["name"],
+                "place_wikidata_id": location["wikidata_id"],
+                "place_locations": [location],
+            },
+        )
+    )
+    db_session.commit()
+
+    result = repair_generic_place_names(db_session, now=NOW)
+    db_session.commit()
+
+    row = db_session.execute(select(EventRow)).scalars().one()
+    caches = db_session.execute(select(PlaceLookupRow)).scalars().all()
+    assert result == {"cache_rows_evicted": 1, "event_rows_repaired": 0}
+    assert [cache.query_text for cache in caches] == ["New York City Hall"]
+    assert (row.lat, row.lon) == point
+    assert row.payload["geo_basis"] == "place"
+    assert row.payload["place_locations"] == [location]
 
 
 def test_worker_resolves_country_only_story_and_caches_empty_city(db_session: Session) -> None:

@@ -21,17 +21,17 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Literal
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db_models import EventRow, PlaceLookupRow
 from app.models import Category, Event
 
-PLACE_METHOD_VERSION: Final[str] = "place.wikidata.v1.3"
+PLACE_METHOD_VERSION: Final[str] = "place.wikidata.v1.4"
 # English candidate identity is unchanged and keeps its v1.1 cache material.
-# Newly extracted local-language candidates use v1.3 keys that also include
-# their bounded language list.
-PLACE_LOOKUP_KEY_VERSION: Final[str] = PLACE_METHOD_VERSION
+# Local-language candidate identity is also unchanged: v1.3 keys include their
+# bounded language list. v1.4 is a pre-lookup refusal rule, not a cache-key bump.
+PLACE_LOOKUP_KEY_VERSION: Final[str] = "place.wikidata.v1.3"
 ENGLISH_LOOKUP_KEY_VERSION: Final[str] = "place.wikidata.v1.1"
 WIKIDATA_API_URL: Final[str] = "https://www.wikidata.org/w/api.php"
 WIKIDATA_USER_AGENT: Final[str] = (
@@ -105,6 +105,32 @@ _BUILDING_SUFFIXES: Final[frozenset[str]] = frozenset(
     }
 )
 _PLACE_SUFFIXES: Final[frozenset[str]] = _STREET_SUFFIXES | _SITE_SUFFIXES | _BUILDING_SUFFIXES
+
+# These phrases name an institutional class, not one identifiable place.  A
+# search engine is free to return any member of that class, which is exactly
+# how "Magistrates' Court" in Liverpool became Garston Reading Room (#755).
+# Keep this list narrow: modifiers such as "Karnataka" and possessive names
+# such as "King's" are real identity evidence and must remain candidates.
+GENERIC_PLACE_REASON: Final[str] = "generic_institution_class"
+_GENERIC_PLACE_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "central station",
+        "city hall",
+        "county jail",
+        "crown court",
+        "general hospital",
+        "high court",
+        "magistrates court",
+    }
+)
+_GENERIC_CACHE_QUERY_TEXTS: Final[frozenset[str]] = frozenset(
+    {
+        *_GENERIC_PLACE_NAMES,
+        *_PLACE_SUFFIXES,
+        "magistrates' court",
+        "magistrates\u2019 court",
+    }
+)
 
 # A named place ends in a place-kind word and starts with capitalised words.
 # Lowercase joiners are allowed inside names ("Bank of England Museum"), but
@@ -242,6 +268,18 @@ class PlaceCandidate:
             raise ValueError("at least one Wikidata search language is required")
         if len(self.search_languages) > MAX_SEARCH_LANGUAGES:
             raise ValueError("Wikidata search-language fallback exceeds its bound")
+
+
+@dataclass(frozen=True)
+class PlaceCandidateRejection:
+    name: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class PlaceExtraction:
+    candidates: tuple[PlaceCandidate, ...]
+    rejections: tuple[PlaceCandidateRejection, ...]
 
 
 @dataclass(frozen=True)
@@ -471,9 +509,23 @@ def _merge_candidate(
     )
 
 
-def extract_place_candidates(
-    payload: dict[str, Any], *, city: str | None = None
-) -> tuple[PlaceCandidate, ...]:
+def _generic_place_reason(name: str) -> str | None:
+    key = normalise_place_name(name)
+    if key in _GENERIC_PLACE_NAMES or key in _PLACE_SUFFIXES:
+        return GENERIC_PLACE_REASON
+    return None
+
+
+def _identity_candidate(name: str, city: str | None) -> str:
+    """Keep a city modifier when removing it would erase place identity."""
+    cleaned = _clean_candidate(name, city)
+    unstripped = _clean_candidate(name, None)
+    if _generic_place_reason(cleaned) and not _generic_place_reason(unstripped):
+        return unstripped
+    return cleaned
+
+
+def extract_place_evidence(payload: dict[str, Any], *, city: str | None = None) -> PlaceExtraction:
     """Extract conservative explicit-place candidates from one RSS payload.
 
     The deterministic suffix matcher is primary because spaCy is optional in
@@ -482,8 +534,9 @@ def extract_place_candidates(
     """
     names: list[str] = []
     parts = (str(payload.get("title") or ""), str(payload.get("summary") or ""))
-    text = " ".join(part for part in parts if part)
-    names.extend(match.group(1) for match in _CANDIDATE_RE.finditer(text))
+    text = "\n".join(part for part in parts if part)
+    for part in parts:
+        names.extend(match.group(1) for match in _CANDIDATE_RE.finditer(part))
 
     entities = payload.get("entities")
     if isinstance(entities, list):
@@ -498,10 +551,20 @@ def extract_place_candidates(
 
     candidates: list[PlaceCandidate] = []
     positions: dict[str, int] = {}
+    rejections: list[PlaceCandidateRejection] = []
+    rejected_names: set[str] = set()
     for raw_name in names:
-        name = _clean_candidate(raw_name, city)
+        name = _identity_candidate(raw_name, city)
         key = normalise_place_name(name)
-        if not key or len(key.split()) < 2:
+        if not key:
+            continue
+        reason = _generic_place_reason(name)
+        if reason:
+            if key not in rejected_names:
+                rejected_names.add(key)
+                rejections.append(PlaceCandidateRejection(name=name, reason=reason))
+            continue
+        if len(key.split()) < 2:
             continue
         suffix = key.rsplit(" ", 1)[-1]
         if suffix not in _PLACE_SUFFIXES:
@@ -512,13 +575,27 @@ def extract_place_candidates(
             PlaceCandidate(name=name, precision=_precision_for(name)),
         )
     for candidate in _multilingual_candidates(text):
-        name = _clean_candidate(candidate.name, city)
+        name = _identity_candidate(candidate.name, city)
+        key = normalise_place_name(name)
+        reason = _generic_place_reason(name)
+        if reason:
+            if key not in rejected_names:
+                rejected_names.add(key)
+                rejections.append(PlaceCandidateRejection(name=name, reason=reason))
+            continue
         _merge_candidate(
             candidates,
             positions,
             PlaceCandidate(name, candidate.precision, candidate.search_languages),
         )
-    return tuple(candidates)
+    return PlaceExtraction(tuple(candidates), tuple(rejections))
+
+
+def extract_place_candidates(
+    payload: dict[str, Any], *, city: str | None = None
+) -> tuple[PlaceCandidate, ...]:
+    """Return only names specific enough to identify one physical place."""
+    return extract_place_evidence(payload, city=city).candidates
 
 
 def lookup_key(candidate: PlaceCandidate, context: PlaceContext) -> str:
@@ -799,6 +876,8 @@ _PLACE_PAYLOAD_KEYS: Final[tuple[str, ...]] = (
     "place_locations",
     "place_candidate_count",
     "place_verified_count",
+    "place_rejections",
+    "place_rejected_count",
 )
 
 
@@ -811,6 +890,41 @@ def _base_payload(payload: dict[str, Any]) -> dict[str, Any]:
     clean["geo_precision"] = "city" if has_city_point else ("region" if basis == "region" else None)
     clean["geo_source"] = "natural-earth" if clean["geo_precision"] else None
     return clean
+
+
+def _rejection_payload(
+    payload: dict[str, Any],
+    rejections: tuple[PlaceCandidateRejection, ...],
+    *,
+    checked_at: datetime | None = None,
+) -> dict[str, Any]:
+    clean = _base_payload(payload)
+    clean.update(
+        {
+            "place_checked_at": checked_at.isoformat() if checked_at else None,
+            "place_model": PLACE_METHOD_VERSION if checked_at else None,
+            "place_resolution": "rejected" if checked_at else None,
+            "place_candidate_count": 0,
+            "place_verified_count": 0,
+            "place_rejections": [
+                {"name": rejection.name, "reason": rejection.reason} for rejection in rejections
+            ],
+            "place_rejected_count": len(rejections),
+        }
+    )
+    return clean
+
+
+def _with_rejections(
+    payload: dict[str, Any], rejections: tuple[PlaceCandidateRejection, ...]
+) -> dict[str, Any]:
+    if not rejections:
+        return payload
+    payload["place_rejections"] = [
+        {"name": rejection.name, "reason": rejection.reason} for rejection in rejections
+    ]
+    payload["place_rejected_count"] = len(rejections)
+    return payload
 
 
 def _resolved_caches(caches: list[PlaceLookupRow | None]) -> list[PlaceLookupRow]:
@@ -850,6 +964,7 @@ def _payload_for_caches(
     caches: list[PlaceLookupRow | None],
     *,
     complete: bool,
+    rejections: tuple[PlaceCandidateRejection, ...] = (),
 ) -> dict[str, Any]:
     """Apply all independently verified places without duplicating the story."""
     enriched = _base_payload(payload)
@@ -891,7 +1006,7 @@ def _payload_for_caches(
                 "place_description": primary.description,
             }
         )
-    return enriched
+    return _with_rejections(enriched, rejections)
 
 
 def _cache_is_usable(cache: PlaceLookupRow, now: datetime) -> bool:
@@ -919,6 +1034,216 @@ def _candidate_context(
     return context
 
 
+def _restore_ingest_geo(row: EventRow) -> None:
+    """Withdraw a place point without discarding retained ingest evidence."""
+    from app.enrichment.geo import resolve_geo, resolved_news_scope
+    from app.sources.rss_registry import load_feed_configs
+
+    config = next((item for item in load_feed_configs() if item.source == row.source), None)
+    payload = dict(row.payload or {})
+    retained_country = row.country
+    retained_city = str(payload.get("city") or "").strip() or None
+    geo = (
+        resolve_geo(retained_city, city_hint=retained_country)
+        if retained_city
+        else resolve_geo(
+            str(payload.get("title") or ""),
+            str(payload.get("summary") or ""),
+            desk_country=config.desk_country if config else None,
+            city_hint=config.default_country if config else retained_country,
+        )
+    )
+    same_country = bool(retained_country and geo.iso == retained_country)
+    supported_point = bool(same_country and geo.lat is not None and geo.lon is not None)
+    row.country = retained_country
+    row.lat = geo.lat if supported_point else None
+    row.lon = geo.lon if supported_point else None
+    if retained_city and supported_point:
+        basis = "city"
+    elif same_country:
+        basis = geo.basis
+    else:
+        basis = "unknown" if retained_country else "none"
+    payload.update(
+        {
+            "city": retained_city or (geo.city if supported_point else None),
+            "geo_basis": basis,
+            "news_scope": resolved_news_scope(
+                retained_country,
+                row.lat,
+                row.lon,
+                config.default_country if config else None,
+            ),
+        }
+    )
+    row.payload = payload
+
+
+def _point_identity(
+    wikidata_id: object, lat: object, lon: object
+) -> tuple[str, float, float] | None:
+    if not isinstance(lat, (str, int, float)) or not isinstance(lon, (str, int, float)):
+        return None
+    try:
+        entity = str(wikidata_id or "")
+        latitude, longitude = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return None
+    return (entity, latitude, longitude) if entity else None
+
+
+def _payload_for_retained_locations(
+    payload: dict[str, Any],
+    locations: list[dict[str, Any]],
+    evidence: PlaceExtraction,
+) -> dict[str, Any]:
+    """Promote the first still-proven location after false ones are removed."""
+    clean = _base_payload(payload)
+    primary = locations[0]
+    # A rejected sibling changes candidate count and can therefore tighten the
+    # lookup context from country-only to one city-anchored place. Requeue the
+    # retained point so it must pass those stronger gates before v1.4 stamps it.
+    complete = not evidence.rejections and len(locations) == len(evidence.candidates)
+    clean.update(
+        {
+            "geo_basis": "place",
+            "geo_precision": primary.get("precision"),
+            "geo_source": "wikidata",
+            "place_name": primary.get("name"),
+            "place_wikidata_id": primary.get("wikidata_id"),
+            "place_description": primary.get("description"),
+            "place_checked_at": payload.get("place_checked_at"),
+            "place_model": PLACE_METHOD_VERSION if complete else None,
+            "place_resolution": (
+                ("resolved" if len(locations) == 1 else "resolved_multiple")
+                if complete
+                else "pending"
+            ),
+            "place_locations": locations,
+            "place_candidate_count": len(evidence.candidates),
+            "place_verified_count": len(locations),
+        }
+    )
+    return _with_rejections(clean, evidence.rejections)
+
+
+def repair_generic_place_names(session: Session, *, now: datetime | None = None) -> dict[str, int]:
+    """Evict generic cache material and withdraw any points derived from it."""
+    now = now or datetime.now(UTC)
+    evicted = 0
+    false_point_queries: dict[tuple[str, float, float], dict[str, str]] = {}
+    possible_generic = func.lower(func.trim(PlaceLookupRow.query_text))
+    cache_rows = session.execute(
+        select(PlaceLookupRow).where(possible_generic.in_(_GENERIC_CACHE_QUERY_TEXTS))
+    ).scalars()
+    for cache in cache_rows:
+        if _generic_place_reason(cache.query_text):
+            if cache.wikidata_id and cache.lat is not None and cache.lon is not None:
+                point = (cache.wikidata_id, cache.lat, cache.lon)
+                false_point_queries.setdefault(point, {})[
+                    normalise_place_name(cache.query_text)
+                ] = cache.query_text
+            session.delete(cache)
+            evicted += 1
+
+    if not false_point_queries:
+        session.flush()
+        return {"cache_rows_evicted": evicted, "event_rows_repaired": 0}
+
+    false_points = set(false_point_queries)
+    false_entity_ids = {point[0] for point in false_points}
+    specific_support: dict[tuple[str, float, float], set[str]] = {}
+    specific_rows = session.execute(
+        select(PlaceLookupRow).where(PlaceLookupRow.wikidata_id.in_(false_entity_ids))
+    ).scalars()
+    for cache in specific_rows:
+        if _generic_place_reason(cache.query_text):
+            continue
+        support_point = _point_identity(cache.wikidata_id, cache.lat, cache.lon)
+        if support_point is not None:
+            specific_support.setdefault(support_point, set()).add(
+                normalise_place_name(cache.query_text)
+            )
+
+    repaired = 0
+    basis_value = EventRow.payload["geo_basis"].as_string()
+    rows = session.execute(
+        select(EventRow)
+        .where(EventRow.source.like("rss-%"))
+        .where(EventRow.category == "news")
+        .where(basis_value == "place")
+    ).scalars()
+    for row in rows:
+        payload = dict(row.payload or {})
+        evidence = extract_place_evidence(payload, city=payload.get("city"))
+        candidate_names = {
+            normalise_place_name(candidate.name) for candidate in evidence.candidates
+        }
+
+        def unsupported_generic_point(
+            point: tuple[str, float, float] | None,
+            supported_names: set[str] = candidate_names,
+        ) -> bool:
+            return bool(
+                point in false_points and not (supported_names & specific_support.get(point, set()))
+            )
+
+        primary_point = _point_identity(payload.get("place_wikidata_id"), row.lat, row.lon)
+        locations = [
+            item for item in payload.get("place_locations") or [] if isinstance(item, dict)
+        ]
+        valid_locations = [
+            item
+            for item in locations
+            if not unsupported_generic_point(
+                _point_identity(item.get("wikidata_id"), item.get("lat"), item.get("lon"))
+            )
+        ]
+        if not unsupported_generic_point(primary_point) and len(valid_locations) == len(locations):
+            continue
+        repair_rejections = list(evidence.rejections)
+        rejected_keys = {normalise_place_name(item.name) for item in repair_rejections}
+        rejected_points = [
+            primary_point,
+            *(
+                _point_identity(item.get("wikidata_id"), item.get("lat"), item.get("lon"))
+                for item in locations
+            ),
+        ]
+        for rejected_point in rejected_points:
+            if rejected_point is None or not unsupported_generic_point(rejected_point):
+                continue
+            for key, name in false_point_queries.get(rejected_point, {}).items():
+                if key not in rejected_keys:
+                    rejected_keys.add(key)
+                    repair_rejections.append(
+                        PlaceCandidateRejection(name=name, reason=GENERIC_PLACE_REASON)
+                    )
+        repair_evidence = PlaceExtraction(evidence.candidates, tuple(repair_rejections))
+        if valid_locations:
+            primary = valid_locations[0]
+            row.lat, row.lon = float(primary["lat"]), float(primary["lon"])
+            payload = _payload_for_retained_locations(payload, valid_locations, repair_evidence)
+        else:
+            _restore_ingest_geo(row)
+            payload = dict(row.payload or {})
+            if evidence.candidates:
+                payload = _with_rejections(_base_payload(payload), repair_evidence.rejections)
+                payload.update(
+                    {
+                        "place_resolution": "pending",
+                        "place_candidate_count": len(evidence.candidates),
+                        "place_verified_count": 0,
+                    }
+                )
+            else:
+                payload = _rejection_payload(payload, repair_evidence.rejections, checked_at=now)
+        row.payload = payload
+        repaired += 1
+    session.flush()
+    return {"cache_rows_evicted": evicted, "event_rows_repaired": repaired}
+
+
 def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
     """Reapply cached truth before every RSS upsert.
 
@@ -926,14 +1251,23 @@ def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
     and exact point; changed text has no matching key and the ordinary RSS
     resolver authoritatively withdraws the old point (#741).
     """
-    prepared: list[tuple[Event, PlaceContext | None, tuple[PlaceCandidate, ...], list[str]]] = []
+    prepared: list[
+        tuple[
+            Event,
+            PlaceContext | None,
+            tuple[PlaceCandidate, ...],
+            tuple[PlaceCandidateRejection, ...],
+            list[str],
+        ]
+    ] = []
     keys: set[str] = set()
     for event in events:
         if not event.source.startswith("rss-") or event.category != Category.NEWS:
-            prepared.append((event, None, (), []))
+            prepared.append((event, None, (), (), []))
             continue
         context = _event_context(event)
-        candidates = extract_place_candidates(event.payload, city=context.city if context else None)
+        evidence = extract_place_evidence(event.payload, city=context.city if context else None)
+        candidates = evidence.candidates
         lookup_context = _candidate_context(context, candidates) if context else None
         event_keys = (
             [lookup_key(candidate, lookup_context) for candidate in candidates]
@@ -941,7 +1275,7 @@ def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
             else []
         )
         keys.update(event_keys)
-        prepared.append((event, context, candidates, event_keys))
+        prepared.append((event, context, candidates, evidence.rejections, event_keys))
 
     caches = (
         {
@@ -956,7 +1290,7 @@ def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
 
     now = datetime.now(UTC)
     output: list[Event] = []
-    for event, context, candidates, event_keys in prepared:
+    for event, context, candidates, rejections, event_keys in prepared:
         if not event.source.startswith("rss-") or event.category != Category.NEWS:
             output.append(event)
             continue
@@ -968,11 +1302,17 @@ def apply_cached_places(events: list[Event], session: Session) -> list[Event]:
         complete = bool(context and candidates) and all(
             cache is not None for cache in candidate_caches
         )
-        payload = (
-            _payload_for_caches(event.payload, candidate_caches, complete=complete)
-            if context and candidates
-            else _base_payload(event.payload)
-        )
+        if context and candidates:
+            payload = _payload_for_caches(
+                event.payload,
+                candidate_caches,
+                complete=complete,
+                rejections=rejections,
+            )
+        elif rejections and not candidates:
+            payload = _rejection_payload(event.payload, rejections, checked_at=now)
+        else:
+            payload = _with_rejections(_base_payload(event.payload), rejections)
         update: dict[str, Any] = {"payload": payload}
         resolved = _resolved_caches(candidate_caches)
         if resolved:
@@ -995,6 +1335,7 @@ def _apply_caches_to_row(
     caches: list[PlaceLookupRow | None],
     *,
     complete: bool,
+    rejections: tuple[PlaceCandidateRejection, ...] = (),
 ) -> bool:
     before = (
         row.lat,
@@ -1006,7 +1347,9 @@ def _apply_caches_to_row(
         ),
     )
     resolved = _resolved_caches(caches)
-    payload = _payload_for_caches(dict(row.payload or {}), caches, complete=complete)
+    payload = _payload_for_caches(
+        dict(row.payload or {}), caches, complete=complete, rejections=rejections
+    )
     if resolved:
         row.lat, row.lon = resolved[0].lat, resolved[0].lon
     row.payload = payload
@@ -1054,6 +1397,9 @@ def enrich_news_places(
     if limit <= 0:
         raise ValueError("limit must be positive")
     now = now or datetime.now(UTC)
+    # Idempotent fallback for deployments that apply Alembic in offline mode:
+    # the SQL stream cannot inspect live cache/event rows (#755).
+    repair_generic_place_names(session, now=now)
     model_value = EventRow.payload["place_model"].as_string()
     rows = session.execute(
         select(EventRow)
@@ -1080,8 +1426,22 @@ def enrich_news_places(
     memory_cache: dict[str, PlaceLookupRow] = {}
     for row in rows:
         payload = dict(row.payload or {})
-        context = _row_context(row)
         stats["scanned"] += 1
+        evidence = extract_place_evidence(payload, city=payload.get("city"))
+        candidates = evidence.candidates
+        if (
+            evidence.rejections
+            and not candidates
+            and str(payload.get("geo_basis") or "") == "place"
+        ):
+            _restore_ingest_geo(row)
+            payload = dict(row.payload or {})
+        if evidence.rejections and not candidates:
+            row.payload = _rejection_payload(payload, evidence.rejections, checked_at=now)
+            stats["no_candidate"] += 1
+            continue
+
+        context = _row_context(row)
         if context is None:
             payload = _base_payload(payload)
             payload.update(
@@ -1091,11 +1451,10 @@ def enrich_news_places(
                     "place_resolution": "no_context",
                 }
             )
-            row.payload = payload
+            row.payload = _with_rejections(payload, evidence.rejections)
             stats["no_context"] += 1
             continue
 
-        candidates = extract_place_candidates(payload, city=context.city)
         if not candidates:
             payload = _base_payload(payload)
             payload.update(
@@ -1105,7 +1464,7 @@ def enrich_news_places(
                     "place_resolution": "no_candidate",
                 }
             )
-            row.payload = payload
+            row.payload = _with_rejections(payload, evidence.rejections)
             stats["no_candidate"] += 1
             continue
         stats["multiple"] += int(len(candidates) > 1)
@@ -1161,5 +1520,12 @@ def enrich_news_places(
             and bool(resolved)
             and any(cache is not None and cache.status != "resolved" for cache in candidate_caches)
         )
-        stats["enriched"] += int(_apply_caches_to_row(row, candidate_caches, complete=complete))
+        stats["enriched"] += int(
+            _apply_caches_to_row(
+                row,
+                candidate_caches,
+                complete=complete,
+                rejections=evidence.rejections,
+            )
+        )
     return stats
