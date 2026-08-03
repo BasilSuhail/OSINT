@@ -24,29 +24,108 @@ export const isApiConfigured = true
 
 export interface EventQuery {
   since?: string
+  until?: string
   fetchedSince?: string
   updatedSince?: string
   updatedAfterId?: string
+  occurredBefore?: string
+  occurredBeforeId?: string
+  west?: number
+  south?: number
+  east?: number
+  north?: number
+  positionedOnly?: boolean
   country?: string
   sources?: string[]
   exclude?: string[]
   limit?: number
 }
 
-export async function fetchEvents(params: EventQuery = {}): Promise<EventRow[]> {
+export async function fetchEvents(
+  params: EventQuery = {},
+  options: { signal?: AbortSignal } = {},
+): Promise<EventRow[]> {
   const qs = new URLSearchParams()
   if (params.since) qs.set("since", params.since)
+  if (params.until) qs.set("until", params.until)
   if (params.fetchedSince) qs.set("fetched_since", params.fetchedSince)
   if (params.updatedSince) qs.set("updated_since", params.updatedSince)
   if (params.updatedAfterId) qs.set("updated_after_id", params.updatedAfterId)
+  if (params.occurredBefore) qs.set("occurred_before", params.occurredBefore)
+  if (params.occurredBeforeId) qs.set("occurred_before_id", params.occurredBeforeId)
+  if (params.west != null) qs.set("west", String(params.west))
+  if (params.south != null) qs.set("south", String(params.south))
+  if (params.east != null) qs.set("east", String(params.east))
+  if (params.north != null) qs.set("north", String(params.north))
+  if (params.positionedOnly != null) qs.set("positioned_only", String(params.positionedOnly))
   if (params.country) qs.set("country", params.country)
   if (params.sources?.length) qs.set("sources", params.sources.join(","))
   if (params.exclude?.length) qs.set("exclude", params.exclude.join(","))
   if (params.limit != null) qs.set("limit", String(params.limit))
   const q = qs.toString()
-  const res = await fetch(`${API_BASE}/events${q ? `?${q}` : ""}`)
+  const res = await fetch(`${API_BASE}/events${q ? `?${q}` : ""}`, {
+    signal: options.signal,
+  })
   if (!res.ok) throw new Error(`GET /events ${res.status}`)
   return (await res.json()) as EventRow[]
+}
+
+/** Fetch every event in a bounded query without letting the API's page limit
+ * silently choose which streets or buildings exist on the map. */
+export async function fetchAllEventPages(
+  params: Omit<EventQuery, "limit" | "occurredBefore" | "occurredBeforeId">,
+  pageSize = 2000,
+  options: { signal?: AbortSignal } = {},
+): Promise<EventRow[]> {
+  const rows: EventRow[] = []
+  const seenCursors = new Set<string>()
+  let cursor: Pick<EventQuery, "occurredBefore" | "occurredBeforeId"> = {}
+
+  for (;;) {
+    const page = await fetchEvents({ ...params, ...cursor, limit: pageSize }, options)
+    rows.push(...page)
+    if (page.length < pageSize) return rows
+
+    const last = page.at(-1)
+    if (!last) return rows
+    const nextCursor = `${last.occurred_at}|${last.id}`
+    if (seenCursors.has(nextCursor)) {
+      throw new Error("GET /events occurrence cursor did not advance")
+    }
+    seenCursors.add(nextCursor)
+    cursor = { occurredBefore: last.occurred_at, occurredBeforeId: String(last.id) }
+  }
+}
+
+/** Page every row revised after a durable cursor. This complements occurrence
+ * paging so late-ingested or backfilled rows remain discoverable. */
+export async function fetchAllUpdatedEventPages(
+  params: Omit<
+    EventQuery,
+    "limit" | "updatedSince" | "updatedAfterId" | "occurredBefore" | "occurredBeforeId"
+  >,
+  updatedSince: string,
+  pageSize = 2000,
+  options: { signal?: AbortSignal } = {},
+): Promise<EventRow[]> {
+  const rows: EventRow[] = []
+  const seenCursors = new Set<string>()
+  let cursor: Pick<EventQuery, "updatedSince" | "updatedAfterId"> = { updatedSince }
+
+  for (;;) {
+    const page = await fetchEvents({ ...params, ...cursor, limit: pageSize }, options)
+    rows.push(...page)
+    if (page.length < pageSize) return rows
+
+    const last = page.at(-1)
+    if (!last?.updated_at) throw new Error("GET /events revision cursor is missing")
+    const nextCursor = `${last.updated_at}|${last.id}`
+    if (seenCursors.has(nextCursor)) {
+      throw new Error("GET /events revision cursor did not advance")
+    }
+    seenCursors.add(nextCursor)
+    cursor = { updatedSince: last.updated_at, updatedAfterId: String(last.id) }
+  }
 }
 
 /** Headline world stats, aggregated in Postgres (#499).

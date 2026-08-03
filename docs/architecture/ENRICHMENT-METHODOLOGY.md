@@ -154,8 +154,15 @@ verified candidate remains the row's primary `lat`/`lon` for API compatibility,
 while the map projects every verified location into its own marker. All markers
 open the same story row, and a cluster list deduplicates that story.
 
-The map sends every valid news and city-precision GDELT position in the active
-client event window to one MapLibre GeoJSON source. Native worker-side
+The world map starts from a bounded recent-event buffer. At city/street zoom
+(8+), it additionally queries the visible bbox and selected time window using a
+stable `(occurred_at, id)` keyset cursor until no page remains. Viewport rows
+replace same-ID buffered rows, then pass through the existing filters and exact
+multi-place projection. This prevents a busy global feed from starving a local
+city while keeping the world view bounded.
+
+The map sends every resulting valid news and city-precision GDELT position to
+one MapLibre GeoJSON source. Native worker-side
 clustering changes only their presentation: it never applies a marker count
 budget, viewport sample, or coordinate snap. Cluster leaves retain the original
 marker key, so opening a cluster recovers every underlying story and
