@@ -15,7 +15,7 @@ from __future__ import annotations
 import contextlib
 from typing import Any, Final
 
-from sqlalchemy import case, func
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -147,7 +147,15 @@ def _dedup_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if sid is None:
             passthrough.append(row)
         else:
-            keyed[(row["source"], sid)] = row
+            key = (row["source"], sid)
+            existing = keyed.get(key)
+            if (
+                existing is None
+                or not str(row["source"]).startswith("rss-")
+                or (row["fetched_at"], row["occurred_at"])
+                >= (existing["fetched_at"], existing["occurred_at"])
+            ):
+                keyed[key] = row
     return passthrough + list(keyed.values())
 
 
@@ -170,6 +178,18 @@ def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) ->
     stmt = base.on_conflict_do_update(
         index_elements=["source", "source_event_id"],
         set_=refreshed,
+        # Canonical RSS fragments can arrive in separate, out-of-order fetch
+        # transactions.  A delayed response must not replace a representation
+        # already fetched later.  Snapshot sources keep their existing refresh
+        # semantics; equal RSS timestamps still allow deterministic replays.
+        where=or_(
+            base.excluded.source.not_like("rss-%"),
+            base.excluded.fetched_at > EventRow.fetched_at,
+            and_(
+                base.excluded.fetched_at == EventRow.fetched_at,
+                base.excluded.occurred_at >= EventRow.occurred_at,
+            ),
+        ),
     )
 
     # RETURNING yields every affected row (inserted + updated). Both Postgres and
@@ -206,12 +226,35 @@ def upsert_events(
     from app.enrichment.place import apply_cached_places
 
     events = apply_cached_places(events, session)
-    rows = [_event_to_row(e) for e in events]
+    # Deduplicate before splitting into SQL batches. Canonical RSS variants may
+    # otherwise land on opposite sides of a batch boundary and let the later
+    # statement overwrite the newest representation selected above.
+    rows = _dedup_rows([_event_to_row(e) for e in events])
     dialect = session.get_bind().dialect.name
+
+    # Canonical RSS identities mean a publisher's later fragment variant now
+    # refreshes one existing event. Capture assigned stories before the upsert,
+    # then refresh their aggregates and rebuildable derivations afterwards.
+    from app.sources.rss_identity import (
+        changed_assigned_rss_story_ids,
+        lock_rss_identity_keys,
+        refresh_assigned_rss_stories,
+    )
+
+    lock_rss_identity_keys(
+        session,
+        {
+            (str(row["source"]), str(row["source_event_id"]))
+            for row in rows
+            if str(row["source"]).startswith("rss-") and row["source_event_id"] is not None
+        },
+    )
+    changed_story_ids = changed_assigned_rss_story_ids(session, rows)
 
     affected = 0
     for start in range(0, len(rows), batch_size):
         affected += _upsert_batch(rows[start : start + batch_size], session, dialect)
+    refresh_assigned_rss_stories(session, changed_story_ids)
     # A dead Redis must never fail an ingest; the SSE clients fall back to
     # their 30s SWR poll. Swallow and continue.
     with contextlib.suppress(Exception):

@@ -83,7 +83,16 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
     started_at = time.monotonic()
     now = now or datetime.now(UTC)
 
-    deleted_by_source: dict[str, int] = {}
+    # Repair legacy BBC GUID variants before retention counts the table.  The
+    # same narrow identity rule runs at ingest, while this daily pass catches
+    # any retained rows written by an old worker during a rolling deploy (#751).
+    from app.sources.rss_identity import reconcile_rss_fragment_duplicates
+
+    reconciliation = reconcile_rss_fragment_duplicates(session, now=now)
+
+    deleted_by_source: dict[str, int] = {
+        "rss-fragment-duplicates": reconciliation.deleted_rows,
+    }
     policy = retention_days()
     for source, days in policy.items():
         if days is None:

@@ -125,6 +125,7 @@ class TestEntryToEvent:
         assert event.payload["severity_rationale"]
         assert event.country == "GB"
         assert event.occurred_at == datetime(2026, 6, 21, 10, 15, 0, tzinfo=UTC)
+        assert event.payload["published_from_feed"] is True
         assert event.payload["title"] == "Knife attack reported in Edinburgh"
         assert event.payload["source_url"] == "https://example.com/news/edinburgh-knife"
         assert event.payload["feed_name"] == "Test Feed"
@@ -140,6 +141,21 @@ class TestEntryToEvent:
         assert event is not None
         assert len(event.source_event_id) == 64  # sha256 hex
 
+    def test_generated_numeric_guid_fragment_is_canonicalized(self) -> None:
+        article = "https://www.bbc.co.uk/news/articles/c1w1nnzgg2no"
+        entry = {
+            "title": "Headline",
+            "link": f"{article}?at_medium=RSS&at_campaign=rss",
+            "summary": "Body",
+            "id": f"{article}#4",
+        }
+
+        event = entry_to_event(entry, config=CFG, fetched_at=datetime.now(UTC))
+
+        assert event is not None
+        assert event.source_event_id == article
+        assert event.payload["guid"] == f"{article}#4"
+
     def test_empty_title_skipped(self) -> None:
         entry = {"title": "", "link": "https://example.com", "summary": "body"}
         event = entry_to_event(entry, config=CFG, fetched_at=datetime.now(UTC))
@@ -151,6 +167,7 @@ class TestEntryToEvent:
         event = entry_to_event(entry, config=CFG, fetched_at=fetched_at)
         assert event is not None
         assert event.occurred_at == fetched_at
+        assert event.payload["published_from_feed"] is False
 
     def test_no_city_means_no_country(self) -> None:
         # A headline with no recognised city must NOT inherit the feed's

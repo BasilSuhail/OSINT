@@ -103,6 +103,31 @@ Geography has two ownership rules:
 Payload refreshes shallow-merge incoming keys over the stored object so later
 enrichment such as hazard footprints is not erased by a repeated snapshot.
 
+RSS GUIDs receive one additional, deliberately narrow normalization for the
+measured BBC failure. A numeric fragment is removed only when the fragment-less
+HTTP(S) BBC GUID has the same host and path as the article link, the GUID has no
+query, and the link has no fragment or query beyond a fixed tracking-key
+allowlist. This collapses generated BBC variants such as `#0`, `#1`, and `#4`
+without merging publisher-defined anchors or query-routed articles. Retained legacy variants are
+reconciled transactionally: newest fetch wins, then newest publication, then
+highest database row ID. A delayed RSS response cannot overwrite a row with a
+newer fetch/publication rank. RSS writes and reconciliation share one coarse
+transaction lock. This gives repair a current snapshot, serializes updates that
+may feed the same story, and bounds the advisory-lock footprint to one lock
+regardless of import or retained-row count. Story aggregates also lock their
+story row before rereading members. Its
+surviving story membership is retained or
+transferred, duplicate memberships are removed, and affected story aggregates
+are refreshed when retained evidence is complete. Historical aggregates stay
+conservative when retention has already removed member events, while the
+recoverable latest title and time still refresh. Derived story rows
+inside the 72-hour worker window are invalidated so scheduled workers rebuild
+them from the surviving evidence; historical evidence snapshots are preserved
+because no producer can rebuild them outside that window. Housekeeping repeats
+the repair idempotently so a rolling deployment cannot reintroduce legacy rows.
+Offline Alembic SQL generation emits a data-repair marker; because it cannot
+inspect rows, the first housekeeping pass performs the repair after startup.
+
 Per-source dedup-key recipe:
 
 | Source | `source_event_id` |

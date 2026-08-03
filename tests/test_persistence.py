@@ -314,6 +314,16 @@ class TestUpsertEvents:
         rows = db_session.execute(select(EventRow)).scalars().all()
         assert len(rows) == 50_000
 
+    def test_large_rss_identity_lookup_is_batched(self, db_session: Session) -> None:
+        events = [
+            _make_news_event(f"article:{i}", basis="none", country=None, lat=None, lon=None)
+            for i in range(1_001)
+        ]
+
+        assert upsert_events(events, db_session, batch_size=100) == 1_001
+        db_session.commit()
+        assert upsert_events(events, db_session, batch_size=100) == 1_001
+
     def test_batch_size_must_be_positive(self, db_session: Session) -> None:
         with pytest.raises(ValueError):
             upsert_events([_make_event("X")], db_session, batch_size=0)
