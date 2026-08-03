@@ -35,7 +35,7 @@ GDACS_FOOTPRINT_URL: Final[str] = (
     "geojson_{event_id}_{episode}.geojson"
 )
 EONET_EVENT_URL: Final[str] = "https://eonet.gsfc.nasa.gov/api/v3/events/{eonet_id}"
-USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 #: EONET storms (cyclones) carry no alert level — draw the track in the storm
 #: green that matches the wind pin.
 _EONET_TRACK_COLOR: Final[str] = "#22c55e"

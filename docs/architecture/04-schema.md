@@ -1,6 +1,6 @@
 # 04 — Common Event Schema
 
-Marco's brief requires a common event table with fields: **time, location, source, category, severity, keywords, confidence**. This file is the canonical definition, plus the supporting tables that make the rest of the system work.
+The reviewer's brief requires a common event table with fields: **time, location, source, category, severity, keywords, confidence**. This file is the canonical definition, plus the supporting tables that make the rest of the system work.
 
 - [`events` table](#events-table)
 - [`scores` table](#scores-table)
@@ -72,7 +72,7 @@ CREATE TABLE scores (
 CREATE UNIQUE INDEX scores_unique_idx ON scores (country, bucket_start, bucket_length, score_name, method_version);
 ```
 
-`method_version` is the lock against silently changing the methodology mid-evaluation. The evaluation protocol locks v1.0 with Marco before Week 4; later versions can coexist for ablations.
+`method_version` is the lock against silently changing the methodology mid-evaluation. The evaluation protocol locks v1.0 with The reviewer before Week 4; later versions can coexist for ablations.
 
 The same table holds every baseline (B0 random, B1 persistence, B2 base rate, B3 geo-only, B4 market-only, B5 hazard-only, B6/B7/B8 composite variants) — each is just another `score_name`. The evaluation join is then a single query keyed on `(country, bucket_start, bucket_length, method_version)`.
 

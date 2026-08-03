@@ -7,7 +7,7 @@ to the structural CAMEO / hazard / market data.
 These events are **Layer 3** — category=NEWS — so they appear on the
 dashboard but never enter the composite scoring (see
 ``docs/architecture/04-schema.md``). That keeps the OECD/JRC methodology
-defensible while letting Basil watch UK / Pakistan / world headlines on
+defensible while letting the operator watch UK / Pakistan / world headlines on
 the map alongside the geopolitical (GDELT) and hazard (USGS / GDACS /
 FIRMS / EONET) layers.
 
@@ -63,7 +63,7 @@ from app.severity import news as news_severity
 from app.sources.base import Fetcher
 from app.sources.rss_identity import canonical_rss_event_id
 
-RSS_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+RSS_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 # Severity for news is a stable mid-band by default. Headlines do not carry
 # magnitudes the way USGS quakes do, and we do not run NLP at fetch time.

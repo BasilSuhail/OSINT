@@ -9,7 +9,7 @@ intersection cost. The full lookup runs in roughly 30-60 µs on a modern laptop,
 so wiring it into every fetcher does not change ingest cadence.
 
 The 110 m dataset is **coarse** — a fire detection within ~10 km of a border may
-attribute to the wrong side. For the OSINT thesis composite (country/month
+attribute to the wrong side. For the OSINT project composite (country/month
 buckets) that error is in the rounding; if border-precision becomes important we
 can swap to the 50 m or 10 m dataset by replacing the data file.
 """

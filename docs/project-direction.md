@@ -9,7 +9,7 @@ The right framing is narrower and stronger:
 It ingests, deduplicates, enriches, scores, and visualises public signals so one operator can
 understand emerging risk faster.
 
-This is the product answer to the professor's three questions:
+This is the product answer to the reviewer's three questions:
 
 - **So what?** It turns fragmented public data into usable situational awareness.
 - **Why does it matter?** Important signals are spread across feeds, formats, and time scales.
@@ -35,7 +35,7 @@ The difference is that your system is:
 - public-source only
 - explainable
 - auditable
-- thesis-driven
+- project-driven
 - usable by one operator without a large organisation behind it
 
 That makes it an intelligence product, a research product, a personal operations tool, and an
@@ -142,9 +142,9 @@ If the customer is "one operator who needs lawful public risk intelligence", the
 
 ---
 
-## 4. The most defensible product thesis
+## 4. The most defensible product project
 
-The strongest product thesis is:
+The strongest product project is:
 
 **Public signals can be fused into a practical intelligence layer that is more useful than any single feed alone.**
 
@@ -186,7 +186,7 @@ This project should not try to become:
 
 If you keep the product too broad, you lose three things:
 
-- the thesis becomes fuzzy
+- the project becomes fuzzy
 - the software becomes hard to finish
 - the open-source story becomes impossible to explain
 
@@ -197,7 +197,7 @@ The repo already has enough breadth. The job now is to keep that breadth legible
 ## 6. Why this can become something people care about
 
 To be worth the effort, the project needs more than functionality.
-It needs a reason to exist after the thesis ends.
+It needs a reason to exist after the project ends.
 
 The durable value is:
 
@@ -206,7 +206,7 @@ The durable value is:
 - explainable scoring
 - operational UX instead of model hype
 - reproducible evaluation
-- a clear split between thesis core and dashboard breadth
+- a clear split between project core and dashboard breadth
 
 That combination is rare.
 
@@ -216,7 +216,7 @@ Most tools do one of these well:
 - score risk
 - show a map
 - run locally
-- provide thesis-grade evaluation
+- provide project-grade evaluation
 
 Very few do all of them together in a single, comprehensible system.
 
@@ -266,49 +266,7 @@ The sustainable product is the one that can be trusted, inspected, and maintaine
 
 ---
 
-## 8. How this can help with jobs or a PhD
-
-This project can support both, if it is framed correctly.
-
-### For jobs
-
-It demonstrates:
-
-- full-stack engineering
-- data engineering
-- streaming and queue systems
-- geospatial UI work
-- evaluation discipline
-- product judgement
-
-That is a credible portfolio for:
-
-- software engineering
-- data engineering
-- applied ML engineering
-- risk / intelligence tooling
-- geoanalytics products
-
-### For a PhD
-
-It becomes research-grade if you keep:
-
-- a pre-registered methodology
-- a clear evaluation target
-- an ablation story
-- a reproducible data pipeline
-- a negative-result path
-
-In other words, the PhD value is not "I built a dashboard".
-It is:
-
-**I tested whether fused public signals improve early warning over single-source baselines, with a reproducible system and explicit failure modes.**
-
-That is a legitimate research contribution.
-
----
-
-## 9. What the project should optimize for next
+## 8. What the project should optimize for next
 
 If the goal is long-term value, the next priorities should be:
 
@@ -316,7 +274,7 @@ If the goal is long-term value, the next priorities should be:
    - Recommended wedge: country instability / public risk early warning
    - Keep hazards, markets, and news as evidence streams feeding that wedge
 
-2. **Make the thesis core obvious**
+2. **Make the project core obvious**
    - one composite score
    - one evaluation protocol
    - one set of baselines
@@ -324,7 +282,7 @@ If the goal is long-term value, the next priorities should be:
 
 3. **Keep Layer 3 as product breadth**
    - use it to make the app worth opening every day
-   - do not let it dilute the thesis
+   - do not let it dilute the project
 
 4. **Make the system inspectable**
    - show why a score moved
@@ -337,7 +295,7 @@ If the goal is long-term value, the next priorities should be:
 
 ---
 
-## 10. The analytical agenda
+## 9. The analytical agenda
 
 The product direction above says who this is for. The analytical agenda says what we *do with
 the data* — the data-science north star, in three phrases:
@@ -350,20 +308,20 @@ the data* — the data-science north star, in three phrases:
 - **Corroboration, not truth.** No system computes truth. We compute how many independent
   sources agree and whether physical sensors confirm the claim, and we show the evidence trail.
 
-Each of the professor's critical questions — quantification, bias, true-vs-false, perspective
+Each of the reviewer's critical questions — quantification, bias, true-vs-false, perspective
 variance, validation, prediction, "which number matters" — is mapped to a concrete statistical
 method in [`analytical-agenda.md`](analytical-agenda.md). The pinned "North star: analytical
 agenda" issue mirrors that document in plain language and tracks the workstreams.
 
 ---
 
-## 11. The one-sentence customer and product statement
+## 10. The one-sentence customer and product statement
 
 If you need to answer quickly, use this:
 
 **This is a self-hosted public-intelligence system for a single operator or small team that needs lawful public-data situational awareness, explainable scoring, and a clear audit trail.**
 
-If you need the thesis version:
+If you need the project version:
 
 **This project tests whether combining heterogeneous public signals into one explainable risk score improves early warning over single-source monitoring.**
 
@@ -373,7 +331,7 @@ If you need the founder version:
 
 ---
 
-## 12. References
+## 11. References
 
 - [Snyder et al. 2019](https://arxiv.org/abs/1909.07316) - situational awareness from social media analytics
 - [Karimzadeh et al. 2019](https://arxiv.org/abs/1910.05441) - geovisual analytics for situational awareness

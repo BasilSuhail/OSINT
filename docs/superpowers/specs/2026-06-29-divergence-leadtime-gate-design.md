@@ -12,8 +12,8 @@ Prove — or kill — the one claim the whole build-to-sell pivot rests on:
 
 That lead time is the product. If it is real and measurable, the divergence engine
 becomes a sellable alt-data signal (customers: event-driven / macro / commodity
-funds) and the thesis defense answer ("so what?") is grounded in evidence. If it is
-not real, we stop and treat the system as a portfolio/thesis showcase — having
+funds) and the project defense answer ("so what?") is grounded in evidence. If it is
+not real, we stop and treat the system as a portfolio/project showcase — having
 spent the smallest possible effort to find out.
 
 This spec covers **only the gate**: the smallest build that answers the question
@@ -27,7 +27,7 @@ honestly. Feed/API, alerting, and assets-overlay are explicitly out of scope
 | Scope | Phase-1 lead-time gate only (decompose the larger build-to-sell roadmap) |
 | Domains | Broad multi-domain (leverage existing CII work) |
 | Proof target | Signal must **lead the narrative** (physical delta spikes N days before news/GDELT volume) |
-| Data scope | Add AIS + VIIRS flaring **with failsafes + source-health panel**; ACLED is Basil's lane |
+| Data scope | Add AIS + VIIRS flaring **with failsafes + source-health panel**; ACLED is The operator's lane |
 | Pass bar | **Pre-registered events + median lead** + measured false-positive rate |
 | Approach | A — backtest harness over historical normalized data (reusable engine, not throwaway) |
 
@@ -134,7 +134,7 @@ event store ──query counts by country×day×side──► log-scale ──�
 > measurable, reported false-positive rate.
 
 **Report** (`app/backtest/report.py`): markdown + plots → `docs/backtest/<registry-version>-report.md`.
-States the gate verdict (PASS / FAIL) explicitly. This artifact is the thesis
+States the gate verdict (PASS / FAIL) explicitly. This artifact is the project
 evidence and the sales proof. Pass → Phase 2 (feed/alerting). Fail → documented kill.
 
 ## Component 3 — New sensors

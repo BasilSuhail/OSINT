@@ -138,7 +138,7 @@ def test_null_distribution_spans_both_directions():
 
 
 def test_permutation_p_value_is_small_when_observed_beats_the_null():
-    """The statistic the thesis needs: how often does chance do this well?"""
+    """The statistic the project needs: how often does chance do this well?"""
     from app.backtest.null_model import permutation_p_value
 
     observed = [4, 5, 6, 4, 5]  # consistently positive

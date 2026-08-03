@@ -16,7 +16,7 @@
 - Retention defaults unchanged unless env overrides set: GDELT=2, news=3, hazard=2.
 - `OSINT_DATA_DIR` default `./data` (already gitignored).
 - Frontend API base from `NEXT_PUBLIC_API_URL`, default `http://localhost:8000`.
-- Conventional Commits. One logical change per commit. Never merge — Basil merges.
+- Conventional Commits. One logical change per commit. Never merge — The maintainer merges.
 - Branch already created: `feat/local-offgrid-storage`.
 
 ---

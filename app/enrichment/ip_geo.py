@@ -11,7 +11,7 @@ import httpx
 IP_API_TEMPLATE: Final[str] = (
     "http://ip-api.com/json/{ip}?fields=status,countryCode,city,lat,lon,query"
 )
-IP_GEO_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+IP_GEO_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 
 @dataclass(frozen=True)

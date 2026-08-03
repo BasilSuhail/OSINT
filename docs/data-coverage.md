@@ -2,7 +2,7 @@
 
 Snapshot of what is in the local Postgres, how much was backfilled to date, and how
 much more we plan to ingest once the Pi + 2 × 4 TB btrfs RAID1 storage
-goes online. Kept here so the dissertation chapter on data has a single
+goes online. Kept here so the report chapter on data has a single
 source of truth.
 
 > **Why this is a separate doc.** `docs/architecture-spec.md` locks the
@@ -41,7 +41,7 @@ once we move to the Pi (see "After the Pi goes live" below).
 GDELT looks low for what shows up on the dashboard because the composite
 worker only keeps **CAMEO root codes 14–20** (escalatory) — the other ~70 %
 of the feed is cooperative behaviour, intentionally filtered out per the
-thesis methodology. Country coverage on the historical GDELT rows is
+project methodology. Country coverage on the historical GDELT rows is
 still being backfilled; see "Open backfill task" below.
 
 ---

@@ -1,4 +1,4 @@
-"""Country-month panel export — the canonical thesis dataset artifact.
+"""Country-month panel export — the canonical project dataset artifact.
 
 One row per (country, month) inside that country's ACLED coverage window,
 carrying ground-truth labels and whatever signals the system has collected.

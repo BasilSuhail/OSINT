@@ -135,7 +135,7 @@ class TestStayingQuiet:
         assert "severity-grade" in JOB_CADENCE_MIN
 
     def test_a_short_skip_while_the_box_is_busy_does_not_page(self, db_session: Session) -> None:
-        # These jobs back off by design when Basil is working (#409). An hour of
+        # These jobs back off by design when The operator is working (#409). An hour of
         # that on a 15-minute job must stay silent.
         _narrative(db_session, minutes_ago=60)
         db_session.commit()

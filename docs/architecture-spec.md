@@ -1,6 +1,6 @@
 # Hybrid Architecture Spec — Pi 5 + btrfs RAID1 + Celery Pipeline
 
-**Scope.** This document is the load-bearing reference for the hybrid build: thesis-grade Modules A–E on top of personal Layer-3 breadth, deployed on commodity hardware. It locks the decisions taken across the existing `docs/architecture/01..07` series and adds the Pi-specific deployment plan.
+**Scope.** This document is the load-bearing reference for the hybrid build: project-grade Modules A–E on top of personal Layer-3 breadth, deployed on commodity hardware. It locks the decisions taken across the existing `docs/architecture/01..07` series and adds the Pi-specific deployment plan.
 
 For deep dives by topic, consult:
 
@@ -12,7 +12,7 @@ For deep dives by topic, consult:
 - [06 — Validation hooks](architecture/06-validation.md)
 - [07 — Risks + mitigations](architecture/07-risks.md)
 
-This file is the **single-page** spec referenced from `docs/master-plan.md` and from the dissertation. It does not duplicate the deep dives; it locks the decisions and tabulates the deployment plan.
+This file is the **single-page** spec referenced from `docs/master-plan.md` and from the report. It does not duplicate the deep dives; it locks the decisions and tabulates the deployment plan.
 
 ---
 
@@ -22,7 +22,7 @@ This file is the **single-page** spec referenced from `docs/master-plan.md` and 
 
 Why not A (monolith): Module-D composite worker needs to run on a different cadence than HTTP requests; pinning everything in the request loop would either starve the API or starve the worker.
 
-Why not C (microservices): unnecessary operational tax for a single-author thesis. Two queues (`fast` / `slow`) inside one Celery app is the right midpoint.
+Why not C (microservices): unnecessary operational tax for a single-author project. Two queues (`fast` / `slow`) inside one Celery app is the right midpoint.
 
 Module map:
 
@@ -44,7 +44,7 @@ Module map:
 - **Network.** Wired Gigabit Ethernet only. Wifi disabled at the OS layer to avoid silent failover during eval windows.
 - **Frontend host.** Vercel (free tier) — the dashboard is static-export-friendly and Vercel handles HTTPS + edge cache. Pi serves the FastAPI read API only.
 
-Rationale on btrfs vs ZFS: btrfs RAID1 is in-tree on Linux 6.x and survives the disk being yanked + replugged into a fresh enclosure during demo — critical for an in-person viva. ZFS on Raspbian needs DKMS and is fragile under kernel upgrades.
+Rationale on btrfs vs ZFS: btrfs RAID1 is in-tree on Linux 6.x and survives the disk being yanked + replugged into a fresh enclosure during demo — critical for an in-person review. ZFS on Raspbian needs DKMS and is fragile under kernel upgrades.
 
 ---
 
@@ -106,7 +106,7 @@ Three-layer test from [`05-originality.md`](architecture/05-originality.md):
 2. **Concept.** The composite-indicator methodology is OECD/JRC public; our novelty is the three-domain composite over heterogeneous OSINT feeds with the eval protocol below, not the math.
 3. **Shallow wrapper.** Each fetcher does meaningful normalisation (per-source severity, country enrichment, dedup keys) — none are passthrough cURLs.
 
-This file is referenced verbatim from the dissertation chapter on methodology contributions.
+This file is referenced verbatim from the report chapter on methodology contributions.
 
 ---
 

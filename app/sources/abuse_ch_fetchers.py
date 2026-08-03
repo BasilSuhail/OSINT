@@ -31,7 +31,7 @@ from app.sources.base import Fetcher
 
 URLHAUS_URL: Final[str] = "https://urlhaus.abuse.ch/downloads/csv_recent/"
 FEODO_URL: Final[str] = "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
-ABUSE_CH_USER_AGENT: Final[str] = "OSINT-thesis-project/0.0.1 (academic)"
+ABUSE_CH_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 CYBER_DEFAULT_SEVERITY: Final[float] = 0.55
 CYBER_HEAVY_SEVERITY: Final[float] = 0.75

@@ -1035,7 +1035,7 @@ Expected: FAIL with `ModuleNotFoundError`
 # app/backtest/report.py
 """Render the gate backtest result as a markdown report.
 
-This artifact is the deliverable: the thesis evidence and the sales proof.
+This artifact is the deliverable: the project evidence and the sales proof.
 It states an explicit PASS/FAIL up front.
 """
 
@@ -1566,7 +1566,7 @@ git commit -m "feat: #250 source-health panel (frontend)"
 
 - [ ] **Step 1:** Ensure the live pipeline (or backfill) has populated history for the frozen registry windows. Run with backfill: `python -m app.backtest.run`.
 - [ ] **Step 2:** Read the generated `docs/backtest/<hash>-report.md`. Note `verdict`, `median_lead`, `pct_events_leading`, `false_positive_rate`.
-- [ ] **Step 3:** Record the verdict + numbers in `docs/architecture/06-validation.md`. State plainly: PASS → proceed to Phase 2 (feed/alerting/overlay); FAIL → documented kill, treat as portfolio/thesis showcase.
+- [ ] **Step 3:** Record the verdict + numbers in `docs/architecture/06-validation.md`. State plainly: PASS → proceed to Phase 2 (feed/alerting/overlay); FAIL → documented kill, treat as portfolio/project showcase.
 - [ ] **Step 4: Commit**
 
 ```bash

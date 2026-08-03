@@ -1,6 +1,6 @@
 # Situation card — pinned developing stories (#449)
 
-Date: 2026-07-26 · Status: approved (Basil, in-session)
+Date: 2026-07-26 · Status: approved (The operator, in-session)
 
 ## Problem
 
@@ -38,7 +38,7 @@ Two further measurements shaped the design:
   any useful floor; the Russian/Ukrainian strikes score 0.8 and the West Bank arrests
   0.6. This is the signal #591/#597 is repairing.
 
-## Decisions (confirmed with Basil)
+## Decisions (confirmed with The operator)
 
 - **Selector: severity + country spread + velocity + age.** Deterministic, no LLM.
 - **Corroboration: shown, never gated.** A widely-covered story with few independent

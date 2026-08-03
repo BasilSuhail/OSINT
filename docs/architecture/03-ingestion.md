@@ -255,7 +255,7 @@ headroom for Postgres, Redis, Next, FastAPI, and Ollama.
 Every successful fetch writes the unmodified source response to `/mnt/data/raw/<source>/<timestamp>.<ext>` before the parsed events touch Postgres. Reasons:
 
 - Replay: schema change in `Event` model → re-parse the raw archive, no re-fetch
-- Audit: examiner asks "did you really get GDELT at 06:00 on 17 June?" → file is there
+- Audit: a reader asks "did you really get GDELT at 06:00 on 17 June?" → file is there
 - Debugging: if the parser breaks, the raw is still pristine
 
 `raw/` is the only directory that is write-once. Retention is 90 days hot, then off-site only via restic.
@@ -267,4 +267,4 @@ Every successful fetch writes the unmodified source response to `/mnt/data/raw/<
 - **Structured logs**: every task logs `{task, fetcher, status, fetched, inserted, duration_ms, error}` as JSON, ingested by `journalctl --output=json`.
 - **Flower** ([flower-docs](https://flower.readthedocs.io/)) on `:5555` behind Tailscale, shows live queue depth, task rates, failures.
 - **`ingest_health` table**: one row per fetcher per day with success count, failure count, last success at. Dashboard `/admin/health` reads this.
-- **Prometheus exporter**: added in Layer 3 once Pi 5 has headroom; thesis-period uses Flower + log-grep.
+- **Prometheus exporter**: added in Layer 3 once Pi 5 has headroom; project-period uses Flower + log-grep.

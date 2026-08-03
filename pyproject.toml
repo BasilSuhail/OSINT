@@ -1,10 +1,9 @@
 [project]
 name = "osint"
 version = "0.0.1"
-description = "Multi-modal OSINT composite stress index (MSc thesis, PX5928)"
+description = "Multi-modal OSINT composite stress index"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Basil Suhail" }]
 
 dependencies = [
     "fastapi>=0.115",

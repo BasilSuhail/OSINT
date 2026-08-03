@@ -3,7 +3,7 @@
 Runs the audit question set through the production /brain/ask pipeline
 (in-process TestClient — intent gate, fallback split, retry chains: exactly
 what a live user gets) and writes a markdown sheet with blank grade cells to
-docs/audits/. Basil fills accuracy/citation/bias/refusal per answer; `score`
+docs/audits/. The reviewer fills accuracy/citation/bias/refusal per answer; `score`
 parses the graded sheet and prints the published pass rates — same
 discipline as the validator human-check sheet.
 

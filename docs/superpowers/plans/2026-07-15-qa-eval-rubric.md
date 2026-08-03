@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Branch `feat-qa-eval-rubric` off origin/main; 1 PR referencing #413; Basil merges (squash → 1 commit on main).
+- Branch `feat-qa-eval-rubric` off origin/main; 1 PR referencing #413; The maintainer merges (squash → 1 commit on main).
 - NO `Co-Authored-By` / "Generated with Claude" lines in commits or PR.
 - CI gates: `pytest`, `ruff check .`, `ruff format --check .` — all must pass before push.
 - `make brain-qa-eval` always exits 0 (measurement tool, not a gate).
@@ -806,7 +806,7 @@ EOF
 )"
 ```
 
-Expected: PR URL printed. **Do not merge — Basil merges.**
+Expected: PR URL printed. **Do not merge — The maintainer merges.**
 
 ---
 

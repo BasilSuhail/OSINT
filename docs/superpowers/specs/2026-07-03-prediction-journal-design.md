@@ -4,7 +4,7 @@
 
 ## Problem
 
-"The dashboard showed it after it happened" is reporting. A thesis needs forecasting
+"The dashboard showed it after it happened" is reporting. A project needs forecasting
 with a scoreboard. The journal logs every forecast with a server timestamp before the
 outcome is known, grades it once the window matures, and accumulates an honest
 track record. Value scales with runtime — starting late is unrecoverable.

@@ -10,13 +10,13 @@
 
 ## Global Constraints
 
-- **No new dependencies** — RAM read via stdlib (`/proc/meminfo` on Linux, `vm_stat` on macOS), never `psutil`. (Basil's rule.)
+- **No new dependencies** — RAM read via stdlib (`/proc/meminfo` on Linux, `vm_stat` on macOS), never `psutil`. (The operator's rule.)
 - **30-day retention** on all persisted data; enforced through the existing housekeeping job. (Storage rule.)
 - **Localhost only** — the model is reached over `http://localhost:11434`; nothing leaves the machine.
 - **No fabrication** — the narrative prompt describes only supplied numbers; temperature 0, `format:json`.
 - **No Claude attribution** in commits or PRs. (Repo rule.)
 - **Cross-dialect** — models/queries must run on Postgres (prod) and SQLite (tests); use `JsonColumn` and dialect-aware inserts as existing code does.
-- **1 issue → 1 branch → 1 PR → 1 commit-family** — all work on `feat/brain-situation-narrative`, tracked on issue #409. Basil merges.
+- **1 issue → 1 branch → 1 PR → 1 commit-family** — all work on `feat/brain-situation-narrative`, tracked on issue #409. The maintainer merges.
 
 ---
 
@@ -1564,7 +1564,7 @@ gh pr create --title "feat(brain): resource-aware local LLM + situation narrativ
   --body "Closes #409. Phase 1 of the brain: a light local model (qwen2.5:1.5b) kept warm only when the box has headroom, evicted the instant a heavy job starts, narrating the world signal + system state into a Situation card. Design: docs/superpowers/specs/2026-07-12-brain-situation-narrative-design.md."
 ```
 
-- [ ] **Step 5: Post the closing progress comment on #409** summarizing what shipped, the model to pull, and that Phase 2 (Q&A) / Phase 3 (enrichment) remain deferred. (Basil merges the PR.)
+- [ ] **Step 5: Post the closing progress comment on #409** summarizing what shipped, the model to pull, and that Phase 2 (Q&A) / Phase 3 (enrichment) remain deferred. (The maintainer merges the PR.)
 
 ---
 

@@ -1,7 +1,7 @@
 """Audit sheet — the human check that gates LLM severity use (#593).
 
 Emits a markdown sheet of model-graded headlines with blank human columns.
-Basil fills them once; `app.severity.agreement` publishes the rate. Until that
+The reviewer fills them once; `app.severity.agreement` publishes the rate. Until that
 rate exists, the LLM verdicts should not be regraded over stored rows and
 should not reach the CII — the gate #591 declared, and the same contract #386
 set for the validator.

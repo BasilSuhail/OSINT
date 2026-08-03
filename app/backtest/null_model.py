@@ -52,7 +52,7 @@ def circular_shift(values: list[float], shift: int) -> list[float]:
 def permutation_p_value(observed: list[int], null: list[int]) -> float:
     """Share of null leads at least as large as the observed median.
 
-    The question a supervisor will ask: how often does chance produce a lead
+    The question a reviewer will ask: how often does chance produce a lead
     this long? A pass rate could not answer it — 47% observed against 48%
     chance says the rates match, but says nothing about magnitudes.
 

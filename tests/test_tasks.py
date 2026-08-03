@@ -153,7 +153,7 @@ def test_beat_schedule_covers_all_thesis_core_fetchers() -> None:
     fetcher_names = {
         entry["args"][0] for entry in schedule.values() if entry["task"] == "app.tasks.run_fetcher"
     }
-    # Thesis-core sources must all be scheduled. Layer-3 sources (RSS,
+    # Project-core sources must all be scheduled. Layer-3 sources (RSS,
     # uk-police) can come and go without breaking this assertion.
     assert _THESIS_CORE_FETCHERS.issubset(fetcher_names)
 
