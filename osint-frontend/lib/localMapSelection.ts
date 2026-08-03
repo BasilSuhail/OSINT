@@ -52,6 +52,52 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null
 }
 
+/** Best local place already carried by an event. Country-only fields are
+ * deliberately excluded so a cluster cannot be presented as street-level
+ * merely because every member shares one country (#776). */
+export function localEventPlaceName(event: { payload?: unknown }): string | null {
+  if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) {
+    return null
+  }
+  const payload = event.payload as Record<string, unknown>
+  const direct =
+    text(payload.place_name) ??
+    text(payload.street) ??
+    text(payload.location) ??
+    text(payload.place) ??
+    text(payload.geo_city) ??
+    text(payload.city)
+  if (direct) return direct
+  const geoName = text(payload.geo_name)
+  return geoName ? text(geoName.split(",")[0]) : null
+}
+
+/** Name a cluster only when every leaf carries the same local place evidence.
+ * Supercluster leaf order is not geographic significance; one arbitrary leaf
+ * must never name a broad multi-city cluster (#776). */
+export function consensusLocalPlaceName<
+  T extends {
+    ev: { payload?: unknown }
+    place?: string
+    location?: { name?: string | null }
+  },
+>(positions: T[]): string | null {
+  let label: string | null = null
+  let normalized: string | null = null
+  for (const position of positions) {
+    const candidate =
+      text(position.location?.name) ??
+      localEventPlaceName(position.ev) ??
+      text(position.place)
+    if (!candidate) return null
+    const candidateNormalized = candidate.toLocaleLowerCase()
+    if (normalized !== null && normalized !== candidateNormalized) return null
+    label ??= candidate
+    normalized = candidateNormalized
+  }
+  return label
+}
+
 /** The most specific visible OpenFreeMap label under a click.
  * Country/state labels are deliberately excluded: map clicks are local-only
  * and country navigation belongs to an explicit search/list action (#774). */

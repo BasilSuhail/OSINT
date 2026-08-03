@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
+  consensusLocalPlaceName,
   coordinateLabel,
   distanceKm,
+  localEventPlaceName,
   localEventSelections,
   localMapLabel,
   localSelectionBounds,
@@ -40,6 +42,57 @@ describe("localMapLabel", () => {
       localMapLabel([
         { layer: { id: "place_country_major" }, properties: { name: "United Kingdom" } },
         { layer: { id: "country-fill" }, properties: { __iso: "GB" } },
+      ]),
+    ).toBeNull()
+  })
+})
+
+describe("localEventPlaceName", () => {
+  it("recovers a GDELT town from its structured local name", () => {
+    expect(
+      localEventPlaceName({ payload: { geo_name: "Rhyl, Denbighshire, United Kingdom" } }),
+    ).toBe("Rhyl")
+  })
+
+  it("does not promote country-only metadata to a local label", () => {
+    expect(
+      localEventPlaceName({ payload: { country_name: "United Kingdom" } }),
+    ).toBeNull()
+  })
+
+  it("prefers recorded street evidence over a broader city", () => {
+    expect(
+      localEventPlaceName({
+        payload: { city: "London", street: "On or near Theatre/concert Hall" },
+      }),
+    ).toBe("On or near Theatre/concert Hall")
+  })
+})
+
+describe("consensusLocalPlaceName", () => {
+  it("uses a place only when every cluster leaf agrees", () => {
+    expect(
+      consensusLocalPlaceName([
+        { ev: { payload: { geo_name: "Rhyl, Wales" } } },
+        { ev: { payload: { city: "Rhyl" } } },
+      ]),
+    ).toBe("Rhyl")
+  })
+
+  it("rejects a multi-city cluster label", () => {
+    expect(
+      consensusLocalPlaceName([
+        { ev: { payload: { city: "Rhyl" } } },
+        { ev: { payload: { city: "Edinburgh" } } },
+      ]),
+    ).toBeNull()
+  })
+
+  it("rejects partial local evidence", () => {
+    expect(
+      consensusLocalPlaceName([
+        { ev: { payload: { city: "Rhyl" } } },
+        { ev: { payload: { country_name: "United Kingdom" } } },
       ]),
     ).toBeNull()
   })
