@@ -301,6 +301,183 @@ def test_events_updated_cursor_pages_equal_timestamps(db_session):
     assert [row["id"] for row in first + second] == [str(row.id) for row in rows]
 
 
+def test_events_viewport_recovers_local_rows_starved_by_global_limit(db_session):
+    """A dense global feed must not decide what exists in a city viewport."""
+    now = datetime.now(UTC)
+    remote = [
+        EventRow(
+            source="viewport-test",
+            source_event_id=f"remote-{index}",
+            occurred_at=now - timedelta(minutes=index),
+            category="news",
+            lat=40.0,
+            lon=-74.0,
+            keywords=[],
+            payload={},
+        )
+        for index in range(2)
+    ]
+    local = [
+        EventRow(
+            source="viewport-test",
+            source_event_id=f"edinburgh-{index}",
+            occurred_at=(
+                now - timedelta(minutes=index + 1)
+                if index < 3
+                else now - timedelta(hours=1, minutes=index)
+            ),
+            category="news",
+            lat=55.90 + (index % 10) * 0.01,
+            lon=-3.25 + (index % 10) * 0.01,
+            keywords=[],
+            payload={},
+        )
+        for index in range(26)
+    ]
+    db_session.add_all(remote + local)
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    global_page = client.get("/events", params={"sources": "viewport-test", "limit": 5}).json()
+    assert sum(row["source_event_id"].startswith("edinburgh-") for row in global_page) == 3
+
+    query = {
+        "sources": "viewport-test",
+        "since": (now - timedelta(days=1)).isoformat(),
+        "until": now.isoformat(),
+        "west": -3.4,
+        "south": 55.8,
+        "east": -3.0,
+        "north": 56.1,
+        "positioned_only": "true",
+        "limit": 7,
+    }
+    recovered = []
+    while True:
+        page = client.get("/events", params=query).json()
+        recovered.extend(page)
+        if len(page) < query["limit"]:
+            break
+        query["occurred_before"] = page[-1]["occurred_at"]
+        query["occurred_before_id"] = page[-1]["id"]
+
+    assert len(recovered) == 26
+    assert {row["source_event_id"] for row in recovered} == {
+        f"edinburgh-{index}" for index in range(26)
+    }
+    assert len({row["id"] for row in recovered}) == 26
+
+
+def test_events_viewport_requires_complete_valid_bounds(db_session):
+    client = _client(db_session)
+
+    assert client.get("/events?west=-4").status_code == 422
+    assert client.get("/events?west=-4&south=56&east=-3&north=55").status_code == 422
+    assert client.get("/events?occurred_before_id=10").status_code == 422
+
+
+def test_events_viewport_supports_antimeridian(db_session):
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            EventRow(
+                source="dateline-test",
+                source_event_id="west-side",
+                occurred_at=now,
+                category="news",
+                lat=0,
+                lon=179,
+                keywords=[],
+                payload={},
+            ),
+            EventRow(
+                source="dateline-test",
+                source_event_id="east-side",
+                occurred_at=now,
+                category="news",
+                lat=0,
+                lon=-179,
+                keywords=[],
+                payload={},
+            ),
+            EventRow(
+                source="dateline-test",
+                source_event_id="outside",
+                occurred_at=now,
+                category="news",
+                lat=0,
+                lon=0,
+                keywords=[],
+                payload={},
+            ),
+        ]
+    )
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    rows = client.get(
+        "/events",
+        params={
+            "sources": "dateline-test",
+            "west": 170,
+            "south": -10,
+            "east": -170,
+            "north": 10,
+        },
+    ).json()
+    assert {row["source_event_id"] for row in rows} == {"west-side", "east-side"}
+
+
+def test_events_viewport_recovers_secondary_verified_place(db_session):
+    now = datetime.now(UTC)
+    db_session.add(
+        EventRow(
+            source="rss-multi-place",
+            source_event_id="london-and-edinburgh",
+            occurred_at=now,
+            category="news",
+            country="GB",
+            lat=51.5074,
+            lon=-0.1278,
+            keywords=[],
+            payload={
+                "place_locations": [
+                    {
+                        "wikidata_id": "Q84",
+                        "name": "London",
+                        "lat": 51.5074,
+                        "lon": -0.1278,
+                    },
+                    {
+                        "wikidata_id": "Q23436",
+                        "name": "Edinburgh",
+                        "lat": 55.9533,
+                        "lon": -3.1883,
+                    },
+                ]
+            },
+        )
+    )
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    rows = client.get(
+        "/events",
+        params={
+            "sources": "rss-multi-place",
+            "west": -3.4,
+            "south": 55.8,
+            "east": -3.0,
+            "north": 56.1,
+            "positioned_only": "true",
+        },
+    ).json()
+    assert [row["source_event_id"] for row in rows] == ["london-and-edinburgh"]
+
+
 def test_events_country_filter(db_session):
     now = datetime.now(UTC)
     db_session.add_all(

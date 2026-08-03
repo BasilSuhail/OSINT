@@ -9,9 +9,11 @@ import MapGL, {
   type MapLayerMouseEvent,
   type MapRef,
 } from "react-map-gl/maplibre"
-import type { GeoJSONSource } from "maplibre-gl"
+import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl"
 import { Activity, Droplets, Flame, Snowflake, Sun, Triangle, Wind } from "lucide-react"
 import { useConfigured, useEvents } from "@/app/providers"
+import { fetchAllEventPages, fetchAllUpdatedEventPages } from "@/lib/apiClient"
+import { mergeEventRows } from "@/lib/eventMerge"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
@@ -29,6 +31,7 @@ import {
   type PositionedMapEvent,
 } from "@/lib/mapPositioning"
 import { addMissingStyleImagePlaceholder } from "@/lib/mapStyleImages"
+import type { EventRow } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { FilterRail } from "./FilterRail"
@@ -49,10 +52,15 @@ const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
 const MAP_STYLE_RETRY_MS = 1500
 const INITIAL_ZOOM = 1.4
 const MIN_SCROLL_ZOOM = INITIAL_ZOOM
+const COMPLETE_VIEWPORT_ZOOM = 8
+const PLAYBACK_VIEWPORT_SYNC_MS = 2_000
+const IDLE_VIEWPORT_SYNC_MS = 30_000
 const EVENT_SOURCE_ID = "place-backed-events"
 const EVENT_CLUSTER_LAYER_ID = "place-event-clusters"
 const EVENT_CLUSTER_COUNT_LAYER_ID = "place-event-cluster-count"
 const EVENT_POINT_LAYER_ID = "place-event-points"
+const EMPTY_VIEWPORT_EVENTS: EventRow[] = []
+const NON_MAP_VIEWPORT_SOURCES = ["opensky-adsb", "nasa-firms"]
 
 interface MapPaneProps {
   useStore: FilterStore
@@ -64,6 +72,22 @@ interface MapPaneProps {
   onSelectEvent: (ev: VisibleEvent, location?: MarkerLocationContext) => void
   /** Id of the currently-selected event (drives the expanded cyclone footprint). */
   selectedEventId: VisibleEvent["id"] | null
+}
+
+interface ViewportBounds {
+  west: number
+  south: number
+  east: number
+  north: number
+}
+
+interface ViewportSnapshot {
+  key: string
+  scopeKey: string
+  windowEnd: number
+  windowOffsetMs: number
+  revisionSince: string
+  events: EventRow[]
 }
 
 /** Sources dense enough to use MapLibre's lossless clustered GeoJSON layer.
@@ -161,7 +185,49 @@ function EventMarker({
 }
 
 export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry, onCount, onSelectEvent, selectedEventId }: MapPaneProps) {
-  const { events, windowEnd, total } = useEventsInWindow(useStore)
+  const windowLengthMs = useStore((s) => s.windowLengthMs)
+  const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
+  const playing = useStore((s) => s.playing)
+  const [viewport, setViewport] = useState<ViewportBounds | null>(null)
+  const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
+  const [viewportSnapshot, setViewportSnapshot] = useState<ViewportSnapshot | null>(null)
+  const viewportSnapshotRef = useRef<ViewportSnapshot | null>(null)
+  const [viewportErrorKey, setViewportErrorKey] = useState<string | null>(null)
+  const [settledWindowOffsetMs, setSettledWindowOffsetMs] = useState(windowEndOffsetMs)
+  const [viewportSyncTick, setViewportSyncTick] = useState(0)
+  const windowEndOffsetRef = useRef(windowEndOffsetMs)
+  const viewportRequestRef = useRef<AbortController | null>(null)
+  const viewportEnabled = zoom >= COMPLETE_VIEWPORT_ZOOM && viewport !== null
+  const viewportScopeKey =
+    viewportEnabled && viewport
+      ? JSON.stringify([
+          viewport.west,
+          viewport.south,
+          viewport.east,
+          viewport.north,
+          windowLengthMs,
+        ])
+      : null
+  const viewportQueryKey =
+    viewportScopeKey
+      ? JSON.stringify([viewportScopeKey, settledWindowOffsetMs, viewportSyncTick])
+      : null
+  const snapshotMatchesWindow =
+    viewportScopeKey !== null &&
+    viewportSnapshot?.scopeKey === viewportScopeKey &&
+    (viewportSnapshot.windowOffsetMs === settledWindowOffsetMs ||
+      (playing &&
+        Math.abs(viewportSnapshot.windowOffsetMs - settledWindowOffsetMs) < windowLengthMs))
+  const activeViewportEvents =
+    snapshotMatchesWindow
+      ? viewportSnapshot.events
+      : EMPTY_VIEWPORT_EVENTS
+  const viewportLoading =
+    viewportScopeKey !== null &&
+    !snapshotMatchesWindow &&
+    viewportErrorKey !== viewportQueryKey
+  const viewportFailed = viewportQueryKey !== null && viewportErrorKey === viewportQueryKey
+  const { events, windowEnd, total } = useEventsInWindow(useStore, activeViewportEvents)
   const { byCountry } = useLatestScores()
   const scoredGeo = useScoredGeo(byCountry)
   const { centroids } = useCountriesGeo()
@@ -170,9 +236,129 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
   const [styleReloadToken, setStyleReloadToken] = useState(0)
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const openClusterInPane = useRightPaneModeStore((s) => s.openCluster)
   const consumedMinWheelRef = useRef(false)
+
+  useEffect(() => {
+    windowEndOffsetRef.current = windowEndOffsetMs
+    if (playing) return
+    const timeout = window.setTimeout(() => {
+      setSettledWindowOffsetMs(windowEndOffsetMs)
+    }, 500)
+    return () => window.clearTimeout(timeout)
+  }, [playing, windowEndOffsetMs])
+
+  useEffect(() => {
+    if (!viewportEnabled) return
+    const interval = window.setInterval(() => {
+      // Dense viewports can need several pages. Let that snapshot complete;
+      // the next tick catches up from the latest raw playback offset.
+      if (viewportRequestRef.current) return
+      setSettledWindowOffsetMs(windowEndOffsetRef.current)
+      setViewportSyncTick((tick) => (tick + 1) % 1_000_000)
+    }, playing ? PLAYBACK_VIEWPORT_SYNC_MS : IDLE_VIEWPORT_SYNC_MS)
+    return () => window.clearInterval(interval)
+  }, [playing, viewportEnabled])
+
+  useEffect(() => {
+    if (!viewportEnabled || !viewport || !viewportScopeKey || !viewportQueryKey) return
+
+    const load = async () => {
+      const requestController = new AbortController()
+      viewportRequestRef.current = requestController
+      const requestKey = viewportQueryKey
+      const requestStartedAt = new Date().toISOString()
+      const windowEnd = Date.now() - settledWindowOffsetMs
+      const windowStart = windowEnd - windowLengthMs
+      const previous = viewportSnapshotRef.current
+      const canAppend =
+        previous?.scopeKey === viewportScopeKey &&
+        previous.windowEnd < windowEnd &&
+        previous.windowEnd >= windowStart
+      const since = canAppend ? previous.windowEnd : windowStart
+      try {
+        const boundedQuery = {
+          until: new Date(windowEnd).toISOString(),
+          west: viewport.west,
+          south: viewport.south,
+          east: viewport.east,
+          north: viewport.north,
+          positionedOnly: true,
+          exclude: NON_MAP_VIEWPORT_SOURCES,
+        }
+        const [rows, revisedRows] = await Promise.all([
+          fetchAllEventPages(
+            { ...boundedQuery, since: new Date(since).toISOString() },
+            2000,
+            { signal: requestController.signal },
+          ),
+          previous?.scopeKey === viewportScopeKey
+            ? fetchAllUpdatedEventPages(
+                { ...boundedQuery, since: new Date(windowStart).toISOString() },
+                previous.revisionSince,
+                2000,
+                { signal: requestController.signal },
+              )
+            : Promise.resolve([]),
+        ])
+        if (requestController.signal.aborted) return
+        const incomingRows = mergeEventRows(rows, revisedRows)
+        const snapshot: ViewportSnapshot = {
+          key: requestKey,
+          scopeKey: viewportScopeKey,
+          windowEnd,
+          windowOffsetMs: settledWindowOffsetMs,
+          revisionSince: requestStartedAt,
+          events: canAppend
+            ? mergeEventRows(previous.events, incomingRows).filter((row) => {
+                const occurredAt = new Date(row.occurred_at).getTime()
+                return occurredAt >= windowStart && occurredAt <= windowEnd
+              })
+            : incomingRows,
+        }
+        viewportSnapshotRef.current = snapshot
+        setViewportSnapshot(snapshot)
+        setViewportErrorKey(null)
+      } catch (error) {
+        if (requestController.signal.aborted) return
+        if (error instanceof DOMException && error.name === "AbortError") return
+        setViewportErrorKey(requestKey)
+      } finally {
+        if (viewportRequestRef.current === requestController) {
+          viewportRequestRef.current = null
+        }
+      }
+    }
+
+    void load()
+    return () => {
+      const requestController = viewportRequestRef.current
+      requestController?.abort()
+      if (viewportRequestRef.current === requestController) {
+        viewportRequestRef.current = null
+      }
+    }
+  }, [
+    viewportEnabled,
+    viewport,
+    viewportScopeKey,
+    windowLengthMs,
+    settledWindowOffsetMs,
+    viewportQueryKey,
+  ])
+
+  const captureViewport = useCallback((map: MapLibreMap) => {
+    const bounds = map.getBounds()
+    const rounded = (value: number) => Number(value.toFixed(5))
+    const normalizedLongitude = (value: number) =>
+      ((value + 180) % 360 + 360) % 360 - 180
+    setViewport({
+      west: rounded(normalizedLongitude(bounds.getWest())),
+      south: rounded(Math.max(-90, bounds.getSouth())),
+      east: rounded(normalizedLongitude(bounds.getEast())),
+      north: rounded(Math.min(90, bounds.getNorth())),
+    })
+  }, [])
 
   useEffect(() => onCount(total), [total, onCount])
 
@@ -444,9 +630,13 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           ...(scoredGeo ? ["country-fill"] : []),
         ]}
         onClick={handleClick}
-        onLoad={handleStyleLoad}
+        onLoad={(e) => {
+          handleStyleLoad()
+          captureViewport(e.target)
+        }}
         onMoveEnd={(e) => {
           setZoom(e.viewState.zoom)
+          captureViewport(e.target)
         }}
         onError={handleMapError}
         attributionControl={false}
@@ -660,13 +850,28 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
       </div>
 
       {configured && allEvents.length === 0 && <PaneStatus mode="loading" />}
+      {configured && viewportLoading && (
+        <PaneStatus mode="loading" message="Loading complete viewport…" />
+      )}
+      {configured && viewportFailed && (
+        <PaneStatus
+          mode="error"
+          message="Viewport refresh failed. Showing last complete snapshot; move map to retry."
+        />
+      )}
       {configured && allEvents.length > 0 && positioned.length === 0 && (
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
       {/* Source icons/toggles live in the filter rail, docked right — the
        *  left edge belongs to the floating deck and detail panels (#503). */}
-      <FilterRail side="right" useStore={useStore} open={railOpen} onOpenChange={onRailOpenChange} />
+      <FilterRail
+        side="right"
+        useStore={useStore}
+        open={railOpen}
+        onOpenChange={onRailOpenChange}
+        supplementalEvents={activeViewportEvents}
+      />
       <TimeScrubber useStore={useStore} windowEnd={windowEnd} />
     </div>
   )

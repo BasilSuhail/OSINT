@@ -308,17 +308,43 @@ def health() -> dict:
 def events(
     session: Session = Depends(get_session),
     since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
     fetched_since: datetime | None = Query(default=None),
     updated_since: datetime | None = Query(default=None),
     updated_after_id: int | None = Query(default=None, ge=0),
+    occurred_before: datetime | None = Query(default=None),
+    occurred_before_id: int | None = Query(default=None, ge=0),
+    west: float | None = Query(default=None, ge=-180, le=180),
+    south: float | None = Query(default=None, ge=-90, le=90),
+    east: float | None = Query(default=None, ge=-180, le=180),
+    north: float | None = Query(default=None, ge=-90, le=90),
+    positioned_only: bool = Query(default=False),
     sources: str | None = Query(default=None),
     exclude: str | None = Query(default=None),
     country: str | None = Query(default=None),
     limit: int = Query(default=API_DEFAULT_LIMIT, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
+    bbox = (west, south, east, north)
+    if any(value is not None for value in bbox) and not all(value is not None for value in bbox):
+        raise HTTPException(
+            status_code=422,
+            detail="west, south, east, and north are required together",
+        )
+    if south is not None and north is not None and south > north:
+        raise HTTPException(status_code=422, detail="south must not exceed north")
+    if occurred_before_id is not None and occurred_before is None:
+        raise HTTPException(status_code=422, detail="occurred_before_id requires occurred_before")
+    if occurred_before is not None and updated_since is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="occurrence and revision cursors cannot be combined",
+        )
+
     stmt = select(EventRow)
     if since is not None:
         stmt = stmt.where(EventRow.occurred_at >= since)
+    if until is not None:
+        stmt = stmt.where(EventRow.occurred_at <= until)
     if fetched_since is not None:
         stmt = stmt.where(EventRow.fetched_at >= fetched_since)
     if updated_since is not None:
@@ -343,12 +369,65 @@ def events(
         stmt = stmt.where(EventRow.source.notin_([s.strip() for s in exclude.split(",")]))
     if country is not None:
         stmt = stmt.where(EventRow.country == country)
+    if west is not None and south is not None and east is not None and north is not None:
+
+        def longitude_in_bounds(column):
+            return (
+                column.between(west, east)
+                if west <= east
+                else sa.or_(column >= west, column <= east)
+            )
+
+        # Multi-place stories keep one primary coordinate on the row and every
+        # independently verified point in payload.place_locations (#748). A
+        # viewport containing a secondary place must recover the story too.
+        primary_position = sa.and_(
+            EventRow.lat.between(south, north),
+            longitude_in_bounds(EventRow.lon),
+        )
+        if session.bind is not None and session.bind.dialect.name == "sqlite":
+            places = func.json_each(EventRow.payload, "$.place_locations").table_valued("value")
+            place_lat = sa.cast(func.json_extract(places.c.value, "$.lat"), sa.Float)
+            place_lon = sa.cast(func.json_extract(places.c.value, "$.lon"), sa.Float)
+        else:
+            raw_places = EventRow.payload["place_locations"]
+            place_array = sa.case(
+                (func.jsonb_typeof(raw_places) == "array", raw_places),
+                else_=sa.literal_column("'[]'::jsonb"),
+            )
+            places = func.jsonb_array_elements(place_array).table_valued("value")
+            place_lat = sa.cast(func.jsonb_extract_path_text(places.c.value, "lat"), sa.Float)
+            place_lon = sa.cast(func.jsonb_extract_path_text(places.c.value, "lon"), sa.Float)
+        payload_position = sa.exists(
+            select(1)
+            .select_from(places)
+            .where(
+                place_lat.between(south, north),
+                longitude_in_bounds(place_lon),
+            )
+        )
+        stmt = stmt.where(sa.or_(primary_position, payload_position))
+    elif positioned_only:
+        stmt = stmt.where(EventRow.lat.is_not(None), EventRow.lon.is_not(None))
+    if occurred_before is not None:
+        if occurred_before_id is None:
+            stmt = stmt.where(EventRow.occurred_at < occurred_before)
+        else:
+            stmt = stmt.where(
+                sa.or_(
+                    EventRow.occurred_at < occurred_before,
+                    sa.and_(
+                        EventRow.occurred_at == occurred_before,
+                        EventRow.id < occurred_before_id,
+                    ),
+                )
+            )
     # Incremental consumers advance a high-water mark. Oldest-first prevents a
     # burst larger than `limit` from skipping the middle when that mark moves.
     if updated_since is not None:
         stmt = stmt.order_by(EventRow.updated_at.asc(), EventRow.id.asc())
     else:
-        stmt = stmt.order_by(EventRow.occurred_at.desc())
+        stmt = stmt.order_by(EventRow.occurred_at.desc(), EventRow.id.desc())
     stmt = stmt.limit(limit)
     return [_event_dict(r) for r in session.execute(stmt).scalars()]
 

@@ -14,6 +14,7 @@ import { sourceKeyForEvent, type EventRow, type HazardTypeKey, type ScoreRow } f
 import { hazardKind } from "./hazardSymbols"
 import { isPersistentActiveHazard } from "./hazardActivity"
 import { eventMatchesCountry } from "./countryMatching"
+import { mergeEventRows } from "./eventMerge"
 import type { FilterStore } from "@/stores/createFilterStore"
 
 export interface VisibleEvent extends EventRow {
@@ -33,13 +34,22 @@ export interface WindowState {
   total: number
 }
 
+const NO_SUPPLEMENTAL_EVENTS: EventRow[] = []
+
 /**
  * Computes the set of events visible in the map's time window, honouring all
  * filters in the supplied store. Owns the scrubber clock: when `playing`, the
  * window end advances toward real-time at `speed`x.
  */
-export function useEventsInWindow(useStore: FilterStore): WindowState {
-  const allEvents = useEvents()
+export function useEventsInWindow(
+  useStore: FilterStore,
+  supplementalEvents: EventRow[] = NO_SUPPLEMENTAL_EVENTS,
+): WindowState {
+  const baseEvents = useEvents()
+  const allEvents = useMemo(() => {
+    if (supplementalEvents.length === 0) return baseEvents
+    return mergeEventRows(baseEvents, supplementalEvents)
+  }, [baseEvents, supplementalEvents])
 
   const sources = useStore((s) => s.sources)
   const hazardTypes = useStore((s) => s.hazardTypes)

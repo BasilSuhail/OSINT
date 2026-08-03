@@ -25,6 +25,7 @@ import {
 } from "lucide-react"
 import { formatDistanceToNowStrict } from "date-fns"
 import { useEvents } from "@/app/providers"
+import { mergeEventRows } from "@/lib/eventMerge"
 import { useEventsInWindow } from "@/lib/queries"
 import {
   HAZARD_SOURCE_KEYS,
@@ -158,10 +159,23 @@ interface FilterRailProps {
   useStore: FilterStore
   open: boolean
   onOpenChange: (open: boolean) => void
+  supplementalEvents?: EventRow[]
 }
 
-export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailProps) {
-  const allEvents = useEvents()
+const NO_SUPPLEMENTAL_EVENTS: EventRow[] = []
+
+export function FilterRail({
+  side,
+  useStore,
+  open,
+  onOpenChange,
+  supplementalEvents = NO_SUPPLEMENTAL_EVENTS,
+}: FilterRailProps) {
+  const baseEvents = useEvents()
+  const allEvents = useMemo(
+    () => mergeEventRows(baseEvents, supplementalEvents),
+    [baseEvents, supplementalEvents],
+  )
   const sources = useStore((s) => s.sources)
   const severity = useStore((s) => s.severity)
   const countries = useStore((s) => s.countries)
@@ -181,7 +195,7 @@ export function FilterRail({ side, useStore, open, onOpenChange }: FilterRailPro
   /** Windowed count for the rail header — the same pipeline the map markers
    *  use, so the header and the dots always agree. The event *list* left with
    *  the EVENTS tab (#510); reading events is the situation list's job. */
-  const { total: visibleTotal } = useEventsInWindow(useStore)
+  const { total: visibleTotal } = useEventsInWindow(useStore, supplementalEvents)
 
   /** Source toggles, minus the hazard sources (USGS / GDACS / EONET) — those
    *  are filtered by disaster type instead, below. */

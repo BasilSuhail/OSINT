@@ -15,10 +15,25 @@ Browser
 
 Two primary API endpoints consumed by the dashboard:
 
-- `GET /events` — raw OSINT events (lat / lon / severity / category / payload)
+- `GET /events` — raw OSINT events (lat / lon / severity / category / payload).
+  Besides recent/revision filters, it accepts a complete `west`/`south`/`east`/`north`
+  bbox, `since`/`until`, `positioned_only`, and the lossless
+  `occurred_before`/`occurred_before_id` cursor pair.
 - `GET /scores` — composite stress per (country, month)
 
 Additional endpoints: `GET /health`, `GET /ingest-health`, `GET /stream` (SSE for live pushes).
+
+The world view deliberately uses a bounded recent-event buffer. At city/street
+zoom (8+), the map separately pages every positioned row inside the visible bbox
+and selected time window, merges those rows by event ID, then applies the same
+filters, exact-coordinate projection, provenance UI, and MapLibre clustering.
+This keeps the global view bounded without allowing its row cap to erase local
+events. Each settled map move or time-window change replaces the prior local
+snapshot. A failed refresh is shown explicitly and labels the retained rows as
+the last complete snapshot; it never presents stale rows as current. Historical
+playback appends only the newly entered time slice
+every two seconds and pages revisions since the prior snapshot, avoiding
+repeated full-window reads without losing late-ingested or backfilled rows.
 
 ## Phase 1 — pages
 
