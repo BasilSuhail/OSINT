@@ -553,6 +553,12 @@ stored on one story row and rendered as separate markers; aliases resolving to
 one Wikidata ID collapse. Partial proof draws only proven points. Positive and
 negative results are cached in Postgres, and each verified marker carries its
 place label, Wikidata ID, precision, source, check time, and resolver version.
+Every place-backed news/GDELT coordinate in the active client event window
+enters one MapLibre GeoJSON source; worker-side clustering controls visual
+density without sampling, moving, or discarding those points. Hazards retain
+their independent marker and footprint layer. A refreshed database row replaces
+the client-buffer copy even when its event ID is unchanged, so later exact-place
+enrichment reaches an already-open map (#762).
 
 ---
 

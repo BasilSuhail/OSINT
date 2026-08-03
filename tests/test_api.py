@@ -221,7 +221,7 @@ def test_scores_ordered_bucket_start_desc(db_session):
 
 
 def test_events_fetched_since_catches_past_occurred_at(db_session):
-    """fetched_since uses fetched_at; since uses occurred_at — they must be independent."""
+    """Incremental timestamps remain independent from the event time."""
     now = datetime.now(UTC)
     past = now - timedelta(days=5)
     two_min_ago = now - timedelta(minutes=2)
@@ -249,11 +249,56 @@ def test_events_fetched_since_catches_past_occurred_at(db_session):
         "fetched_since filter should return rows with fetched_at >= cutoff"
     )
 
+    rows_updated = client.get("/events", params={"updated_since": cutoff_iso}).json()
+    updated = next(r for r in rows_updated if r["source_event_id"] == "news-old")
+    assert updated["updated_at"] is not None
+
     # since filter: should NOT return the row (occurred_at=past < two_min_ago)
     rows_since = client.get("/events", params={"since": cutoff_iso}).json()
     assert not any(r["source_event_id"] == "news-old" for r in rows_since), (
         "since filter must exclude rows where occurred_at < cutoff"
     )
+
+
+def test_events_updated_cursor_pages_equal_timestamps(db_session):
+    """A limited page must not skip rows sharing one transaction timestamp."""
+    revision = datetime.now(UTC)
+    occurred_at = revision - timedelta(days=5)
+    rows = [
+        EventRow(
+            source="cursor-source",
+            source_event_id=f"cursor-{index}",
+            occurred_at=occurred_at,
+            fetched_at=revision,
+            updated_at=revision,
+            category="news",
+            keywords=[],
+            payload={},
+        )
+        for index in range(3)
+    ]
+    db_session.add_all(rows)
+    db_session.commit()
+    app.dependency_overrides[get_session] = lambda: db_session
+    client = TestClient(app)
+
+    cutoff = (revision - timedelta(seconds=1)).isoformat()
+    first = client.get(
+        "/events",
+        params={"updated_since": cutoff, "sources": "cursor-source", "limit": 2},
+    ).json()
+    assert len(first) == 2
+
+    second = client.get(
+        "/events",
+        params={
+            "updated_since": first[-1]["updated_at"],
+            "updated_after_id": first[-1]["id"],
+            "sources": "cursor-source",
+            "limit": 2,
+        },
+    ).json()
+    assert [row["id"] for row in first + second] == [str(row.id) for row in rows]
 
 
 def test_events_country_filter(db_session):

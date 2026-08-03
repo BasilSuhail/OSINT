@@ -19,13 +19,20 @@ describe("apiClient", () => {
     expect(streamUrl()).toMatch(/\/stream$/)
   })
 
-  it("passes fetched_since and country as query params", async () => {
+  it("passes incremental timestamps and country as query params", async () => {
     const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify([]), { status: 200 }),
     )
-    await fetchEvents({ fetchedSince: "2026-06-26T00:00:00Z", country: "US" })
+    await fetchEvents({
+      fetchedSince: "2026-06-26T00:00:00Z",
+      updatedSince: "2026-06-27T00:00:00Z",
+      updatedAfterId: "42",
+      country: "US",
+    })
     const url = spy.mock.calls[0][0] as string
     expect(url).toContain("fetched_since=")
+    expect(url).toContain("updated_since=")
+    expect(url).toContain("updated_after_id=42")
     expect(url).toContain("country=US")
   })
 

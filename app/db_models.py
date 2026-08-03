@@ -6,7 +6,7 @@ real Postgres database via the dev docker-compose stack.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import (
@@ -42,6 +42,11 @@ class Base(DeclarativeBase):
     pass
 
 
+def utc_now() -> datetime:
+    """Application-time revision generated when SQLAlchemy flushes a change."""
+    return datetime.now(UTC)
+
+
 class EventRow(Base):
     __tablename__ = "events"
 
@@ -51,6 +56,9 @@ class EventRow(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=utc_now, nullable=False
     )
     category: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[float | None] = mapped_column(Float)
@@ -70,6 +78,7 @@ class EventRow(Base):
             "confidence IS NULL OR (confidence BETWEEN 0 AND 1)", name="events_confidence_range"
         ),
         Index("events_occurred_at_idx", "occurred_at"),
+        Index("events_updated_at_idx", "updated_at"),
         Index("events_country_occurred_idx", "country", "occurred_at"),
         Index("events_category_idx", "category", "occurred_at"),
         Index("events_source_occurred_idx", "source", "occurred_at"),

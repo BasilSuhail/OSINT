@@ -23,6 +23,7 @@ CREATE TABLE events (
     source_event_id TEXT NOT NULL,           -- source-specific stable id
     occurred_at     TIMESTAMPTZ NOT NULL,    -- event time (NOT fetch time)
     fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(), -- durable row revision
     category        TEXT NOT NULL,           -- see vocabulary below
     severity        REAL,                    -- 0..1, source-normalised; NULL if N/A
     confidence      REAL,                    -- 0..1; NULL if source does not provide
@@ -36,11 +37,13 @@ CREATE TABLE events (
 );
 
 CREATE UNIQUE INDEX events_source_id_idx ON events (source, source_event_id);
+CREATE INDEX events_updated_at_idx ON events (updated_at);
 ```
 
 Field rules:
 
 - `occurred_at` is **event time**, never fetch time. GDELT event date, AIS message timestamp, market tick time, USGS quake origin time. This is what makes retrospective evaluation honest.
+- `updated_at` advances on source refreshes and enrichment mutations. Incremental clients use it to receive same-ID coordinate, provenance, and footprint changes without redefining `fetched_at`.
 - `severity` is **source-normalised to 0..1** by the fetcher. Documented per fetcher:
   - GDELT Goldstein (–10..+10) → `1 - (goldstein + 10) / 20` so escalatory events are higher
   - USGS magnitude → `min(1, max(0, (mag - 3) / 7))`

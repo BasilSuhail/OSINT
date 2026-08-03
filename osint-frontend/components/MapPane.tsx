@@ -9,6 +9,7 @@ import MapGL, {
   type MapLayerMouseEvent,
   type MapRef,
 } from "react-map-gl/maplibre"
+import type { GeoJSONSource } from "maplibre-gl"
 import { Activity, Droplets, Flame, Snowflake, Sun, Triangle, Wind } from "lucide-react"
 import { useConfigured, useEvents } from "@/app/providers"
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
@@ -23,16 +24,11 @@ import {
 } from "@/lib/hazardSymbols"
 import { hazardFootprintCollections } from "@/lib/mapFootprints"
 import {
-  markerFamily,
-  mergeSamePlace,
-  padBounds,
+  eventPointCollection,
   positionsForEvent,
-  shareBudget,
-  withinBounds,
-  type MapBounds,
+  type PositionedMapEvent,
 } from "@/lib/mapPositioning"
 import { addMissingStyleImagePlaceholder } from "@/lib/mapStyleImages"
-import { colorForEvent } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { FilterRail } from "./FilterRail"
@@ -51,9 +47,12 @@ const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
 const MAP_STYLE_RETRY_MS = 1500
-const MAX_MARKERS = 700
 const INITIAL_ZOOM = 1.4
 const MIN_SCROLL_ZOOM = INITIAL_ZOOM
+const EVENT_SOURCE_ID = "place-backed-events"
+const EVENT_CLUSTER_LAYER_ID = "place-event-clusters"
+const EVENT_CLUSTER_COUNT_LAYER_ID = "place-event-cluster-count"
+const EVENT_POINT_LAYER_ID = "place-event-points"
 
 interface MapPaneProps {
   useStore: FilterStore
@@ -67,28 +66,9 @@ interface MapPaneProps {
   selectedEventId: VisibleEvent["id"] | null
 }
 
-interface Positioned {
-  ev: VisibleEvent
-  markerKey: string
-  lat: number
-  lon: number
-  place?: string
-  location?: MarkerLocationContext
-}
-
-interface ClusterMarker {
-  key: string
-  lat: number
-  lon: number
-  events: Positioned[]
-  color: string
-}
-
-/** Sources dense enough that a single dot per event would flood the map, so we
- *  cluster them into proportional circles: news + GDELT pile up at city
- *  centroids. Sparse hazards (quakes, GDACS, EONET) stay individual with their
- *  own icon + footprint. NASA FIRMS never reaches the map at all since #494 —
- *  the map's fires are the GDACS/EONET wildfire events. */
+/** Sources dense enough to use MapLibre's lossless clustered GeoJSON layer.
+ * Sparse hazards stay independent with their own icon and footprint. NASA
+ * FIRMS never reaches this map since #494; its fires are GDACS/EONET alerts. */
 function isClusterable(ev: VisibleEvent): boolean {
   const source = (ev.source ?? "").toLowerCase()
   if (ev.category === "news") return true
@@ -96,39 +76,6 @@ function isClusterable(ev: VisibleEvent): boolean {
   if (source === "uk-police") return true
   if (source === "gdelt") return true
   return false
-}
-
-
-/** Padded viewport of a live map, or null if it cannot be read yet. */
-function readBounds(map: { getBounds?: () => unknown } | undefined): MapBounds | null {
-  const raw = map?.getBounds?.() as
-    | { getWest(): number; getSouth(): number; getEast(): number; getNorth(): number }
-    | undefined
-  if (!raw?.getWest) return null
-  return padBounds({
-    west: raw.getWest(),
-    south: raw.getSouth(),
-    east: raw.getEast(),
-    north: raw.getNorth(),
-  })
-}
-
-/** Zoom → quantisation precision in degrees. Bigger cells when zoomed out,
- *  finer cells when zoomed in. At zoom ~7 the cell is small enough that
- *  city-level pins start to separate again.
- *
- *  Below zoom 3 we floor to 4° so neighbouring 1° cells don't fight for
- *  pixels on the world view (Spain + Italy chips were overlapping at the
- *  default 1.4 zoom — see issue #135). */
-function cellPrecision(zoom: number): number {
-  if (zoom < 3) return 4
-  return Math.max(0.04, 4 / Math.pow(2, zoom))
-}
-
-/** ACLED proportional-symbol sizing: area ∝ count → diameter ∝ √count, clamped.
- *  Shared by the cluster/aggregate circles and the size legend so they match. */
-function circleSizeForCount(n: number): number {
-  return Math.min(58, 9 + Math.sqrt(Math.max(1, n)) * 5)
 }
 
 function EventMarker({
@@ -145,10 +92,7 @@ function EventMarker({
   onSelect: (ev: VisibleEvent, location?: MarkerLocationContext) => void
 }) {
   const style = markerStyle(ev)
-  // News / GDELT singletons render as a soft, semi-transparent dot — never a
-  // glowing "this place is on fire" mark for one BBC headline (#252).
-  const clusterable = isClusterable(ev)
-  const size = clusterable ? 7 : style.size
+  const size = style.size
   const HIT_SIZE = 28
 
   return (
@@ -179,7 +123,7 @@ function EventMarker({
           const kind = hazardKind(ev)
           const iconKey = hazardIcon(kind)
           const color = hazardColor(ev)
-          if (iconKey !== "dot" && !clusterable && ev.source !== "nasa-firms") {
+          if (iconKey !== "dot" && ev.source !== "nasa-firms") {
             const Icon = HAZARD_ICONS[iconKey]
             return (
               <span
@@ -196,60 +140,22 @@ function EventMarker({
               </span>
             )
           }
-          // non-hazard: simple dot/diamond. Clusterable singletons get a soft
-          // semi-transparent fill + thin ring (no glow) to match the cluster
-          // circles; everything else keeps its crisp glowing mark.
+          // Non-hazard independent rows keep their crisp dot/diamond mark.
           return (
             <span
               className="block"
               style={{
                 width: size,
                 height: size,
-                backgroundColor: clusterable ? `${style.color}b3` : style.color,
+                backgroundColor: style.color,
                 borderRadius: style.shape === "diamond" ? 2 : "9999px",
                 transform: style.shape === "diamond" ? "rotate(45deg)" : undefined,
-                border: clusterable ? `1px solid ${style.color}` : undefined,
-                boxShadow: clusterable ? "none" : `0 0 3px ${style.color}`,
+                boxShadow: `0 0 3px ${style.color}`,
               }}
             />
           )
         })()}
       </div>
-    </Marker>
-  )
-}
-
-function ClusterChip({
-  cluster,
-  onClick,
-}: {
-  cluster: ClusterMarker
-  onClick: (c: ClusterMarker) => void
-}) {
-  const n = cluster.events.length
-  // ACLED-style proportional symbol: area ∝ count → radius ∝ √count. No digit
-  // — the count/list lives in the right pane (#252). Semi-transparent fill so
-  // overlapping piles read as density; clamp so mega-piles don't swallow the map.
-  const size = circleSizeForCount(n)
-  return (
-    <Marker longitude={cluster.lon} latitude={cluster.lat} anchor="center">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClick(cluster)
-        }}
-        className="rounded-full"
-        style={{
-          width: size,
-          height: size,
-          backgroundColor: `${cluster.color}59`, // ~35% alpha fill
-          border: `1px solid ${cluster.color}cc`,
-          cursor: "pointer",
-          padding: 0,
-        }}
-        aria-label={`${n} events — open list`}
-      />
     </Marker>
   )
 }
@@ -265,9 +171,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
   const [styleReloadToken, setStyleReloadToken] = useState(0)
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
-  /** Padded viewport the marker budget is spent inside (#731). Null until
-   *  the map settles once, which means "everywhere" — the world view. */
-  const [bounds, setBounds] = useState<MapBounds | null>(null)
   const openClusterInPane = useRightPaneModeStore((s) => s.openCluster)
   const consumedMinWheelRef = useRef(false)
 
@@ -375,50 +278,44 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     }
   }, [])
 
-  const positioned = useMemo<Positioned[]>(() => {
-    // Two buckets so the MAX_MARKERS budget never drops sparse-but-important
-    // hazards. News / GDELT pour in continuously and used to fill the whole 700
-    // budget (occurred_at-ordered), starving the handful of GDACS floods /
-    // cyclones / quakes — the map showed only fire + quakes. Keep ALL
-    // non-clusterable rows (hazards, quakes, market, EONET) and spend the cap
-    // only on the clusterable firehose.
-    const priority: Positioned[] = []
-    const fill = new Map<string, Positioned[]>()
+  const positioned = useMemo<PositionedMapEvent[]>(() => {
+    const out: PositionedMapEvent[] = []
     for (const ev of events) {
       // A news dot is a place; an unplaceable story gets no dot and stays
       // reachable by clicking its country. Hazards keep the country-centroid
       // fallback. See lib/mapPositioning.ts for why (#717).
       for (const at of positionsForEvent(ev, centroids)) {
-        // Spend the budget on what is actually in view. Chosen globally, the
-        // 700 markers were shared out by how much of the world each region
-        // occupies, so the UK got about eight of them however far you zoomed
-        // in — the events were discarded three steps before zoom was ever
-        // consulted (#731).
-        if (bounds && !withinBounds(at.lat, at.lon, bounds)) continue
-        const row = {
+        out.push({
           ev,
           markerKey: at.key,
           lat: at.lat,
           lon: at.lon,
           place: at.place,
           location: at.location,
-        }
-        if (!isClusterable(ev)) {
-          priority.push(row)
-          continue
-        }
-        // Keep the clusterable firehose split by family. Draining it as one
-        // occurred_at-ordered list let minute-fresh news take every slot and
-        // cut GDELT's daily batch to zero (#721).
-        const family = markerFamily(ev)
-        const queue = fill.get(family)
-        if (queue) queue.push(row)
-        else fill.set(family, [row])
+        })
       }
     }
-    // All priority rows, then the remaining budget shared across families.
-    return priority.concat(shareBudget(fill, MAX_MARKERS - priority.length))
-  }, [events, centroids, bounds])
+    return out
+  }, [events, centroids])
+
+  const { independent, clusteredByKey, clusteredData } = useMemo(() => {
+    const independentRows: PositionedMapEvent[] = []
+    const clusteredRows: PositionedMapEvent[] = []
+    const byKey = new Map<string, PositionedMapEvent>()
+    for (const item of positioned) {
+      if (isClusterable(item.ev)) {
+        clusteredRows.push(item)
+        byKey.set(item.markerKey, item)
+      } else {
+        independentRows.push(item)
+      }
+    }
+    return {
+      independent: independentRows,
+      clusteredByKey: byKey,
+      clusteredData: eventPointCollection(clusteredRows),
+    }
+  }, [positioned])
 
   /** Footprints for all hazards. Non-selected ones are revealed on zoom-in
    *  (opacity ramps 4→6); the SELECTED event's footprint is tagged `selected`
@@ -432,77 +329,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
 
   const hillshadeBeforeId = "waterway"
 
-  /** Split into:
-   *  - singles: rendered as individual EventMarker (hazards, market, plus any
-   *    news/GDELT singleton in its own cell)
-   *  - clusters: 2+ news/GDELT events sharing a quantised cell — rendered as
-   *    a single count chip the user can click to expand.
-   */
-  const { singles, clusters } = useMemo(() => {
-    const p = cellPrecision(zoom)
-    const cells = new Map<string, Positioned[]>()
-    const singlesOut: Positioned[] = []
-    // One place, one coordinate. GDELT ships its own point per event and
-    // news rows take theirs from the gazetteer; the two differ by a few
-    // hundred metres, so every city both sources covered drew as two
-    // overlapping circles — London, Kyiv, Moscow, Delhi, all of them.
-    // Snapping same-named nearby marks together fixes that without
-    // touching Twickenham, which keeps its own name and its own dot (#735).
-    const snapped: Positioned[] = []
-    for (const group of mergeSamePlace(positioned)) {
-      const [first] = group
-      for (const member of group) {
-        // A new object, never a mutation: `positioned` is also what feeds
-        // hazardFootprintCollections, and moving a row in place would drag
-        // its footprint polygon along with it.
-        snapped.push(member === first ? member : { ...member, lat: first.lat, lon: first.lon })
-      }
-    }
-    for (const item of snapped) {
-      if (!isClusterable(item.ev)) {
-        singlesOut.push(item)
-        continue
-      }
-      const cellKey = `${Math.round(item.lat / p)}_${Math.round(item.lon / p)}`
-      const bucket = cells.get(cellKey)
-      if (bucket) bucket.push(item)
-      else cells.set(cellKey, [item])
-    }
-    const clustersOut: ClusterMarker[] = []
-    for (const [key, bucket] of cells.entries()) {
-      if (bucket.length < 2) {
-        // Singleton in the cell — render it as a normal small dot.
-        singlesOut.push(bucket[0])
-        continue
-      }
-      // Cluster centroid = mean of member coords; not great-circle accurate
-      // but at 0.04-4° cell sizes the visual difference is negligible.
-      let latSum = 0
-      let lonSum = 0
-      for (const it of bucket) {
-        latSum += it.lat
-        lonSum += it.lon
-      }
-      clustersOut.push({
-        key,
-        lat: latSum / bucket.length,
-        lon: lonSum / bucket.length,
-        events: bucket,
-        color: colorForEvent(bucket[0].ev),
-      })
-    }
-    return { singles: singlesOut, clusters: clustersOut }
-  }, [positioned, zoom])
-
-  const handleClick = useCallback(
-    (e: MapLayerMouseEvent) => {
-      const feature = e.features?.[0]
-      const iso = feature?.properties?.__iso as string | undefined
-      if (iso) onSelectCountry(iso)
-    },
-    [onSelectCountry],
-  )
-
   const handleSelectMarker = useCallback(
     (ev: VisibleEvent, location?: MarkerLocationContext) => {
       // Bubble up to the shared centred detail overlay (#207); the map no longer
@@ -512,14 +338,13 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
     [onSelectEvent],
   )
 
-  /** Cluster click: open its event list in the right pane (#252) AND zoom in
-   *  two levels at the centroid. The cell precision tightens (cellPrecision
-   *  halves twice) so most clusters break apart into individual dots — while
-   *  the right pane holds the full list for the ones that stay dense. */
+  /** Cluster click: expose every unique story in the worker-owned cluster and
+   *  zoom inward. MapLibre keeps every original coordinate in the source, so
+   *  zooming refines the visual grouping instead of selecting another sample. */
   const handleClusterClick = useCallback(
-    (c: ClusterMarker) => {
+    (positions: PositionedMapEvent[], lon: number, lat: number) => {
       const byEvent = new Map<VisibleEvent["id"], { event: VisibleEvent; location?: MarkerLocationContext }>()
-      for (const position of c.events) {
+      for (const position of positions) {
         const id = position.ev.id
         if (!byEvent.has(id)) {
           byEvent.set(id, { event: position.ev, location: position.location })
@@ -535,14 +360,61 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         })
       }
       const uniqueSelections = [...byEvent.values()]
-      openClusterInPane(c.events[0]?.ev.country ?? "cluster", uniqueSelections)
+      openClusterInPane(positions[0]?.ev.country ?? "cluster", uniqueSelections)
       if (mapRef) {
         const map = mapRef.getMap()
-        const target = Math.min(8, map.getZoom() + 2)
-        map.flyTo({ center: [c.lon, c.lat], zoom: target, duration: 600 })
+        // Supercluster emits individual leaves one zoom above clusterMaxZoom.
+        // Keep the click path able to reach that level so a dense street or
+        // building cluster can always resolve to its exact source points.
+        const target = Math.min(21, map.getZoom() + 2)
+        map.flyTo({ center: [lon, lat], zoom: target, duration: 600 })
       }
     },
     [mapRef, openClusterInPane],
+  )
+
+  const handleClick = useCallback(
+    (e: MapLayerMouseEvent) => {
+      const feature = e.features?.[0]
+      if (!feature) return
+
+      if (feature.layer.id === EVENT_POINT_LAYER_ID) {
+        const markerKey = feature.properties?.markerKey
+        if (typeof markerKey !== "string") return
+        const item = clusteredByKey.get(markerKey)
+        if (item) handleSelectMarker(item.ev, item.location)
+        return
+      }
+
+      if (feature.layer.id === EVENT_CLUSTER_LAYER_ID && mapRef) {
+        const clusterId = Number(feature.properties?.cluster_id)
+        const pointCount = Number(feature.properties?.point_count)
+        const coordinates = feature.geometry.type === "Point" ? feature.geometry.coordinates : null
+        if (!Number.isFinite(clusterId) || !Number.isFinite(pointCount) || !coordinates) return
+        const source = mapRef.getMap().getSource(EVENT_SOURCE_ID) as GeoJSONSource | undefined
+        if (!source?.getClusterLeaves) return
+        void source
+          .getClusterLeaves(clusterId, pointCount, 0)
+          .then((leaves) => {
+            const members: PositionedMapEvent[] = []
+            for (const leaf of leaves) {
+              const markerKey = leaf.properties?.markerKey
+              if (typeof markerKey !== "string") continue
+              const item = clusteredByKey.get(markerKey)
+              if (item) members.push(item)
+            }
+            if (members.length > 0) {
+              handleClusterClick(members, Number(coordinates[0]), Number(coordinates[1]))
+            }
+          })
+          .catch(() => undefined)
+        return
+      }
+
+      const iso = feature.properties?.__iso
+      if (typeof iso === "string") onSelectCountry(iso)
+    },
+    [clusteredByKey, handleClusterClick, handleSelectMarker, mapRef, onSelectCountry],
   )
 
   return (
@@ -566,12 +438,15 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
         ref={setMapRef}
         mapStyle={mapStyle}
         initialViewState={{ longitude: 10, latitude: 25, zoom: INITIAL_ZOOM }}
-        interactiveLayerIds={scoredGeo ? ["country-fill"] : []}
+        interactiveLayerIds={[
+          EVENT_CLUSTER_LAYER_ID,
+          EVENT_POINT_LAYER_ID,
+          ...(scoredGeo ? ["country-fill"] : []),
+        ]}
         onClick={handleClick}
         onLoad={handleStyleLoad}
         onMoveEnd={(e) => {
           setZoom(e.viewState.zoom)
-          setBounds(readBounds(e.target))
         }}
         onError={handleMapError}
         attributionControl={false}
@@ -676,7 +551,68 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
           />
         </Source>
 
-        {singles.map(({ ev, markerKey, lat, lon, location }) => (
+        {/* News/GDELT density is handled inside MapLibre's worker. Every valid
+            position in the active client event window enters the source;
+            clustering changes only presentation, never membership. */}
+        <Source
+          id={EVENT_SOURCE_ID}
+          type="geojson"
+          data={clusteredData}
+          cluster
+          maxzoom={22}
+          clusterMaxZoom={20}
+          clusterRadius={38}
+        >
+          <Layer
+            id={EVENT_CLUSTER_LAYER_ID}
+            type="circle"
+            filter={["has", "point_count"]}
+            paint={{
+              "circle-color": "rgba(96, 165, 250, 0.35)",
+              "circle-stroke-color": "rgba(147, 197, 253, 0.9)",
+              "circle-stroke-width": 1,
+              "circle-radius": [
+                "step",
+                ["get", "point_count"],
+                7,
+                10,
+                10,
+                50,
+                14,
+                250,
+                19,
+                1000,
+                25,
+                5000,
+                32,
+              ],
+            }}
+          />
+          <Layer
+            id={EVENT_CLUSTER_COUNT_LAYER_ID}
+            type="symbol"
+            filter={["has", "point_count"]}
+            layout={{
+              "text-field": ["get", "point_count_abbreviated"],
+              "text-size": 10,
+            }}
+            paint={{ "text-color": "#e5f2ff" }}
+          />
+          <Layer
+            id={EVENT_POINT_LAYER_ID}
+            type="circle"
+            filter={["!", ["has", "point_count"]]}
+            paint={{
+              "circle-color": ["get", "color"],
+              "circle-opacity": ["coalesce", ["get", "opacity"], 1],
+              "circle-radius": 4,
+              "circle-stroke-color": ["get", "color"],
+              "circle-stroke-width": 1,
+            }}
+          />
+        </Source>
+
+        {independent.map(({ ev, markerKey, lat, lon, location }) => (
           <EventMarker
             key={markerKey}
             ev={ev}
@@ -685,9 +621,6 @@ export function MapPane({ useStore, railOpen, onRailOpenChange, onSelectCountry,
             location={location}
             onSelect={handleSelectMarker}
           />
-        ))}
-        {clusters.map((c) => (
-          <ClusterChip key={c.key} cluster={c} onClick={handleClusterClick} />
         ))}
       </MapGL>
 
