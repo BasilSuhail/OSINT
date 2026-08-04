@@ -177,11 +177,20 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
   //: Runs after the handlers that close a story, an entity or the expanded
   //: state, so one Escape both dismisses what is open and comes home rather
   //: than needing two.
+  //:
+  //: Instant, not smooth (#781). The same keypress closes the selection, which
+  //: removes a card, which shrinks the track by a page — and the browser
+  //: clamps scrollLeft to the new maximum, killing the animation on page 2.
+  //: Worse, every frame of that animation fires onScroll, which writes the
+  //: intermediate page back into activeRef, so the re-align below faithfully
+  //: restores the page the clamp stopped on. Landing on 0 inside the handler
+  //: leaves the clamp nothing to clamp. Coming home is not a journey worth
+  //: animating.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return
       activeRef.current = 0
-      goTo(0)
+      goTo(0, false)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

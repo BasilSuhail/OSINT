@@ -432,6 +432,70 @@ def events(
     return [_event_dict(r) for r in session.execute(stmt).scalars()]
 
 
+@app.get("/search")
+def search_everything(
+    session: Session = Depends(get_session),
+    q: str = Query(default="", max_length=200),
+    limit: int = Query(default=40, ge=1, le=200),
+) -> dict:
+    """One query, answered as places, content, or both (#779).
+
+    Places come from the bundled gazetteer — no third-party geocoder, so
+    typing costs nothing and never fails. Content comes from a full-text
+    match over headline and summary, ranked by relevance with recency as
+    the tie-break.
+
+    A term can honestly be both: "Manchester" is a city and a word in
+    stories about the club. Both halves are returned and the reader
+    chooses; the server does not guess which was meant.
+    """
+    from app.search import MIN_QUERY_LEN, search
+
+    if len(q.strip()) < MIN_QUERY_LEN:
+        return {"query": q, "places": [], "events": [], "ambiguous": False}
+
+    result = search(session, q, limit=limit)
+    return {
+        "query": q,
+        # Several places answering to one name is a question, not an answer.
+        # The client lists them; it must not silently take the first.
+        "ambiguous": result.ambiguous,
+        "places": [
+            {
+                "name": p.name,
+                "lat": p.lat,
+                "lon": p.lon,
+                "country": p.country,
+                "kind": p.kind,
+                "context": p.context,
+                "population": p.population,
+            }
+            for p in result.places
+        ],
+        "events": [
+            {
+                "id": r["id"],
+                "source": r["source"],
+                # The same shape the map and cluster list already receive. A
+                # search result that is missing keywords or fetch time opens a
+                # detail panel with holes in it, and the reader cannot tell
+                # whether the hole is the data or the search.
+                "source_event_id": r["source_event_id"],
+                "category": r["category"],
+                "severity": r["severity"],
+                "keywords": r["keywords"],
+                "country": r["country"],
+                "lat": r["lat"],
+                "lon": r["lon"],
+                "occurred_at": r["occurred_at"].isoformat() if r["occurred_at"] else None,
+                "fetched_at": r["fetched_at"].isoformat() if r["fetched_at"] else None,
+                "payload": r["payload"],
+            }
+            for r in result.events
+        ],
+    }
+
+
 @app.get("/scores")
 def scores(
     session: Session = Depends(get_session),
