@@ -85,6 +85,22 @@ export async function fetchTopStories(hours = 24, limit = 100): Promise<StoryRow
   return (await res.json()) as StoryRow[]
 }
 
+/** Which story each of these events belongs to (#782).
+ *
+ *  A map selection holds both kinds of row: a headline that came from a feed
+ *  and belongs to a story, and a GDELT record or sensor reading that does not.
+ *  Events with no story are absent from the result rather than null, so the
+ *  caller's test is "is it here" rather than "is it not nothing".
+ *
+ *  One request per selection, not one per row — the map opens with forty rows
+ *  visible and forty requests is a different kind of answer. */
+export async function fetchStoriesForEvents(eventIds: string[]): Promise<Record<string, StoryRow>> {
+  if (eventIds.length === 0) return {}
+  const res = await fetch(`${API_BASE}/stories/for-events?ids=${eventIds.join(",")}`)
+  if (!res.ok) throw new Error(`GET /stories/for-events ${res.status}`)
+  return (await res.json()) as Record<string, StoryRow>
+}
+
 /** Why a story earned the pinned slot (#449) — shown, not just asserted. */
 export interface PinReasons {
   max_severity: number

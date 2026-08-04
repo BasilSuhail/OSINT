@@ -2,12 +2,16 @@
 
 import { format } from "date-fns"
 import { X } from "lucide-react"
+import { useMemo } from "react"
+import useSWR from "swr"
+import { fetchStoriesForEvents, type StoryRow } from "@/lib/analytics"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import { localEventPlaceName } from "@/lib/localMapSelection"
 import type { VisibleEvent } from "@/lib/queries"
 import { selectionTimelineGroups } from "@/lib/selectionTimeline"
 import { colorForEvent } from "@/lib/types"
 import type { EventSelection } from "@/stores/rightPaneModeStore"
+import { useStoryDetailStore } from "@/stores/storyDetailStore"
 
 function itemTitle(ev: VisibleEvent): string {
   const p = (ev.payload ?? {}) as Record<string, unknown>
@@ -57,6 +61,27 @@ export function ClusterListPanel({
   onClose: () => void
 }) {
   const timeline = selectionTimelineGroups(selections)
+  const openStory = useStoryDetailStore((st) => st.openStory)
+
+  //: A row that belongs to a story is news and opens the story pop-out — the
+  //: same window, from the same store, as clicking a headline on the first
+  //: page (#782). A row that does not is telemetry: a GDELT record or a
+  //: seismometer reading, for which the evidence card is the right answer and
+  //: a prose summary would be an invention.
+  //:
+  //: Asked once for the whole selection rather than per row. Keyed on the ids
+  //: so panning to a different cluster refetches and re-selecting the same one
+  //: does not. A failure leaves `stories` undefined and every row falls back
+  //: to the evidence card, which is what the panel did before this existed.
+  const eventIds = useMemo(
+    () => selections.map(({ event }) => event.id),
+    [selections],
+  )
+  const { data: stories } = useSWR(
+    eventIds.length > 0 ? ["stories-for-events", eventIds.join(",")] : null,
+    () => fetchStoriesForEvents(eventIds),
+    { revalidateOnFocus: false },
+  )
 
   return (
     <aside className="flex h-full w-full flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950/95 p-3">
@@ -106,6 +131,7 @@ export function ClusterListPanel({
             </p>
             <ul className="divide-y divide-neutral-800/60">
               {group.rows.map(({ number, selection: { event: ev, location, distanceKm } }) => {
+                const story: StoryRow | undefined = stories?.[ev.id]
                 const place = location?.name?.trim() || localEventPlaceName(ev)
                 const context = [
                   ev.source.replace(/^rss-/, ""),
@@ -118,7 +144,9 @@ export function ClusterListPanel({
                   <li key={ev.id}>
                     <button
                       type="button"
-                      onClick={() => onSelectEvent(ev, location)}
+                      onClick={() =>
+                        story ? openStory(story.id) : onSelectEvent(ev, location)
+                      }
                       className="flex w-full items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-neutral-900/40"
                     >
                       <span className="w-4 shrink-0 pt-0.5 text-right font-mono text-[10px] tabular-nums text-neutral-600">
@@ -150,8 +178,12 @@ export function ClusterListPanel({
                           {context}
                         </span>
                       </span>
+                      {/* The story's graded category when there is one, so a
+                          row reads the same here as on the first page; the raw
+                          event category otherwise. */}
                       <span className="shrink-0 rounded border border-neutral-700 px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-neutral-400">
-                        {ev.category}
+                        {story?.category || ev.category}
+                        {story?.escalating === "yes" ? " ↑" : ""}
                       </span>
                     </button>
                   </li>
