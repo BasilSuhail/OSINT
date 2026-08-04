@@ -16,6 +16,7 @@ import { fetchScoreboard } from "@/lib/analytics"
 import { scoreboardIsReady } from "@/lib/deckReadiness"
 import { CardDeck, type DeckCard } from "./CardDeck"
 import { FloatingPanel } from "./FloatingPanel"
+import { SearchPanel } from "./SearchPanel"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
@@ -70,6 +71,7 @@ export function SplitLayout() {
   const sidePanel = storyDetailOpen ? "story" : worldDetailOpen ? "world" : null
   const entity = useRightPaneModeStore((s) => s.entity)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
+  const [searchOpen, setSearchOpen] = useState(false)
   const selectedEventId = entity?.kind === "event" ? entity.event.id : null
 
   // Keyboard shortcuts.
@@ -130,15 +132,30 @@ export function SplitLayout() {
       title: "world",
       collapsedContent: (
         <div className="flex h-full w-full flex-col">
-          {/* Sizes to its content (#711). A fixed half left the title, three
-              numbers and a sparkline floating in the middle of a tall box with
-              a gap above and below. */}
-          <div className="shrink-0 border-b border-neutral-800">
-            <WorldHeadline />
+          {/* Search sits above everything on this card, because it is the way
+              into the system rather than a filter over one panel (#779).
+              Focused, it takes the whole card: results need the room, and a
+              list squeezed under a dashboard is not a list. */}
+          <div className={searchOpen ? "flex min-h-0 flex-1 flex-col" : "shrink-0"}>
+            <SearchPanel
+              open={searchOpen}
+              onOpenChange={setSearchOpen}
+              onSelectEvent={(ev) => openEvent(ev)}
+            />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            <StoriesPanel tuckRows />
-          </div>
+          {!searchOpen && (
+            <>
+              {/* Sizes to its content (#711). A fixed half left the title, three
+                  numbers and a sparkline floating in the middle of a tall box with
+                  a gap above and below. */}
+              <div className="shrink-0 border-b border-neutral-800">
+                <WorldHeadline />
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                <StoriesPanel tuckRows />
+              </div>
+            </>
+          )}
         </div>
       ),
       fill: true,
