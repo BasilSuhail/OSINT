@@ -288,3 +288,34 @@ def test_every_conflict_code_we_ingest_has_a_label() -> None:
 
     for code in CAMEO_CONFLICT_ROOT_CODES:
         assert cameo_root_label(code), f"root {code} reaches the map with no label"
+
+
+class TestOccurredAtComesFromDateAdded:
+    """`Day` is a date, so reading it alone put every GDELT row at midnight —
+    126,939 stored rows sharing one time of day (#787)."""
+
+    def test_publication_instant_is_the_event_time(self) -> None:
+        event = row_to_event(_make_row(day="20260618"), fetched_at=datetime.now(UTC))
+        assert event is not None
+        assert event.occurred_at == datetime(2026, 6, 18, 9, 45, tzinfo=UTC)
+
+    def test_event_date_is_still_kept(self) -> None:
+        event = row_to_event(_make_row(day="20260618"), fetched_at=datetime.now(UTC))
+        assert event is not None
+        assert event.payload["day"] == "20260618"
+        assert event.payload["date_added"] == "20260618094500"
+
+    def test_malformed_timestamp_falls_back_to_midnight(self) -> None:
+        fields = _make_row(day="20260618")
+        fields[59] = "not-a-timestamp"
+        event = row_to_event(fields, fetched_at=datetime.now(UTC))
+        assert event is not None
+        assert event.occurred_at == datetime(2026, 6, 18, tzinfo=UTC)
+
+    def test_absent_timestamp_falls_back_to_midnight(self) -> None:
+        fields = _make_row(day="20260618")
+        fields[59] = ""
+        event = row_to_event(fields, fetched_at=datetime.now(UTC))
+        assert event is not None
+        assert event.occurred_at == datetime(2026, 6, 18, tzinfo=UTC)
+        assert event.payload["date_added"] is None
