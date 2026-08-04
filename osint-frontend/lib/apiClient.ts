@@ -320,3 +320,36 @@ export async function streamBrainAsk(
   if (!latest) throw new Error("brain ask stream ended without final")
   return latest
 }
+
+export interface SearchPlace {
+  name: string
+  lat: number
+  lon: number
+  country: string | null
+  kind: "city" | "region" | "country"
+  context: string
+  population: number
+}
+
+export interface SearchResponse {
+  query: string
+  ambiguous: boolean
+  places: SearchPlace[]
+  events: EventRow[]
+}
+
+/** One query over places and content (#779).
+ *
+ *  Takes a signal because the caller types faster than the server answers:
+ *  without cancellation an early slow response lands after a later fast one
+ *  and the reader watches results for a query they have already replaced. */
+export async function fetchSearch(
+  q: string,
+  options: { signal?: AbortSignal; limit?: number } = {},
+): Promise<SearchResponse> {
+  const qs = new URLSearchParams({ q })
+  if (options.limit) qs.set("limit", String(options.limit))
+  const res = await fetch(`${API_BASE}/search?${qs.toString()}`, { signal: options.signal })
+  if (!res.ok) throw new Error(`search failed: ${res.status}`)
+  return (await res.json()) as SearchResponse
+}
