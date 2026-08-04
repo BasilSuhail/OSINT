@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Search, X } from "lucide-react"
 import { fetchSearch, type SearchPlace, type SearchResponse } from "@/lib/apiClient"
+import { eventHeadline } from "@/lib/eventTitle"
 import type { VisibleEvent } from "@/lib/queries"
 import type { EventRow } from "@/lib/types"
 import { colorForEvent } from "@/lib/types"
@@ -27,23 +28,6 @@ function flyTo(lat: number, lon: number, zoom: number): void {
   //: The map already listens for this (#699). A second channel would be a
   //: second thing to keep in step.
   window.dispatchEvent(new CustomEvent("osint:flyto", { detail: { lat, lon, zoom } }))
-}
-
-function eventTitle(ev: EventRow): string {
-  const p = (ev.payload ?? {}) as Record<string, unknown>
-  const title =
-    (typeof p.title === "string" && p.title) ||
-    (typeof p.headline === "string" && p.headline) ||
-    null
-  if (title) return title
-  //: GDELT carries no headline — action plus place is the most it can
-  //: honestly say (#733).
-  const label = typeof p.action_label === "string" ? p.action_label : null
-  if (label) {
-    const where = typeof p.geo_name === "string" ? p.geo_name.split(",")[0]?.trim() : null
-    return where ? `${label} · ${where}` : label
-  }
-  return ev.source
 }
 
 function clockTime(iso: string): string {
@@ -266,7 +250,7 @@ export function SearchPanel({
                             WebkitBoxOrient: "vertical",
                           }}
                         >
-                          {eventTitle(ev)}
+                          {eventHeadline(ev)}
                         </span>
                         <span className="mt-0.5 block truncate font-mono text-[9px] uppercase tracking-wider text-neutral-600">
                           {[ev.source.replace(/^rss-/, ""), ev.country].filter(Boolean).join(" · ")}

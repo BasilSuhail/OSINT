@@ -208,6 +208,29 @@ def data_audit() -> dict[str, Any]:
 
 
 @app.task(
+    name="app.tasks.enrich_gdelt_titles",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def enrich_gdelt_titles() -> dict[str, Any]:
+    """Give mapped GDELT rows the headline of the article they came from (#788).
+
+    GDELT's export has no headline, only a CAMEO bucket, so the row's own
+    article is the only honest source for one. Bounded per run and limited to
+    the rows that are actually drawn on the map.
+    """
+    if skipped := _skip_optional_heavy():
+        return skipped
+    from app.enrichment.gdelt_titles import enrich_titles
+
+    with session_scope() as session:
+        return enrich_titles(session)
+
+
+@app.task(
     name="app.tasks.cluster_stories",
     autoretry_for=(Exception,),
     retry_backoff=True,
@@ -556,6 +579,13 @@ app.conf.beat_schedule = {
         "task": "app.tasks.run_fetcher",
         "args": ["gdelt"],
         "schedule": crontab(minute="0,15,30,45"),
+    },
+    "gdelt-titles-5min": {
+        #: Offset from the fetcher's :00/:15/:30/:45 so a batch of outbound
+        #: article requests never lands in the same minute as the export
+        #: download (#788).
+        "task": "app.tasks.enrich_gdelt_titles",
+        "schedule": crontab(minute="3,8,13,18,23,28,33,38,43,48,53,58"),
     },
     "acled-hourly": {
         "task": "app.tasks.run_fetcher",

@@ -7,31 +7,12 @@ import useSWR from "swr"
 import { fetchStoriesForEvents, type StoryRow } from "@/lib/analytics"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import { localEventPlaceName } from "@/lib/localMapSelection"
+import { eventHeadline } from "@/lib/eventTitle"
 import type { VisibleEvent } from "@/lib/queries"
 import { selectionTimelineGroups } from "@/lib/selectionTimeline"
 import type { EventSelection } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { ListRow, TagChip } from "./ListRow"
-
-function itemTitle(ev: VisibleEvent): string {
-  const p = (ev.payload ?? {}) as Record<string, unknown>
-  const title =
-    (typeof p.title === "string" && p.title) ||
-    (typeof p.headline === "string" && p.headline) ||
-    null
-  if (title) return title
-  // GDELT carries no headline — its export is a structured record of actor,
-  // action and place. Falling through to the source name printed the literal
-  // word "gdelt" on every row, which told the reader nothing. The CAMEO
-  // action plus where it happened is the most this record can honestly say
-  // (#733).
-  const label = typeof p.action_label === "string" ? p.action_label : null
-  if (label) {
-    const where = typeof p.geo_name === "string" ? p.geo_name.split(",")[0]?.trim() : null
-    return where ? `${label} · ${where}` : label
-  }
-  return ev.source
-}
 
 function clockTime(value: string): string {
   const date = new Date(value)
@@ -154,7 +135,7 @@ export function ClusterListPanel({
                     n={number}
                     time={clockTime(ev.occurred_at)}
                     timestamp={ev.occurred_at}
-                    title={itemTitle(ev)}
+                    title={eventHeadline(ev)}
                     hint={hint}
                     trailing={
                       <TagChip
