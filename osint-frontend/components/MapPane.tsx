@@ -16,7 +16,9 @@ import { fetchAllEventPages, fetchAllUpdatedEventPages } from "@/lib/apiClient"
 import { mergeEventRows } from "@/lib/eventMerge"
 import { circlePolygon } from "@/lib/footprints"
 import {
+  consensusLocalPlaceName,
   coordinateLabel,
+  distanceKm,
   localEventSelections,
   localMapLabel,
   localSelectionBounds,
@@ -745,18 +747,28 @@ export function MapPane({
     [onSelectEvent],
   )
 
-  /** Cluster click: expose every unique story in the worker-owned cluster and
-   *  zoom inward. MapLibre keeps every original coordinate in the source, so
-   *  zooming refines the visual grouping instead of selecting another sample. */
+  /** Cluster click exposes every unique story without changing camera state.
+   * Selection and navigation are separate actions: opening detail must not
+   * destroy the operator's spatial context (#776). */
   const handleClusterClick = useCallback(
     (positions: PositionedMapEvent[], lon: number, lat: number) => {
-      const byEvent = new Map<VisibleEvent["id"], { event: VisibleEvent; location?: MarkerLocationContext }>()
+      const byEvent = new Map<VisibleEvent["id"], {
+        event: VisibleEvent
+        location?: MarkerLocationContext
+        distanceKm: number
+      }>()
       for (const position of positions) {
         const id = position.ev.id
+        const markerDistanceKm = distanceKm(lat, lon, position.lat, position.lon)
         if (!byEvent.has(id)) {
-          byEvent.set(id, { event: position.ev, location: position.location })
+          byEvent.set(id, {
+            event: position.ev,
+            location: position.location,
+            distanceKm: markerDistanceKm,
+          })
           continue
         }
+        const existing = byEvent.get(id)
         byEvent.set(id, {
           event: position.ev,
           location: {
@@ -764,21 +776,15 @@ export function MapPane({
             precision: "unknown",
             source: "multiple-marker-cluster",
           },
+          distanceKm: Math.min(existing?.distanceKm ?? markerDistanceKm, markerDistanceKm),
         })
       }
       const uniqueSelections = [...byEvent.values()]
-      openClusterInPane(positions[0]?.ev.country ?? "cluster", uniqueSelections)
+      const label = consensusLocalPlaceName(positions) ?? coordinateLabel(lat, lon)
+      openClusterInPane(label, uniqueSelections)
       onOpenSelection()
-      if (mapRef) {
-        const map = mapRef.getMap()
-        // Supercluster emits individual leaves one zoom above clusterMaxZoom.
-        // Keep the click path able to reach that level so a dense street or
-        // building cluster can always resolve to its exact source points.
-        const target = Math.min(21, map.getZoom() + 2)
-        map.flyTo({ center: [lon, lat], zoom: target, duration: 600 })
-      }
     },
-    [mapRef, onOpenSelection, openClusterInPane],
+    [onOpenSelection, openClusterInPane],
   )
 
   const handleAreaClick = useCallback(
@@ -788,10 +794,8 @@ export function MapPane({
       const clickedLabel = localMapLabel(map.queryRenderedFeatures(e.point))
       const lat = e.lngLat.lat
       const lon = e.lngLat.lng
-      // Below detailed zoom, first enter the completeness boundary. The area
-      // remains centred on the exact click and refreshes when its viewport rows
-      // arrive, so a world-level click never pretends the global buffer is a
-      // complete Brooklyn/Edinburgh result.
+      // Area paging is independent of the visible viewport. Keep the camera
+      // untouched so selection never masquerades as navigation (#776).
       const localZoom = Math.max(map.getZoom(), COMPLETE_VIEWPORT_ZOOM)
       const labelKind = clickedLabel?.kind ?? "coordinate"
       const radiusKm = localSelectionRadiusKm(localZoom, labelKind)
@@ -804,9 +808,6 @@ export function MapPane({
         localEventSelections(localPositioned, lat, lon, radiusKm),
       )
       onOpenSelection()
-      if (map.getZoom() < COMPLETE_VIEWPORT_ZOOM) {
-        map.flyTo({ center: [lon, lat], zoom: COMPLETE_VIEWPORT_ZOOM, duration: 600 })
-      }
     },
     [localPositioned, mapRef, onOpenSelection, openAreaInPane],
   )

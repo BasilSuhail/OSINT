@@ -39,9 +39,13 @@ Map clicks are local selections, not implicit country selections. Event dots
 and clusters keep first priority. Any other click resolves the most specific
 rendered building, street, neighbourhood, town, or city label; unlabeled ground
 uses its coordinates. The selection card lists deduplicated positioned events
-inside a visible zoom-scaled boundary, nearest first, and refreshes when the
-complete selected-area snapshot arrives. Country aggregation remains available
-only through explicit country navigation such as the world list or future search.
+inside a visible zoom-scaled boundary, grouped by day and nearest-first within
+each day, then refreshes when the complete selected-area snapshot arrives.
+Country aggregation remains available only through explicit country navigation
+such as the world list or future search.
+Selection never moves or zooms the map. Cluster and local-area cards follow the
+situation feed's timeline hierarchy: calendar sections, absolute times, numbered
+multi-line rows, category chips, and source/location/distance context.
 
 ## Phase 1 — pages
 
