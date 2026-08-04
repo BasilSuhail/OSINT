@@ -27,6 +27,7 @@ import {
   type StoryRow,
 } from "@/lib/analytics"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
+import { ListRow, TagChip } from "../ListRow"
 import {
   answerLines,
   askHistory,
@@ -54,16 +55,6 @@ const STALE_MS = 40 * 60_000
 const CHAT_STORAGE_KEY = "brain-chat-v1"
 //: Within this many px of the bottom still counts as "pinned" for auto-scroll.
 const PIN_THRESHOLD_PX = 40
-
-function TagChip({ category, escalating }: { category: string | null; escalating: string | null }) {
-  if (!category) return null
-  return (
-    <span className="shrink-0 rounded border border-neutral-700 px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-neutral-400">
-      {category}
-      {escalating === "yes" ? " ↑" : ""}
-    </span>
-  )
-}
 
 /**
  * The pinned slot (#449): multi-day international stories still gathering
@@ -149,23 +140,14 @@ function StoryLine({
     minute: "2-digit",
   })
   return (
-    <div className="py-0.5">
-      <button onClick={onOpen} className="flex w-full items-start gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-neutral-900/30">
-        <span className="shrink-0 font-mono text-[10px] text-neutral-600">{n}</span>
-        <span className="shrink-0 font-mono text-[10px] text-neutral-500">{time}</span>
-        <span
-          className="min-w-0 flex-1 overflow-hidden text-[11.5px] leading-4 text-neutral-300"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: "vertical",
-          }}
-        >
-          {story.title}
-        </span>
-        <TagChip category={story.category} escalating={story.escalating} />
-      </button>
-    </div>
+    <ListRow
+      n={n}
+      time={time}
+      timestamp={story.last_seen}
+      title={story.title}
+      trailing={<TagChip category={story.category} escalating={story.escalating} />}
+      onOpen={onOpen}
+    />
   )
 }
 
