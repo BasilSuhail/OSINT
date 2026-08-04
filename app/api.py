@@ -522,6 +522,81 @@ def stories_top(
     ]
 
 
+#: One request cannot ask about an unbounded list of events. A map selection
+#: is a screenful; anything larger is a different question.
+MAX_STORY_LOOKUP_IDS = 500
+
+
+@app.get("/stories/for-events")
+def stories_for_events(
+    session: Session = Depends(get_session),
+    ids: str = Query(default="", description="Comma-separated event ids."),
+) -> dict[str, dict]:
+    """Which story, if any, each of these events belongs to (#782).
+
+    A story opened from the map used to be an inspector — severity bar,
+    coordinate provenance, raw payload — while the same story opened from the
+    first page was the trust read and who said what. The difference was the
+    surface, not the story.
+
+    `story_members.event_id` is that table's primary key, so an event belongs
+    to at most one story and this is a key hit per id. Events with no story
+    are simply absent from the result: a GDELT record or a seismometer reading
+    is telemetry, not news, and has no story view to open.
+
+    The value is `_story_payload` unchanged, so a map row carries exactly what
+    a first-page row carries and the two cannot drift apart.
+    """
+    from app.db_models import StoryMemberRow
+
+    wanted: list[int] = []
+    for part in ids.split(","):
+        part = part.strip()
+        if part.isdigit():
+            wanted.append(int(part))
+    if not wanted:
+        return {}
+    wanted = wanted[:MAX_STORY_LOOKUP_IDS]
+
+    links = (
+        session.execute(select(StoryMemberRow).where(StoryMemberRow.event_id.in_(wanted)))
+        .scalars()
+        .all()
+    )
+    if not links:
+        return {}
+
+    story_ids = {link.story_id for link in links}
+    rows = session.execute(
+        select(StoryRow, StoryCorroborationRow)
+        .outerjoin(StoryCorroborationRow, StoryCorroborationRow.story_id == StoryRow.id)
+        .where(StoryRow.id.in_(story_ids))
+    ).all()
+
+    checks: dict[int, dict[str, str]] = {}
+    for check in session.execute(
+        select(StorySensorCheckRow).where(StorySensorCheckRow.story_id.in_(story_ids))
+    ).scalars():
+        checks.setdefault(check.story_id, {})[check.claim_type] = check.verdict
+
+    gists: dict[int, StoryGistRow] = {}
+    for g in session.execute(
+        select(StoryGistRow).where(
+            StoryGistRow.story_id.in_(story_ids),
+            StoryGistRow.method_version == enrich.METHOD_VERSION,
+        )
+    ).scalars():
+        gists[g.story_id] = g
+
+    payloads = {
+        story.id: _story_payload(story, corro, checks.get(story.id, {}), gists.get(story.id))
+        for story, corro in rows
+    }
+    return {
+        str(link.event_id): payloads[link.story_id] for link in links if link.story_id in payloads
+    }
+
+
 @app.get("/stories/developing")
 def stories_developing(
     session: Session = Depends(get_session),
