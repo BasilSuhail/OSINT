@@ -168,6 +168,25 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     return () => window.removeEventListener("keydown", onKey)
   }, [expanded, setExpanded])
 
+  //: Escape returns the deck to the first card, wherever it was and whatever
+  //: it was showing. Home is a fixed place or it is not home: closing a
+  //: selection used to leave the deck on whichever page the vanishing card
+  //: had pushed it to, so the same keypress landed somewhere different
+  //: depending on where you started.
+  //:
+  //: Runs after the handlers that close a story, an entity or the expanded
+  //: state, so one Escape both dismisses what is open and comes home rather
+  //: than needing two.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      activeRef.current = 0
+      goTo(0)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [goTo])
+
   return (
     //: Fills whatever it is given, in both states (#707). It used to go
     //: `fixed inset-x-0 bottom-0 top-8` when expanded, with the top-8 there to
