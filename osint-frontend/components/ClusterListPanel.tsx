@@ -9,9 +9,9 @@ import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import { localEventPlaceName } from "@/lib/localMapSelection"
 import type { VisibleEvent } from "@/lib/queries"
 import { selectionTimelineGroups } from "@/lib/selectionTimeline"
-import { colorForEvent } from "@/lib/types"
 import type { EventSelection } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
+import { ListRow, TagChip } from "./ListRow"
 
 function itemTitle(ev: VisibleEvent): string {
   const p = (ev.payload ?? {}) as Record<string, unknown>
@@ -83,8 +83,11 @@ export function ClusterListPanel({
     { revalidateOnFocus: false },
   )
 
+  //: No frame of its own (#785). SelectionPanel already pads this, and a
+  //: rounded border inside that padding drew a box inside a box — chrome the
+  //: first page does not have.
   return (
-    <aside className="flex h-full w-full flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950/95 p-3">
+    <aside className="flex h-full w-full flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col">
           <span className="font-mono text-lg font-semibold tabular-nums leading-none text-cyan-400">
@@ -129,67 +132,41 @@ export function ClusterListPanel({
             <p className="px-2 pb-1 pt-2 font-mono text-[9px] uppercase tracking-wide text-neutral-600">
               {group.label}
             </p>
-            <ul className="divide-y divide-neutral-800/60">
+            <div className="divide-y divide-neutral-800/60">
               {group.rows.map(({ number, selection: { event: ev, location, distanceKm } }) => {
                 const story: StoryRow | undefined = stories?.[ev.id]
                 const place = location?.name?.trim() || localEventPlaceName(ev)
-                const context = [
+                //: Read on hover, not printed (#785). Under every headline this
+                //: was a second line repeating the same source down the panel,
+                //: too narrow to finish the distance it existed to show.
+                const hint = [
                   ev.source.replace(/^rss-/, ""),
                   place,
                   typeof distanceKm === "number"
                     ? `${distanceKm.toFixed(distanceKm < 1 ? 2 : 1)} km`
                     : null,
-                ].filter(Boolean).join(" · ")
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
                 return (
-                  <li key={ev.id}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        story ? openStory(story.id) : onSelectEvent(ev, location)
-                      }
-                      className="flex w-full items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-neutral-900/40"
-                    >
-                      <span className="w-4 shrink-0 pt-0.5 text-right font-mono text-[10px] tabular-nums text-neutral-600">
-                        {number}
-                      </span>
-                      <span
-                        className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: colorForEvent(ev) }}
+                  <ListRow
+                    key={ev.id}
+                    n={number}
+                    time={clockTime(ev.occurred_at)}
+                    timestamp={ev.occurred_at}
+                    title={itemTitle(ev)}
+                    hint={hint}
+                    trailing={
+                      <TagChip
+                        category={story?.category || ev.category}
+                        escalating={story?.escalating}
                       />
-                      <time
-                        dateTime={ev.occurred_at}
-                        title={new Date(ev.occurred_at).toLocaleString()}
-                        className="w-10 shrink-0 pt-0.5 font-mono text-[10px] tabular-nums text-neutral-500"
-                      >
-                        {clockTime(ev.occurred_at)}
-                      </time>
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className="block overflow-hidden text-[11.5px] leading-4 text-neutral-300"
-                          style={{
-                            display: "-webkit-box",
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: "vertical",
-                          }}
-                        >
-                          {itemTitle(ev)}
-                        </span>
-                        <span className="mt-0.5 block truncate font-mono text-[9px] uppercase tracking-wider text-neutral-600">
-                          {context}
-                        </span>
-                      </span>
-                      {/* The story's graded category when there is one, so a
-                          row reads the same here as on the first page; the raw
-                          event category otherwise. */}
-                      <span className="shrink-0 rounded border border-neutral-700 px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-neutral-400">
-                        {story?.category || ev.category}
-                        {story?.escalating === "yes" ? " ↑" : ""}
-                      </span>
-                    </button>
-                  </li>
+                    }
+                    onOpen={() => (story ? openStory(story.id) : onSelectEvent(ev, location))}
+                  />
                 )
               })}
-            </ul>
+            </div>
           </section>
         ))}
       </div>
