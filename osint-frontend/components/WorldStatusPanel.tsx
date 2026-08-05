@@ -55,6 +55,21 @@ function Sparkline({ points }: { points: number[] }) {
   const w = 100
   const h = 40
   const n = points.length
+  //: Two samples is the least that can be a line. With none, the map of
+  //: points produced an empty string and the area became " L100,40 L0,40 Z",
+  //: which the browser rejects on every render — a path has to open with a
+  //: moveto. With one, it is a wedge from a single reading, which is not a
+  //: trend and should not be drawn as one. Both cases show the baseline and
+  //: say the window is empty.
+  if (n < 2) {
+    return (
+      <div className="flex h-10 items-end">
+        <div className="w-full border-b border-neutral-800 pb-0.5 text-center font-mono text-[8px] uppercase tracking-widest text-neutral-600">
+          no history yet
+        </div>
+      </div>
+    )
+  }
   const line = points
     .map((v, i) => {
       const x = n <= 1 ? 0 : (i / (n - 1)) * w

@@ -1052,6 +1052,12 @@ export function MapPane({
             filter={["has", "point_count"]}
             layout={{
               "text-field": ["get", "point_count_abbreviated"],
+              //: The style ships one font and this is it. Left unset,
+              //: MapLibre asks for its own default — "Open Sans Regular,
+              //: Arial Unicode MS Regular" — which OpenFreeMap does not
+              //: serve, so every glyph range 404s and each cluster number is
+              //: drawn from a local fallback instead of the map's own type.
+              "text-font": ["Noto Sans Regular"],
               "text-size": 10,
             }}
             paint={{ "text-color": "#e5f2ff" }}
