@@ -114,7 +114,7 @@ class TestEnrichTitles:
         row_id = _add(session)
         self._stub(monkeypatch, TitleResult("Villages evacuated as wildfire spreads", "ok", False))
         stats = gdelt_titles.enrich_titles(session)
-        assert stats == {"considered": 1, "titled": 1, "failed": 0}
+        assert stats == {"considered": 1, "titled": 1, "failed": 0, "ran_out_of_time": 0}
         payload = session.get(EventRow, row_id).payload
         assert payload["title"] == "Villages evacuated as wildfire spreads"
         assert payload["title_source"] == "article"
@@ -164,11 +164,32 @@ class TestEnrichTitles:
 
         monkeypatch.setattr(gdelt_titles, "fetch_title", fetch)
         stats = gdelt_titles.enrich_titles(session)
-        assert stats == {"considered": 2, "titled": 1, "failed": 1}
+        assert stats == {"considered": 2, "titled": 1, "failed": 1, "ran_out_of_time": 0}
         assert session.get(EventRow, first).payload.get("title") is None
         assert (
             session.get(EventRow, second).payload["title"] == "The second article's real headline"
         )
+
+    def test_a_slow_batch_stops_before_the_next_beat_fires(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sixty rows that each time out would run past the five-minute beat,
+        the next run would select the same rows — the attempt counter is only
+        written at the end — and every row in the overlap would be fetched
+        twice. The clock stops that however slow the batch is."""
+        for i in range(4):
+            _add(session, _age_minutes=i)
+        clock = iter([0.0, 0.0, 1.0, 99.0])
+        monkeypatch.setattr(gdelt_titles, "monotonic", lambda: next(clock))
+        self._stub(monkeypatch, TitleResult("A real headline from the article", "ok", False))
+
+        stats = gdelt_titles.enrich_titles(session, budget_s=10.0)
+
+        assert stats["considered"] == 2
+        assert stats["ran_out_of_time"] == 2
+        #: The rows never reached carry no attempt, so the next run takes them
+        #: first rather than skipping them.
+        assert len(gdelt_titles.pending_ids(session)) == 2
 
     def test_nothing_to_do_costs_no_requests(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -181,4 +202,5 @@ class TestEnrichTitles:
             "considered": 0,
             "titled": 0,
             "failed": 0,
+            "ran_out_of_time": 0,
         }
