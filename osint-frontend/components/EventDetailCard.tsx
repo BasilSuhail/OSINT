@@ -8,6 +8,7 @@ import {
   locationProvenanceForEvent,
   type MarkerLocationContext,
 } from "@/lib/locationProvenance"
+import { eventHeadline } from "@/lib/eventTitle"
 import { colorForEvent, type EventRow } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { SourceSignals } from "./SourceSignals"
@@ -30,14 +31,12 @@ function bestTitle(ev: EventRow): string {
   const p = ev.payload as Record<string, unknown>
   const source = (ev.source || "").toLowerCase()
 
-  // GDELT: payload.event_root_code is the CAMEO root (e.g. "14"). Translate to
-  // a human label and tack on the country_fips location free-text if present.
-  if (source === "gdelt") {
-    const cameo = cameoLabel(p?.event_root_code as string | number | undefined)
-    const place = typeof p?.country_fips === "string" ? p.country_fips : null
-    if (cameo && place) return `${cameo} · ${place}`
-    if (cameo) return `${cameo} event`
-  }
+  // GDELT carries no headline, only a CAMEO root code, and that code is not a
+  // description of the article it came from (#788) — `Coerce` covered a credit
+  // union's tornado donation. The shared helper prints the article's own title
+  // once the beat has fetched it, and where it came from until then. The CAMEO
+  // label still appears below, as the machine field it is.
+  if (source === "gdelt") return eventHeadline(ev)
 
   if (source === "acled") {
     const type = typeof p?.event_type === "string" ? p.event_type : null
@@ -408,6 +407,19 @@ export function EventDetailCard({
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
         <dt className="text-neutral-500">category</dt>
         <dd className="text-neutral-300">{event.category}</dd>
+
+        {/* The CAMEO code as what it is: how GDELT's coder bucketed the
+            article, shown as a machine field rather than standing in for the
+            headline (#788). Worth reading precisely because it is often not
+            what the article is about. */}
+        {event.source === "gdelt" && typeof p.event_root_code === "string" && (
+          <>
+            <dt className="text-neutral-500">cameo</dt>
+            <dd className="text-neutral-300">
+              {cameoLabel(p.event_root_code) ?? "unmapped"} · {p.event_root_code}
+            </dd>
+          </>
+        )}
 
         <dt className="text-neutral-500">occurred</dt>
         <dd className="text-neutral-300">
