@@ -35,9 +35,10 @@ COL_ACTION_GEO_TYPE: Final[int] = 51
 COL_ACTION_COUNTRY: Final[int] = 52
 COL_ACTION_LAT: Final[int] = 56
 COL_ACTION_LON: Final[int] = 57
-#: DATEADDED — the id of the 15-minute export file, not a link. Read as
-#: the article URL until #733; every stored row's ``source_url`` is a
-#: 14-digit timestamp because of it.
+#: DATEADDED — YYYYMMDDHHMMSS, the 15-minute export file this row appeared
+#: in, and so the instant GDELT published it. Read as the article URL until
+#: #733; every row stored before that fix has a 14-digit timestamp in
+#: ``source_url`` because of it.
 COL_DATE_ADDED: Final[int] = 59
 #: SOURCEURL — the article. Last column of the schema.
 COL_SOURCE_URL: Final[int] = 60
@@ -105,6 +106,19 @@ def geo_precision(geo_type: int | None, geo_name: str | None) -> str:
     return "country"
 
 
+def _parse_date_added(raw: str) -> datetime | None:
+    """DATEADDED (YYYYMMDDHHMMSS) as an instant, or None if it will not parse.
+
+    None rather than an exception: a row whose timestamp is malformed is still
+    a usable event, and falling back to the event date costs a clock reading,
+    not the row.
+    """
+    try:
+        return datetime.strptime(raw, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
 def _goldstein_to_severity(goldstein: float) -> float:
     """Map the Goldstein scale (-10..+10) to a severity in [0, 1].
 
@@ -137,9 +151,16 @@ def row_to_event(fields: list[str], *, fetched_at: datetime) -> Event | None:
 
     day_str = fields[COL_DAY].strip()
     try:
-        occurred_at = datetime.strptime(day_str, "%Y%m%d").replace(tzinfo=UTC)
+        day_at = datetime.strptime(day_str, "%Y%m%d").replace(tzinfo=UTC)
     except ValueError:
         return None
+
+    #: `Day` is a date, so parsing it alone put every GDELT row in the database
+    #: at midnight UTC — 126,939 rows sharing one time of day, which on a
+    #: British screen reads as a wall of 01:00 (#787). DATEADDED carries the
+    #: real instant and was already being read for nothing.
+    date_added_raw = fields[COL_DATE_ADDED].strip() if len(fields) > COL_DATE_ADDED else ""
+    occurred_at = _parse_date_added(date_added_raw) or day_at
 
     goldstein_raw = _parse_optional_float(fields[COL_GOLDSTEIN])
     if goldstein_raw is None:
@@ -170,6 +191,11 @@ def row_to_event(fields: list[str], *, fetched_at: datetime) -> Event | None:
     payload = {
         "global_event_id": global_event_id,
         "day": day_str,
+        #: Kept beside `day` because they are different facts — when the event
+        #: happened and when GDELT published it — and the drift between them is
+        #: itself worth reading. Also what makes #787 recoverable if the choice
+        #: of which one drives `occurred_at` is ever revisited.
+        "date_added": date_added_raw or None,
         "event_root_code": event_root_code,
         "goldstein": goldstein_raw,
         "num_mentions": num_mentions,
