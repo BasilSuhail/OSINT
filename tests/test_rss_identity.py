@@ -320,7 +320,14 @@ def test_reconciliation_invalidates_surviving_story_derivations(db_session: Sess
     )
     db_session.commit()
 
-    reconcile_rss_fragment_duplicates(db_session)
+    #: The clock has to come from the test. Whether derivations are dropped
+    #: or preserved turns on `story.last_seen` against `now - WINDOW_HOURS`,
+    #: and `now` defaults to the real clock — so a story pinned to a fixed
+    #: date drifts out of the window as real time passes, and this assertion
+    #: quietly starts describing the opposite behaviour. It did: both this
+    #: test and the historical one below went green for three days and then
+    #: failed the moment the wall clock crossed 72 hours past the fixture.
+    reconcile_rss_fragment_duplicates(db_session, now=now)
     db_session.commit()
 
     assert db_session.execute(select(StoryGistRow)).scalars().all() == []
@@ -414,7 +421,9 @@ def test_reconciliation_preserves_historical_aggregates_with_pruned_members(
     )
     db_session.commit()
 
-    reconcile_rss_fragment_duplicates(db_session)
+    #: The test owns the clock, for the reason spelled out in
+    #: test_reconciliation_invalidates_surviving_story_derivations.
+    reconcile_rss_fragment_duplicates(db_session, now=now)
     db_session.commit()
 
     refreshed = db_session.get(StoryRow, story.id)
