@@ -69,7 +69,7 @@ class GeoVerdict:
 
     #: ISO 3166-1 alpha-2, or None when the story has no resolvable country.
     iso: str | None
-    #: One of "term", "region", "city", "desk", "ambiguous", "none".
+    #: One of "term", "region", "city", "desk", "domestic", "ambiguous", "none".
     basis: str
     #: Matched city name, when one was found and agrees with ``iso``.
     city: str | None = None
@@ -167,6 +167,7 @@ def resolve_geo(
     summary: str = "",
     *,
     desk_country: str | None = None,
+    domestic_prior: str | None = None,
     city_hint: str | None = None,
 ) -> GeoVerdict:
     """Resolve one news story to a country, or honestly to nothing.
@@ -175,6 +176,12 @@ def resolve_geo(
     GB), not the outlet's home country. It applies only when the text
     yields nothing at all — a national paper republishing world news must
     not have every foreign story stamped with its own flag (#166).
+
+    ``domestic_prior`` is the weaker cousin (#796): a national masthead's
+    general feed measured to be mostly domestic. It applies in the same
+    last-resort position and is reported as its own basis, because a
+    structural guarantee and an 80%-plus measurement are different claims
+    and a stored row should say which one it rests on.
 
     ``city_hint`` biases the city gazetteer on name collisions
     (Cambridge UK over Cambridge MA), exactly as before.
@@ -206,6 +213,31 @@ def resolve_geo(
             # ``winner`` unset and fall through below to the city layer
             # and then the desk prior, exactly as if nothing had scored
             # at all (#717 whole-branch review, Important 2).
+            #
+            # Before giving up: the story may still name a town, and the
+            # tie is what vets it (#794). Refusing outright discarded 921
+            # rows a week, 429 of which named a city the gazetteer knows —
+            # "9 killed in Kyiv", "Ukrainian forces strike Russia's
+            # Volgograd Oblast". Not knowing which of two countries a
+            # story is *about* is no reason to throw away the one place it
+            # says out loud.
+            #
+            # The city must sit in one of the countries that scored. That
+            # requirement is doing real work, not decoration: it is what
+            # rejects "Pope Leo to visit Uruguay, Argentina and Peru",
+            # where "Leo" is a town in Burkina Faso that no part of the
+            # story named. 359 of the 429 clear it; the 70 that do not
+            # keep the old answer of nothing, which is what they had.
+            tied = city_for(f"{title} {summary}".strip(), country_hint=city_hint)
+            if tied is not None and tied.iso in scores:
+                return GeoVerdict(
+                    iso=tied.iso,
+                    basis="city",
+                    city=tied.name,
+                    lat=tied.lat,
+                    lon=tied.lon,
+                    runner_up=runner_up,
+                )
             return GeoVerdict(iso=None, basis="ambiguous", runner_up=runner_up)
 
     city = (
@@ -247,6 +279,11 @@ def resolve_geo(
 
     if desk_country:
         return GeoVerdict(iso=desk_country.upper(), basis="desk")
+
+    #: After the desk, because a section feed's guarantee is the stronger
+    #: of the two and should win if a feed ever carries both.
+    if domestic_prior:
+        return GeoVerdict(iso=domestic_prior.upper(), basis="domestic")
 
     return GeoVerdict(iso=None, basis="none")
 
