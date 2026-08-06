@@ -149,6 +149,13 @@ def test_desk_country_map_covers_only_country_section_feeds() -> None:
         "rss-bbc-uk": "GB",
         "rss-nation-kenya": "KE",
         "rss-scmp-china": "CN",
+        # City and region desks (#805): the URL *is* that place's section, so
+        # every story in the feed is about that country by construction.
+        "rss-edinburgh-live": "GB",
+        "rss-glasgow-live": "GB",
+        "rss-men-manchester": "GB",
+        "rss-bbc-manchester": "GB",
+        "rss-nation-lahore": "PK",
     }
 
 
@@ -171,3 +178,82 @@ def test_every_desk_country_is_a_valid_iso2() -> None:
 
     for source, iso in desk_country_map().items():
         assert len(iso) == 2 and iso.isupper(), f"{source} has a malformed desk_country"
+
+
+#: The local tier (#805). Ten feeds that report on somewhere in particular,
+#: added because 44 national and world desks produced six positioned rows for
+#: Edinburgh in a week and no ranking change can find stories the corpus does
+#: not hold.
+LOCAL_TIER = (
+    "rss-edinburgh-live",
+    "rss-glasgow-live",
+    "rss-stv-news",
+    "rss-herald-scotland",
+    "rss-scotsman",
+    "rss-men-manchester",
+    "rss-bbc-manchester",
+    "rss-nation-lahore",
+    "rss-capital-fm-kenya",
+    "rss-standard-kenya",
+)
+
+
+def test_local_tier_is_present_and_fetched() -> None:
+    """#805: every local feed is live in the registry, not parked."""
+    enabled = {c.source for c in load_feed_configs(enabled_only=True)}
+    for slug in LOCAL_TIER:
+        assert slug in enabled, f"{slug} missing from the enabled feeds"
+        assert slug in feed_cadence_map(), f"{slug} has no fetch cadence"
+
+
+def test_local_tier_urls_are_the_ones_that_were_measured() -> None:
+    """The desk URL is the point. A masthead-wide feed is a different source
+    with a different rate and a different local share, so pin what was probed."""
+    urls = {c.source: c.url for c in load_feed_configs(enabled_only=True)}
+    assert urls["rss-edinburgh-live"] == (
+        "https://www.edinburghlive.co.uk/news/edinburgh-news/?service=rss"
+    )
+    assert urls["rss-glasgow-live"] == (
+        "https://www.glasgowlive.co.uk/news/glasgow-news/?service=rss"
+    )
+    assert urls["rss-men-manchester"] == (
+        "https://www.manchestereveningnews.co.uk/news/greater-manchester-news/?service=rss"
+    )
+    assert urls["rss-nation-lahore"] == "https://www.nation.com.pk/rss/lahore"
+
+
+def test_local_tier_collapses_to_its_real_owners() -> None:
+    """Three of these feeds are one company. A story carried by all three is
+    one teller, and counting it as three is the #641 independence inflation."""
+    owners = content_owner_map()
+    assert (
+        owners["rss-edinburgh-live"] == owners["rss-glasgow-live"] == owners["rss-men-manchester"]
+    )
+    assert owners["rss-bbc-manchester"] == owners["rss-bbc-uk"]
+    # The Pakistani Nation and the Kenyan Nation share a name and nothing else.
+    assert owners["rss-nation-lahore"] != owners["rss-nation-kenya"]
+    # Everything else in the tier is genuinely separate.
+    separate = {
+        owners[slug]
+        for slug in ("rss-stv-news", "rss-herald-scotland", "rss-scotsman", "rss-capital-fm-kenya")
+    }
+    assert len(separate) == 4
+
+
+def test_whole_outlet_local_feeds_claim_no_unmeasured_prior() -> None:
+    """#796 sets the bar for `domestic_prior` at 80% domestic over a
+    hand-labelled sample of a feed's own uncountried rows. A feed that has
+    never run has no such rows, so it cannot have earned one yet — however
+    Scottish or Kenyan it obviously is."""
+    from app.sources.rss_registry import desk_country_map, domestic_prior_map
+
+    priors, desks = domestic_prior_map(), desk_country_map()
+    for slug in (
+        "rss-stv-news",
+        "rss-herald-scotland",
+        "rss-scotsman",
+        "rss-capital-fm-kenya",
+        "rss-standard-kenya",
+    ):
+        assert slug not in priors, f"{slug} claims a prior nothing has measured"
+        assert slug not in desks, f"{slug} is a masthead feed, not a country section"
