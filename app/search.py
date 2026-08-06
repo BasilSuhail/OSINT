@@ -22,12 +22,19 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.enrichment.country import country_name
+from app.enrichment.name_collision import is_collision
 
 _DATA = Path(__file__).parent / "enrichment" / "data"
 
 #: Shortest query worth running. One character matches half the gazetteer and
 #: every article in the corpus; it is a keystroke, not a question.
 MIN_QUERY_LEN = 2
+
+#: How much wider than the page to fetch when collisions will be filtered out
+#: of it (#800). Three covers the worst case seen — half of Edinburgh's
+#: results were the dukedom — and costs about a millisecond at this index
+#: size, so it is not worth tuning further.
+OVERFETCH = 3
 
 #: Must match `migrations/versions/0027_event_search_index.py` exactly, or
 #: Postgres will not use the GIN index — an expression index is only chosen
@@ -276,6 +283,13 @@ def search_events(
     return [dict(r) for r in rows]
 
 
+def _row_text(row: dict[str, Any]) -> str:
+    """The text a reader would see on this row, for collision checking."""
+    payload = row.get("payload") or {}
+    parts = (payload.get("title"), payload.get("summary"), payload.get("action_label"))
+    return " ".join(str(p) for p in parts if p)
+
+
 def search(session: Session, query: str, *, limit: int = 40) -> SearchResult:
     """Answer a query with places, content, or both.
 
@@ -286,8 +300,29 @@ def search(session: Session, query: str, *, limit: int = 40) -> SearchResult:
     if len(_norm(query)) < MIN_QUERY_LEN:
         return SearchResult()
     places = find_places(query)
+
+    #: A place name is also a title, and full-text cannot tell them apart:
+    #: half of "edinburgh" came back as the Duke and Duchess of Edinburgh
+    #: (#800). Filtered only when the query actually names a place — asking
+    #: for "duke" must still return dukes — and only when every mention in
+    #: a row is a title, so a story about both the duke and the city
+    #: survives.
+    #:
+    #: Fetch wide, filter, then cut to the page. Filtering a page-sized
+    #: fetch silently halved the page: Edinburgh went from forty rows to
+    #: twenty, so removing the noise cost the reader depth. Measured on the
+    #: live index, tripling the fetch costs about a millisecond — edinburgh
+    #: 4.8 ms to 4.5, ceasefire 17.8 to 19.5, amazon 6.9 to 8.2 — so there
+    #: was no trade-off to make.
+    if places:
+        rows = search_events(session, query, limit=limit * OVERFETCH)
+        needle = _norm(query)
+        events = [row for row in rows if not is_collision(_row_text(row), needle)][:limit]
+    else:
+        events = search_events(session, query, limit=limit)
+
     return SearchResult(
         places=places,
-        events=search_events(session, query, limit=limit),
+        events=events,
         ambiguous=len(places) > 1,
     )
