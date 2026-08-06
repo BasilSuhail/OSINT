@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -133,12 +134,28 @@ def _compiled() -> tuple[tuple[re.Pattern[str], Term], ...]:
     return tuple(out)
 
 
+def _fold_accents(text: str) -> str:
+    """Drop combining marks, so an accented spelling matches a plain term.
+
+    An outlet writing its own country's name correctly was the thing this
+    missed: `\\w` is Unicode-aware, so "Türkiye" survived normalisation
+    intact and never lined up with the index's "turkiye" — thirty-three
+    stories in a week, most of them a Turkish outlet naming Türkiye in its
+    own headline, resolved to no country at all (#794).
+
+    Applied to both the haystack and every term, so the two sides always
+    agree and nothing that matched before can stop matching.
+    """
+    return "".join(ch for ch in unicodedata.normalize("NFD", text) if not unicodedata.combining(ch))
+
+
 def _normalise(text: str, *, keep: str = "") -> str:
     """Collapse punctuation to whitespace and whitespace runs to one space.
 
     Applied to both the input text and each term's text before compiling,
     so "Spain's" still hits "spain" and "U.K." (normalised to "U K")
-    lines up with "U.K. forces" (normalised to "U K forces").
+    lines up with "U.K. forces" (normalised to "U K forces"). Accents are
+    folded for the same reason — see ``_fold_accents``.
 
     ``keep`` names characters to leave untouched instead of collapsing to
     whitespace. No term ever contains a comma or '&', so keeping them in
@@ -146,7 +163,7 @@ def _normalise(text: str, *, keep: str = "") -> str:
     information the caller wants (see ``normalise_keeping``).
     """
     pattern = r"[^\w\s" + re.escape(keep) + r"]"
-    collapsed = re.sub(pattern, " ", text)
+    collapsed = re.sub(pattern, " ", _fold_accents(text))
     return re.sub(r"\s+", " ", collapsed).strip()
 
 
