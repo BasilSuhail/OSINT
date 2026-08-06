@@ -118,6 +118,7 @@ class RssFeedConfig:
     #: (BBC /news/uk → GB). Used only as the resolver's last resort. None
     #: for world desks and general national papers. See #717.
     desk_country: str | None = None
+    domestic_prior: str | None = None
 
 
 def _strip_html(text: str) -> str:
@@ -178,6 +179,7 @@ def entry_to_event(
         title,
         summary,
         desk_country=config.desk_country,
+        domestic_prior=config.domestic_prior,
         city_hint=config.default_country,
     )
     country = geo.iso

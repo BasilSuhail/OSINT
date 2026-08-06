@@ -385,3 +385,42 @@ def test_a_passing_mention_of_a_territory_does_not_move_the_pin() -> None:
     verdict = resolve_geo("China unveils new trade policy as Gaza ceasefire holds elsewhere")
     assert verdict.iso == "CN"
     assert verdict.lat is None
+
+
+class TestAccentedSpellings:
+    """`\\w` is Unicode-aware, so an outlet writing its own country's name
+    correctly was the spelling the index could not see (#794)."""
+
+    def test_turkiye_resolves(self) -> None:
+        verdict = resolve_geo("Excavations suggest ritual use at Kef Castle in eastern Türkiye")
+        assert verdict.iso == "TR"
+
+    def test_the_plain_spelling_still_resolves(self) -> None:
+        assert resolve_geo("Turkiye's defence exports rise").iso == "TR"
+
+    def test_accents_elsewhere_do_not_break_the_match(self) -> None:
+        assert resolve_geo("Erdoğan hails Terror-Free Türkiye bill").iso == "TR"
+
+
+class TestAmbiguousStillNamesAPlace:
+    """Two countries tied means we do not know which the story is *about*.
+    It does not mean the story named nowhere (#794)."""
+
+    def test_a_city_inside_the_tie_is_taken(self) -> None:
+        verdict = resolve_geo("'Putin has to be stopped' — 9 killed, dozens injured in Kyiv attack")
+        assert verdict.basis == "city"
+        assert verdict.iso == "UA"
+        assert verdict.city == "Kyiv"
+        assert verdict.lat is not None
+
+    def test_a_city_outside_the_tie_is_refused(self) -> None:
+        """ "Leo" is a town in Burkina Faso. No part of this story named it,
+        and the tie is what proves that."""
+        verdict = resolve_geo("Pope Leo to visit Uruguay, Argentina and Peru in November")
+        assert verdict.basis == "ambiguous"
+        assert verdict.iso is None
+
+    def test_a_tie_with_no_city_still_refuses(self) -> None:
+        verdict = resolve_geo("Pakistan, Iran agree on 24-hour border operations to boost trade")
+        assert verdict.basis == "ambiguous"
+        assert verdict.iso is None
