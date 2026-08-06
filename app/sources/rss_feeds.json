@@ -156,6 +156,7 @@
   {
     "source": "rss-the-hindu",
     "url": "https://www.thehindu.com/news/feeder/default.rss",
+    "domestic_prior": "IN",
     "default_country": "IN",
     "pretty_name": "The Hindu",
     "cadence_min": 60,
@@ -166,6 +167,7 @@
   {
     "source": "rss-tribune-pk",
     "url": "https://tribune.com.pk/feed/latest",
+    "domestic_prior": "PK",
     "default_country": "PK",
     "pretty_name": "Express Tribune",
     "cadence_min": 60,
@@ -256,6 +258,7 @@
   {
     "source": "rss-sabc-news",
     "url": "https://www.sabcnews.com/sabcnews/feed/",
+    "domestic_prior": "ZA",
     "default_country": "ZA",
     "pretty_name": "SABC News",
     "cadence_min": 60,
@@ -317,6 +320,7 @@
   {
     "source": "rss-yonhap-en",
     "url": "https://en.yna.co.kr/RSS/news.xml",
+    "domestic_prior": "KR",
     "default_country": "KR",
     "pretty_name": "Yonhap News English",
     "cadence_min": 60,

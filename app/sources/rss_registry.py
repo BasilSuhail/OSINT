@@ -48,6 +48,7 @@ def load_feed_configs(*, enabled_only: bool = False) -> list[RssFeedConfig]:
                 default_country=entry.get("default_country"),
                 pretty_name=entry["pretty_name"],
                 desk_country=entry.get("desk_country"),
+                domestic_prior=entry.get("domestic_prior"),
             )
         )
     return out
@@ -81,6 +82,56 @@ def outlet_country_map() -> dict[str, str]:
     """
     raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
     return {entry["source"]: entry["country"] for entry in raw}
+
+
+def domestic_prior_map() -> dict[str, str]:
+    """Source slug → the country a feed is *usually* about, ISO2 (#796).
+
+    A weaker claim than ``desk_country``, and deliberately a separate key.
+    ``desk_country`` is structural — the feed URL is that country's section,
+    so every story in it is about that country by construction. This is
+    statistical: a national masthead's general feed, measured to be mostly
+    domestic. Conflating the two would hide which kind of claim a stored
+    row rests on, so the resolver reports them as different bases.
+
+    A feed earns this by measurement, never by looking national. The bar is
+    **at least 80% domestic in a hand-labelled sample of at least twelve of
+    that feed's own uncountried rows** — uncountried, because those are the
+    only rows the prior will ever touch. Sampling what a feed *did* place
+    measures the wrong population: a row gets placed by naming a foreign
+    country, so the placed set over-represents exactly the stories the
+    prior would get wrong.
+
+    Measured against the live table over seven days:
+
+    ==================  ====  ================  ==============
+    feed                home  domestic          uncountried/7d
+    ==================  ====  ================  ==============
+    rss-the-hindu       IN    15 / 15   (100%)             689
+    rss-tribune-pk      PK    10 / 12    (83%)             377
+    rss-sabc-news       ZA    12 / 12   (100%)             135
+    rss-yonhap-en       KR    15 / 15   (100%)              40
+    ------------------  ----  ----------------  --------------
+    rss-antara-en       ID    20 / 30    (67%)              64
+    rss-times-of-india  IN     6 / 12    (50%)             288
+    rss-daily-sabah     TR     5 / 12    (42%)              74
+    rss-geo-english     PK     0 / 12     (0%)             252
+    ==================  ====  ================  ==============
+
+    The four below the line are why the bar exists rather than a rule of
+    thumb about national mastheads. ``geo-english`` is Pakistani, is the
+    third-largest contributor to the gap, and its uncountried tail is an
+    entertainment desk — so the prior would stamp Pakistan on 252 rows a
+    week that have nothing to do with it, which is #166 exactly.
+
+    Like ``desk_country`` this applies only when the text yields no
+    geography at all, and it never produces coordinates: knowing which
+    country a story is about is not knowing where it happened.
+    """
+    raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
+    return {
+        entry["source"]: entry["domestic_prior"] for entry in raw if entry.get("domestic_prior")
+    }
 
 
 def desk_country_map() -> dict[str, str]:
