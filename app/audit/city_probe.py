@@ -31,46 +31,26 @@ a coverage problem no ranking change can fix.
 The headline number is `clean_share`: results left after removing collisions
 and duplicates. It is a ceiling on relevance, never a claim of it — a story
 can be free of all three defects and still not be about the place.
+
+The collision rule itself lives in `app.enrichment.name_collision`, shared
+with the search that drops these rows (#800). That sharing has a cost worth
+stating: once search filters on it, this probe reports zero collisions,
+because it is measuring the output of a filter using the same rule. It
+keeps its value as a regression alarm and for the metrics it does not share
+— duplicates, publishers, rows positioned in the city — but it cannot
+discover a collision class the filter misses. Nothing automatic can.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from math import asin, cos, radians, sin, sqrt
 from typing import Any, Final
 
 from sqlalchemy.orm import Session
 
+from app.enrichment.name_collision import is_collision
 from app.search import search
-
-#: Titles that take "of <Place>" and name a person rather than a place.
-#: "Duke of Edinburgh", "Earl of Wessex", "Bishop of Durham". This is the
-#: same name-collision class as #771's honorifics and #794's "Salinas",
-#: reached through full-text search instead of the resolver.
-_HONORIFICS: Final[tuple[str, ...]] = (
-    "duke",
-    "duchess",
-    "dukes",
-    "earl",
-    "countess",
-    "lord",
-    "lady",
-    "baron",
-    "baroness",
-    "marquess",
-    "viscount",
-    "prince",
-    "princess",
-    "bishop",
-    "archbishop",
-    "sheriff",
-)
-
-#: Named things that borrow a city's name outright. The Duke of Edinburgh's
-#: Award is the one that matters here: "died during Duke of Edinburgh
-#: expedition" happened in Snowdonia.
-_BORROWED: Final[tuple[str, ...]] = ("award", "awards", "scheme", "expedition", "medal")
 
 #: How close a row must sit to count as positioned in the city. Generous on
 #: purpose — this asks "is it in the right place at all", not "is the pin
@@ -99,32 +79,6 @@ def _row_text(row: dict[str, Any]) -> str:
     payload = row.get("payload") or {}
     parts = [payload.get("title"), payload.get("summary"), payload.get("action_label")]
     return " ".join(str(p) for p in parts if p)
-
-
-def is_collision(text: str, term: str) -> bool:
-    """True when every mention of ``term`` is a title or a borrowed name.
-
-    "Every" is the load-bearing word. A story that says both "the Duke of
-    Edinburgh visited" and "in Edinburgh" is about the place, and counting
-    it as noise would trade one wrong number for another.
-    """
-    lowered = text.lower()
-    needle = term.lower()
-    if needle not in lowered:
-        return False
-    titles = "|".join(_HONORIFICS)
-    borrowed = "|".join(_BORROWED)
-    #: "duke of edinburgh", "duke and duchess of edinburgh"
-    as_title = re.compile(
-        rf"\b(?:{titles})\b(?:\s+and\s+\b(?:{titles})\b)?\s+of\s+{re.escape(needle)}\b"
-    )
-    #: "duke of edinburgh's award", and "edinburgh award" without the title
-    as_borrowed = re.compile(rf"\b{re.escape(needle)}(?:'s)?\s+(?:{borrowed})\b")
-    hits = len(re.findall(rf"\b{re.escape(needle)}\b", lowered))
-    if hits == 0:
-        return False
-    covered = len(as_title.findall(lowered)) + len(as_borrowed.findall(lowered))
-    return covered >= hits
 
 
 @dataclass
