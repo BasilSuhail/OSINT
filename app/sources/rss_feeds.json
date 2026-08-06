@@ -448,5 +448,110 @@
     "owner": "consortiumnews",
     "country": "US",
     "class": "independent"
+  },
+  {
+    "source": "rss-edinburgh-live",
+    "url": "https://www.edinburghlive.co.uk/news/edinburgh-news/?service=rss",
+    "desk_country": "GB",
+    "default_country": "GB",
+    "pretty_name": "Edinburgh Live",
+    "cadence_min": 60,
+    "owner": "reach",
+    "country": "GB",
+    "class": "regional"
+  },
+  {
+    "source": "rss-glasgow-live",
+    "url": "https://www.glasgowlive.co.uk/news/glasgow-news/?service=rss",
+    "desk_country": "GB",
+    "default_country": "GB",
+    "pretty_name": "Glasgow Live",
+    "cadence_min": 60,
+    "owner": "reach",
+    "country": "GB",
+    "class": "regional"
+  },
+  {
+    "source": "rss-stv-news",
+    "url": "https://news.stv.tv/feed",
+    "default_country": "GB",
+    "pretty_name": "STV News",
+    "cadence_min": 60,
+    "owner": "stv",
+    "country": "GB",
+    "class": "regional"
+  },
+  {
+    "source": "rss-herald-scotland",
+    "url": "https://www.heraldscotland.com/news/rss/",
+    "default_country": "GB",
+    "pretty_name": "The Herald",
+    "cadence_min": 60,
+    "owner": "newsquest",
+    "country": "GB",
+    "class": "regional"
+  },
+  {
+    "source": "rss-scotsman",
+    "url": "https://www.scotsman.com/news/rss",
+    "default_country": "GB",
+    "pretty_name": "The Scotsman",
+    "cadence_min": 60,
+    "owner": "national-world",
+    "country": "GB",
+    "class": "regional"
+  },
+  {
+    "source": "rss-men-manchester",
+    "url": "https://www.manchestereveningnews.co.uk/news/greater-manchester-news/?service=rss",
+    "desk_country": "GB",
+    "default_country": "GB",
+    "pretty_name": "Manchester Evening News",
+    "cadence_min": 60,
+    "owner": "reach",
+    "country": "GB",
+    "class": "regional"
+  },
+  {
+    "source": "rss-bbc-manchester",
+    "url": "https://www.bbc.co.uk/news/england/manchester/rss.xml",
+    "desk_country": "GB",
+    "default_country": "GB",
+    "pretty_name": "BBC Manchester",
+    "cadence_min": 120,
+    "owner": "bbc",
+    "country": "GB",
+    "class": "mainstream"
+  },
+  {
+    "source": "rss-nation-lahore",
+    "url": "https://www.nation.com.pk/rss/lahore",
+    "desk_country": "PK",
+    "default_country": "PK",
+    "pretty_name": "The Nation Lahore",
+    "cadence_min": 60,
+    "owner": "nawa-i-waqt",
+    "country": "PK",
+    "class": "regional"
+  },
+  {
+    "source": "rss-capital-fm-kenya",
+    "url": "https://www.capitalfm.co.ke/news/feed/",
+    "default_country": "KE",
+    "pretty_name": "Capital FM Kenya",
+    "cadence_min": 60,
+    "owner": "capital-group",
+    "country": "KE",
+    "class": "regional"
+  },
+  {
+    "source": "rss-standard-kenya",
+    "url": "https://www.standardmedia.co.ke/rss/headlines.php",
+    "default_country": "KE",
+    "pretty_name": "The Standard Kenya",
+    "cadence_min": 120,
+    "owner": "standard-group",
+    "country": "KE",
+    "class": "regional"
   }
 ]
