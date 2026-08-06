@@ -213,6 +213,31 @@ def resolve_geo(
             # ``winner`` unset and fall through below to the city layer
             # and then the desk prior, exactly as if nothing had scored
             # at all (#717 whole-branch review, Important 2).
+            #
+            # Before giving up: the story may still name a town, and the
+            # tie is what vets it (#794). Refusing outright discarded 921
+            # rows a week, 429 of which named a city the gazetteer knows —
+            # "9 killed in Kyiv", "Ukrainian forces strike Russia's
+            # Volgograd Oblast". Not knowing which of two countries a
+            # story is *about* is no reason to throw away the one place it
+            # says out loud.
+            #
+            # The city must sit in one of the countries that scored. That
+            # requirement is doing real work, not decoration: it is what
+            # rejects "Pope Leo to visit Uruguay, Argentina and Peru",
+            # where "Leo" is a town in Burkina Faso that no part of the
+            # story named. 359 of the 429 clear it; the 70 that do not
+            # keep the old answer of nothing, which is what they had.
+            tied = city_for(f"{title} {summary}".strip(), country_hint=city_hint)
+            if tied is not None and tied.iso in scores:
+                return GeoVerdict(
+                    iso=tied.iso,
+                    basis="city",
+                    city=tied.name,
+                    lat=tied.lat,
+                    lon=tied.lon,
+                    runner_up=runner_up,
+                )
             return GeoVerdict(iso=None, basis="ambiguous", runner_up=runner_up)
 
     city = (
