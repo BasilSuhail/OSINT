@@ -918,6 +918,12 @@ def _rejection_payload(
 def _with_rejections(
     payload: dict[str, Any], rejections: tuple[PlaceCandidateRejection, ...]
 ) -> dict[str, Any]:
+    #: Last gate before a payload is stored: a `place` basis that cannot name
+    #: its location is demoted here rather than becoming a row nobody can
+    #: question (#756). No writer produces that state today — a migration left
+    #: one behind — so this exists to keep it unrepresentable rather than to
+    #: repair a live defect.
+    payload = without_unbacked_place(payload)
     if not rejections:
         return payload
     payload["place_rejections"] = [
@@ -1529,3 +1535,46 @@ def enrich_news_places(
             )
         )
     return stats
+
+
+#: The evidence `geo_basis='place'` claims: at least one verified location on
+#: the row itself. A basis is a statement about why a coordinate is there, so a
+#: row that cannot show the statement must not make it (#756).
+PLACE_EVIDENCE_FIELD = "place_locations"
+
+
+def place_evidence_holds(payload: dict[str, Any]) -> bool:
+    """Does this payload back the basis it claims?
+
+    Only `place` is interrogated. Every other basis names evidence that lives
+    elsewhere — a gazetteer hit, a term match, a feed's own desk — and asking
+    those for a verified location would reject rows that are perfectly honest.
+
+    `place_locations` is the authority rather than `place_verified_count`: the
+    count is a summary of the list, and a summary cannot outvote the thing it
+    summarises. The row that prompted this carried a count of zero *and* an
+    empty list, but a migration that updated one and not the other is exactly
+    the failure mode to design against.
+    """
+    if str(payload.get("geo_basis") or "") != "place":
+        return True
+    locations = payload.get(PLACE_EVIDENCE_FIELD)
+    return isinstance(locations, list) and len(locations) > 0
+
+
+def without_unbacked_place(payload: dict[str, Any]) -> dict[str, Any]:
+    """Strip a `place` basis the payload cannot support, keeping everything else.
+
+    The demotion is recorded rather than silent: `place_demoted` says why the
+    basis went, so a row that lost its point can be told apart from one that
+    never had a place claim. The country stays — losing the building is not
+    losing the story, and it must remain reachable by clicking the country.
+    """
+    if place_evidence_holds(payload):
+        return payload
+    demoted = dict(payload)
+    demoted["geo_basis"] = "city" if demoted.get("city") else "none"
+    demoted["place_demoted"] = "no_verified_location"
+    for field in ("place_name", "place_wikidata_id", "place_description", "geo_source"):
+        demoted.pop(field, None)
+    return demoted

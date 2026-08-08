@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.audit import checks, expectations
 from app.audit.stats import SourceStats
 from app.db_models import EventRow
+from app.enrichment.place import PLACE_EVIDENCE_FIELD
 
 #: The composite's own category filter, restated rather than imported.
 #: Deliberate: this check must fail when the composite's filter and a source's
@@ -105,6 +106,23 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
+def _unbacked_place_rows(session: Session) -> dict[str, int]:
+    """{source: rows} claiming `geo_basis='place'` with no verified location.
+
+    Evaluated in Python over the place-basis rows only: the JSON array test
+    differs between SQLite and Postgres, the set is small (hundreds), and one
+    expression that works on both beats two that drift.
+    """
+    basis = EventRow.payload["geo_basis"].as_string()
+    rows = session.execute(select(EventRow.source, EventRow.payload).where(basis == "place")).all()
+    counts: dict[str, int] = defaultdict(int)
+    for source, payload in rows:
+        locations = (payload or {}).get(PLACE_EVIDENCE_FIELD)
+        if not isinstance(locations, list) or not locations:
+            counts[source] += 1
+    return dict(counts)
+
+
 def audit_detail(
     session: Session, *, now: datetime | None = None
 ) -> tuple[list[checks.Finding], int]:
@@ -130,6 +148,13 @@ def audit_detail(
             )
             continue
         findings.extend(checks.run_all(source_stats, expectation, now=moment))
+
+    # Table-wide rather than per-source: the invariant is about what a row may
+    # claim, and a source with no place rows has nothing to answer for (#756).
+    for source, unbacked in sorted(_unbacked_place_rows(session).items()):
+        finding = checks.check_place_evidence(source, unbacked)
+        if finding is not None:
+            findings.append(finding)
     return findings, len(stats)
 
 
