@@ -41,3 +41,18 @@ def db_session() -> Iterator[Session]:
     finally:
         session.close()
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _reset_inference_limiter():
+    """Each test starts with the inference budget untouched (#824).
+
+    The limiter is deliberately process-global — one API process, no Redis
+    round trip on the path that protects it — so the suite has to clear it
+    rather than share one minute's budget across every file.
+    """
+    from app.api_auth import ask_limiter
+
+    ask_limiter.reset()
+    yield
+    ask_limiter.reset()

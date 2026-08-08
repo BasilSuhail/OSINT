@@ -20,6 +20,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app import api_auth
+from app.api_auth import limit_inference, require_token
 from app.article_collapse import collapse_article_relations
 from app.brain import client, context, deepread, enrich, gate, qa
 from app.composite import degeneracy as composite_degeneracy
@@ -48,7 +50,10 @@ from app.readable_claim import has_readable_claim
 from app.settings import settings
 from app.stories import developing
 
-app = FastAPI(title="OSINT local API", version="1.0")
+#: Applied to every route rather than decorated per endpoint: a check that has
+#: to be remembered is a check that will be forgotten on the next route (#824).
+app = FastAPI(title="OSINT local API", version="1.0", dependencies=[Depends(require_token)])
+api_auth.log_exposure()
 app.state.event_source = subscribe_new_events
 API_MAX_LIMIT = settings.api_max_limit
 API_DEFAULT_LIMIT = min(settings.api_default_limit, API_MAX_LIMIT)
@@ -1423,7 +1428,11 @@ def _sse(event: str, data: dict) -> str:
 
 
 @app.post("/brain/ask")
-def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
+def brain_ask(
+    req: AskRequest,
+    session: Session = Depends(get_session),
+    _limit: None = Depends(limit_inference),
+) -> dict:
     """Answer a question grounded in the live data (#411).
 
     User-initiated and synchronous, so it does NOT back off on every running job
@@ -1498,7 +1507,11 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
 
 
 @app.post("/brain/ask/stream")
-def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -> StreamingResponse:
+def brain_ask_stream(
+    req: AskRequest,
+    session: Session = Depends(get_session),
+    _limit: None = Depends(limit_inference),
+) -> StreamingResponse:
     """Stream ask-the-brain answer chunks, then a citation-checked final answer."""
 
     def gen() -> Iterator[str]:

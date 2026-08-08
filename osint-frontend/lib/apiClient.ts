@@ -2,6 +2,23 @@ import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "./t
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
+/** Shared secret the API requires when one is configured (#824). Empty in a
+ *  development stack, where the API is open and says so at startup. */
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? ""
+
+/** Every request to the API goes through here.
+ *
+ * A header the caller has to remember is a header somebody will forget on the
+ * next endpoint, and the failure mode is a panel that silently 401s. */
+export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  if (!API_TOKEN) return fetch(input, init)
+  const headers = new Headers(init.headers)
+  headers.set("X-API-Key", API_TOKEN)
+  return fetch(input, { ...init, headers })
+}
+
+
+
 function intEnv(raw: string | undefined, fallback: number, min: number, max: number): number {
   if (!raw) return fallback
   const parsed = Number.parseInt(raw, 10)
@@ -63,7 +80,7 @@ export async function fetchEvents(
   if (params.exclude?.length) qs.set("exclude", params.exclude.join(","))
   if (params.limit != null) qs.set("limit", String(params.limit))
   const q = qs.toString()
-  const res = await fetch(`${API_BASE}/events${q ? `?${q}` : ""}`, {
+  const res = await apiFetch(`${API_BASE}/events${q ? `?${q}` : ""}`, {
     signal: options.signal,
   })
   if (!res.ok) throw new Error(`GET /events ${res.status}`)
@@ -142,7 +159,7 @@ export interface EventStats {
 }
 
 export async function fetchEventStats(days = 30): Promise<EventStats> {
-  const res = await fetch(`${API_BASE}/events/stats?days=${days}`)
+  const res = await apiFetch(`${API_BASE}/events/stats?days=${days}`)
   if (!res.ok) throw new Error(`GET /events/stats ${res.status}`)
   return (await res.json()) as EventStats
 }
@@ -162,25 +179,30 @@ export async function fetchScores(params: number | ScoreQuery = CLIENT_LIMITS.sc
   if (query.country) qs.set("country", query.country)
   if (query.limit != null) qs.set("limit", String(query.limit))
   const q = qs.toString()
-  const res = await fetch(`${API_BASE}/scores${q ? `?${q}` : ""}`)
+  const res = await apiFetch(`${API_BASE}/scores${q ? `?${q}` : ""}`)
   if (!res.ok) throw new Error(`GET /scores ${res.status}`)
   return (await res.json()) as ScoreRow[]
 }
 
 export async function fetchIngestHealth(days = 7): Promise<IngestHealthRow[]> {
-  const res = await fetch(`${API_BASE}/ingest-health?days=${days}`)
+  const res = await apiFetch(`${API_BASE}/ingest-health?days=${days}`)
   if (!res.ok) throw new Error(`GET /ingest-health ${res.status}`)
   return (await res.json()) as IngestHealthRow[]
 }
 
 export async function fetchSourceCoverage(days = 30): Promise<SourceCoverageRow[]> {
-  const res = await fetch(`${API_BASE}/events/coverage?days=${days}`)
+  const res = await apiFetch(`${API_BASE}/events/coverage?days=${days}`)
   if (!res.ok) throw new Error(`GET /events/coverage ${res.status}`)
   return (await res.json()) as SourceCoverageRow[]
 }
 
 export function streamUrl(): string {
-  return `${API_BASE}/stream`
+  const url = `${API_BASE}/stream`
+  // EventSource cannot send headers, so the stream carries its credential in
+  // the query string (#824). Stated rather than hidden: a token in a URL can
+  // reach a proxy log, which is why the API accepts one this way on this
+  // read-only endpoint and nowhere else.
+  return API_TOKEN ? `${url}?token=${encodeURIComponent(API_TOKEN)}` : url
 }
 
 export interface BrainNarrative {
@@ -196,7 +218,7 @@ export interface BrainNarrative {
 }
 
 export async function fetchBrainNarrative(): Promise<BrainNarrative> {
-  const res = await fetch(`${API_BASE}/brain/narrative/latest`)
+  const res = await apiFetch(`${API_BASE}/brain/narrative/latest`)
   if (!res.ok) throw new Error(`brain narrative ${res.status}`)
   return (await res.json()) as BrainNarrative
 }
@@ -250,7 +272,7 @@ export async function fetchBrainAsk(
   question: string,
   history: AskExchange[] = [],
 ): Promise<BrainAsk> {
-  const res = await fetch(`${API_BASE}/brain/ask`, {
+  const res = await apiFetch(`${API_BASE}/brain/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, history }),
@@ -280,7 +302,7 @@ export async function streamBrainAsk(
   handlers: BrainAskStreamHandlers = {},
   history: AskExchange[] = [],
 ): Promise<BrainAsk> {
-  const res = await fetch(`${API_BASE}/brain/ask/stream`, {
+  const res = await apiFetch(`${API_BASE}/brain/ask/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, history }),
@@ -352,7 +374,7 @@ export async function fetchSearch(
 ): Promise<SearchResponse> {
   const qs = new URLSearchParams({ q })
   if (options.limit) qs.set("limit", String(options.limit))
-  const res = await fetch(`${API_BASE}/search?${qs.toString()}`, { signal: options.signal })
+  const res = await apiFetch(`${API_BASE}/search?${qs.toString()}`, { signal: options.signal })
   if (!res.ok) throw new Error(`search failed: ${res.status}`)
   return (await res.json()) as SearchResponse
 }
