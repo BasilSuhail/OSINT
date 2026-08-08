@@ -5,6 +5,7 @@ import { ExternalLink, X } from "lucide-react"
 import { useCountryEvents, useLatestScores } from "@/lib/queries"
 import { colorForEvent, scoreTextColor, type EventRow } from "@/lib/types"
 import { machineAction, publisherOf } from "@/lib/eventLabel"
+import { PRECISION_LABEL, precisionOf } from "@/lib/precision"
 import { cn } from "@/lib/utils"
 
 const regionNames =
@@ -77,11 +78,17 @@ function EventRowItem({ ev }: { ev: EventRow }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-neutral-300">{title}</span>
-        {/* Who published it, and — kept visibly apart — the action GDELT's
-            coder assigned. A marker showing only "Coerce" explained nothing
-            about what happened (#768). */}
+        {/* Three separable facts, kept visibly apart: who published it, the
+            action GDELT's coder assigned — a marker showing only "Coerce"
+            explained nothing about what happened (#768) — and what the
+            coordinate is actually claiming, since a city centroid and a
+            verified venue used to read identically (#773). */}
         <span className="block truncate font-mono text-[9px] uppercase tracking-wider text-neutral-600">
-          {[publisherOf(ev) ?? ev.source, machineAction(ev) && `coded ${machineAction(ev)}`]
+          {[
+            publisherOf(ev) ?? ev.source,
+            machineAction(ev) && `coded ${machineAction(ev)}`,
+            precisionOf(ev) !== "unknown" && PRECISION_LABEL[precisionOf(ev)],
+          ]
             .filter(Boolean)
             .join(" · ")}
         </span>

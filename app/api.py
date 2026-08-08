@@ -43,6 +43,7 @@ from app.db_models import (
 )
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
+from app.location_precision import precision_of, radius_m
 from app.paths import exports_dir
 from app.publisher import publisher_for
 from app.readable_claim import has_readable_claim
@@ -76,6 +77,9 @@ def get_session() -> Iterator[Session]:
 
 
 def _event_dict(row: EventRow) -> dict:
+    precision = precision_of(
+        row.source, row.payload, positioned=row.lat is not None and row.lon is not None
+    )
     updated_at = row.updated_at
     if updated_at is not None and updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=UTC)
@@ -98,6 +102,11 @@ def _event_dict(row: EventRow) -> dict:
         #: Who to credit (#768). A feed's registered name, a GDELT article's
         #: domain, and None for an instrument reading, which nobody published.
         "publisher": publisher_for(row.source, row.payload),
+        #: How big the coordinate's claim is (#773). A verified venue and a
+        #: city centroid were drawn identically; the row always knew which it
+        #: was and nothing downstream read it.
+        "location_precision": precision,
+        "location_radius_m": radius_m(precision),
         "payload": row.payload,
     }
 

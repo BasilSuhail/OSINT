@@ -83,10 +83,23 @@ function timestampAfter(candidate: string, current: string): boolean {
   )
 }
 
-function retentionTimeMs(row: EventRow): number {
+/** How much a row deserves its place when the buffer is full.
+ *
+ * The newer of event time and durable revision, so a story enriched a moment
+ * ago survives a buffer full of newer events — that is the behaviour #763
+ * added and it must stay.
+ *
+ * The revision only counts when this client actually saw it happen (#764).
+ * Migration 0026 stamped 1,489,591 rows with one revision, and the live table
+ * still carries that tie today. Under a plain `max()` every one of those
+ * ancient rows scores as though it were revised at migration time, outranking
+ * genuinely recent events and evicting them under the buffer cap. A bulk stamp
+ * is evidence that a million rows were touched at once, not evidence that any
+ * of them is fresh. */
+function retentionTimeMs(row: EventRow, seenFromMs: number): number {
   const occurredMs = validTimeMs(row.occurred_at) ?? Number.NEGATIVE_INFINITY
   const updateMs = validTimeMs(eventUpdateStamp(row)) ?? Number.NEGATIVE_INFINITY
-  return Math.max(occurredMs, updateMs)
+  return Math.max(occurredMs, updateMs >= seenFromMs ? updateMs : Number.NEGATIVE_INFINITY)
 }
 
 /** High-volume feeds kept OUT of the main firehose so they can't saturate the
@@ -116,6 +129,9 @@ export const FIREHOSE_EXCLUDE = [
  * so the dashboard catches up to anything that landed during any outage.
  */
 export class EventBuffer {
+  /** When this client started watching. A revision older than this happened
+   *  before anyone was looking, so it cannot be a live enrichment (#764). */
+  private readonly startedAtMs: number = Date.now()
   private events: EventRow[] = []
   private byId = new Map<string, EventRow>()
   private revisions = new Map<string, string>()
@@ -175,7 +191,10 @@ export class EventBuffer {
       // published snapshot remains ordered by the event's actual occurrence.
       this.events.sort((a, b) => {
         const protectedOrder = Number(retainIds.has(b.id)) - Number(retainIds.has(a.id))
-        return protectedOrder || retentionTimeMs(b) - retentionTimeMs(a)
+        return (
+          protectedOrder ||
+          retentionTimeMs(b, this.startedAtMs) - retentionTimeMs(a, this.startedAtMs)
+        )
       })
       const removed = this.events.splice(MAX_EVENTS)
       for (const r of removed) {
