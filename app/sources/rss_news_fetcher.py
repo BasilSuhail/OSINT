@@ -48,6 +48,7 @@ from typing import Any, Final
 import feedparser
 import httpx
 
+from app.enrichment import translation
 from app.enrichment.geo import GEO_METHOD_VERSION, resolve_geo, resolved_news_scope
 from app.enrichment.ner import (
     NER_METHOD_VERSION,
@@ -119,6 +120,11 @@ class RssFeedConfig:
     #: for world desks and general national papers. See #717.
     desk_country: str | None = None
     domestic_prior: str | None = None
+    #: What this desk publishes in. Anything but English routes the headline
+    #: through translation before geo, severity and clustering see it — all of
+    #: which are Latin-script only, so an Arabic desk resolved 0 of 25 rows
+    #: before this existed (#835).
+    language: str = "en"
 
 
 def _strip_html(text: str) -> str:
@@ -144,6 +150,19 @@ def _parse_published(entry: dict[str, Any]) -> datetime | None:
     return None
 
 
+def translate_text(prompt: str, *, model: str) -> str | None:
+    """One prompt → the model's plain-text answer, or None.
+
+    Kept here rather than in `app.enrichment.translation` so that module stays
+    free of transport and every rule in it is testable without a network. The
+    brain's client already owns talking to Ollama; this is the thin adapter
+    between its signature and the injected `generate` the translator expects.
+    """
+    from app.brain import client
+
+    return client.generate_plain(prompt, model=model)
+
+
 def entry_to_event(
     entry: dict[str, Any], *, config: RssFeedConfig, fetched_at: datetime
 ) -> Event | None:
@@ -155,6 +174,21 @@ def entry_to_event(
     raw_summary = entry.get("summary") or entry.get("description") or ""
     summary = _strip_html(raw_summary) if raw_summary else ""
     image_url = _extract_image_url(entry, raw_summary)
+
+    # Translate before anything reads the words (#835). The severity keywords,
+    # the geo resolver and the story tokenizer are all English, so a desk that
+    # publishes in Arabic resolved 0 of 25 rows to a country and scored one
+    # constant severity. The original is kept verbatim in the payload; a
+    # failure keeps the original headline and records the attempt.
+    translated = translation.apply(
+        {"title": title},
+        declared_language=config.language,
+        generate=translate_text,
+    )
+    title = str(translated.get("title") or title)
+    translation_fields = {
+        key: translated[key] for key in ("title_original", "title_translation") if key in translated
+    }
 
     published_at = _parse_published(entry)
     occurred_at = published_at or fetched_at
@@ -211,6 +245,7 @@ def entry_to_event(
         "published_from_feed": published_at is not None,
         "guid": guid or None,
         "city": geo.city,
+        **translation_fields,
         "geo_basis": geo.basis,
         "image_url": image_url,
         "sentiment": sentiment.compound if sentiment else None,
