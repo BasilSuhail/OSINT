@@ -39,10 +39,11 @@ from app.enrichment.geo_terms import (
     normalise_keeping,
     region_point_for,
 )
+from app.enrichment.name_collision import is_collision
 
 #: Bumped with any change to weights, margin, or layer order. Stamped into
 #: payload.enrichment_meta so a re-run can be told apart from an old row.
-GEO_METHOD_VERSION: str = "geo.terms.v1.1"
+GEO_METHOD_VERSION: str = "geo.terms.v1.2"
 
 #: Score per term class when the match is in the title.
 TITLE_WEIGHTS: dict[TermClass, float] = {"name": 3.0, "abbrev": 3.0, "region": 2.0}
@@ -161,6 +162,28 @@ def _score(title: str, summary: str) -> dict[str, float]:
     return scores
 
 
+def _place_for(text: str, *, country_hint: str | None):
+    """The city this text names, refusing the ones that are not places (#771).
+
+    A gazetteer name inside a peerage, an award or a scheme is a person or a
+    thing, not a location: "Duchess of York" put a story on York,
+    Pennsylvania, and "Duke of Edinburgh expedition" put one on a capital the
+    expedition never went near. The predicate is `name_collision.is_collision`,
+    shared with the search that drops the same rows (#800), because two copies
+    of this rule would drift apart and one of them would be wrong.
+
+    The refusal is narrow on purpose. A story saying both "the Duke of
+    Edinburgh" and "in Edinburgh" is about the place, and `is_collision`
+    requires *every* mention to be a title before it says so.
+    """
+    if not text:
+        return None
+    hit = city_for(text, country_hint=country_hint)
+    if hit is not None and is_collision(text, hit.name):
+        return None
+    return hit
+
+
 @lru_cache(maxsize=8192)
 def resolve_geo(
     title: str,
@@ -228,7 +251,7 @@ def resolve_geo(
             # where "Leo" is a town in Burkina Faso that no part of the
             # story named. 359 of the 429 clear it; the 70 that do not
             # keep the old answer of nothing, which is what they had.
-            tied = city_for(f"{title} {summary}".strip(), country_hint=city_hint)
+            tied = _place_for(f"{title} {summary}".strip(), country_hint=city_hint)
             if tied is not None and tied.iso in scores:
                 return GeoVerdict(
                     iso=tied.iso,
@@ -241,7 +264,7 @@ def resolve_geo(
             return GeoVerdict(iso=None, basis="ambiguous", runner_up=runner_up)
 
     city = (
-        city_for(f"{title} {summary}".strip(), country_hint=city_hint)
+        _place_for(f"{title} {summary}".strip(), country_hint=city_hint)
         if (title or summary)
         else None
     )
