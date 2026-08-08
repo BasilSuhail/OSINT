@@ -10,6 +10,7 @@ import json
 from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import sqlalchemy as sa
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.article_collapse import collapse_article_relations
 from app.brain import client, context, deepread, enrich, gate, qa
 from app.composite import degeneracy as composite_degeneracy
 from app.db import get_session_factory
@@ -322,6 +324,7 @@ def events(
     sources: str | None = Query(default=None),
     exclude: str | None = Query(default=None),
     country: str | None = Query(default=None),
+    collapse: bool = Query(default=True),
     limit: int = Query(default=API_DEFAULT_LIMIT, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
     bbox = (west, south, east, north)
@@ -422,14 +425,28 @@ def events(
                     ),
                 )
             )
+    # One GDELT article arrives as one row per actor pairing, so a list shows
+    # the same headline three times (#772). Collapse before the limit: a page
+    # thinned afterwards is a short page, and `fetchAllEventPages` reads a
+    # short page as the end of the data.
+    row_source: Any = EventRow
+    if collapse:
+        row_source, relation_count, survivor = collapse_article_relations(stmt)
+        stmt = select(row_source).add_columns(relation_count).where(survivor)
+
     # Incremental consumers advance a high-water mark. Oldest-first prevents a
     # burst larger than `limit` from skipping the middle when that mark moves.
     if updated_since is not None:
-        stmt = stmt.order_by(EventRow.updated_at.asc(), EventRow.id.asc())
+        stmt = stmt.order_by(row_source.updated_at.asc(), row_source.id.asc())
     else:
-        stmt = stmt.order_by(EventRow.occurred_at.desc(), EventRow.id.desc())
+        stmt = stmt.order_by(row_source.occurred_at.desc(), row_source.id.desc())
     stmt = stmt.limit(limit)
-    return [_event_dict(r) for r in session.execute(stmt).scalars()]
+    if not collapse:
+        return [_event_dict(r) | {"relation_count": 1} for r in session.execute(stmt).scalars()]
+    return [
+        _event_dict(row) | {"relation_count": int(relations)}
+        for row, relations in session.execute(stmt).all()
+    ]
 
 
 @app.get("/search")

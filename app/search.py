@@ -21,6 +21,7 @@ from typing import Any, Literal
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.article_collapse import ARTICLE_KEY_SQL, SURVIVOR_ORDER_SQL
 from app.enrichment.country import country_name
 from app.enrichment.name_collision import is_collision
 
@@ -269,18 +270,28 @@ def search_events(
 
     sql = text(
         f"""
-        SELECT id, source, source_event_id, category, severity, country,
-               lat, lon, occurred_at, fetched_at, keywords, payload,
-               ts_rank_cd({SEARCH_VECTOR_SQL}, plainto_tsquery('english', :q)) AS rank
-        FROM events
-        WHERE occurred_at > now() - make_interval(days => :days)
-          AND {SEARCH_VECTOR_SQL} @@ plainto_tsquery('english', :q)
+        SELECT * FROM (
+            SELECT id, source, source_event_id, category, severity, country,
+                   lat, lon, occurred_at, fetched_at, keywords, payload,
+                   ts_rank_cd({SEARCH_VECTOR_SQL}, plainto_tsquery('english', :q)) AS rank,
+                   row_number() OVER (
+                       PARTITION BY {ARTICLE_KEY_SQL}
+                       ORDER BY {SURVIVOR_ORDER_SQL}
+                   ) AS relation_rank,
+                   count(*) OVER (PARTITION BY {ARTICLE_KEY_SQL}) AS relation_count
+            FROM events
+            WHERE occurred_at > now() - make_interval(days => :days)
+              AND {SEARCH_VECTOR_SQL} @@ plainto_tsquery('english', :q)
+        ) matches
+        WHERE relation_rank = 1
         ORDER BY rank DESC, occurred_at DESC
         LIMIT :limit
         """
     )
     rows = session.execute(sql, {"q": q, "days": days, "limit": limit}).mappings().all()
-    return [dict(r) for r in rows]
+    # `relation_rank` is scaffolding for the collapse; `relation_count` is the
+    # part a reader could want to know, so only the second one travels.
+    return [{k: v for k, v in row.items() if k != "relation_rank"} for row in rows]
 
 
 def _row_text(row: dict[str, Any]) -> str:
