@@ -96,7 +96,14 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
     except Exception as exc:
         with session_scope() as session:
             _record_failure(session, source=name, exc=exc)
-            quarantined = quarantine.record_failure(session, source=name, exc=exc)
+            quarantined = quarantine.record_failure(
+                session,
+                source=name,
+                exc=exc,
+                # A time-addressed source answering 404 has not died; its next
+                # file has not been published yet (#808).
+                stable_urls=getattr(fetcher, "stable_urls", True),
+            )
             detail = quarantined.detail if quarantined is not None else None
             retry_at = quarantined.retry_after.isoformat() if quarantined is not None else None
         if detail is not None:

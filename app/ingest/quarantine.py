@@ -31,6 +31,11 @@ Kind = Literal["permanent", "throttled"]
 #: The resource is gone, forbidden, or was never there. Time does not help.
 PERMANENT_STATUSES: frozenset[int] = frozenset({401, 403, 404, 410})
 
+#: The subset of those that say "nothing is here" rather than "you may not
+#: have it". Only these can mean "not published yet", and only for a source
+#: whose URLs are time-addressed (#808).
+ABSENCE_STATUSES: frozenset[int] = frozenset({404, 410})
+
 #: A real "later" rather than a "never".
 THROTTLED_STATUS: int = 429
 
@@ -57,12 +62,29 @@ MAX_BACKOFF: timedelta = timedelta(days=7)
 DETAIL_MAX_CHARS = 300
 
 
-def classify(exc: BaseException) -> Kind | None:
-    """Which quarantine a failure earns, or None to leave it transient."""
+def classify(exc: BaseException, *, stable_urls: bool = True) -> Kind | None:
+    """Which quarantine a failure earns, or None to leave it transient.
+
+    `stable_urls` is the fetcher's answer to "does this URL name the same
+    resource every time?". For every RSS feed and every API endpoint here it
+    does, and a 404 is then a fact that will still be true in an hour.
+
+    GDELT's export URL names the fifteen-minute window it covers, so it is a
+    different object each time. A 404 there means *not published yet* — a
+    statement about the moment, which is the category this module was written
+    to separate out. Treating it as permanent parked the largest feed in the
+    system for an hour on 2026-08-08, over a file that answered 200 minutes
+    later (#808).
+
+    Being unauthorised or forbidden stays permanent regardless: that is a fact
+    about the resource however it is addressed.
+    """
     if not isinstance(exc, httpx.HTTPStatusError):
         return None
     status = exc.response.status_code
     if status in PERMANENT_STATUSES:
+        if not stable_urls and status in ABSENCE_STATUSES:
+            return None
         return "permanent"
     if status == THROTTLED_STATUS:
         return "throttled"
@@ -90,13 +112,18 @@ def _retry_after_delta(exc: BaseException) -> timedelta | None:
 
 
 def record_failure(
-    session: Session, *, source: str, exc: BaseException, now: datetime | None = None
+    session: Session,
+    *,
+    source: str,
+    exc: BaseException,
+    now: datetime | None = None,
+    stable_urls: bool = True,
 ) -> SourceQuarantineRow | None:
     """Quarantine `source` if this failure earns it. Returns the row, or None.
 
     Transient faults are left entirely alone: Celery's retries exist for them.
     """
-    kind = classify(exc)
+    kind = classify(exc, stable_urls=stable_urls)
     if kind is None:
         return None
 
