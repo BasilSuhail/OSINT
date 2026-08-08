@@ -124,15 +124,28 @@ def check_severity_absent_but_present(
 
 
 def check_country_coverage(stats: SourceStats, expectation: Expectation) -> Finding | None:
+    """Does this source resolve countries as well as it declared it would?
+
+    The bar is per source (#827). At the strict shared default this fired on
+    45 of 46 news feeds every night, because no feed can reach 0.99 and none
+    should: #717 measured that roughly 41% of news names no country, and
+    established that such a row must stay null rather than be given one it
+    cannot support. The check was demanding the behaviour the resolver exists
+    to refuse, and burying the findings that meant something.
+
+    A floor is not a mute button — below it the check still fails, which is
+    what catches a resolver that has actually stopped working.
+    """
     if expectation.country != "required":
         return None
-    if stats.country_coverage >= MIN_COVERAGE:
+    floor = expectation.country_coverage_floor or MIN_COVERAGE
+    if stats.country_coverage >= floor:
         return None
     return Finding(
         stats.source,
         "country_coverage",
         f"declares country required but only {stats.country_present:,}/{stats.rows:,} rows "
-        f"carry one ({_pct(stats.country_coverage)})",
+        f"carry one ({_pct(stats.country_coverage)}, floor {_pct(floor)})",
     )
 
 
