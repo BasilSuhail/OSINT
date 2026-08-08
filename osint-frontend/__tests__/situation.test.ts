@@ -293,9 +293,9 @@ describe("askHistory", () => {
       finalized("q4", "a4"),
     ]
     expect(askHistory(messages)).toEqual([
-      { question: "q2", answer: "a2" },
-      { question: "q3", answer: "a3" },
-      { question: "q4", answer: "a4" },
+      { question: "q2", answer: "a2", story_ids: [] },
+      { question: "q3", answer: "a3", story_ids: [] },
+      { question: "q4", answer: "a4", story_ids: [] },
     ])
   })
 
@@ -305,7 +305,9 @@ describe("askHistory", () => {
       msg({ question: "failed", answer: OFFLINE_ANSWER }),
       msg({ question: "typing", answer: "partial", draft: true }),
     ]
-    expect(askHistory(messages)).toEqual([{ question: "good", answer: "real answer" }])
+    expect(askHistory(messages)).toEqual([
+      { question: "good", answer: "real answer", story_ids: [] },
+    ])
   })
 
   it("truncates long answers", () => {
