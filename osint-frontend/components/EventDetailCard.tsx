@@ -9,6 +9,7 @@ import {
   type MarkerLocationContext,
 } from "@/lib/locationProvenance"
 import { eventHeadline } from "@/lib/eventTitle"
+import { translationLabel, translationNotice } from "@/lib/translationNotice"
 import { colorForEvent, type EventRow } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { SourceSignals } from "./SourceSignals"
@@ -240,6 +241,7 @@ export function EventDetailCard({
   const [payloadOpen, setPayloadOpen] = useState(false)
   const color = colorForEvent(event)
   const title = bestTitle(event)
+  const translation = translationNotice(event)
   const url = bestSourceUrl(event)
   const flag = countryFlagEmoji(event.country)
   const sev = typeof event.severity === "number" ? event.severity : 0
@@ -292,6 +294,28 @@ export function EventDetailCard({
       <p className="mt-2 line-clamp-3 text-[13px] font-medium text-neutral-100" title={title}>
         {title}
       </p>
+
+      {/* A translated headline is not the publisher's wording (#837). On the
+          card there is room for the words themselves, so the original is shown
+          rather than hidden in a tooltip — a reader of the source language can
+          check the claim without leaving the row. */}
+      {translation && (
+        <div className="mt-1.5 rounded-sm border border-amber-400/20 bg-amber-400/5 px-2 py-1">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-amber-300/90">
+            {translationLabel(translation)}
+            {translation.model ? ` · ${translation.model}` : ""}
+          </p>
+          {translation.original ? (
+            <p className="mt-0.5 text-[12px] text-neutral-300" dir="auto">
+              {translation.original}
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[11px] text-neutral-400">
+              Shown in its original language — these are the publisher&apos;s own words.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Severity bar */}
       <div className="mt-2 flex items-center gap-2">
