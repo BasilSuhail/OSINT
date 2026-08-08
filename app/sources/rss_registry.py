@@ -49,6 +49,7 @@ def load_feed_configs(*, enabled_only: bool = False) -> list[RssFeedConfig]:
                 pretty_name=entry["pretty_name"],
                 desk_country=entry.get("desk_country"),
                 domestic_prior=entry.get("domestic_prior"),
+                language=entry.get("language") or "en",
             )
         )
     return out
