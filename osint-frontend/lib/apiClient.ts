@@ -241,6 +241,9 @@ export interface BrainAsk {
 export interface AskExchange {
   question: string
   answer: string
+  /** Stories cited in this turn (#813). "What else?" can only be answered with
+   *  something else if the server knows what was already shown. */
+  story_ids: number[]
 }
 
 export async function fetchBrainAsk(
