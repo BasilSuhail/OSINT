@@ -188,7 +188,9 @@ def test_gdelt_rows_without_an_article_url_are_left_alone(db_session):
                 keywords=[],
                 lat=55.95,
                 lon=-3.2,
-                payload={"event_root_code": "17"},
+                # A headline, because #810 filters rows a reader cannot read
+                # and this test is about provenance, not about titles.
+                payload={"event_root_code": "17", "title": f"Story {n}"},
             )
             for n in range(3)
         ]

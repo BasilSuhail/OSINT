@@ -42,6 +42,7 @@ from app.db_models import (
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
 from app.paths import exports_dir
+from app.readable_claim import has_readable_claim
 from app.settings import settings
 from app.stories import developing
 
@@ -325,6 +326,7 @@ def events(
     exclude: str | None = Query(default=None),
     country: str | None = Query(default=None),
     collapse: bool = Query(default=True),
+    readable_only: bool = Query(default=True),
     limit: int = Query(default=API_DEFAULT_LIMIT, ge=1, le=API_MAX_LIMIT),
 ) -> list[dict]:
     bbox = (west, south, east, north)
@@ -425,6 +427,13 @@ def events(
                     ),
                 )
             )
+    # A marker asserts something happened; a reader who clicks it is owed what
+    # (#810). GDELT ships rows before their headline, and the 8,457 country and
+    # admin rows never get one at all, so they are drawn on centroids and read
+    # as the word "gdelt". They stay in storage and stay reachable here.
+    if readable_only:
+        stmt = stmt.where(has_readable_claim())
+
     # One GDELT article arrives as one row per actor pairing, so a list shows
     # the same headline three times (#772). Collapse before the limit: a page
     # thinned afterwards is a short page, and `fetchAllEventPages` reads a

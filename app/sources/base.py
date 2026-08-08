@@ -25,6 +25,18 @@ class Fetcher(ABC):
     #: Celery queue this fetcher runs in. See `docs/architecture/03-ingestion.md`.
     queue: Queue
 
+    #: Does a URL from this fetcher name the same resource every time?
+    #:
+    #: True for every feed and API endpoint here: `arabnews.com/rss.xml` is the
+    #: same document today and tomorrow, so a 404 from it is permanent and the
+    #: quarantine should stop asking (#567).
+    #:
+    #: False for a source addressed by time, where each fetch names a different
+    #: object — GDELT's export file carries the fifteen-minute window in its
+    #: name. There a 404 means "not published yet", and quarantining on it
+    #: parks a working feed (#808).
+    stable_urls: bool = True
+
     @abstractmethod
     def fetch(self) -> list[Event]:
         """Pull the source and return a list of canonical `Event` objects."""

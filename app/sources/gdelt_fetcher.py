@@ -56,6 +56,11 @@ class GdeltFetcher(Fetcher):
     name = "gdelt"
     queue = "slow"
 
+    #: The export URL carries the fifteen-minute window it covers, so every
+    #: fetch names a different object and a 404 means the window has not
+    #: finished publishing (#808).
+    stable_urls = False
+
     def __init__(self, *, timeout_seconds: float = 30.0) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
