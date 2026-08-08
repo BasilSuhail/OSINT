@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     storage_cap_floor_days: int = Field(default=7)
 
     api_cors_origins: str = Field(default="http://localhost:3000,http://localhost:3001")
+    #: Shared secret every endpoint but the liveness probe requires (#824).
+    #: Empty means the API stays open, as it has been, and says so at startup.
+    api_auth_token: str = Field(default="")
 
     @property
     def postgres_url(self) -> str:

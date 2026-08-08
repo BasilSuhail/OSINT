@@ -1,4 +1,4 @@
-import { API_BASE } from "./apiClient"
+import { API_BASE, apiFetch } from "./apiClient"
 
 export interface StoryRow {
   id: string
@@ -80,7 +80,7 @@ export function confirmedClaims(checks: Record<string, string>): string[] {
 }
 
 export async function fetchTopStories(hours = 24, limit = 100): Promise<StoryRow[]> {
-  const res = await fetch(`${API_BASE}/stories/top?hours=${hours}&limit=${limit}`)
+  const res = await apiFetch(`${API_BASE}/stories/top?hours=${hours}&limit=${limit}`)
   if (!res.ok) throw new Error(`GET /stories/top ${res.status}`)
   return (await res.json()) as StoryRow[]
 }
@@ -96,7 +96,7 @@ export async function fetchTopStories(hours = 24, limit = 100): Promise<StoryRow
  *  visible and forty requests is a different kind of answer. */
 export async function fetchStoriesForEvents(eventIds: string[]): Promise<Record<string, StoryRow>> {
   if (eventIds.length === 0) return {}
-  const res = await fetch(`${API_BASE}/stories/for-events?ids=${eventIds.join(",")}`)
+  const res = await apiFetch(`${API_BASE}/stories/for-events?ids=${eventIds.join(",")}`)
   if (!res.ok) throw new Error(`GET /stories/for-events ${res.status}`)
   return (await res.json()) as Record<string, StoryRow>
 }
@@ -114,7 +114,7 @@ export interface DevelopingStory extends StoryRow {
 }
 
 export async function fetchDevelopingStories(limit = 3): Promise<DevelopingStory[]> {
-  const res = await fetch(`${API_BASE}/stories/developing?limit=${limit}`)
+  const res = await apiFetch(`${API_BASE}/stories/developing?limit=${limit}`)
   if (!res.ok) throw new Error(`GET /stories/developing ${res.status}`)
   return (await res.json()) as DevelopingStory[]
 }
@@ -179,7 +179,7 @@ export interface StoryFraming {
 }
 
 export async function fetchStoryDetail(storyId: string): Promise<StoryDetail> {
-  const res = await fetch(`${API_BASE}/stories/${storyId}/detail`)
+  const res = await apiFetch(`${API_BASE}/stories/${storyId}/detail`)
   if (!res.ok) throw new Error(`GET /stories/${storyId}/detail ${res.status}`)
   return (await res.json()) as StoryDetail
 }
@@ -188,13 +188,13 @@ export async function fetchStoryDetail(storyId: string): Promise<StoryDetail> {
  * Returns null when the story is not contested. Failures surface a typed
  * message string, not a throw, mirroring the endpoint. */
 export async function fetchStoryDeepRead(storyId: string): Promise<string | null> {
-  const res = await fetch(`${API_BASE}/stories/${storyId}/deep-read`, { method: "POST" })
+  const res = await apiFetch(`${API_BASE}/stories/${storyId}/deep-read`, { method: "POST" })
   if (!res.ok) throw new Error(`POST /stories/${storyId}/deep-read ${res.status}`)
   return ((await res.json()) as { analysis: string | null }).analysis
 }
 
 export async function fetchStoryMembers(storyId: string): Promise<StoryMember[]> {
-  const res = await fetch(`${API_BASE}/stories/${storyId}/members`)
+  const res = await apiFetch(`${API_BASE}/stories/${storyId}/members`)
   if (!res.ok) throw new Error(`GET /stories/${storyId}/members ${res.status}`)
   return (await res.json()) as StoryMember[]
 }
@@ -208,7 +208,7 @@ export interface JournalMonthly {
 }
 
 export async function fetchJournalMonthly(): Promise<JournalMonthly[]> {
-  const res = await fetch(`${API_BASE}/journal/monthly`)
+  const res = await apiFetch(`${API_BASE}/journal/monthly`)
   if (!res.ok) throw new Error(`GET /journal/monthly ${res.status}`)
   return (await res.json()) as JournalMonthly[]
 }
@@ -236,7 +236,7 @@ export interface ContestedStory {
 }
 
 export async function fetchContestedStories(): Promise<ContestedStory[]> {
-  const res = await fetch(`${API_BASE}/disagreement/top?hours=72&limit=5`)
+  const res = await apiFetch(`${API_BASE}/disagreement/top?hours=72&limit=5`)
   if (!res.ok) throw new Error(`GET /disagreement/top ${res.status}`)
   return (await res.json()) as ContestedStory[]
 }
@@ -248,7 +248,7 @@ export interface CompositeMovers {
 }
 
 export async function fetchCompositeMovers(): Promise<CompositeMovers> {
-  const res = await fetch(`${API_BASE}/composite/movers?limit=6`)
+  const res = await apiFetch(`${API_BASE}/composite/movers?limit=6`)
   if (!res.ok) throw new Error(`GET /composite/movers ${res.status}`)
   return (await res.json()) as CompositeMovers
 }
@@ -300,7 +300,7 @@ export interface ScoreboardLine {
 }
 
 export async function fetchScoreboard(): Promise<ScoreboardLine[]> {
-  const res = await fetch(`${API_BASE}/journal/scoreboard`)
+  const res = await apiFetch(`${API_BASE}/journal/scoreboard`)
   if (!res.ok) throw new Error(`GET /journal/scoreboard ${res.status}`)
   return (await res.json()) as ScoreboardLine[]
 }
@@ -324,7 +324,7 @@ export interface BaselinesReport {
 }
 
 export async function fetchBaselinesReport(): Promise<BaselinesReport> {
-  const res = await fetch(`${API_BASE}/analytics/baselines`)
+  const res = await apiFetch(`${API_BASE}/analytics/baselines`)
   if (!res.ok) throw new Error(`GET /analytics/baselines ${res.status}`)
   return (await res.json()) as BaselinesReport
 }
@@ -349,7 +349,7 @@ export interface CoverageReport {
 }
 
 export async function fetchCoverageReport(): Promise<CoverageReport> {
-  const res = await fetch(`${API_BASE}/analytics/coverage`)
+  const res = await apiFetch(`${API_BASE}/analytics/coverage`)
   if (!res.ok) throw new Error(`GET /analytics/coverage ${res.status}`)
   return (await res.json()) as CoverageReport
 }
@@ -366,7 +366,7 @@ export interface JobRun {
 }
 
 export async function fetchRecentJobs(hours = 48): Promise<JobRun[]> {
-  const res = await fetch(`${API_BASE}/jobs/recent?hours=${hours}`)
+  const res = await apiFetch(`${API_BASE}/jobs/recent?hours=${hours}`)
   if (!res.ok) throw new Error(`GET /jobs/recent ${res.status}`)
   return (await res.json()) as JobRun[]
 }
@@ -396,7 +396,7 @@ export interface AuditLatest {
 }
 
 export async function fetchAuditLatest(): Promise<AuditLatest> {
-  const res = await fetch(`${API_BASE}/audit/latest`)
+  const res = await apiFetch(`${API_BASE}/audit/latest`)
   if (!res.ok) throw new Error(`GET /audit/latest ${res.status}`)
   return (await res.json()) as AuditLatest
 }
