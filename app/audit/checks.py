@@ -198,3 +198,26 @@ def run_all(stats: SourceStats, expectation: Expectation, *, now: datetime) -> l
     ]
     findings.append(check_occurred_at_plausible(stats, expectation, now=now))
     return [finding for finding in findings if finding is not None]
+
+
+def check_place_evidence(source: str, unbacked: int) -> Finding | None:
+    """A row claiming a building must be able to name it (#756).
+
+    `geo_basis='place'` says a coordinate came from a verified venue. A row
+    making that claim with no verified location is unfalsifiable from the row:
+    a correct point and a wrong one look identical, which is how #755's
+    Victorian reading room and a genuinely correct theatre sat side by side
+    without either being questionable.
+
+    Counted rather than listed. The audit's job is to say a class of defect
+    exists and how large it is; naming rows is what the query in the finding
+    is for.
+    """
+    if unbacked <= 0:
+        return None
+    return Finding(
+        source,
+        "place_evidence",
+        f"{unbacked:,} row(s) claim geo_basis='place' with no verified location — "
+        f"the coordinate cannot be explained from the row",
+    )
