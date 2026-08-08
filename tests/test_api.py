@@ -24,7 +24,7 @@ def _seed(session):
                 occurred_at=now,
                 category="conflict",
                 keywords=[],
-                payload={},
+                payload={"title": "A headline"},
             ),
             EventRow(
                 source="opensky-adsb",
@@ -234,7 +234,7 @@ def test_events_fetched_since_catches_past_occurred_at(db_session):
             fetched_at=now,
             category="news",
             keywords=[],
-            payload={},
+            payload={"title": "A headline"},
         )
     )
     db_session.commit()
@@ -489,7 +489,7 @@ def test_events_country_filter(db_session):
                 category="conflict",
                 country="US",
                 keywords=[],
-                payload={},
+                payload={"title": "A headline"},
             ),
             EventRow(
                 source="gdelt",
@@ -498,7 +498,7 @@ def test_events_country_filter(db_session):
                 category="conflict",
                 country="GB",
                 keywords=[],
-                payload={},
+                payload={"title": "A headline"},
             ),
         ]
     )
@@ -573,7 +573,7 @@ def test_events_ordered_occurred_at_desc(db_session):
                 occurred_at=now - timedelta(hours=3),
                 category="conflict",
                 keywords=[],
-                payload={},
+                payload={"title": "A headline"},
             ),
             EventRow(
                 source="gdelt",
@@ -581,7 +581,7 @@ def test_events_ordered_occurred_at_desc(db_session):
                 occurred_at=now,
                 category="conflict",
                 keywords=[],
-                payload={},
+                payload={"title": "A headline"},
             ),
         ]
     )
@@ -637,7 +637,7 @@ def _seed_stats(session):
             category="geopolitical",
             country="US",
             keywords=[],
-            payload={},
+            payload={"title": "A headline"},
         )
         for i in range(5)
     ]
@@ -686,7 +686,7 @@ def _seed_stats(session):
             category="geopolitical",
             country="BR",
             keywords=[],
-            payload={},
+            payload={"title": "A headline"},
         )
     )
     session.add_all(rows)
