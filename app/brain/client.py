@@ -166,3 +166,34 @@ def evict(*, model: str | None = None) -> None:
         timeout=_TIMEOUT_S,
     )
     response.raise_for_status()
+
+
+def generate_plain(
+    prompt: str,
+    *,
+    model: str | None = None,
+    keep_alive: str | None = None,
+    num_predict: int | None = None,
+) -> str:
+    """One prompt → the model's raw text. No JSON envelope.
+
+    `generate_json` asks Ollama for `format: json`, which is right for a
+    structured answer and wrong for a translation: wrapping a headline in a
+    schema costs tokens and invites the model to explain itself. Callers that
+    want one sentence back use this and validate the string themselves.
+    """
+    _warn_if_oversized(prompt, model or settings.brain_model)
+    response = httpx.post(
+        f"{settings.ollama_url}/api/generate",
+        json={
+            "model": model or settings.brain_model,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "keep_alive": keep_alive or settings.brain_keep_alive,
+            "options": _gen_options(num_predict),
+        },
+        timeout=_TIMEOUT_S,
+    )
+    response.raise_for_status()
+    return str(response.json().get("response") or "")
