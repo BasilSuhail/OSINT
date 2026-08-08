@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.article_collapse import ARTICLE_KEY_SQL, SURVIVOR_ORDER_SQL
 from app.enrichment.country import country_name
 from app.enrichment.name_collision import is_collision
+from app.readable_claim import READABLE_CLAIM_SQL
 
 _DATA = Path(__file__).parent / "enrichment" / "data"
 
@@ -282,6 +283,7 @@ def search_events(
             FROM events
             WHERE occurred_at > now() - make_interval(days => :days)
               AND {SEARCH_VECTOR_SQL} @@ plainto_tsquery('english', :q)
+              AND {READABLE_CLAIM_SQL}
         ) matches
         WHERE relation_rank = 1
         ORDER BY rank DESC, occurred_at DESC
