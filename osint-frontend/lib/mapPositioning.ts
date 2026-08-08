@@ -1,3 +1,5 @@
+import { precisionOf } from "./precision"
+import type { LocationPrecision } from "./types"
 import type { MarkerLocationContext } from "./locationProvenance"
 import type { VisibleEvent } from "./queries"
 import { colorForEvent } from "./types"
@@ -62,6 +64,9 @@ export interface EventPointCollection {
       markerKey: string
       color: string
       opacity: number
+      /** How big this coordinate's claim is (#773), so the renderer can draw
+       *  a city centroid as an area rather than as a surveyed point. */
+      precision: LocationPrecision
     }
     geometry: {
       type: "Point"
@@ -88,6 +93,7 @@ export function eventPointCollection(items: PositionedMapEvent[]): EventPointCol
         markerKey: item.markerKey,
         color: colorForEvent(item.ev),
         opacity: item.ev.opacity,
+        precision: precisionOf(item.ev),
       },
       geometry: {
         type: "Point",
