@@ -41,7 +41,9 @@ from app.db_models import (
 )
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
+from app.location_precision import precision_of, radius_m
 from app.paths import exports_dir
+from app.publisher import publisher_for
 from app.readable_claim import has_readable_claim
 from app.settings import settings
 from app.stories import developing
@@ -70,6 +72,9 @@ def get_session() -> Iterator[Session]:
 
 
 def _event_dict(row: EventRow) -> dict:
+    precision = precision_of(
+        row.source, row.payload, positioned=row.lat is not None and row.lon is not None
+    )
     updated_at = row.updated_at
     if updated_at is not None and updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=UTC)
@@ -89,6 +94,14 @@ def _event_dict(row: EventRow) -> dict:
         "country": row.country,
         "lat": row.lat,
         "lon": row.lon,
+        #: Who to credit (#768). A feed's registered name, a GDELT article's
+        #: domain, and None for an instrument reading, which nobody published.
+        "publisher": publisher_for(row.source, row.payload),
+        #: How big the coordinate's claim is (#773). A verified venue and a
+        #: city centroid were drawn identically; the row always knew which it
+        #: was and nothing downstream read it.
+        "location_precision": precision,
+        "location_radius_m": radius_m(precision),
         "payload": row.payload,
     }
 
@@ -1213,6 +1226,10 @@ def brain_narrative_latest(session: Session = Depends(get_session)) -> dict:
 class AskExchange(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     answer: str = Field(default="", max_length=4000)
+    #: Stories cited in this turn (#813). "What else?" must be answerable with
+    #: something else, and selection can only skip what it knows was shown.
+    #: Absent from an older client, which then behaves exactly as before.
+    story_ids: list[int] = Field(default_factory=list, max_length=32)
 
 
 class AskRequest(BaseModel):
@@ -1423,7 +1440,19 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     elaborate = qa.is_elaborate_request(req.question)
     num_predict = qa.ELABORATE_NUM_PREDICT if elaborate else None
     trace: dict = {}
-    qa_context = qa.build_qa_context(session, question=req.question, history=history, trace=trace)
+    #: "What else?" is a request for material not yet shown (#813), so the
+    #: stories already cited come out of the candidate set rather than being
+    #: re-ranked back to the top by an anchor built from the last answer.
+    told = qa.told_story_ids(history) if qa.is_continuation_request(req.question) else frozenset()
+    qa_context = qa.build_qa_context(
+        session,
+        question=req.question,
+        history=history,
+        exclude_story_ids=told,
+        trace=trace,
+    )
+    if told and not qa_context.get("stories"):
+        return _ask_payload(qa.NOTHING_MORE_ANSWER, None, [])
     prompt = qa.build_qa_prompt(qa_context, req.question, history=history, elaborate=elaborate)
     try:
         answer = _extracted_answer(
@@ -1480,10 +1509,22 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
         elaborate = qa.is_elaborate_request(req.question)  # #600
         num_predict = qa.ELABORATE_NUM_PREDICT if elaborate else None
         trace: dict = {}
+        told = (
+            qa.told_story_ids(history) if qa.is_continuation_request(req.question) else frozenset()
+        )
         qa_context = qa.build_qa_context(
-            session, question=req.question, history=history, trace=trace
+            session,
+            question=req.question,
+            history=history,
+            exclude_story_ids=told,
+            trace=trace,
         )
         stories = qa_context.get("stories") or []
+        if told and not stories:
+            #: Asked for more when there is no more (#813). Saying so beats
+            #: spending a generation on a reworded repeat.
+            yield _sse("final", _ask_payload(qa.NOTHING_MORE_ANSWER, None, []))
+            return
         sensors = qa_context.get("sensors") or []
         sources = _ask_sources(stories, sensors)
         digest = context.input_digest(qa_context)

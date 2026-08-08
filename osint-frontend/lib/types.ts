@@ -79,8 +79,18 @@ export interface EventRow {
   country: string | null
   lat: number | null
   lon: number | null
+  /** Who to credit (#768): a feed's registered name, a GDELT article's domain,
+   *  or null for an instrument reading, which nobody published. */
+  publisher?: string | null
+  /** How big this coordinate's claim is (#773): a verified venue, a city
+   *  centroid, an administrative area, or a whole country. */
+  location_precision?: LocationPrecision | null
+  /** Metres the event might be from the drawn point. */
+  location_radius_m?: number | null
   payload: EventPayload
 }
+
+export type LocationPrecision = "exact" | "city" | "area" | "country" | "unknown"
 
 export interface ScoreComponents {
   z?: {

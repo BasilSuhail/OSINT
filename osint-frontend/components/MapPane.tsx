@@ -15,6 +15,7 @@ import { useConfigured, useEvents } from "@/app/providers"
 import { fetchAllEventPages, fetchAllUpdatedEventPages } from "@/lib/apiClient"
 import { mergeEventRows } from "@/lib/eventMerge"
 import { circlePolygon } from "@/lib/footprints"
+import { PRECISION_OPACITY, PRECISION_RADIUS_PX } from "@/lib/precision"
 import {
   consensusLocalPlaceName,
   coordinateLabel,
@@ -1068,8 +1069,40 @@ export function MapPane({
             filter={["!", ["has", "point_count"]]}
             paint={{
               "circle-color": ["get", "color"],
-              "circle-opacity": ["coalesce", ["get", "opacity"], 1],
-              "circle-radius": 4,
+              //: A city centroid is not a surveyed point (#773). Age still
+              //: fades a marker; precision decides how solid it ever gets, so
+              //: an area claim reads as an area and only a verified location
+              //: is drawn solid.
+              "circle-opacity": [
+                "*",
+                ["coalesce", ["get", "opacity"], 1],
+                [
+                  "match",
+                  ["coalesce", ["get", "precision"], "unknown"],
+                  "exact",
+                  PRECISION_OPACITY.exact,
+                  "city",
+                  PRECISION_OPACITY.city,
+                  "area",
+                  PRECISION_OPACITY.area,
+                  "country",
+                  PRECISION_OPACITY.country,
+                  PRECISION_OPACITY.unknown,
+                ],
+              ],
+              "circle-radius": [
+                "match",
+                ["coalesce", ["get", "precision"], "unknown"],
+                "exact",
+                PRECISION_RADIUS_PX.exact,
+                "city",
+                PRECISION_RADIUS_PX.city,
+                "area",
+                PRECISION_RADIUS_PX.area,
+                "country",
+                PRECISION_RADIUS_PX.country,
+                PRECISION_RADIUS_PX.unknown,
+              ],
               "circle-stroke-color": ["get", "color"],
               "circle-stroke-width": 1,
             }}
