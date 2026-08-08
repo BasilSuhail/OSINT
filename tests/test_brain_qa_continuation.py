@@ -15,6 +15,7 @@ repetition is in the retrieval.
 
 from __future__ import annotations
 
+import time
 from typing import Any, ClassVar
 
 import pytest
@@ -66,6 +67,23 @@ class TestIntent:
         so it keeps the longer answer rather than a different subject."""
         assert qa.is_elaborate_request("tell me more")
         assert not qa.is_continuation_request("tell me more")
+
+    def test_padding_does_not_make_the_match_expensive(self) -> None:
+        """The intent pattern reads a question typed by whoever is asking, so
+        every quantifier in it has to be unambiguous. Two `\\s*` either side of
+        an optionally-empty class let a run of spaces be split n ways, and a
+        suffix that cannot match then costs O(n squared) to rule out.
+
+        Measured on the pattern this replaced: 70ms at 5000 spaces, 1.07s at
+        20000, 9.5s at 60000 — quadratic. The unambiguous pattern reads 20000
+        in 0.7ms. The bound below sits two orders of magnitude above the linear
+        cost and below the quadratic one, so it fails loudly if an ambiguous
+        pair comes back without being flaky on a slow machine.
+        """
+        padded = "more" + " " * 20_000 + "x"
+        started = time.perf_counter()
+        assert not qa.is_continuation_request(padded)
+        assert time.perf_counter() - started < 0.25
 
 
 class TestRetrievalAnchor:

@@ -826,12 +826,16 @@ def answer_echoes(previous: str, current: str) -> bool:
 #: "Give me another one", as opposed to "say more about that one". The second
 #: is #600's elaborate intent and must not match here: elaboration wants the
 #: same story in more depth, a continuation wants a different story (#813).
+#:
+#: The trailing punctuation is one character class, not `\s*[?.!]*\s*`. Two
+#: `\s*` either side of a class that can match nothing let a run of spaces be
+#: divided between them n ways, so a final character that cannot match costs
+#: O(n squared) to reject — on a string the reader types.
 _CONTINUATION_RE = re.compile(
     r"\b(?:what|anything|something|any)\s+(?:else|other|more)\b"
-    r"|\bwhat\s+other\b"
     r"|\b(?:go|carry)\s+on\b"
     r"|\bkeep\s+going\b"
-    r"|^\s*(?:more|else)\s*[?.!]*\s*$",
+    r"|^\s*(?:more|else)[\s?.!]*$",
     re.IGNORECASE,
 )
 
