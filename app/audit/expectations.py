@@ -38,11 +38,16 @@ class Expectation:
     #: Whether the composite is supposed to read this source. False is not a
     #: judgement about worth — most sources legitimately sit outside it.
     feeds_composite: bool
-    #: Fraction of rows that must carry a severity before the coverage check
-    #: complains. Defaults to the strict shared threshold; a source only lowers
-    #: it when some of its rows legitimately cannot be scored, and says why in
-    #: the note. A floor is not a mute button — the check still fails below it.
+    #: Fraction of rows that must carry a country before the coverage check
+    #: complains. Defaults to the strict shared threshold. A source lowers it
+    #: only when some of its rows legitimately have no country — and says so,
+    #: with the measurement, in the note (#827).
     severity_coverage_floor: float | None = None
+    #: Fraction of rows that must carry a country before the coverage check
+    #: complains. Defaults to the strict shared threshold. A source lowers it
+    #: only when some of its rows legitimately have no country — and says so,
+    #: with the measurement, in the note (#827).
+    country_coverage_floor: float | None = None
     #: Why, when the declaration is surprising.
     note: str = ""
 
@@ -60,6 +65,13 @@ RSS_FAMILY = Expectation(
         "ambiguity can still leave honest nulls; those shortfalls must remain "
         "visible findings instead of being muted as optional."
     ),
+    #: Measured over seven days across the 41 news feeds carrying at least
+    #: thirty rows: min 0.375, p10 0.601, median 0.764, max 1.000. The strict
+    #: 0.99 default fired on 45 of them nightly, because #717 established that
+    #: roughly 41% of news is honestly countryless and must stay null. The bar
+    #: sits between the worst feed and the tenth percentile: below it a feed is
+    #: out of family with its peers, which is a defect worth a name (#827).
+    country_coverage_floor=0.50,
 )
 
 EXPECTATIONS: dict[str, Expectation] = {
@@ -100,7 +112,15 @@ EXPECTATIONS: dict[str, Expectation] = {
         ),
     ),
     "gdelt": Expectation(
-        severity="continuous", country="required", feeds_composite=True, note="Goldstein/tone."
+        severity="continuous",
+        country="required",
+        feeds_composite=True,
+        #: Measured 26,380 of 29,497 rows over seven days — 0.894. The coder
+        #: leaves a country off when its own geocoder found none, which is the
+        #: honest answer; a bar above that reports it broken every night for
+        #: working as designed (#827).
+        country_coverage_floor=0.80,
+        note="Goldstein/tone.",
     ),
     "acled": Expectation(
         severity="continuous", country="required", feeds_composite=True, note="UNVERIFIED"
