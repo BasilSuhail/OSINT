@@ -42,6 +42,7 @@ from app.db_models import (
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
 from app.paths import exports_dir
+from app.publisher import publisher_for
 from app.readable_claim import has_readable_claim
 from app.settings import settings
 from app.stories import developing
@@ -89,6 +90,9 @@ def _event_dict(row: EventRow) -> dict:
         "country": row.country,
         "lat": row.lat,
         "lon": row.lon,
+        #: Who to credit (#768). A feed's registered name, a GDELT article's
+        #: domain, and None for an instrument reading, which nobody published.
+        "publisher": publisher_for(row.source, row.payload),
         "payload": row.payload,
     }
 

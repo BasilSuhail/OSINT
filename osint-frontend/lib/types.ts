@@ -79,6 +79,9 @@ export interface EventRow {
   country: string | null
   lat: number | null
   lon: number | null
+  /** Who to credit (#768): a feed's registered name, a GDELT article's domain,
+   *  or null for an instrument reading, which nobody published. */
+  publisher?: string | null
   payload: EventPayload
 }
 
