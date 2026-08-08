@@ -1213,6 +1213,10 @@ def brain_narrative_latest(session: Session = Depends(get_session)) -> dict:
 class AskExchange(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     answer: str = Field(default="", max_length=4000)
+    #: Stories cited in this turn (#813). "What else?" must be answerable with
+    #: something else, and selection can only skip what it knows was shown.
+    #: Absent from an older client, which then behaves exactly as before.
+    story_ids: list[int] = Field(default_factory=list, max_length=32)
 
 
 class AskRequest(BaseModel):
@@ -1423,7 +1427,19 @@ def brain_ask(req: AskRequest, session: Session = Depends(get_session)) -> dict:
     elaborate = qa.is_elaborate_request(req.question)
     num_predict = qa.ELABORATE_NUM_PREDICT if elaborate else None
     trace: dict = {}
-    qa_context = qa.build_qa_context(session, question=req.question, history=history, trace=trace)
+    #: "What else?" is a request for material not yet shown (#813), so the
+    #: stories already cited come out of the candidate set rather than being
+    #: re-ranked back to the top by an anchor built from the last answer.
+    told = qa.told_story_ids(history) if qa.is_continuation_request(req.question) else frozenset()
+    qa_context = qa.build_qa_context(
+        session,
+        question=req.question,
+        history=history,
+        exclude_story_ids=told,
+        trace=trace,
+    )
+    if told and not qa_context.get("stories"):
+        return _ask_payload(qa.NOTHING_MORE_ANSWER, None, [])
     prompt = qa.build_qa_prompt(qa_context, req.question, history=history, elaborate=elaborate)
     try:
         answer = _extracted_answer(
@@ -1480,10 +1496,22 @@ def brain_ask_stream(req: AskRequest, session: Session = Depends(get_session)) -
         elaborate = qa.is_elaborate_request(req.question)  # #600
         num_predict = qa.ELABORATE_NUM_PREDICT if elaborate else None
         trace: dict = {}
+        told = (
+            qa.told_story_ids(history) if qa.is_continuation_request(req.question) else frozenset()
+        )
         qa_context = qa.build_qa_context(
-            session, question=req.question, history=history, trace=trace
+            session,
+            question=req.question,
+            history=history,
+            exclude_story_ids=told,
+            trace=trace,
         )
         stories = qa_context.get("stories") or []
+        if told and not stories:
+            #: Asked for more when there is no more (#813). Saying so beats
+            #: spending a generation on a reworded repeat.
+            yield _sse("final", _ask_payload(qa.NOTHING_MORE_ANSWER, None, []))
+            return
         sensors = qa_context.get("sensors") or []
         sources = _ask_sources(stories, sensors)
         digest = context.input_digest(qa_context)
