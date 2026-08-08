@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app import api_auth
+from app import api_auth, console_health
 from app.api_auth import limit_inference, require_token
 from app.article_collapse import collapse_article_relations
 from app.brain import client, context, deepread, enrich, gate, qa
@@ -318,6 +318,19 @@ def event_stats(
         "top_countries": [{"country": c, "count": n} for c, n in top],
         "spark": spark,
     }
+
+
+@app.get("/console/health")
+def console_health_panel(session: Session = Depends(get_session)) -> dict:
+    """One honest answer to whether this console can be trusted right now (#828).
+
+    Assembles measures that already exist rather than inventing new ones: the
+    watchdog decides what is silent, the quarantine says what is rested, the
+    stored audit run carries the findings, and `location_precision` says what
+    the coordinates are claiming. Nothing here is a second implementation of a
+    number shown elsewhere.
+    """
+    return console_health.build(session).as_dict()
 
 
 @app.get("/health")

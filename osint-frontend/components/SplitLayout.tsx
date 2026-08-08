@@ -22,6 +22,7 @@ import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { WorldDetailCard } from "./panels/WorldDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
+import { TrustPanel } from "./panels/TrustPanel"
 import { SelectionPanel } from "./panels/SelectionPanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
 import { SituationPanel } from "./panels/SituationPanel"
@@ -165,6 +166,9 @@ export function SplitLayout() {
             <WorldStatusPanel />
           </div>
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-3">
+            {/* First, deliberately: whether the console can be trusted comes
+                before what it is saying (#828). */}
+            <TrustPanel />
             <CoveragePanel />
             <BriefingPanel />
             <StoriesPanel />

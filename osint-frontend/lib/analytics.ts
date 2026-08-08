@@ -400,3 +400,37 @@ export async function fetchAuditLatest(): Promise<AuditLatest> {
   if (!res.ok) throw new Error(`GET /audit/latest ${res.status}`)
   return (await res.json()) as AuditLatest
 }
+
+
+/** One honest answer to whether the console can be trusted right now (#828). */
+export interface ConsoleHealth {
+  generated_at: string
+  silent: Array<{ source: string; minutes_silent: number | null; cadence_minutes: number }>
+  rested: Array<{
+    source: string
+    kind: string
+    http_status: number | null
+    retry_after: string
+    detail: string
+  }>
+  audit: {
+    ran_at: string | null
+    findings_total: number
+    sources_measured: number
+    by_check: Record<string, number>
+  }
+  composition: Array<{
+    name: string
+    rows: number
+    share: number
+    newest_age_minutes: number | null
+    sources: number
+  }>
+  precision: Record<string, number>
+}
+
+export async function fetchConsoleHealth(): Promise<ConsoleHealth> {
+  const res = await apiFetch(`${API_BASE}/console/health`)
+  if (!res.ok) throw new Error(`GET /console/health ${res.status}`)
+  return (await res.json()) as ConsoleHealth
+}
