@@ -213,6 +213,9 @@ NO_EVIDENCE_ANSWER = (
 #: so nothing retrieved may be presented as the answer's sources — the API
 #: moves them to a separate closest-matches list instead.
 NO_LOCAL_EVIDENCE_ANSWER = "I do not have enough local evidence for that question."
+#: Asked for more and there is no more (#813). Saying so is a better answer
+#: than restating what the reader has already been shown.
+NOTHING_MORE_ANSWER = "That is everything the corpus holds on that in the last three days."
 #: Operational messages (#474) — the API's typed failure answers. Not model
 #: output: exempt from claim checks and never treated as content.
 BRAIN_BUSY_ANSWER = "Brain busy — the box is loaded right now, try again in a moment."
@@ -641,9 +644,15 @@ def build_qa_stories(
     now: datetime | None = None,
     question: str | None = None,
     history: list[dict[str, Any]] | None = None,
+    exclude_story_ids: frozenset[int] = frozenset(),
     trace: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Relevant recent stories, provenance-tagged with trust signals + outlet sources."""
+    """Relevant recent stories, provenance-tagged with trust signals + outlet sources.
+
+    `exclude_story_ids` drops stories this conversation has already cited, so
+    "what else?" can be answered with something else (#813). Empty for every
+    other question, which leaves selection exactly as it was.
+    """
     now = now or datetime.now(UTC)
     if trace is not None:
         trace.update(
@@ -668,6 +677,8 @@ def build_qa_stories(
         .order_by(StoryRow.outlet_count.desc(), StoryRow.member_count.desc())
         .limit(candidate_limit)
     ).all()
+    if exclude_story_ids:
+        candidate_rows = [row for row in candidate_rows if row[0].id not in exclude_story_ids]
     story_ids = [s.id for s, _ in candidate_rows]
     if not story_ids:
         return []
@@ -681,7 +692,11 @@ def build_qa_stories(
             )
         ).scalars()
     }
-    anchored = build_retrieval_text(question, history) if question else question
+    anchored = (
+        build_retrieval_text(question, history, continuation=is_continuation_request(question))
+        if question
+        else question
+    )
     if trace is not None and anchored != question:
         trace["anchored"] = anchored
     rows, retrieval_meta = _select_rows(
@@ -808,18 +823,70 @@ def answer_echoes(previous: str, current: str) -> bool:
     return len(a & b) / min(len(a), len(b)) >= _ECHO_THRESHOLD
 
 
-def build_retrieval_text(question: str, history: list[dict[str, Any]] | None) -> str:
+#: "Give me another one", as opposed to "say more about that one". The second
+#: is #600's elaborate intent and must not match here: elaboration wants the
+#: same story in more depth, a continuation wants a different story (#813).
+_CONTINUATION_RE = re.compile(
+    r"\b(?:what|anything|something|any)\s+(?:else|other|more)\b"
+    r"|\bwhat\s+other\b"
+    r"|\b(?:go|carry)\s+on\b"
+    r"|\bkeep\s+going\b"
+    r"|^\s*(?:more|else)\s*[?.!]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def is_continuation_request(question: str | None) -> bool:
+    """Is the reader asking for material they have not been shown yet? (#813)
+
+    Distinct from `is_elaborate_request`: "elaborate" asks for more about
+    *this* story, "what else" asks for a different one. Treating them alike
+    is how "what else?" came back with the story it was asked to move past.
+    """
+    if not question or is_elaborate_request(question):
+        return False
+    return bool(_CONTINUATION_RE.search(question))
+
+
+def told_story_ids(history: list[dict[str, Any]] | None) -> frozenset[int]:
+    """Stories already cited in this conversation.
+
+    A client that sends only question and answer — anything older than #813 —
+    yields an empty set and therefore today's behaviour, rather than an error.
+    """
+    out: set[int] = set()
+    for turn in history or []:
+        for raw in turn.get("story_ids") or []:
+            try:
+                out.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+    return frozenset(out)
+
+
+def build_retrieval_text(
+    question: str,
+    history: list[dict[str, Any]] | None,
+    *,
+    continuation: bool = False,
+) -> str:
     """The text retrieval matches on: the question plus the last exchange.
 
     A vague follow-up ("what do u think that was?") carries no topic of its
     own — folding in the previous turn lets both the embedding and the keyword
     fallback inherit it.
+
+    A continuation is the one case where the previous *answer* must stay out
+    (#813). "What else?" carries a topic inherited from the previous question
+    and an explicit demand for different material; anchoring on the answer
+    makes the strongest signal in the query the very story being ruled out,
+    and the same story comes back.
     """
     if not history:
         return question
     last = history[-1]
     previous_question = str(last.get("question") or "")
-    previous_answer = str(last.get("answer") or "")[:_HISTORY_ANSWER_CHARS]
+    previous_answer = "" if continuation else str(last.get("answer") or "")[:_HISTORY_ANSWER_CHARS]
     return " ".join(part for part in (question, previous_question, previous_answer) if part)
 
 
@@ -844,13 +911,21 @@ def build_qa_context(
     now: datetime | None = None,
     question: str | None = None,
     history: list[dict[str, Any]] | None = None,
+    exclude_story_ids: frozenset[int] = frozenset(),
     trace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The model's JSON context. `trace` (debug/eval-only, #413 item 10) is
     filled in place with the retrieval explanation and stays OUT of the
     returned context — the model never sees it and the digest is unchanged."""
     snapshot = context.build_snapshot(session, now=now)
-    stories = build_qa_stories(session, now=now, question=question, history=history, trace=trace)
+    stories = build_qa_stories(
+        session,
+        now=now,
+        question=question,
+        history=history,
+        exclude_story_ids=exclude_story_ids,
+        trace=trace,
+    )
     sensor_rows = sensors.build_qa_sensors(
         session, question=question, now=now, start_n=len(stories) + 1
     )
