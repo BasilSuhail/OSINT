@@ -174,14 +174,23 @@ def test_missing_country_when_required_is_a_finding():
 
 
 def test_rss_family_reports_missing_country_coverage():
+    """Below the family floor, not below perfection (#827).
+
+    680 of 1,000 was a finding when the bar was 0.99. It is the measured
+    median for a healthy news feed, so the number that means "this feed has
+    stopped resolving" had to move: 300 of 1,000 is out of family with every
+    peer, and that is what a finding should mean.
+    """
     expectation = for_source("rss-example")
     assert expectation is not None
 
-    findings = checks.run_all(
+    healthy = checks.run_all(
         _stats(source="rss-example", country_present=680), expectation, now=NOW
     )
+    assert "country_coverage" not in _names(healthy)
 
-    assert "country_coverage" in _names(findings)
+    broken = checks.run_all(_stats(source="rss-example", country_present=300), expectation, now=NOW)
+    assert "country_coverage" in _names(broken)
 
 
 def test_a_source_that_feeds_the_composite_but_reaches_none_of_it_is_a_finding():
