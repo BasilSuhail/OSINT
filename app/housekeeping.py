@@ -62,13 +62,30 @@ def retention_days() -> dict[str, int | None]:
     }
 
 
+#: Sources whose publication lag exceeds their retention window, pruned on when
+#: the row was *ingested* rather than when the event happened (#765).
+#:
+#: `data.police.uk` publishes about two months in arrears — it offered
+#: `2026-06-01` on 2026-08-08 — and pins every crime to the first of that
+#: month. A row was therefore 68 days old on arrival, older than the 30-day
+#: window, and housekeeping deleted each batch on its next pass. The source
+#: recorded successful fetches on four of six days and the table held zero
+#: rows.
+#:
+#: Retention still means thirty days. For a lagged archive the only reading
+#: that works is thirty days of what we ingested, which is also what the
+#: storage cap is actually protecting.
+PRUNE_ON_INGEST: frozenset[str] = frozenset({"uk-police"})
+
+
 def _prune_source(session: Session, *, source: str, days: int, now: datetime) -> int:
     """Delete events for ``source`` older than ``days``. Returns rows deleted."""
     cutoff = now - timedelta(days=days)
+    column = EventRow.fetched_at if source in PRUNE_ON_INGEST else EventRow.occurred_at
     result = session.execute(
         delete(EventRow).where(
             EventRow.source == source,
-            EventRow.occurred_at < cutoff,
+            column < cutoff,
         )
     )
     return result.rowcount or 0

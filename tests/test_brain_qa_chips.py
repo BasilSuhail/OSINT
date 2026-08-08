@@ -51,7 +51,7 @@ def _client():
     return TestClient(app)
 
 
-def _fake_context(session, question=None, history=None, trace=None):
+def _fake_context(session, question=None, history=None, exclude_story_ids=frozenset(), trace=None):
     if trace is not None:
         trace.update({"method": "semantic", "intents": ["conflict"], "terms": ["war", "back"]})
     return {"stories": [STORY]}

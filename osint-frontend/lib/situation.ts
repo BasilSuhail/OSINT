@@ -231,12 +231,23 @@ const HISTORY_MAX = 3
 //: Matches the backend AskExchange answer cap headroom (#444).
 const HISTORY_ANSWER_CHARS = 2000
 
-/** Recent finalized exchanges to send with an ask, so follow-ups stay anchored. */
+/** Recent finalized exchanges to send with an ask, so follow-ups stay anchored.
+ *
+ * The cited story ids travel too (#813): "what else?" is a request for
+ * material the reader has not been shown, and the server can only skip what it
+ * knows was already shown. Sensor sources carry a null story_id (#507) and are
+ * dropped — an instrument reading is not a story to move past. */
 export function askHistory(messages: ChatMessage[]): AskExchange[] {
   return messages
     .filter((m) => !m.draft && m.answer && m.answer !== OFFLINE_ANSWER)
     .slice(-HISTORY_MAX)
-    .map((m) => ({ question: m.question, answer: m.answer.slice(0, HISTORY_ANSWER_CHARS) }))
+    .map((m) => ({
+      question: m.question,
+      answer: m.answer.slice(0, HISTORY_ANSWER_CHARS),
+      story_ids: (m.sources ?? [])
+        .map((s) => s.story_id)
+        .filter((id): id is number => typeof id === "number"),
+    }))
 }
 
 /** Restore a transcript from sessionStorage; corrupt or foreign data yields []. */

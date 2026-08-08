@@ -80,7 +80,7 @@ def _record_failure(session: Session, *, source: str, exc: BaseException) -> Non
 def _run_fetcher_body(name: str) -> dict[str, Any]:
     """Plain-function task body — testable without Celery."""
     from app.fetcher_registry import get_fetcher
-    from app.ingest import freshness, quarantine
+    from app.ingest import freshness, publication_time, quarantine
 
     with session_scope() as session:
         resting = quarantine.skip_reason(session, name)
@@ -116,6 +116,11 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
             return {"failed": True, "quarantined": True, "retry_after": retry_at, "reason": detail}
         raise
 
+    # A story is not published in the future (#766). Repair before the
+    # freshness gate: the old order rejected a feed's whole batch over a
+    # timezone label, which discarded real news to fix a clock.
+    events, time_report = publication_time.normalize(events)
+
     # Freshness is checked here, on the live path only: backfills legitimately
     # insert old rows and call upsert_events directly (#571).
     fresh, stale = freshness.partition(events)
@@ -139,9 +144,14 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
                     error_message=summary,
                 )
             )
+    time_note = time_report.summary()
+    if time_note:
+        logger.info("%s", time_note)
     result = {"fetched": len(events), "inserted": inserted}
     if stale:
         result["rejected_stale"] = len(stale)
+    if time_report.shifted or time_report.clamped:
+        result["time_adjusted"] = time_report.shifted + time_report.clamped
     return result
 
 

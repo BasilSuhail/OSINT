@@ -21,6 +21,7 @@ the data.police.uk record.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
@@ -32,6 +33,19 @@ from app.sources.base import Fetcher
 
 DATA_POLICE_BASE: Final[str] = "https://data.police.uk/api"
 UK_POLICE_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
+
+#: Gap between city requests. The panel used to be fired as a burst, which is
+#: what earns a 429 from an open public API asking for nothing but politeness
+#: (#765).
+CITY_SPACING_SECONDS: Final[float] = 1.0
+
+#: Attempts per city before the failure is allowed to propagate. Bounded on
+#: purpose: past this the quarantine should rest the source rather than the
+#: fetcher retrying on its own forever.
+MAX_ATTEMPTS: Final[int] = 3
+
+#: Wait after a 429 that carries no `Retry-After`, multiplied by the attempt.
+BACKOFF_SECONDS: Final[float] = 5.0
 
 #: Severity table per upstream category. Values tuned so violent / weapons
 #: events dominate the colour scale while bicycle theft / public order
@@ -180,6 +194,10 @@ class UKPoliceFetcher(Fetcher):
             raise ValueError("at least one city required")
         self.timeout_seconds = timeout_seconds
         self.cities = cities
+        #: Injected by the tests so pacing and backoff can be exercised without
+        #: spending the wall-clock time they are measured in.
+        self._sleep = time.sleep
+        self._transport: httpx.BaseTransport | None = None
 
     def _latest_date(self, client: httpx.Client) -> str | None:
         """data.police.uk publishes about 2 months in arrears; ask the API."""
@@ -195,20 +213,39 @@ class UKPoliceFetcher(Fetcher):
         # Returned shape is "YYYY-MM-DD" but the crimes endpoint wants "YYYY-MM".
         return full_date[:7]
 
+    def _get_with_backoff(self, client: httpx.Client, url: str, params: dict) -> httpx.Response:
+        """One city, retried on 429 within a bounded budget (#765).
+
+        The host publishes no rate limit and asks for restraint, so restraint
+        is what this does: honour `Retry-After` when it is sent, back off on a
+        rising schedule when it is not, and let the failure through once the
+        budget is spent so the quarantine can rest the source properly.
+        """
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            response = client.get(url, params=params)
+            if response.status_code != 429 or attempt == MAX_ATTEMPTS:
+                response.raise_for_status()
+                return response
+            self._sleep(_retry_after(response) or BACKOFF_SECONDS * attempt)
+        raise AssertionError("unreachable")  # pragma: no cover
+
     def fetch(self) -> list[Event]:
         fetched_at = datetime.now(UTC)
         events: list[Event] = []
         with httpx.Client(
             timeout=self.timeout_seconds,
             headers={"User-Agent": UK_POLICE_USER_AGENT},
+            transport=self._transport,
         ) as client:
             month = self._latest_date(client) or fetched_at.strftime("%Y-%m")
-            for city in self.cities:
-                response = client.get(
+            for index, city in enumerate(self.cities):
+                if index:
+                    self._sleep(CITY_SPACING_SECONDS)
+                response = self._get_with_backoff(
+                    client,
                     f"{DATA_POLICE_BASE}/crimes-street/all-crime",
-                    params={"lat": city.lat, "lng": city.lon, "date": month},
+                    {"lat": city.lat, "lng": city.lon, "date": month},
                 )
-                response.raise_for_status()
                 try:
                     records = response.json()
                 except ValueError:
@@ -223,3 +260,14 @@ class UKPoliceFetcher(Fetcher):
         return (
             f"/mnt/data/parquet/uk-police/year={now.year}/month={now.month:02d}/day={now.day:02d}/"
         )
+
+
+def _retry_after(response: httpx.Response) -> float | None:
+    """The host's own `Retry-After`, when it sends a usable one."""
+    raw = response.headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:  # HTTP-date form; the schedule covers it
+        return None
