@@ -6,6 +6,11 @@ import { useCountryEvents, useLatestScores } from "@/lib/queries"
 import { colorForEvent, scoreTextColor, type EventRow } from "@/lib/types"
 import { machineAction, publisherOf } from "@/lib/eventLabel"
 import { PRECISION_LABEL, precisionOf } from "@/lib/precision"
+import {
+  translationDetail,
+  translationLabel,
+  translationNotice,
+} from "@/lib/translationNotice"
 import { cn } from "@/lib/utils"
 
 const regionNames =
@@ -60,6 +65,7 @@ function EventRowItem({ ev }: { ev: EventRow }) {
     (ev.payload as { source_url?: string; link?: string })?.source_url ??
     (ev.payload as { link?: string })?.link
   const title = eventTitle(ev)
+  const notice = translationNotice(ev)
   const Wrapper = url ? "a" : "div"
   return (
     <Wrapper
@@ -77,7 +83,27 @@ function EventRowItem({ ev }: { ev: EventRow }) {
         {formatDistanceToNowStrict(new Date(ev.occurred_at), { addSuffix: false })}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-neutral-300">{title}</span>
+        <span className="block truncate text-neutral-300">
+          {title}
+          {/* A translated headline is not the publisher's wording (#837). The
+              marker rides beside the text rather than behind a hover: a reader
+              scanning a list never hovers, and the whole point is that no
+              interaction should stand between them and knowing who wrote the
+              sentence. */}
+          {notice && (
+            <span
+              title={translationDetail(notice)}
+              className={cn(
+                "ml-1.5 whitespace-nowrap rounded-sm px-1 py-px align-middle font-mono text-[8px] uppercase tracking-wider",
+                notice.status === "ok"
+                  ? "bg-amber-400/10 text-amber-300/90"
+                  : "bg-neutral-700/40 text-neutral-400",
+              )}
+            >
+              {translationLabel(notice)}
+            </span>
+          )}
+        </span>
         {/* Three separable facts, kept visibly apart: who published it, the
             action GDELT's coder assigned — a marker showing only "Coerce"
             explained nothing about what happened (#768) — and what the
