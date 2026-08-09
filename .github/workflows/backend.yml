@@ -75,6 +75,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[dev]'
 
+      # The container installs with `uv sync --frozen`, so uv.lock — not
+      # pyproject.toml — decides what the image contains. When the two drift
+      # apart the build still succeeds, silently installing the previous
+      # dependency set, and the failure surfaces as an ImportError at runtime
+      # on somebody's machine (#883). This step is the only gate that reads the
+      # lockfile at all: the install above re-resolves from pyproject and would
+      # not notice.
+      - name: Lockfile matches the manifest (uv lock --check)
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.5.11"
+
+      - name: Check uv.lock is in sync
+        run: uv lock --check
+
       - name: Lint (ruff)
         run: ruff check app/ tests/
 
