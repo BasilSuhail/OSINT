@@ -44,3 +44,25 @@ export function deckPageKeys(state: DeckState): DeckPageKey[] {
   if (state.scoreboard) keys.push("scoreboard")
   return keys
 }
+
+
+/** Where the deck should be after the pop-up closes (#850).
+ *
+ * Not wherever a scroll clamp happens to land. Removing the pop-up shortens
+ * the track, the browser clamps `scrollLeft` to the new maximum, and the
+ * reader ends up on whatever page happens to be last — screen 2 when no
+ * selection is open. That is a page nobody chose.
+ *
+ * The rule is the operator's: back to screen 3, or screen 1 when screen 3 is
+ * not open.
+ */
+export function pageAfterPopupCloses(state: Omit<DeckState, "popup">): number {
+  const keys = deckPageKeys({ ...state, popup: false })
+  const selection = keys.indexOf("selection")
+  return selection >= 0 ? selection : 0
+}
+
+/** Where the deck should be when a pop-up opens: on the pop-up. */
+export function pageForPopup(state: DeckState): number {
+  return deckPageKeys(state).indexOf(POPUP_PAGE)
+}

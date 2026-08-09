@@ -1,5 +1,6 @@
 "use client"
 
+import { useEventDetailStore } from "@/stores/eventDetailStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { ClusterListPanel } from "./ClusterListPanel"
 import { CountrySidePanel } from "./CountrySidePanel"
@@ -16,7 +17,9 @@ export function RightPane() {
   const entity = useRightPaneModeStore((s) => s.entity)
   const closeEntity = useRightPaneModeStore((s) => s.closeEntity)
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
-  const openEvent = useRightPaneModeStore((s) => s.openEvent)
+  //: A row in these lists opens the pop-up, never the map selection (#850) —
+  //: screen three is built by clicking the map and by nothing else.
+  const openEventDetail = useEventDetailStore((s) => s.openEventDetail)
 
   //: Escape no longer closes the locked entity (#842). Doing so removed the
   //: selection *page* from the deck, which is the reader's place rather than a
@@ -34,7 +37,7 @@ export function RightPane() {
             <ClusterListPanel
               label={entity.label}
               selections={entity.selections}
-              onSelectEvent={openEvent}
+              onSelectEvent={openEventDetail}
               onClose={closeEntity}
             />
           ) : entity.kind === "area" ? (
@@ -48,7 +51,7 @@ export function RightPane() {
                 labelKind: entity.labelKind,
                 dataState: entity.dataState,
               }}
-              onSelectEvent={openEvent}
+              onSelectEvent={openEventDetail}
               onClose={closeEntity}
             />
           ) : (
