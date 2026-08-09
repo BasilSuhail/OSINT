@@ -170,9 +170,9 @@ EXPECTATIONS: dict[str, Expectation] = {
         country="optional",
         feeds_composite=False,
         note=(
-            "58,793 rows all carry severity 0.0. Declared none because a flight "
-            "position has no severity; the constant is the defect, and the "
-            "severity_constant check reports it regardless of declaration."
+            "Flight density has no severity. Aircraft counts remain in payload "
+            "for a future intensity model; new and repaired rows keep severity "
+            "null (#865)."
         ),
     ),
     "abuse-ch-urlhaus": Expectation(

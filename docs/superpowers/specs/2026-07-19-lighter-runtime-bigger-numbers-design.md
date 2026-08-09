@@ -81,6 +81,12 @@ counts rows, so per-country-hourly rows contribute a constant regardless of traf
 Weighting by `payload["aircraft_count"]` changes frozen scoring and needs a
 `DIVERGENCE_METHOD_VERSION` bump — tracked separately as #497.
 
+**Severity correction (#865).** Flight density is situational awareness, not
+harm. New aggregates therefore store `severity = NULL`; the retained-row repair
+clears the old constant `0.0` values without touching aircraft counts or any
+unexpected nonzero value. It is report-only by default and runs inside the app
+container with `python -m app.sources.opensky_severity_repair --apply`.
+
 A migration collapses the existing 10,072,097 raw rows into hourly rollups and then deletes
 the raw rows.
 
