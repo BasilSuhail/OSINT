@@ -256,13 +256,18 @@ export function EventDetailCard({
     return raw
   }, [event.payload])
 
+  //: Escape dismisses this card only when it is floating over the map (#844).
+  //: Embedded, it *is* the selection page's content, and a key that closes it
+  //: takes a page away — which is the behaviour #842 was filed about. The
+  //: distinction already existed in the prop; it just was not being read here.
   useEffect(() => {
+    if (embedded) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose()
     }
     window.addEventListener("keydown", handleKey)
     return () => window.removeEventListener("keydown", handleKey)
-  }, [onClose])
+  }, [onClose, embedded])
 
   return (
     <div

@@ -51,3 +51,21 @@ describe("what pages the deck has", () => {
     expect(open.slice(0, closed.length)).toEqual(closed)
   })
 })
+
+describe("where the deck should be looking", () => {
+  it("puts the story last, so moving to it means moving forward", () => {
+    // The deck scrolls to a newly created page. If a story could land before
+    // an existing page, "go to the story" would sometimes mean going back.
+    const keys = deckPageKeys({ selection: true, story: true, scoreboard: true })
+    expect(keys.indexOf("story")).toBeGreaterThan(keys.indexOf("selection"))
+    expect(keys.indexOf("story")).toBeLessThan(keys.indexOf("scoreboard"))
+  })
+
+  it("gives the story a stable index while it is open", () => {
+    // The index the deck scrolls to must not move underneath it because
+    // something unrelated appeared.
+    const before = deckPageKeys({ selection: true, story: true, scoreboard: false })
+    const after = deckPageKeys({ selection: true, story: true, scoreboard: true })
+    expect(after.indexOf("story")).toBe(before.indexOf("story"))
+  })
+})

@@ -71,6 +71,10 @@ export function SplitLayout() {
   //: One slot, whichever tile asked for it (#705). A story wins if both are
   //: somehow set — opening one never closes the other, so it is the later click.
   const sidePanel = storyDetailOpen ? "story" : worldDetailOpen ? "world" : null
+  //: Is a second floating panel actually on screen? Written once and read by
+  //: both the pop-out and the width variable (#844): the same condition in two
+  //: places drifted the moment a story stopped being a panel.
+  const popOutOpen = worldDetailOpen && !storyDetailOpen
   const entity = useRightPaneModeStore((s) => s.entity)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -79,17 +83,11 @@ export function SplitLayout() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      //: Esc closes the story, from anywhere, even while typing — it is the
-      //: one thing on screen that is genuinely dismissable from a keyboard.
-      //: It does not touch the deck's position or any other page (#842):
-      //: Escape used to close a pop-out, remove the selection card *and*
-      //: scroll home, which made it the key that loses your place.
-      if (e.key === "Escape") {
-        if (useStoryDetailStore.getState().storyId !== null) {
-          useStoryDetailStore.getState().closeStory()
-        }
-        return
-      }
+      //: Escape removes no page (#844). The story is a deck page now, and a
+      //: page is the reader's place: it closes by its own control or by being
+      //: swiped away from. Escape belongs to what sits *on top of* a page —
+      //: the expanded deck, the search overlay, a card floating over the map.
+      if (e.key === "Escape") return
       const target = e.target as HTMLElement
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return
       if (e.key === "[") {
@@ -189,7 +187,7 @@ export function SplitLayout() {
   ]
 
   //: The card that is not there most of the time (#699). A map click opens it,
-  //: Escape closes it, and it sits after the standing cards so those never get
+  //: It sits after the standing cards so those never get
   //: shoved sideways — a deck whose pages move is not a place you can learn.
   if (selection) {
     deckCards.push({
@@ -303,9 +301,13 @@ export function SplitLayout() {
             //: detail card too when it is open, and collapses to 0 with the deck.
             style={
               {
+                //: Reserves room for a *second* panel only when one is
+                //: actually rendered (#844). A story stopped being a panel in
+                //: #843 and became a page, but this still counted it — so the
+                //: collapse handle, which rides this edge, floated in open map.
                 "--panel-width": deckCollapsed
                   ? "0px"
-                  : sidePanel
+                  : popOutOpen
                     ? `calc(${PANEL_WIDTH} * 2 + 0.5rem)`
                     : PANEL_WIDTH,
               } as React.CSSProperties
@@ -327,7 +329,7 @@ export function SplitLayout() {
              *  rather than plumbing the panel's measured pixels. */}
             {/* The story no longer rides this slot — it is a deck page (#842),
                 so this is the world tile's alone. */}
-            {worldDetailOpen && !storyDetailOpen && !deckCollapsed ? (
+            {popOutOpen && !deckCollapsed ? (
               <FloatingPanel
                 className="absolute bottom-3 top-3 z-30"
                 style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
