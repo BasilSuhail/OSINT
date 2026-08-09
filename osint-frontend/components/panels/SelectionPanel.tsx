@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect } from "react"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { ClusterListPanel } from "../ClusterListPanel"
 import { CountrySidePanel } from "../CountrySidePanel"
@@ -14,9 +13,12 @@ import { EventDetailCard } from "../EventDetailCard"
  * world status panel inside one card, so picking something off the map quietly
  * destroyed the view you were reading.
  *
- * Now it is its own card: it exists while something is selected, the deck moves
- * to it, and Escape dismisses it. Nothing is overwritten, and the deck goes back
- * to where it was.
+ * Now it is its own card: it exists while something is selected and the deck
+ * moves to it. Nothing is overwritten.
+ *
+ * Escape does not dismiss it (#844). A page is the reader's place, and a key
+ * that removes one is a key that loses it — it closes by its own control, or
+ * by being swiped away from.
  *
  * Renders nothing when there is no selection — the deck only mounts it while
  * one exists, and this keeps that true if it is ever mounted otherwise.
@@ -26,15 +28,6 @@ export function SelectionPanel() {
   const closeEntity = useRightPaneModeStore((s) => s.closeEntity)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
-
-  useEffect(() => {
-    if (!entity) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeEntity()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [entity, closeEntity])
 
   if (!entity) return null
 

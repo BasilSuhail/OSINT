@@ -2,6 +2,7 @@
 
 import { Maximize2, Minimize2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { useDeckExpandStore } from "@/stores/deckExpandStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 
@@ -155,6 +156,19 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     activeRef.current = selectionIndex
     goTo(selectionIndex)
   }, [entityToken, selectionIndex, goTo])
+
+  //: A story opens on its own page, so the deck goes to it (#844) — the same
+  //: reason the selection card does: a page that arrives silently off-screen
+  //: makes the click look like it did nothing. Keyed on the story's identity
+  //: rather than the index, so opening a different story from the page you are
+  //: already on still moves nothing that should not move.
+  const storyToken = useStoryDetailStore((st) => st.storyId)
+  const storyIndex = cards.findIndex((c) => c.key === "story")
+  useEffect(() => {
+    if (storyToken === null || storyIndex < 0) return
+    activeRef.current = storyIndex
+    goTo(storyIndex)
+  }, [storyToken, storyIndex, goTo])
 
   useEffect(() => {
     if (!expanded) return
