@@ -16,3 +16,4 @@ fredapi>=0.5.2
 pandas>=2.2
 numpy>=2.2
 python-dateutil>=2.9
+sgp4>=2.23

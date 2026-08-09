@@ -28,6 +28,9 @@ dependencies = [
     "shapely>=2.0",
     "feedparser>=6.0",
     "vadersentiment>=3.3",
+    # Orbital propagation for the place screen's next-pass line (#876).
+    # One job, no transitive dependencies, runs fine on the small machine.
+    "sgp4>=2.23",
 ]
 
 [project.optional-dependencies]

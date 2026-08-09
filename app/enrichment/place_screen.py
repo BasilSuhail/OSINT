@@ -41,8 +41,10 @@ from typing import Any
 
 import httpx
 
+from app.enrichment import satellite_pass
 from app.enrichment.boundary import NEAR_BORDER_KM, border_distance_km, precise_country
 from app.enrichment.country import country_name
+from app.enrichment.satellite_pass import next_overpass
 
 #: Per-upstream budget. Four of these run at once, so the whole call lands in
 #: about this plus the point lookup.
@@ -53,6 +55,10 @@ _TIMEOUT_S = 4.0
 #: repeated identical searches.
 _TEXT_TTL_S = 7 * 24 * 3600
 _IMAGE_TTL_S = 12 * 3600
+
+#: An orbit does not change during an afternoon, and the answer is only ever
+#: displayed to the nearest day or hour.
+_PASS_TTL_S = 6 * 3600
 
 #: Imagery is keyed on a rounded point — two right-clicks a hundred metres
 #: apart are asking about the same place and should not cost two searches.
@@ -132,6 +138,7 @@ def clear_caches() -> None:
     _cache.clear()
     precise_country.cache_clear()
     border_distance_km.cache_clear()
+    satellite_pass.clear_cache()
 
 
 def _cached(key: str, ttl: float, produce: Callable[[], Any]) -> Any:
@@ -304,6 +311,12 @@ def _assemble(
             lat, lon = point["lat"], point["lon"]
             key = f"imagery:{round(lat / _IMAGE_GRID)}:{round(lon / _IMAGE_GRID)}"
             jobs["imagery"] = lambda: _cached(key, _IMAGE_TTL_S, lambda: _imagery(http, lat, lon))
+            #: Why the photograph is as old as it is (#876). Its own block, so
+            #: a slow element fetch cannot take the picture down with it.
+            pass_key = f"pass:{round(lat / _IMAGE_GRID)}:{round(lon / _IMAGE_GRID)}"
+            jobs["next_pass"] = lambda: _cached(
+                pass_key, _PASS_TTL_S, lambda: next_overpass(lat, lon, client=http)
+            )
 
         blocks, degraded = _gather(jobs)
 
@@ -326,6 +339,7 @@ def _assemble(
             "government": (facts or {}).get("government"),
             "summary": blocks.get("summary"),
             "imagery": blocks.get("imagery"),
+            "next_pass": blocks.get("next_pass"),
             "degraded": degraded,
         }
     finally:

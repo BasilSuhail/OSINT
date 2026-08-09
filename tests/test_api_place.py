@@ -41,7 +41,13 @@ def test_a_point_returns_its_country_even_with_every_service_down(offline):
     body = response.json()
     assert body["country"]["iso2"] == "FR"
     assert body["point"] == {"lat": 48.8566, "lon": 2.3522}
-    assert sorted(body["degraded"]) == ["government", "imagery", "profile", "summary"]
+    assert sorted(body["degraded"]) == [
+        "government",
+        "imagery",
+        "next_pass",
+        "profile",
+        "summary",
+    ]
 
 
 def test_open_water_is_an_answer_not_an_error(offline):
