@@ -230,6 +230,20 @@ def test_findings_total_matches_the_rows_written(db_session: Session) -> None:
     assert run.finished_at is not None
 
 
+def test_no_data_finding_is_retained_in_history(db_session: Session) -> None:
+    finding = _finding("yfinance", "no_data", "no rows in the events table")
+
+    with _patch_audit([finding], sources=61), patch("app.audit.task._pushover_send"):
+        run_audit(db_session, now=NOW)
+
+    run = db_session.execute(select(AuditRunRow)).scalars().one()
+    row = db_session.execute(select(AuditFindingRow)).scalars().one()
+    assert run.sources_measured == 61
+    assert row.source == "yfinance"
+    assert row.check_name == "no_data"
+    assert row.detail == "no rows in the events table"
+
+
 def test_clean_run_still_writes_a_row(db_session: Session) -> None:
     """ "Nothing wrong" and "never ran" must not look the same (#663)."""
     with _patch_audit([]), patch("app.audit.task._pushover_send") as push:

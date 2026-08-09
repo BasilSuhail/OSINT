@@ -72,23 +72,25 @@ Follows the existing package shape (`app/coverage`, `app/divergence`).
 - **`app/audit/checks.py`** — pure functions over a stats record. No DB access,
   so the whole rule set is testable against literals.
 - **`app/audit/stats.py`** — `SourceStats`, the measured shape. Data only.
-- **`app/audit/run.py`** — two grouped queries over the whole table, assembles
-  stats, applies checks, returns findings. Severity spread is computed in Python
-  from grouped value counts rather than in SQL, so the arithmetic is identical on
-  SQLite and Postgres.
+- **`app/audit/run.py`** — two grouped queries over the whole table, then unions
+  observed sources with active fetcher registrations and concrete declarations.
+  It synthesizes zero-row stats before applying checks. Severity spread is
+  computed in Python from grouped value counts rather than in SQL, so the
+  arithmetic is identical on SQLite and Postgres.
 - **`scripts/data_audit.py`** — prints findings grouped by source.
 
 ## Data flow
 
 ```
-events table
+fetcher registry + declarations + events table
   -> run.gather_stats(session)     two grouped queries -> SourceStats per source
   -> expectations.for_source(name) declared Expectation
   -> checks.run_all(stats, exp)    -> list[Finding]
   -> scripts/data_audit.py         prints
 ```
 
-`SourceStats` carries: rows, severity non-null count, shape-sample count,
+`SourceStats` carries: source state (`observed`, `zero_row`, `disabled`, or
+`undeclared`), rows, severity non-null count, shape-sample count,
 distinct severity count, top-value share, severity std, country non-null count,
 earliest and latest `occurred_at`, and rows passing the composite's real filter.
 
@@ -102,6 +104,7 @@ rows, so one small scheduler batch cannot become a population-level finding.
 
 | check | fires when | catches today |
 |---|---|---|
+| `no_data` | active registered or declared source has zero event rows | silent or broken ingestion |
 | `severity_coverage` | declared `continuous`/`graded`, non-null share below 99% | FRED (0%), FIRMS pre-#577 (13.7%) |
 | `severity_shape` | at least 30 eligible rows, declared `continuous`, distinct <= 3 or top value > 90% | large RSS model samples |
 | `severity_constant` | at least 30 eligible rows and std == 0, any declaration | OpenSky |
@@ -121,10 +124,20 @@ derives both sides from the same expression.
 
 ## Error handling
 
-A source present in `events` with no declared expectation is itself a finding
-(`undeclared_source`) rather than an exception — a new fetcher must not be able
-to enter the system unnoticed. A declared source with zero rows is reported as
-`no_data`, not an error, since paused sources (#160, #155) legitimately have none.
+A source present in `events` or the runtime registry with no declared
+expectation is itself a finding (`undeclared_source`) rather than an exception —
+a new fetcher must not be able to enter the system unnoticed. Active registered
+or declared sources with zero rows report `no_data`. Parked RSS feeds remain in
+the measured universe with an explicit `disabled` state, but do not report
+`no_data` or staleness. Their retained rows still receive semantic and
+future-date checks. Consequently, nightly `sources_measured` counts every
+source the audit evaluated, including zero-row and disabled sources, rather
+than only sources already visible in `events`.
+
+Disabled means explicitly removed from the scheduler, currently via
+`"enabled": false` in the RSS registry. A scheduled core source does not become
+disabled merely because a credential or configured file is absent: that is the
+misconfiguration the `no_data` finding is intended to expose.
 
 ## Testing
 

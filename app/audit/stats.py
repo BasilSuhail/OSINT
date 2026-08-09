@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
+
+SourceState = Literal["observed", "zero_row", "disabled", "undeclared"]
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,10 @@ class SourceStats:
     #: `severity_present`: RSS coverage includes the ingest fallback, while its
     #: continuous-shape contract describes only post-ingest model grades.
     severity_shape_present: int | None = None
+    #: How this source entered the complete audit universe. This is separate
+    #: from row counts so a parked source and a broken zero-row source never
+    #: collapse into the same state.
+    state: SourceState = "observed"
 
     @property
     def shape_sample_size(self) -> int:

@@ -123,9 +123,75 @@ def test_an_undeclared_source_is_itself_a_finding(db_session):
     """A new fetcher must not be able to enter the system unnoticed."""
     _add(db_session, "brand-new-feed", n=2, severity=0.5)
 
-    findings = run.audit(db_session, now=NOW)
+    findings = [
+        finding for finding in run.audit(db_session, now=NOW) if finding.source == "brand-new-feed"
+    ]
 
     assert [f.check for f in findings] == ["undeclared_source"]
+
+
+def test_absent_core_source_is_measured_as_zero_row(db_session):
+    stats = _by_source(run.gather_stats(db_session))["yfinance"]
+
+    assert stats.rows == 0
+    assert stats.state == "zero_row"
+    assert {
+        finding.check for finding in run.audit(db_session, now=NOW) if finding.source == "yfinance"
+    } == {"no_data"}
+
+
+def test_missing_core_file_does_not_silently_disable_its_schedule(db_session):
+    stats = _by_source(run.gather_stats(db_session))["emdat"]
+
+    assert stats.state == "zero_row"
+    assert {
+        finding.check for finding in run.audit(db_session, now=NOW) if finding.source == "emdat"
+    } == {"no_data"}
+
+
+def test_absent_enabled_rss_source_is_measured_as_zero_row(db_session):
+    stats = _by_source(run.gather_stats(db_session))["rss-bbc-world"]
+
+    assert stats.rows == 0
+    assert stats.state == "zero_row"
+    assert {
+        finding.check
+        for finding in run.audit(db_session, now=NOW)
+        if finding.source == "rss-bbc-world"
+    } == {"no_data"}
+
+
+def test_disabled_rss_source_is_measured_without_a_finding(db_session):
+    stats = _by_source(run.gather_stats(db_session))["rss-nhk-world"]
+
+    assert stats.rows == 0
+    assert stats.state == "disabled"
+    assert [
+        finding for finding in run.audit(db_session, now=NOW) if finding.source == "rss-nhk-world"
+    ] == []
+
+
+def test_runtime_registered_rss_source_uses_family_declaration(db_session, monkeypatch):
+    monkeypatch.setattr(run, "registered_names", lambda: frozenset({"rss-runtime-test"}))
+
+    stats = _by_source(run.gather_stats(db_session))["rss-runtime-test"]
+    findings = [
+        finding
+        for finding in run.audit(db_session, now=NOW)
+        if finding.source == "rss-runtime-test"
+    ]
+
+    assert stats.state == "zero_row"
+    assert [finding.check for finding in findings] == ["no_data"]
+
+
+def test_sources_measured_counts_the_complete_universe(db_session):
+    findings, sources_measured = run.audit_detail(db_session, now=NOW)
+    stats = run.gather_stats(db_session)
+
+    assert findings
+    assert sources_measured == len(stats)
+    assert sources_measured > 0
 
 
 def test_a_declared_healthy_source_produces_nothing(db_session):

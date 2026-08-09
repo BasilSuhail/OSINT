@@ -54,8 +54,8 @@ def _pct(value: float) -> str:
 
 
 def check_no_data(stats: SourceStats, expectation: Expectation) -> Finding | None:
-    """Reported, never raised: paused sources (#160, #155) legitimately have none."""
-    if stats.rows:
+    """An active declared source must exist even when the table says nothing."""
+    if not expectation.enabled or stats.rows:
         return None
     return Finding(stats.source, "no_data", "no rows in the events table")
 
@@ -182,6 +182,8 @@ def check_occurred_at_plausible(
             "occurred_at_plausible",
             f"newest row is dated {stats.latest.isoformat()}, {ahead} in the future",
         )
+    if not expectation.enabled:
+        return None
     age = now - stats.latest
     if age > timedelta(days=STALE_AFTER_DAYS):
         return Finding(
@@ -202,6 +204,8 @@ def run_all(stats: SourceStats, expectation: Expectation, *, now: datetime) -> l
     empty = check_no_data(stats, expectation)
     if empty is not None:
         return [empty]
+    if not stats.rows:
+        return []
 
     findings = [
         check(stats, expectation)

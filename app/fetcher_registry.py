@@ -9,6 +9,25 @@ from __future__ import annotations
 
 from app.sources.base import Fetcher
 
+CORE_FETCHER_NAMES: frozenset[str] = frozenset(
+    {
+        "yfinance",
+        "fred",
+        "gdelt",
+        "acled",
+        "emdat",
+        "usgs-quake",
+        "gdacs",
+        "nasa-firms",
+        "eonet",
+        "uk-police",
+        "opensky-adsb",
+        "abuse-ch-urlhaus",
+        "abuse-ch-feodo",
+        "polymarket",
+    }
+)
+
 _REGISTRY: dict[str, Fetcher] | None = None
 _OVERRIDES: dict[str, Fetcher] = {}
 
@@ -70,6 +89,19 @@ def get_fetcher(name: str) -> Fetcher:
     if name not in registry:
         raise KeyError(f"unknown fetcher: {name!r}. Registered: {sorted(registry)}")
     return registry[name]
+
+
+def registered_names() -> frozenset[str]:
+    """Active fetcher slugs without importing or constructing fetchers.
+
+    Audit runs need the registry's universe even when a source has never made
+    an event row. RSS membership remains data-driven and runtime test
+    registrations remain visible.
+    """
+    from app.sources.rss_registry import feed_enabled_map
+
+    rss = {source for source, enabled in feed_enabled_map().items() if enabled}
+    return frozenset(CORE_FETCHER_NAMES | rss | set(_OVERRIDES))
 
 
 def register(name: str, fetcher: Fetcher) -> None:

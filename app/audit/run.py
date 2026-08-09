@@ -15,9 +15,10 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.audit import checks, expectations
-from app.audit.stats import SourceStats
+from app.audit.stats import SourceState, SourceStats
 from app.db_models import EventRow
 from app.enrichment.place import PLACE_EVIDENCE_FIELD
+from app.fetcher_registry import registered_names
 from app.severity import news
 
 #: The composite's own category filter, restated rather than imported.
@@ -69,8 +70,34 @@ def _spread(counts: dict[float, int]) -> tuple[int, float | None, float | None]:
     return len(counts), top_share, variance**0.5
 
 
+def _empty_stats(source: str, *, state: SourceState) -> SourceStats:
+    return SourceStats(
+        source=source,
+        rows=0,
+        severity_present=0,
+        severity_distinct=0,
+        severity_top_share=None,
+        severity_std=None,
+        country_present=0,
+        earliest=None,
+        latest=None,
+        composite_eligible=0,
+        severity_shape_present=0,
+        state=state,
+    )
+
+
+def _state_for(source: str, *, observed: bool) -> SourceState:
+    expectation = expectations.for_source(source)
+    if expectation is None:
+        return "undeclared"
+    if not expectation.enabled:
+        return "disabled"
+    return "observed" if observed else "zero_row"
+
+
 def gather_stats(session: Session) -> list[SourceStats]:
-    """Measure every source present in the events table."""
+    """Measure registered, declared, and observed sources as one universe."""
     severity_counts, shape_counts = _severity_counts(session)
 
     eligible = case(
@@ -93,27 +120,34 @@ def gather_stats(session: Session) -> list[SourceStats]:
         ).group_by(EventRow.source)
     ).all()
 
-    stats: list[SourceStats] = []
+    observed: dict[str, SourceStats] = {}
     for source, total, country_present, earliest, latest, composite_eligible in rows:
         counts = severity_counts.get(source, {})
         shape = shape_counts.get(source, {})
         distinct, top_share, std = _spread(shape)
-        stats.append(
-            SourceStats(
-                source=source,
-                rows=total,
-                severity_present=sum(counts.values()),
-                severity_distinct=distinct,
-                severity_top_share=top_share,
-                severity_std=std,
-                country_present=country_present,
-                earliest=_as_utc(earliest),
-                latest=_as_utc(latest),
-                composite_eligible=int(composite_eligible or 0),
-                severity_shape_present=sum(shape.values()),
-            )
+        observed[source] = SourceStats(
+            source=source,
+            rows=total,
+            severity_present=sum(counts.values()),
+            severity_distinct=distinct,
+            severity_top_share=top_share,
+            severity_std=std,
+            country_present=country_present,
+            earliest=_as_utc(earliest),
+            latest=_as_utc(latest),
+            composite_eligible=int(composite_eligible or 0),
+            severity_shape_present=sum(shape.values()),
+            state=_state_for(source, observed=True),
         )
-    stats.sort(key=lambda s: s.source)
+
+    universe = registered_names() | expectations.declared_sources() | set(observed)
+    stats: list[SourceStats] = []
+    for source in sorted(universe):
+        measured = observed.get(source)
+        if measured is not None:
+            stats.append(measured)
+            continue
+        stats.append(_empty_stats(source, state=_state_for(source, observed=False)))
     return stats
 
 
@@ -161,7 +195,7 @@ def audit_detail(
                     source_stats.source,
                     "undeclared_source",
                     f"{source_stats.rows:,} rows, but no expectation declares what this "
-                    f"source should produce",
+                    f"registered or observed source should produce",
                 )
             )
             continue
