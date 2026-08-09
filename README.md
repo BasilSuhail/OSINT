@@ -1012,7 +1012,7 @@ Three sources in. One pipeline. Three outputs: a live dashboard you can pull up 
 | **What is it?** | A small early-warning dashboard. It watches four kinds of open data — markets, geopolitical news events, natural hazards, and satellite-detected fire load — and combines them into a single number per country that goes up when things look stressed. |
 | **Why these three?** | The design brief: "must not depend on a single data source." Three independent domains keep the score honest: if only one domain spikes, the composite stays calm. If multiple domains spike together, the composite goes red. |
 | **What is it for?** | (a) **The claim** — test whether this multi-modal composite is better at flagging real instability events than watching one domain alone. (b) **Personal** — a self-hosted situational-awareness tool that keeps running indefinitely. |
-| **What is NOT it?** | Not a prediction system. Not Palantir. Not Shadowbroker. Not finance-only. Does not claim to predict specific events. Does not use private intelligence feeds. |
+| **What is NOT it?** | Not a prediction system. Not an enterprise intelligence platform. Not a live sensor wall. Not finance-only. Does not claim to predict specific events. Does not use private intelligence feeds. |
 
 ---
 
@@ -1233,7 +1233,7 @@ CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries.
 
 ## Inspirations and lineage
 
-- **Architectural inspiration only**: [Shadowbroker](https://github.com/BigBodyCobain/Shadowbroker), WorldMonitor
+- **Architecture**: built from nothing, no external source code used. Publicly visible open-source intelligence dashboards showed that this was possible on commodity hardware; the design itself answers this project's own constraints. See [`docs/architecture/05-originality.md`](docs/architecture/05-originality.md).
 - **Methodology lineage (cited)**: OECD/JRC Composite Indicator Handbook (Nardo et al., 2008), ViEWS (Hegre et al., 2019), CEWS field review (Davies et al., 2023), FSI methodology (Fund for Peace), GDELT validity critiques (Wang 2025, Wallace 2014, Öberg & Yilmaz 2025), FinBERT honesty (Yang et al., 2024). Full list with reading priority in [`docs/methodology.md`](docs/methodology.md#part-b--literature-baseline).
 
 ---

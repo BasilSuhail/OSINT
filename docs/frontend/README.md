@@ -61,7 +61,7 @@ multi-line rows, category chips, and source/location/distance context.
 
 ## Versions
 
-- `v0-prompt.md` — original spec: dual-pane map + globe, filters, time scrubber, live fades. Inspired by WorldMonitor / Shadowbroker / Palantir. The globe half was removed in #494; the map is now the only geographic surface.
+- `v0-prompt.md` — original spec: dual-pane map + globe, filters, time scrubber, live fades. Dark, dense, analytical. The globe half was removed in #494; the map is now the only geographic surface.
 - `v0-prompt-v1-simple.md` — archived first draft: single-page world map + articles, no globe.
 
 ## Setup
