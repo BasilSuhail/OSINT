@@ -18,12 +18,12 @@ and five of those already carry yfinance market data.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 import pandas as pd
 from fredapi import Fred
 
-from app.composite.normalization import MIN_HISTORY, rolling_zscore
+from app.composite.normalization import DEFAULT_WINDOW_MONTHS, MIN_HISTORY, rolling_zscore
 from app.models import Category, Event
 from app.settings import settings
 from app.sources.base import Fetcher
@@ -95,6 +95,12 @@ del _cc
 #: was measured, and a judgement rather than a derivation (#681).
 SEVERITY_Z_CAP: float = 3.0
 
+#: Calendar-day padding requested before the public lookback boundary. The
+#: longest panel cadence is monthly, so a year plus one month supplies the 12
+#: preceding changes used by the default rolling window despite month length
+#: and leap-year variation. Padded observations are scored but not emitted.
+WARMUP_DAYS: int = 400
+
 
 def _severity_from_z(z: float) -> float:
     """Map a z-score to the [0, 1] severity every other source emits.
@@ -108,6 +114,16 @@ def _severity_from_z(z: float) -> float:
     return min(1.0, abs(z) / SEVERITY_Z_CAP)
 
 
+def severity_for_values(values: list[float]) -> list[float | None]:
+    """Return causal severities for a complete, date-ordered value series."""
+    diffs = [values[i] - values[i - 1] for i in range(1, len(values))]
+    zscores = rolling_zscore(diffs, window=DEFAULT_WINDOW_MONTHS)
+    return [
+        _severity_from_z(zscores[i - 1]) if i - 1 >= MIN_HISTORY else None
+        for i in range(len(values))
+    ]
+
+
 def _series_to_events(
     data: pd.Series,
     *,
@@ -115,6 +131,7 @@ def _series_to_events(
     country: str,
     units: str,
     fetched_at: datetime,
+    emit_since: datetime | None = None,
 ) -> list[Event]:
     """Pure transformation from a FRED pandas Series to canonical events.
 
@@ -137,11 +154,7 @@ def _series_to_events(
     # own trailing mean and the series reads as permanently alarming. That is
     # trend, not anomaly. First differences drop it to mean 0.498 / min 0.024,
     # and DGS10's saturated observations from 17 of 266 to 5 of 265.
-    diffs = [values[i] - values[i - 1] for i in range(1, len(values))]
-    # Causal by construction: diff position j is scored against the preceding
-    # window only, so re-fetching a longer window never rewrites an earlier
-    # severity. diffs[j] belongs to observation j + 1.
-    zscores = rolling_zscore(diffs)
+    severities = severity_for_values(values)
 
     events: list[Event] = []
     for i, (raw_date, value) in enumerate(clean.items()):
@@ -151,6 +164,11 @@ def _series_to_events(
             occurred_at = pd.Timestamp(raw_date).to_pydatetime()
         if occurred_at.tzinfo is None:
             occurred_at = occurred_at.replace(tzinfo=UTC)
+
+        # Warm-up observations establish the score at the live-window boundary
+        # but must not extend the fetcher's advertised retention horizon.
+        if emit_since is not None and occurred_at < emit_since:
+            continue
 
         events.append(
             Event(
@@ -163,7 +181,7 @@ def _series_to_events(
                 # the composite drops null severity, which is the honest
                 # outcome, whereas 0.0 would assert "perfectly normal" about a
                 # value nothing has assessed. That imputation is #683.
-                severity=(_severity_from_z(zscores[i - 1]) if i - 1 >= MIN_HISTORY else None),
+                severity=severities[i],
                 country=country,
                 keywords=[series_id, "macro"],
                 payload={
@@ -193,7 +211,9 @@ class FredFetcher(Fetcher):
 
         fred = Fred(api_key=settings.fred_api_key)
         now = datetime.now(UTC)
-        start_date = (now - timedelta(days=self.lookback_days)).date().isoformat()
+        emit_date = (now - timedelta(days=self.lookback_days)).date()
+        emit_since = datetime.combine(emit_date, time.min, tzinfo=UTC)
+        start_date = (emit_since - timedelta(days=WARMUP_DAYS)).date().isoformat()
 
         all_events: list[Event] = []
         failed: list[str] = []
@@ -217,6 +237,7 @@ class FredFetcher(Fetcher):
                         country=country,
                         units=units,
                         fetched_at=now,
+                        emit_since=emit_since,
                     )
                 )
         if failed:
