@@ -117,6 +117,40 @@ def test_declared_continuous_but_one_value_dominates_is_a_finding():
     assert "severity_shape" in _names(findings)
 
 
+def test_tiny_continuous_sample_waits_for_more_evidence():
+    findings = checks.run_all(
+        _stats(
+            severity_present=6,
+            severity_shape_present=6,
+            severity_distinct=1,
+            severity_top_share=1.0,
+            severity_std=0.0,
+        ),
+        CONTINUOUS,
+        now=NOW,
+    )
+
+    assert "severity_shape" not in _names(findings)
+    assert "severity_constant" not in _names(findings)
+
+
+def test_shape_check_starts_at_the_minimum_sample():
+    findings = checks.run_all(
+        _stats(
+            severity_present=30,
+            severity_shape_present=30,
+            severity_distinct=1,
+            severity_top_share=1.0,
+            severity_std=0.0,
+        ),
+        CONTINUOUS,
+        now=NOW,
+    )
+
+    assert "severity_shape" in _names(findings)
+    assert "severity_constant" in _names(findings)
+
+
 def test_a_graded_declaration_accepts_a_coarse_scale():
     """Three alert levels are a legitimate design, once declared."""
     graded = Expectation(severity="graded", country="required", feeds_composite=True)
