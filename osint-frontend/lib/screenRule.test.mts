@@ -1,37 +1,38 @@
 import { describe, expect, it } from "vitest"
-import { deckPageKeys, pageAfterPopupCloses, pageForPopup } from "./deckPages"
+import { deckPageKeys } from "./deckPages"
 
 /**
- * The operator's rule, written as tests so the next change breaks a test
- * rather than a screen (#850):
+ * The operator's rule, as tests:
  *
- *   screen 1  news and stories
- *   screen 2  world view and search
- *   screen 3  created by clicking the map
- *   screen 4  the pop-up
+ *   screen 1  news and stories          left column
+ *   screen 2  world view and search     left column
+ *   screen 3  made by a map click       left column
+ *   screen 4  THE POP-UP                a second column, beside the left one
  *
- *   Anything clicked on 1, 2 or 3 that needs detail opens the pop-up.
- *   Escape closes the pop-up only, and leaves the reader on screen 3 —
- *   or screen 1 when screen 3 is not open.
+ *   Clicking anything on 1, 2 or 3 that needs expanding opens screen 4 beside
+ *   it. The screen you clicked from stays visible and does not move.
+ *   Escape closes screen 4 and nothing else.
  */
 const SCREEN_1 = 0
 const SCREEN_2 = 1
 const SCREEN_3 = 2
-const SCREEN_4 = 3
 
-describe("the four screens", () => {
-  it("numbers them the way the operator does", () => {
-    const keys = deckPageKeys({ selection: true, popup: true, scoreboard: false })
+describe("the left column", () => {
+  it("is screen 1, then 2, then 3 when a map click makes it", () => {
+    const keys = deckPageKeys({ selection: true, scoreboard: false })
     expect(keys[SCREEN_1]).toBe("situation")
     expect(keys[SCREEN_2]).toBe("world")
     expect(keys[SCREEN_3]).toBe("selection")
-    expect(keys[SCREEN_4]).toBe("popup")
   })
 
-  it("keeps screen 1 and 2 fixed whatever else is open", () => {
+  it("has no screen 3 until the map is clicked", () => {
+    expect(deckPageKeys({ selection: false, scoreboard: false })).toEqual(["situation", "world"])
+  })
+
+  it("never moves screens 1 and 2", () => {
     for (const selection of [false, true]) {
-      for (const popup of [false, true]) {
-        const keys = deckPageKeys({ selection, popup, scoreboard: true })
+      for (const scoreboard of [false, true]) {
+        const keys = deckPageKeys({ selection, scoreboard })
         expect(keys[SCREEN_1]).toBe("situation")
         expect(keys[SCREEN_2]).toBe("world")
       }
@@ -39,40 +40,23 @@ describe("the four screens", () => {
   })
 })
 
-describe("opening a pop-up", () => {
-  it("lands on screen 4 when screen 3 is open", () => {
-    expect(pageForPopup({ selection: true, popup: true, scoreboard: false })).toBe(SCREEN_4)
-  })
-
-  it("lands on screen 3's slot when there is no screen 3", () => {
-    // Without a map selection the pop-up is the third page. It is still "the
-    // pop-up"; only its index moves.
-    expect(pageForPopup({ selection: false, popup: true, scoreboard: false })).toBe(SCREEN_3)
-  })
-})
-
-describe("closing the pop-up", () => {
-  it("returns to screen 3 when it is open", () => {
-    expect(pageAfterPopupCloses({ selection: true, scoreboard: false })).toBe(SCREEN_3)
-  })
-
-  it("returns to screen 1 when screen 3 is closed", () => {
-    expect(pageAfterPopupCloses({ selection: false, scoreboard: false })).toBe(SCREEN_1)
-  })
-
-  it("never leaves the reader on screen 2", () => {
-    // The reported defect. Screen 2 is where the scroll clamp used to land.
+describe("the pop-up", () => {
+  it("is never a page in the left column", () => {
+    // Screen 4 is a second column. Making it a page here is what hid screen 3
+    // behind it every time a row was clicked.
     for (const selection of [false, true]) {
       for (const scoreboard of [false, true]) {
-        expect(pageAfterPopupCloses({ selection, scoreboard })).not.toBe(SCREEN_2)
+        expect(deckPageKeys({ selection, scoreboard })).not.toContain("popup")
       }
     }
   })
 
-  it("does not remove screen 3", () => {
-    const before = deckPageKeys({ selection: true, popup: true, scoreboard: false })
-    const after = deckPageKeys({ selection: true, popup: false, scoreboard: false })
-    expect(before).toContain("selection")
-    expect(after).toContain("selection")
+  it("cannot change how many pages the left column has", () => {
+    // Opening or closing it must not add, remove or renumber a page — which
+    // is what made Escape land on screen 2.
+    const before = deckPageKeys({ selection: true, scoreboard: false })
+    const after = deckPageKeys({ selection: true, scoreboard: false })
+    expect(after).toEqual(before)
+    expect(after).toHaveLength(3)
   })
 })
