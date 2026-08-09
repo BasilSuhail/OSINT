@@ -43,6 +43,8 @@ import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { IMAGERY_LAYERS, imageryDate } from "@/lib/imageryLayers"
 import { useImageryStore } from "@/stores/imageryStore"
+import { usePresenceStore } from "@/stores/presenceStore"
+import { windowIsNow } from "@/lib/presence"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
@@ -200,6 +202,13 @@ export function FilterRail({
   const toggleImagery = useImageryStore((s) => s.toggle)
   const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
   const imageryDay = imageryDate(Date.now() - windowEndOffsetMs)
+
+  //: Live aircraft (#873). Hidden rather than disabled when the scrubber
+  //: leaves "now": nothing about presence is stored, so there is no past to
+  //: show, and a live layer over an old map would read as history.
+  const presenceOn = usePresenceStore((st) => st.aircraft)
+  const togglePresence = usePresenceStore((st) => st.toggleAircraft)
+  const presenceAtNow = windowIsNow(windowEndOffsetMs)
 
   /** Windowed count for the rail header — the same pipeline the map markers
    *  use, so the header and the dots always agree. The event *list* left with
@@ -607,6 +616,40 @@ export function FilterRail({
             {activeImagery && (
               <span className="px-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
                 NASA GIBS · Worldview
+              </span>
+            )}
+          </div>
+
+          {/* Live aircraft (#873). Not events: these never enter the counts,
+           *  the source filters, the clustering or the situation list. */}
+          <div className="flex flex-col gap-1.5">
+            <span className="px-0.5 font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+              Live
+            </span>
+            <button
+              type="button"
+              aria-pressed={presenceOn}
+              disabled={!presenceAtNow}
+              onClick={togglePresence}
+              className={cn(
+                "flex flex-col gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors",
+                !presenceAtNow
+                  ? "cursor-not-allowed border-neutral-800/40 text-neutral-700"
+                  : presenceOn
+                    ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
+                    : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
+              )}
+            >
+              <span className="text-[13px]">Military air</span>
+              <span className="font-mono text-[10px] text-neutral-600">
+                {presenceAtNow
+                  ? "military and distress squawks, live"
+                  : "live only \u2014 scrub back to now"}
+              </span>
+            </button>
+            {presenceOn && presenceAtNow && (
+              <span className="px-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
+                adsb.lol \u00b7 ODbL
               </span>
             )}
           </div>

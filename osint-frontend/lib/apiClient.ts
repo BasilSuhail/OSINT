@@ -1,5 +1,6 @@
 import type { PlaceTarget } from "@/stores/placeStore"
 import { placeUrl } from "./placeUrl"
+import type { PresenceAnswer } from "./presence"
 import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "./types"
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -481,4 +482,13 @@ export async function fetchPlace(
   const res = await apiFetch(url, { signal: options.signal })
   if (!res.ok) throw new Error(`place failed: ${res.status}`)
   return (await res.json()) as PlaceAnswer
+}
+
+/** Live aircraft (#873). Never stored, never citable — see `app/presence/`. */
+export async function fetchPresenceAircraft(
+  options: { signal?: AbortSignal } = {},
+): Promise<PresenceAnswer> {
+  const res = await apiFetch(`${API_BASE}/presence/aircraft`, { signal: options.signal })
+  if (!res.ok) throw new Error(`presence failed: ${res.status}`)
+  return (await res.json()) as PresenceAnswer
 }

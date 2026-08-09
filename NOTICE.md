@@ -40,6 +40,7 @@ change. Read the current ones for any feed you actually enable.
 | Wikipedia — place summaries | `app/enrichment/place_screen.py` | <https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use> |
 | Copernicus Sentinel-2, reached through Microsoft Planetary Computer | `app/enrichment/place_screen.py` | <https://planetarycomputer.microsoft.com/terms> and <https://sentinels.copernicus.eu/web/sentinel/terms-conditions> |
 | NASA GIBS — satellite imagery tiles (nightlights, true colour) | `osint-frontend/lib/imageryLayers.ts` | <https://nasa-gibs.github.io/gibs-api-docs/> |
+| adsb.lol — military and distress-squawk aircraft, live | `app/presence/aircraft.py` | <https://www.adsb.lol/docs/open-data/> |
 
 Some of these are open government data and some are not. Several are free for
 noncommercial or research use specifically and require a separate agreement for
@@ -49,6 +50,13 @@ is. Do not assume a feed is permissive because its neighbour in the table is.
 UK Police data is published under the Open Government Licence v3.0
 (<https://nationalarchives.gov.uk/doc/open-government-licence/version/3/>),
 which requires attribution.
+
+Live aircraft positions are published under ODbL 1.0. Attribution is required
+and the map carries it beside the layer switch. ODbL's share-alike attaches to
+adapted databases that are publicly used; this software stores none of that
+data and redistributes none of it, so the map is a Produced Work and the
+obligation stops at the notice. Storing it is what would change that, which is
+one reason `app/presence/` is built so it cannot.
 
 Copernicus Sentinel-2 imagery is published under CC-BY 4.0 by the European
 Union and the European Space Agency, Wikipedia text under CC-BY-SA, and
