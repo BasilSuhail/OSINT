@@ -128,6 +128,31 @@ def test_a_graded_declaration_accepts_a_coarse_scale():
     assert "severity_shape" not in _names(findings)
 
 
+def test_uk_police_contract_accepts_its_intentional_category_scale():
+    expectation = for_source("uk-police")
+    assert expectation is not None
+    assert expectation.severity == "graded"
+    assert expectation.feeds_composite is False
+
+    findings = checks.run_all(
+        _stats(
+            source="uk-police",
+            rows=10_504,
+            severity_present=10_504,
+            severity_distinct=8,
+            severity_top_share=0.358,
+            severity_std=0.17,
+            country_present=10_504,
+            composite_eligible=0,
+        ),
+        expectation,
+        now=NOW,
+    )
+
+    assert "severity_absent_but_present" not in _names(findings)
+    assert "severity_shape" not in _names(findings)
+
+
 def test_a_constant_severity_is_a_finding_even_when_graded():
     """OpenSky: 58,793 rows, severity 0.0 on every one. No declaration excuses that."""
     graded = Expectation(severity="graded", country="optional", feeds_composite=False)

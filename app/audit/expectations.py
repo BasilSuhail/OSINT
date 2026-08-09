@@ -154,7 +154,16 @@ EXPECTATIONS: dict[str, Expectation] = {
         severity="graded", country="optional", feeds_composite=True, note="UNVERIFIED"
     ),
     "uk-police": Expectation(
-        severity="none", country="required", feeds_composite=False, note="UNVERIFIED"
+        severity="graded",
+        country="required",
+        feeds_composite=False,
+        note=(
+            "The fetcher intentionally maps upstream crime categories onto an "
+            "eight-value ordinal harm scale. Measured live on 10,504 retained "
+            "rows: every row carries severity, spanning 0.30 to 0.85, and every "
+            "row carries GB. This is a dashboard crime signal only; it does not "
+            "feed the composite (#859)."
+        ),
     ),
     "opensky-adsb": Expectation(
         severity="none",
