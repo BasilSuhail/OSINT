@@ -41,6 +41,7 @@ from app.db_models import (
     StoryRow,
     StorySensorCheckRow,
 )
+from app.enrichment.place_screen import describe_place, describe_place_by_country
 from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
 from app.location_precision import precision_of, radius_m
@@ -336,6 +337,29 @@ def console_health_panel(session: Session = Depends(get_session)) -> dict:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/geo/place")
+def geo_place(
+    lat: float | None = Query(None, ge=-90, le=90),
+    lon: float | None = Query(None, ge=-180, le=180),
+    iso: str | None = Query(None, min_length=2, max_length=2),
+) -> dict:
+    """What is at this point, or in this country (#862).
+
+    A right-click on the map sends a point; the country chip inside an event
+    card sends a code and no point, and gets the same screen without a
+    photograph rather than one taken over an invented centroid.
+
+    Every upstream is optional and none of them is ours. The answer names
+    whichever went missing instead of failing whole, because a screen with one
+    blank block is useful and a 500 is not.
+    """
+    if lat is not None and lon is not None:
+        return describe_place(lat, lon)
+    if iso:
+        return describe_place_by_country(iso)
+    raise HTTPException(status_code=422, detail="give both lat and lon, or an iso code")
 
 
 @app.get("/events")

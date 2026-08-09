@@ -2,7 +2,7 @@
 
 import { useWorldStats } from "@/lib/queries"
 import { useWorldDetailStore } from "@/stores/worldDetailStore"
-import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
+import { usePlaceStore } from "@/stores/placeStore"
 
 const regionNames =
   typeof Intl !== "undefined" && "DisplayNames" in Intl
@@ -150,7 +150,7 @@ export function WorldHeadline() {
  *  countries ranked by frequency (ACLED-style). Rows are clickable and lock
  *  the pane to that country's detail (#252). */
 export function WorldStatusPanel() {
-  const openCountry = useRightPaneModeStore((s) => s.openCountry)
+  const openCountry = usePlaceStore((s) => s.openCountry)
 
   //: Counted in Postgres, not in the browser (#499). The old buffer-derived
   //: figures reported CLIENT_LIMITS.eventBuffer (7500) rather than the data.

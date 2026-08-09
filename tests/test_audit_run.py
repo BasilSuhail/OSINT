@@ -10,19 +10,29 @@ from app.db_models import EventRow
 NOW = datetime(2026, 7, 22, tzinfo=UTC)
 
 
-def _add(session, source, *, n=1, severity=None, country="US", category="hazard", occurred=None):
+def _add(
+    session,
+    source,
+    *,
+    n=1,
+    severity=None,
+    country="US",
+    category="hazard",
+    occurred=None,
+    method=None,
+):
     for i in range(n):
         session.add(
             EventRow(
                 source=source,
-                source_event_id=f"{source}-{severity}-{country}-{i}",
+                source_event_id=f"{source}-{severity}-{country}-{method}-{i}",
                 occurred_at=occurred or NOW - timedelta(hours=1),
                 fetched_at=NOW,
                 category=category,
                 severity=severity,
                 country=country,
                 keywords=[],
-                payload={},
+                payload={"severity_method": method} if method else {},
             )
         )
     session.commit()
@@ -59,6 +69,31 @@ def test_a_constant_severity_measures_zero_spread(db_session):
     stats = _by_source(run.gather_stats(db_session))["opensky-adsb"]
 
     assert (stats.severity_distinct, stats.severity_std) == (1, 0.0)
+
+
+def test_rss_shape_uses_current_model_rows_but_coverage_uses_all(db_session):
+    _add(
+        db_session,
+        "rss-example",
+        n=40,
+        severity=0.35,
+        category="news",
+        method="news-keyword-v2",
+    )
+    _add(
+        db_session,
+        "rss-example",
+        n=5,
+        severity=0.61,
+        category="news",
+        method="news-llm-v1",
+    )
+
+    stats = _by_source(run.gather_stats(db_session))["rss-example"]
+
+    assert stats.severity_present == 45
+    assert stats.severity_shape_present == 5
+    assert stats.severity_distinct == 1
 
 
 def test_composite_eligibility_applies_the_real_filter(db_session):
@@ -153,9 +188,17 @@ def test_fred_losing_its_severity_entirely_is_still_caught(db_session):
 
 
 def test_rss_sources_resolve_through_the_family_declaration(db_session):
-    _add(db_session, "rss-some-new-outlet", n=10, severity=0.35, country="US", category="news")
+    _add(
+        db_session,
+        "rss-some-new-outlet",
+        n=100,
+        severity=0.35,
+        country="US",
+        category="news",
+        method="news-keyword-v2",
+    )
 
     checks_fired = {f.check for f in run.audit(db_session, now=NOW)}
 
     assert "undeclared_source" not in checks_fired
-    assert "severity_shape" in checks_fired  # one distinct value, declared continuous
+    assert "severity_shape" not in checks_fired  # graded fallback is not the continuous sample

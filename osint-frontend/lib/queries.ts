@@ -4,12 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { useEvents } from "@/app/providers"
 import {
+  API_BASE,
   CLIENT_LIMITS,
   fetchEvents,
   fetchEventStats,
+  fetchPlace,
   fetchScores as apiFetchScores,
   type EventStats,
+  type PlaceAnswer,
 } from "./apiClient"
+import { placeUrl } from "./placeUrl"
+import type { PlaceTarget } from "@/stores/placeStore"
 import { sourceKeyForEvent, type EventRow, type HazardTypeKey, type ScoreRow } from "./types"
 import { hazardKind } from "./hazardSymbols"
 import { isPersistentActiveHazard } from "./hazardActivity"
@@ -212,4 +217,23 @@ export function useCountryEvents(country: string | null): { events: EventRow[]; 
     { revalidateOnFocus: false },
   )
   return { events: data ?? [], isLoading }
+}
+
+/** The place screen's data (#862).
+ *
+ *  Keyed on the request URL, which is also what makes the answer cacheable:
+ *  right-clicking the same point twice reads the previous answer instead of
+ *  asking three third-party services again.
+ */
+export function usePlace(target: PlaceTarget | null): {
+  place: PlaceAnswer | null
+  isLoading: boolean
+} {
+  const key = target ? placeUrl(target, API_BASE) : null
+  const { data, isLoading } = useSWR(
+    key,
+    async () => (target ? fetchPlace(target) : null),
+    { revalidateOnFocus: false },
+  )
+  return { place: data ?? null, isLoading }
 }

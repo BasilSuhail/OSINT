@@ -1,9 +1,9 @@
 "use client"
 
 import { useEventDetailStore } from "@/stores/eventDetailStore"
+import { usePlaceStore } from "@/stores/placeStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { ClusterListPanel } from "../ClusterListPanel"
-import { CountrySidePanel } from "../CountrySidePanel"
 import { EventDetailCard } from "../EventDetailCard"
 
 /**
@@ -32,15 +32,13 @@ export function SelectionPanel() {
   //: the list they were reading and no pop-up appeared. Screen three is built
   //: by clicking the map and by nothing else.
   const openEventDetail = useEventDetailStore((s) => s.openEventDetail)
-  const openCountry = useRightPaneModeStore((s) => s.openCountry)
+  const openPlace = usePlaceStore((s) => s.openCountry)
 
   if (!entity) return null
 
   return (
     <div className="absolute inset-0 overflow-y-auto bg-neutral-950 p-3">
-      {entity.kind === "country" ? (
-        <CountrySidePanel country={entity.iso} onClose={closeEntity} />
-      ) : entity.kind === "cluster" ? (
+      {entity.kind === "cluster" ? (
         <ClusterListPanel
           label={entity.label}
           selections={entity.selections}
@@ -67,7 +65,7 @@ export function SelectionPanel() {
           location={entity.location}
           embedded
           onClose={closeEntity}
-          onSelectCountry={(iso) => openCountry(iso)}
+          onSelectCountry={openPlace}
         />
       )}
     </div>
