@@ -46,6 +46,7 @@ from app.events_bus import subscribe_new_events
 from app.journal.scoreboard import build_scoreboard
 from app.location_precision import precision_of, radius_m
 from app.paths import exports_dir
+from app.presence.aircraft import live_aircraft
 from app.publisher import publisher_for
 from app.readable_claim import has_readable_claim
 from app.settings import settings
@@ -352,6 +353,21 @@ def console_health_panel(session: Session = Depends(get_session)) -> dict:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/presence/aircraft")
+def presence_aircraft() -> dict:
+    """Military and distressed aircraft, live and unstored (#873).
+
+    Presence is not evidence: nothing here is written, graded, retained or
+    citable. A position twenty minutes old answers no question, which is why it
+    is not kept.
+
+    Failure returns an empty picture marked `degraded` rather than an error.
+    The map then says it has nothing, which is true — holding the last known
+    positions on screen would present minutes-old locations as current.
+    """
+    return live_aircraft()
 
 
 @app.get("/geo/place")

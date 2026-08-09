@@ -30,6 +30,13 @@ import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
 import { usePlaceStore } from "@/stores/placeStore"
 import { useImageryStore } from "@/stores/imageryStore"
+import { usePresenceStore } from "@/stores/presenceStore"
+import {
+  PRESENCE_POLL_MS,
+  shouldPoll,
+  type PresenceAircraft,
+} from "@/lib/presence"
+import { fetchPresenceAircraft } from "@/lib/apiClient"
 import { imageryDate, imageryLayer, imageryTiles } from "@/lib/imageryLayers"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import {
@@ -790,6 +797,51 @@ export function MapPane({
     [positioned, selectedEventId],
   )
 
+  //: Live aircraft (#873). Presence, not evidence: fetched, drawn, discarded.
+  //: Nothing here enters the event counts, the filters, the clustering or the
+  //: situation list, because none of it is a claim that anything happened.
+  const presenceOn = usePresenceStore((st) => st.aircraft)
+  const [presenceAircraft, setPresenceAircraft] = useState<PresenceAircraft[]>([])
+  const [presenceVisible, setPresenceVisible] = useState(true)
+
+  useEffect(() => {
+    const onVisibility = () => setPresenceVisible(!document.hidden)
+    onVisibility()
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [])
+
+  //: Off, scrubbed into the past, or in a background tab — all three mean stop
+  //: asking. The last one matters because this is a free community service and
+  //: a tab nobody is looking at should not be spending its bandwidth.
+  const presencePolling = shouldPoll(presenceOn, windowEndOffsetMs, presenceVisible)
+
+  useEffect(() => {
+    if (!presencePolling) {
+      setPresenceAircraft([])
+      return
+    }
+    let cancelled = false
+    const controller = new AbortController()
+    const load = async () => {
+      try {
+        const answer = await fetchPresenceAircraft({ signal: controller.signal })
+        if (!cancelled) setPresenceAircraft(answer.aircraft)
+      } catch {
+        //: A refused fetch draws nothing rather than leaving the last known
+        //: positions on screen, which would present old locations as current.
+        if (!cancelled) setPresenceAircraft([])
+      }
+    }
+    void load()
+    const timer = setInterval(() => void load(), PRESENCE_POLL_MS)
+    return () => {
+      cancelled = true
+      controller.abort()
+      clearInterval(timer)
+    }
+  }, [presencePolling])
+
   const hillshadeBeforeId = "waterway"
 
   const handleSelectMarker = useCallback(
@@ -1231,6 +1283,37 @@ export function MapPane({
             <span className="pointer-events-none block h-3 w-3 rounded-full border-2 border-cyan-200 bg-cyan-400/40 shadow-[0_0_8px_rgba(34,211,238,0.9)]" />
           </Marker>
         )}
+        {/* Live aircraft. Deliberately not a Marker with a click handler —
+            presence has no detail card and no place-screen entry, because a
+            thing that is somewhere now is not a story you can open. */}
+        {presenceAircraft.map((a) => (
+          <Marker key={a.hex ?? `${a.lat},${a.lon}`} longitude={a.lon} latitude={a.lat} anchor="center">
+            <div
+              title={[a.callsign, a.type, a.alt_ft ? `${Math.round(a.alt_ft)} ft` : null]
+                .filter(Boolean)
+                .join(" · ")}
+              className="pointer-events-auto grid h-4 w-4 place-items-center"
+            >
+              <span
+                aria-hidden
+                className={
+                  a.kind === "distress"
+                    ? "block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-red-400/50"
+                    : "block text-[10px] leading-none text-sky-300/80"
+                }
+                //: No track means no rotation. Pointing north would be a claim
+                //: the transponder never made.
+                style={
+                  a.kind === "distress"
+                    ? undefined
+                    : { transform: a.track != null ? `rotate(${a.track}deg)` : undefined }
+                }
+              >
+                {a.kind === "distress" ? "" : "\u27A4"}
+              </span>
+            </div>
+          </Marker>
+        ))}
       </MapGL>
 
       {!configured && (
