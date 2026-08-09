@@ -29,6 +29,8 @@ import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/que
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
 import { usePlaceStore } from "@/stores/placeStore"
+import { useImageryStore } from "@/stores/imageryStore"
+import { imageryDate, imageryLayer, imageryTiles } from "@/lib/imageryLayers"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import {
   hazardColor,
@@ -61,6 +63,9 @@ const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
 }
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark"
+//: Compared against a parsed hostname, never matched as a substring of a URL.
+const MAP_STYLE_HOST = "tiles.openfreemap.org"
+const IMAGERY_HOST = "gibs.earthdata.nasa.gov"
 const MAP_STYLE_RETRY_MS = 1500
 const INITIAL_ZOOM = 1.4
 const MIN_SCROLL_ZOOM = INITIAL_ZOOM
@@ -223,6 +228,23 @@ export function MapPane({
   const viewportSnapshotRef = useRef<ViewportSnapshot | null>(null)
   const [viewportErrorKey, setViewportErrorKey] = useState<string | null>(null)
   const [settledWindowOffsetMs, setSettledWindowOffsetMs] = useState(windowEndOffsetMs)
+
+  //: The backdrop's day is the scrubber's day, so the two never disagree.
+  const activeImageryId = useImageryStore((s) => s.active)
+  const setImageryMissing = useImageryStore((s) => s.setMissing)
+  const activeImagery = activeImageryId ? imageryLayer(activeImageryId) : null
+  const imageryDay = imageryDate(Date.now() - settledWindowOffsetMs)
+  const imageryTileUrls = useMemo(
+    () => (activeImageryId ? imageryTiles(activeImageryId, imageryDay) : null),
+    [activeImageryId, imageryDay],
+  )
+
+  //: A new day, or a different layer, deserves a fresh verdict on whether the
+  //: publisher has anything for it. Without this the map keeps reporting a gap
+  //: that belonged to the day before.
+  useEffect(() => {
+    setImageryMissing(false)
+  }, [activeImageryId, imageryDay, setImageryMissing])
   const [viewportSyncTick, setViewportSyncTick] = useState(0)
   const [areaSyncTick, setAreaSyncTick] = useState(0)
   const windowEndOffsetRef = useRef(windowEndOffsetMs)
@@ -590,19 +612,49 @@ export function MapPane({
     }, MAP_STYLE_RETRY_MS)
   }, [])
 
-  const handleMapError = useCallback((event: unknown) => {
-    const e = event as { error?: { message?: string }; message?: string } | undefined
-    const msg = (e?.error?.message || e?.message || "").toLowerCase()
-    // Only a genuine style/tile *load* failure warrants a reload. Missing sprite
-    // images (circle-11 / wood-pattern) are NOT load failures — they're handled
-    // in-place via styleimagemissing below, so they must never reach here (#407).
-    const shouldFallback =
-      msg.includes("tiles.openfreemap.org") ||
-      msg.includes("planet/")
+  const handleMapError = useCallback(
+    (event: unknown) => {
+      const e = event as
+        | { error?: { message?: string; url?: string }; message?: string }
+        | undefined
+      //: Which host failed, taken from the request rather than sniffed out of
+      //: the message text. A failing tile carries the URL it asked for, and
+      //: `new URL().hostname` is an exact answer where `message.includes(host)`
+      //: is a guess that any other host can sit either side of.
+      const host = (() => {
+        const url = e?.error?.url
+        if (typeof url !== "string") return null
+        try {
+          return new URL(url).hostname.toLowerCase()
+        } catch {
+          return null
+        }
+      })()
 
-    if (!shouldFallback) return
-    scheduleStyleRetry()
-  }, [scheduleStyleRetry])
+      //: A satellite backdrop with no tiles for the day being shown is not a
+      //: broken map (#875). Whole days are genuinely absent from an archive
+      //: that otherwise reaches back years, so this is recorded and said out
+      //: loud rather than retried — and it must never trigger a style reload,
+      //: which would rebuild the whole map because a backdrop had a gap.
+      if (host === IMAGERY_HOST) {
+        setImageryMissing(true)
+        return
+      }
+
+      const msg = (e?.error?.message || e?.message || "").toLowerCase()
+      // Only a genuine style/tile *load* failure warrants a reload. Missing sprite
+      // images (circle-11 / wood-pattern) are NOT load failures — they're handled
+      // in-place via styleimagemissing below, so they must never reach here (#407).
+      //: `planet/` stays as a message check: it is a path fragment from the
+      //: style's own tile references, and some style failures arrive without a
+      //: URL to parse.
+      const shouldFallback = host === MAP_STYLE_HOST || msg.includes("planet/")
+
+      if (!shouldFallback) return
+      scheduleStyleRetry()
+    },
+    [scheduleStyleRetry, setImageryMissing],
+  )
 
   useEffect(() => {
     if (!mapRef) return
@@ -949,6 +1001,34 @@ export function MapPane({
             }}
           />
         </Source>
+        {/* Satellite backdrop, off unless the operator asks for it (#875).
+            Tiles go publisher → browser: nothing is fetched by the API, stored,
+            or retained, which is the whole reason it is affordable.
+
+            It follows the time scrubber rather than pinning to today. A map
+            reading three weeks ago over a backdrop from last night gives the
+            reader no way to tell the two timescales apart, and that is worse
+            than no backdrop at all.
+
+            Sits above the hillshade and below `waterway`, so relief still
+            shapes it while borders, labels and every marker stay on top. */}
+        {imageryTileUrls && activeImagery && (
+          <Source
+            id={`imagery-${activeImagery.id}-${imageryDay}`}
+            key={`imagery-${activeImagery.id}-${imageryDay}`}
+            type="raster"
+            tiles={imageryTileUrls}
+            tileSize={256}
+            maxzoom={activeImagery.maxZoom}
+          >
+            <Layer
+              id="imagery"
+              type="raster"
+              beforeId={hillshadeBeforeId}
+              paint={{ "raster-opacity": activeImagery.opacity }}
+            />
+          </Source>
+        )}
         {/* Hazard footprints — revealed on zoom-in (opacity 0 at zoom 4 → full
             at zoom 6) so the world view stays clean pins. Burn scars / flood
             extent / shake rings / volcano zones; cyclones show only their track
