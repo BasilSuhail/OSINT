@@ -20,6 +20,7 @@ from app.sources.fred_fetcher import (
     SERIES_BY_COUNTRY,
     FredFetcher,
     _series_to_events,
+    severity_for_values,
 )
 
 NOW = datetime(2026, 7, 29, tzinfo=UTC)
@@ -167,6 +168,36 @@ class TestSeriesToEvents:
         assert events[0].payload["value"] == pytest.approx(4.1)
         assert events[1].payload["value"] == pytest.approx(4.0)
 
+    def test_warmup_scores_first_emitted_observation(self) -> None:
+        s = _make_series(
+            [4.0, 4.1, 3.9, 4.0, 4.2, 4.1, 4.3, 4.2],
+            start="2024-09-01",
+        )
+        events = _series_to_events(
+            s,
+            series_id="UNRATE",
+            country="US",
+            units="Percent",
+            fetched_at=NOW,
+            emit_since=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+
+        assert events[0].occurred_at == datetime(2025, 1, 1, tzinfo=UTC)
+        assert events[0].severity is not None
+        assert len(events) == 4
+
+    def test_value_scoring_matches_event_transformation(self) -> None:
+        values = [4.0, 4.1, 3.9, 4.0, 4.2, 4.1]
+        events = _series_to_events(
+            _make_series(values),
+            series_id="UNRATE",
+            country="US",
+            units="Percent",
+            fetched_at=NOW,
+        )
+
+        assert [event.severity for event in events] == severity_for_values(values)
+
     def test_source_event_id_includes_series_and_date(self) -> None:
         s = _make_series([2.5])
         events = _series_to_events(
@@ -245,7 +276,7 @@ class TestFetchResilience:
 
         monkeypatch.setattr("app.sources.fred_fetcher.Fred", _FakeFred)
 
-        events = FredFetcher().fetch()
+        events = FredFetcher(lookback_days=10_000).fetch()
 
         assert "UNRATE" in calls
         assert len(calls) == sum(len(v) for v in SERIES_BY_COUNTRY.values())

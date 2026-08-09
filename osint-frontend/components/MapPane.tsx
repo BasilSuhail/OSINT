@@ -28,6 +28,7 @@ import {
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
+import { usePlaceStore } from "@/stores/placeStore"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import {
   hazardColor,
@@ -813,6 +814,24 @@ export function MapPane({
     [localPositioned, mapRef, onOpenSelection, openAreaInPane],
   )
 
+  //: Right-click asks what this place *is*; left-click asks what is
+  //: *happening* near it (#862). Two questions, two gestures — and the
+  //: left-click one is untouched, because the radius selection it builds is
+  //: well-worn and this feature does not get to disturb it.
+  //:
+  //: The browser's own menu is suppressed: a context menu offering "reload
+  //: image" over a map is not an answer to anything, and leaving it there
+  //: would put it on top of the screen the click just opened.
+  const openPlace = usePlaceStore((s) => s.openPoint)
+  const handleContextMenu = useCallback(
+    (e: MapLayerMouseEvent) => {
+      e.preventDefault()
+      openPlace(e.lngLat.lat, e.lngLat.lng)
+      onOpenSelection()
+    },
+    [onOpenSelection, openPlace],
+  )
+
   const handleClick = useCallback(
     (e: MapLayerMouseEvent) => {
       const feature = e.features?.[0]
@@ -881,6 +900,7 @@ export function MapPane({
           EVENT_POINT_LAYER_ID,
         ]}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         onLoad={(e) => {
           handleStyleLoad()
           captureViewport(e.target)
