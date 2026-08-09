@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.sources.acled_fetcher import file_signature, unchanged_since_last_parse
+from app.sources.acled_fetcher import (
+    file_signature,
+    record_parse_outcome,
+    unchanged_since_last_parse,
+)
 
 
 def _write(tmp_path: Path, name: str, body: str) -> Path:
@@ -36,14 +40,15 @@ def test_unchanged_file_is_skipped_on_the_second_run(tmp_path):
     p = _write(tmp_path, "a.csv", "one")
 
     assert unchanged_since_last_parse(p, state_path=state) is False
-    # First call records the signature; the second recognises the same file.
+    record_parse_outcome(p, "usable", state_path=state)
+    # A successful parse records the signature; the next check recognises it.
     assert unchanged_since_last_parse(p, state_path=state) is True
 
 
 def test_edited_file_is_parsed_again(tmp_path):
     state = tmp_path / "state.json"
     p = _write(tmp_path, "a.csv", "one")
-    unchanged_since_last_parse(p, state_path=state)
+    record_parse_outcome(p, "usable", state_path=state)
     p.write_text("two — a genuinely different file")
     assert unchanged_since_last_parse(p, state_path=state) is False
 
@@ -52,7 +57,7 @@ def test_each_file_is_tracked_separately(tmp_path):
     state = tmp_path / "state.json"
     a = _write(tmp_path, "a.csv", "one")
     b = _write(tmp_path, "b.csv", "two")
-    unchanged_since_last_parse(a, state_path=state)
+    record_parse_outcome(a, "usable", state_path=state)
     assert unchanged_since_last_parse(b, state_path=state) is False
     assert unchanged_since_last_parse(a, state_path=state) is True
 

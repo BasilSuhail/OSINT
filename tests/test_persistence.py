@@ -15,7 +15,12 @@ from sqlalchemy.orm import Session
 
 from app.db_models import EventRow
 from app.models import Category, Event
-from app.persistence import ENRICHMENT_PAYLOAD_KEYS, _event_to_row, upsert_events
+from app.persistence import (
+    ENRICHMENT_PAYLOAD_KEYS,
+    _event_to_row,
+    upsert_events,
+    upsert_events_report,
+)
 
 
 def _make_event(source_event_id: str, *, severity: float = 0.5) -> Event:
@@ -345,6 +350,25 @@ class TestUpsertEvents:
         rows = db_session.execute(select(EventRow)).scalars().all()
         assert affected == 3
         assert len(rows) == 4
+
+    def test_report_separates_new_rows_from_refreshes(self, db_session: Session) -> None:
+        upsert_events([_make_event("SPY:old")], db_session)
+        db_session.commit()
+
+        report = upsert_events_report(
+            [_make_event("SPY:old", severity=0.9), _make_event("SPY:new")], db_session
+        )
+
+        assert report.accepted == 2
+        assert report.affected == 2
+        assert report.inserted == 1
+
+    def test_report_counts_deduplicated_rows_as_accepted(self, db_session: Session) -> None:
+        report = upsert_events_report(
+            [_make_event("SPY:dup", severity=0.1), _make_event("SPY:dup", severity=0.8)],
+            db_session,
+        )
+        assert report.accepted == report.affected == report.inserted == 1
 
     def test_intra_batch_duplicate_keeps_last(self, db_session: Session) -> None:
         # ON CONFLICT DO UPDATE cannot touch the same key twice in one statement,

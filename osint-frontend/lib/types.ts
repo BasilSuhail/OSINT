@@ -116,8 +116,23 @@ export interface IngestHealthRow {
   day: string
   success_n: number | null
   failure_n: number | null
+  new_data_n?: number | null
+  unchanged_n?: number | null
+  empty_n?: number | null
+  misconfigured_n?: number | null
+  fetched_rows?: number | null
+  accepted_rows?: number | null
+  inserted_rows?: number | null
+  rejected_rows?: number | null
   last_success: string | null
   last_failure: string | null
+  last_state?: "new_data" | "unchanged" | "empty" | "misconfigured" | "failed" | null
+  last_checked?: string | null
+  last_output?: string | null
+  last_fetched?: number | null
+  last_accepted?: number | null
+  last_inserted?: number | null
+  last_rejected?: number | null
 }
 
 export interface SourceCoverageRow {

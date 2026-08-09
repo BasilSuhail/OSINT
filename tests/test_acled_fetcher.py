@@ -16,6 +16,7 @@ from app.sources.acled_fetcher import (
     parse_acled_response,
     record_to_event,
 )
+from app.sources.base import FetchBatch, SourceMisconfiguredError
 from scripts.acled_discover import extract_download_links
 
 FETCHED_AT = datetime(2026, 6, 29, 12, 0, tzinfo=UTC)
@@ -166,13 +167,80 @@ def test_parse_acled_file_accepts_excel_aggregate_rows(tmp_path) -> None:
     assert events[0].payload["metric_value"] == 42
 
 
-def test_fetch_noops_without_csv_or_enabled_api(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_reports_missing_csv_and_disabled_api(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import settings as settings_module
 
     monkeypatch.setattr(settings_module.settings, "acled_csv_path", "")
     monkeypatch.setattr(settings_module.settings, "acled_csv_dir", "")
     monkeypatch.setattr(settings_module.settings, "acled_api_enabled", False)
-    assert AcledFetcher().fetch() == []
+    with pytest.raises(SourceMisconfiguredError, match="no ACLED local input"):
+        AcledFetcher().fetch()
+
+
+def test_unchanged_local_file_is_explicit(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from app import settings as settings_module
+    from app.sources import acled_fetcher
+
+    path = tmp_path / "acled.csv"
+    path.write_text("event_id_cnty,event_date\n", encoding="utf-8")
+    monkeypatch.setattr(settings_module.settings, "acled_csv_path", str(path))
+    monkeypatch.setattr(settings_module.settings, "acled_csv_dir", "")
+    monkeypatch.setattr(settings_module.settings, "acled_api_enabled", False)
+    monkeypatch.setattr(acled_fetcher, "cached_parse_outcome", lambda _path: "usable")
+
+    result = AcledFetcher().fetch()
+
+    assert isinstance(result, FetchBatch)
+    assert result.unchanged is True
+    assert result.events == []
+
+
+def test_empty_local_revision_stays_empty_on_cache_hit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app import settings as settings_module
+    from app.sources import acled_fetcher
+
+    path = tmp_path / "acled.csv"
+    state_path = tmp_path / "parse-state.json"
+    path.write_text("event_id_cnty,event_date\n", encoding="utf-8")
+    monkeypatch.setattr(settings_module.settings, "acled_csv_path", str(path))
+    monkeypatch.setattr(settings_module.settings, "acled_csv_dir", "")
+    monkeypatch.setattr(settings_module.settings, "acled_api_enabled", False)
+    monkeypatch.setattr(acled_fetcher, "_PARSE_STATE_PATH", state_path)
+
+    first = AcledFetcher().fetch()
+    second = AcledFetcher().fetch()
+
+    assert first == []
+    assert second == []
+    assert acled_fetcher.cached_parse_outcome(path) == "empty"
+
+
+def test_usable_local_revision_becomes_unchanged_on_cache_hit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app import settings as settings_module
+    from app.sources import acled_fetcher
+
+    today = datetime.now(UTC).date()
+    path = tmp_path / "acled.csv"
+    state_path = tmp_path / "parse-state.json"
+    path.write_text(
+        f"event_id_cnty,event_date,iso3\nUKR123,{(today - timedelta(days=1)).isoformat()},UKR\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_module.settings, "acled_csv_path", str(path))
+    monkeypatch.setattr(settings_module.settings, "acled_csv_dir", "")
+    monkeypatch.setattr(settings_module.settings, "acled_api_enabled", False)
+    monkeypatch.setattr(acled_fetcher, "_PARSE_STATE_PATH", state_path)
+
+    first = AcledFetcher().fetch()
+    second = AcledFetcher().fetch()
+
+    assert isinstance(first, list) and len(first) == 1
+    assert isinstance(second, FetchBatch)
+    assert second.unchanged is True
 
 
 def test_fetch_reads_configured_csv(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -238,9 +238,12 @@ class TestFetcherContract:
         with pytest.raises(ValueError):
             NasaFirmsFetcher(timeout_seconds=0)
 
-    def test_fetch_no_op_without_map_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fetch_reports_missing_map_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.sources.base import SourceMisconfiguredError
+
         monkeypatch.setattr(settings_module.settings, "firms_map_key", "")
-        assert NasaFirmsFetcher().fetch() == []
+        with pytest.raises(SourceMisconfiguredError, match="FIRMS_MAP_KEY"):
+            NasaFirmsFetcher().fetch()
 
 
 class TestFetcherHttp:

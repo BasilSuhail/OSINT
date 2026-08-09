@@ -55,8 +55,8 @@ class Fetcher:
     name: str
     queue: str                # "fast" or "slow"
 
-    def fetch(self) -> list[Event]:
-        """Pure function. Return canonical Event list. No DB writes."""
+    def fetch(self) -> list[Event] | FetchBatch:
+        """Pure function. Return canonical events or an unchanged static check."""
         raise NotImplementedError
 
     def archive_path(self) -> str:
@@ -73,11 +73,29 @@ def run_fetcher(fetcher_name: str):
     fetcher = get_fetcher(fetcher_name)
     events = fetcher.fetch()
     write_raw(events, fetcher)         # always, even on partial failure
-    inserted = upsert_events(events)   # idempotent
-    return {"fetched": len(events), "inserted": inserted}
+    report = upsert_events_report(events)  # accepted / affected / inserted
+    state = classify_output(report)
+    record_ingest_health(fetcher_name, state, report)
+    return {"state": state, **report}
 ```
 
 Fetchers are **pure**: no DB, no Redis, no side effects. The task is the only place that touches state. This makes fetchers unit-testable against recorded HTTP fixtures.
+
+An empty list is not a success alias. The wrapper records one of five states:
+
+| State | What it proves |
+|---|---|
+| `new_data` | At least one accepted identity was not already stored. |
+| `unchanged` | Usable rows refreshed existing identities, or a static input proved its revision was already parsed. |
+| `empty` | The source answered, but no row survived as usable output. Rejected stale rows remain counted separately. |
+| `misconfigured` | A required local input or credential is absent. This is terminal until configuration changes and is not retried as a network fault. |
+| `failed` | Transport, parsing, or persistence raised. Existing failure and quarantine behavior applies. |
+
+`fetched`, `accepted`, `inserted`, and `rejected` are different counters.
+`affected` additionally includes idempotent refreshes. `last_output` advances only
+when at least one usable row is accepted; a zero-row response cannot keep an
+output-required source green. ACLED and EM-DAT are static archives, so their
+watchdog contract permits a successful unchanged check without new output.
 
 ---
 
@@ -264,7 +282,8 @@ Every successful fetch writes the unmodified source response to `/mnt/data/raw/<
 
 ## Observability
 
-- **Structured logs**: every task logs `{task, fetcher, status, fetched, inserted, duration_ms, error}` as JSON, ingested by `journalctl --output=json`.
+- **Structured result**: every fetch returns `{state, fetched, accepted, affected, inserted, rejected}`; exceptions retain their failure detail.
 - **Flower** ([flower-docs](https://flower.readthedocs.io/)) on `:5555` behind Tailscale, shows live queue depth, task rates, failures.
-- **`ingest_health` table**: one row per fetcher per day with success count, failure count, last success at. Dashboard `/admin/health` reads this.
+- **`ingest_health` table**: one row per fetcher per day with state counts, row totals, latest-run counts, `last_checked`, and `last_output`. `/ingest-health` exposes the complete record.
+- **Console trust panel**: `/console/health` lists the latest `empty`, `misconfigured`, and `failed` source states alongside silence and quarantine.
 - **Prometheus exporter**: added in Layer 3 once Pi 5 has headroom; project-period uses Flower + log-grep.

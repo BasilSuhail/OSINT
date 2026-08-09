@@ -16,7 +16,7 @@ import re
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import httpx
 import pandas as pd
@@ -25,7 +25,7 @@ from app.enrichment.country import country_for
 from app.enrichment.country_codes import country_centroid, country_name_to_iso2, iso3_to_iso2
 from app.models import Category, Event
 from app.settings import settings
-from app.sources.base import Fetcher
+from app.sources.base import FetchBatch, Fetcher, SourceMisconfiguredError
 
 ACLED_API_URL: Final[str] = "https://acleddata.com/api/acled/read"
 ACLED_TOKEN_URL: Final[str] = "https://acleddata.com/oauth/token"
@@ -348,9 +348,11 @@ def parse_acled_csv(
     )
 
 
-#: Where the parse cache lives. One small JSON keyed by absolute path; the
-#: value is a cheap content signature, not the parsed data.
+#: Where the parse cache lives. One small JSON keyed by absolute path; each
+#: entry keeps a cheap content signature and whether that revision yielded
+#: usable rows. An empty revision must stay empty on cache hits.
 _PARSE_STATE_PATH = Path(settings.data_dir) / "acled_parse_state.json"
+ParseOutcome = Literal["usable", "empty"]
 
 
 def file_signature(path: Path) -> str:
@@ -365,45 +367,67 @@ def file_signature(path: Path) -> str:
     return f"{stat.st_size}:{int(stat.st_mtime)}"
 
 
-def unchanged_since_last_parse(path: Path, *, state_path: Path | None = None) -> bool:
-    """Has this file already been parsed in its current form?
+def _parse_state(state_file: Path) -> dict[str, Any]:
+    if not state_file.exists():
+        return {}
+    try:
+        loaded = json.loads(state_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def cached_parse_outcome(path: Path, *, state_path: Path | None = None) -> ParseOutcome | None:
+    """Return the measured outcome for this exact file revision, if known.
 
     The hourly ACLED task spent 107 seconds at 100% CPU writing 0 rows, because
     it re-read every .xlsx through pandas each run even though nothing had
     changed since June (#538). openpyxl expanding those sheets into DataFrames
     was a large part of a 2.68 GB worker peak.
 
-    Records the signature as a side effect, so the first sight of a file returns
-    False and parses it, and the next run skips it. Any doubt — missing file,
-    unreadable or corrupt cache — returns False: re-parsing costs CPU, wrongly
-    skipping costs data.
+    Legacy signature-only entries are deliberately treated as unknown. They
+    predate output classification and cannot prove whether the revision was
+    usable. Any doubt reparses: that costs CPU once, while a false cache hit
+    can hide missing data indefinitely.
     """
     state_file = state_path or _PARSE_STATE_PATH
     try:
         signature = file_signature(path)
     except OSError:
-        return False
+        return None
 
-    state: dict[str, str] = {}
-    if state_file.exists():
-        try:
-            loaded = json.loads(state_file.read_text())
-            if isinstance(loaded, dict):
-                state = {str(k): str(v) for k, v in loaded.items()}
-        except (json.JSONDecodeError, OSError):
-            state = {}
+    entry = _parse_state(state_file).get(str(path.resolve()))
+    if not isinstance(entry, dict) or entry.get("signature") != signature:
+        return None
+    outcome = entry.get("outcome")
+    return outcome if outcome in ("usable", "empty") else None
 
-    key = str(path.resolve())
-    already_seen = state.get(key) == signature
 
-    if not already_seen:
-        state[key] = signature
-        try:
-            state_file.parent.mkdir(parents=True, exist_ok=True)
-            state_file.write_text(json.dumps(state, indent=0, sort_keys=True))
-        except OSError:
-            pass  # an unwritable cache means we re-parse next time, nothing worse
-    return already_seen
+def record_parse_outcome(
+    path: Path,
+    outcome: ParseOutcome,
+    *,
+    state_path: Path | None = None,
+) -> None:
+    """Cache an outcome only after this revision parsed without raising."""
+    state_file = state_path or _PARSE_STATE_PATH
+    try:
+        signature = file_signature(path)
+    except OSError:
+        return
+
+    state = _parse_state(state_file)
+    state[str(path.resolve())] = {"signature": signature, "outcome": outcome}
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps(state, indent=0, sort_keys=True))
+    except OSError:
+        pass  # an unwritable cache means we re-parse next time, nothing worse
+
+
+def unchanged_since_last_parse(path: Path, *, state_path: Path | None = None) -> bool:
+    """Whether this exact revision previously produced usable rows."""
+    return cached_parse_outcome(path, state_path=state_path) == "usable"
 
 
 def parse_acled_excel(
@@ -525,18 +549,31 @@ class AcledFetcher(Fetcher):
         self.limit = limit
         self.timeout_seconds = timeout_seconds
 
-    def fetch(self) -> list[Event]:
+    def fetch(self) -> list[Event] | FetchBatch:
         fetched_at = datetime.now(UTC)
         csv_events = self._fetch_csv(fetched_at=fetched_at)
-        if csv_events:
+        if isinstance(csv_events, FetchBatch):
+            if not settings.acled_api_enabled:
+                return csv_events
+        elif csv_events:
             return csv_events
         if not settings.acled_api_enabled:
-            return []
+            if any(path.exists() for path in _local_paths()):
+                # A configured file was read but produced no usable rows in the
+                # live window. That is an empty output, not missing config.
+                return []
+            configured = bool(settings.acled_csv_path or settings.acled_csv_dir)
+            detail = (
+                "the configured ACLED input does not exist"
+                if configured
+                else "no ACLED local input or API is configured"
+            )
+            raise SourceMisconfiguredError(detail)
         if not settings.acled_username or not settings.acled_password:
-            return []
+            raise SourceMisconfiguredError("ACLED API is enabled but credentials are incomplete")
         return self._fetch_api(fetched_at=fetched_at)
 
-    def _fetch_csv(self, *, fetched_at: datetime) -> list[Event]:
+    def _fetch_csv(self, *, fetched_at: datetime) -> list[Event] | FetchBatch:
         paths = [path for path in _local_paths() if path.exists()]
         if not paths:
             return []
@@ -546,16 +583,27 @@ class AcledFetcher(Fetcher):
         since_date = (fetched_at - timedelta(days=self.lookback_days)).date()
         since = datetime.combine(since_date, datetime.min.time(), tzinfo=UTC)
         all_events: list[Event] = []
+        parsed = 0
+        usable_revision = False
         for path in paths:
             # Skip exports we have already parsed in their current form (#538).
             # These are 104 MB spreadsheets and the beat runs hourly; re-reading
             # them cost 107 seconds at 100% CPU to write 0 rows, every hour,
             # because the files had not changed since June.
-            if unchanged_since_last_parse(path):
+            cached = cached_parse_outcome(path)
+            if cached is not None:
+                usable_revision = usable_revision or cached == "usable"
                 continue
-            all_events.extend(parse_acled_file(path, fetched_at=fetched_at, since=since))
+            parsed += 1
+            path_events = parse_acled_file(path, fetched_at=fetched_at, since=since)
+            outcome: ParseOutcome = "usable" if path_events else "empty"
+            record_parse_outcome(path, outcome)
+            usable_revision = usable_revision or outcome == "usable"
+            all_events.extend(path_events)
+        if parsed == 0:
+            return FetchBatch(unchanged=True) if usable_revision else []
         if not all_events:
-            return []
+            return FetchBatch(unchanged=True) if usable_revision else []
         return _recent(all_events, since=since, limit=self.limit)
 
     def _fetch_api(self, *, fetched_at: datetime) -> list[Event]:

@@ -52,15 +52,20 @@ export function TrustPanel() {
   const biggest = data.composition[0]
   const audited = data.audit.ran_at
   const newsClass = data.composition.find((c) => c.name === "news")
+  const sourceIssueCount = new Set([
+    ...data.silent.map((s) => s.source),
+    ...data.rested.map((r) => r.source),
+    ...data.output_health.map((o) => o.source),
+  ]).size
 
   return (
     <div className="space-y-4 px-4 py-3">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatTile
-          value={data.silent.length + data.rested.length}
+          value={sourceIssueCount}
           label="sources not reporting"
-          tone={data.silent.length + data.rested.length ? "text-amber-300" : "text-neutral-200"}
-          hint="Feeds past their own cadence, plus feeds the quarantine is resting. Both are silence; only one of them is a surprise."
+          tone={sourceIssueCount ? "text-amber-300" : "text-neutral-200"}
+          hint="Feeds past their own output cadence, feeds the quarantine is resting, and checks which were empty, failed or misconfigured."
         />
         <StatTile
           value={exact === null ? "—" : `${Math.round(exact * 100)}%`}
@@ -89,14 +94,14 @@ export function TrustPanel() {
             different problem from a feed that stopped this morning.
           </Hint>
         </h3>
-        {data.silent.length === 0 && data.rested.length === 0 ? (
+        {sourceIssueCount === 0 ? (
           <p className="font-mono text-[10px] text-neutral-400">
             every source is reporting within its cadence
           </p>
         ) : (
           <ul className="space-y-0.5">
             {data.silent.map((s) => (
-              <li key={s.source} className="flex justify-between font-mono text-[10px]">
+              <li key={`silent:${s.source}`} className="flex justify-between font-mono text-[10px]">
                 <span className="text-neutral-300">{s.source}</span>
                 <span className={silenceTone(s.minutes_silent, s.cadence_minutes)}>
                   silent {humanMinutes(s.minutes_silent)}
@@ -104,10 +109,18 @@ export function TrustPanel() {
               </li>
             ))}
             {data.rested.map((r) => (
-              <li key={r.source} className="flex justify-between font-mono text-[10px]">
+              <li key={`rested:${r.source}`} className="flex justify-between font-mono text-[10px]">
                 <span className="text-neutral-300">{r.source}</span>
                 <span className="text-neutral-500">
                   rested · {r.http_status ?? r.kind} · until {r.retry_after.slice(5, 16)}
+                </span>
+              </li>
+            ))}
+            {data.output_health.map((o) => (
+              <li key={`output:${o.source}`} className="flex justify-between font-mono text-[10px]">
+                <span className="text-neutral-300">{o.source}</span>
+                <span className={o.state === "misconfigured" ? "text-red-400" : "text-amber-300"}>
+                  {o.state} · {o.accepted}/{o.fetched} usable · {o.rejected} rejected
                 </span>
               </li>
             ))}

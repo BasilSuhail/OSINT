@@ -176,13 +176,37 @@ def test_events_exclude_filter(db_session):
 
 
 def test_ingest_health_returns_rows(db_session):
-    db_session.add(IngestHealthRow(source="gdelt", day=date.today(), success_n=3, failure_n=1))
+    db_session.add(
+        IngestHealthRow(
+            source="gdelt",
+            day=date.today(),
+            success_n=3,
+            failure_n=1,
+            new_data_n=2,
+            unchanged_n=1,
+            fetched_rows=40,
+            accepted_rows=35,
+            inserted_rows=12,
+            rejected_rows=5,
+            last_state="new_data",
+            last_fetched=10,
+            last_accepted=9,
+            last_inserted=4,
+            last_rejected=1,
+        )
+    )
     db_session.commit()
     app.dependency_overrides[get_session] = lambda: db_session
     client = TestClient(app)
     rows = client.get("/ingest-health").json()
     assert rows and rows[0]["source"] == "gdelt"
     assert rows[0]["success_n"] == 3 and rows[0]["failure_n"] == 1
+    assert rows[0]["last_state"] == "new_data"
+    assert rows[0]["fetched_rows"] == 40
+    assert rows[0]["accepted_rows"] == 35
+    assert rows[0]["inserted_rows"] == 12
+    assert rows[0]["rejected_rows"] == 5
+    assert rows[0]["last_inserted"] == 4
     assert "day" in rows[0]
 
 

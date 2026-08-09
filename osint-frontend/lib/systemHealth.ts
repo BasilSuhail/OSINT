@@ -99,10 +99,46 @@ export function sourceLabel(source: string): string {
   return source
 }
 
-function latestTimestamp(
+const OUTPUT_OPTIONAL_SOURCES = new Set(["acled", "emdat"])
+
+export interface SourceIngestClocks {
+  lastOutput: string | null
+  lastSuccess: string | null
+}
+
+function laterIso(current: string | null, candidate: string | null | undefined): string | null {
+  if (candidate == null) return current
+  if (current == null) return candidate
+  return new Date(candidate).getTime() > new Date(current).getTime() ? candidate : current
+}
+
+export function latestIngestClocks(rows: IngestHealthRow[]): Map<string, SourceIngestClocks> {
+  const clocks = new Map<string, SourceIngestClocks>()
+  for (const row of rows) {
+    const current = clocks.get(row.source) ?? { lastOutput: null, lastSuccess: null }
+    clocks.set(row.source, {
+      lastOutput: laterIso(current.lastOutput, row.last_output),
+      lastSuccess: laterIso(current.lastSuccess, row.last_success),
+    })
+  }
+  return clocks
+}
+
+export function sourceFreshnessTimestamp(
+  source: string,
   ingest: IngestHealthRow | undefined,
   coverage: SourceCoverageRow | undefined,
+  clocks?: SourceIngestClocks,
 ): string | null {
+  if (ingest?.last_state != null) {
+    if (ingest.last_state === "unchanged") {
+      return ingest.last_checked ?? clocks?.lastSuccess ?? ingest.last_success
+    }
+    if (OUTPUT_OPTIONAL_SOURCES.has(source)) {
+      return clocks?.lastSuccess ?? ingest.last_success
+    }
+    return clocks?.lastOutput ?? ingest.last_output ?? null
+  }
   return ingest?.last_success ?? coverage?.latest_fetched_at ?? coverage?.latest_occurred_at ?? null
 }
 
@@ -110,10 +146,11 @@ function statusForSource(
   source: string,
   ingest: IngestHealthRow | undefined,
   coverage: SourceCoverageRow | undefined,
+  clocks: SourceIngestClocks | undefined,
   nowMs: number,
 ): DatasetHealthSummary {
   const cadenceMin = SOURCE_CADENCE_MIN[source] ?? null
-  const latestIso = latestTimestamp(ingest, coverage)
+  const latestIso = sourceFreshnessTimestamp(source, ingest, coverage, clocks)
   const ageMin =
     latestIso != null ? (nowMs - new Date(latestIso).getTime()) / 60_000 : null
 
@@ -129,6 +166,10 @@ function statusForSource(
       status = "stale"
     }
   }
+  if (ingest?.last_state === "empty" && status === "ok") status = "warn"
+  if (ingest?.last_state === "misconfigured" || ingest?.last_state === "failed") {
+    status = "offline"
+  }
 
   const healthy = status === "ok" ? 1 : 0
   const warn = status === "warn" ? 1 : 0
@@ -136,6 +177,10 @@ function statusForSource(
   const offline = status === "offline" ? 1 : 0
   const detail = [
     latestIso ? `last ${latestIso}` : "no signal",
+    ingest?.last_state != null ? `state ${ingest.last_state}` : null,
+    ingest?.last_fetched != null ? `fetched ${ingest.last_fetched}` : null,
+    ingest?.last_accepted != null ? `accepted ${ingest.last_accepted}` : null,
+    ingest?.last_rejected != null ? `rejected ${ingest.last_rejected}` : null,
     ingest?.success_n != null ? `success ${ingest.success_n}` : null,
     ingest?.failure_n != null ? `fail ${ingest.failure_n}` : null,
     coverage?.total != null ? `rows ${coverage.total}` : null,
@@ -163,14 +208,15 @@ export function summarizeSystemHealth(
   nowMs = Date.now(),
 ): DatasetHealthSummary[] {
   const ingestLatest = new Map<string, IngestHealthRow>()
+  const ingestClocks = latestIngestClocks(ingestRows)
   for (const row of ingestRows) {
     const existing = ingestLatest.get(row.source)
     if (!existing) {
       ingestLatest.set(row.source, row)
       continue
     }
-    const a = new Date(row.last_success ?? row.day).getTime()
-    const b = new Date(existing.last_success ?? existing.day).getTime()
+    const a = new Date(row.last_checked ?? row.last_success ?? row.day).getTime()
+    const b = new Date(existing.last_checked ?? existing.last_success ?? existing.day).getTime()
     if (a > b) ingestLatest.set(row.source, row)
   }
 
@@ -189,7 +235,13 @@ export function summarizeSystemHealth(
   return GROUPS.map((group) => {
     const sources = group.sources
     const sourceSummaries = sources.map((source) =>
-      statusForSource(source, ingestLatest.get(source), coverageLatest.get(source), nowMs),
+      statusForSource(
+        source,
+        ingestLatest.get(source),
+        coverageLatest.get(source),
+        ingestClocks.get(source),
+        nowMs,
+      ),
     )
     const healthy = sourceSummaries.filter((r) => r.status === "ok").length
     const warn = sourceSummaries.filter((r) => r.status === "warn").length
