@@ -9,6 +9,7 @@ from app.sources.rss_registry import (
     build_rss_fetchers,
     content_owner_map,
     feed_cadence_map,
+    feed_enabled_map,
     load_feed_configs,
     outlet_country_map,
 )
@@ -133,6 +134,12 @@ def test_parked_feeds_leave_schedule_but_keep_metadata() -> None:
     assert parked <= {c.source for c in load_feed_configs()}
     assert parked <= set(content_owner_map())
     assert parked <= set(outlet_country_map())
+    assert all(feed_enabled_map()[source] is False for source in parked)
+
+
+def test_enabled_map_covers_every_declared_feed() -> None:
+    assert set(feed_enabled_map()) == {config.source for config in load_feed_configs()}
+    assert feed_enabled_map()["rss-bbc-world"] is True
 
 
 def test_revived_feeds_use_live_urls() -> None:

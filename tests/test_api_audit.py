@@ -73,7 +73,7 @@ def test_latest_run_reports_its_findings() -> None:
             s,
             when=NOW,
             findings=[
-                ("fred", "composite_reachability"),
+                ("yfinance", "no_data"),
                 ("opensky-adsb", "severity_constant"),
             ],
         )
@@ -85,7 +85,10 @@ def test_latest_run_reports_its_findings() -> None:
         assert body["present"] is True
         assert body["findings_total"] == 2
         assert body["sources_measured"] == 53
-        assert {f["source"] for f in body["findings"]} == {"fred", "opensky-adsb"}
+        assert {f["source"] for f in body["findings"]} == {"yfinance", "opensky-adsb"}
+        no_data = next(finding for finding in body["findings"] if finding["source"] == "yfinance")
+        assert no_data["check"] == "no_data"
+        assert no_data["detail"] == "yfinance tripped no_data"
         assert body["findings"][0]["check"]
         assert body["findings"][0]["detail"]
     finally:

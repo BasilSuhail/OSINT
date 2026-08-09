@@ -18,7 +18,7 @@ left blank, so that correcting them is an edit instead of an investigation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 SeverityKind = Literal["continuous", "graded", "none"]
@@ -38,10 +38,13 @@ class Expectation:
     #: Whether the composite is supposed to read this source. False is not a
     #: judgement about worth — most sources legitimately sit outside it.
     feeds_composite: bool
-    #: Fraction of rows that must carry a country before the coverage check
-    #: complains. Defaults to the strict shared threshold. A source lowers it
-    #: only when some of its rows legitimately have no country — and says so,
-    #: with the measurement, in the note (#827).
+    #: False means the source remains declared for historical interpretation,
+    #: but the scheduler is explicitly parked. Missing credentials or files do
+    #: not disable a scheduled source: that is a deployment/data-health defect
+    #: which must remain visible as `no_data`.
+    enabled: bool = True
+    #: Fraction of rows that must carry severity before the coverage check
+    #: complains. Defaults to the strict shared threshold.
     severity_coverage_floor: float | None = None
     #: Fraction of rows that must carry a country before the coverage check
     #: complains. Defaults to the strict shared threshold. A source lowers it
@@ -194,5 +197,15 @@ def for_source(source: str) -> Expectation | None:
     the system unnoticed.
     """
     if source.startswith(RSS_PREFIX):
-        return RSS_FAMILY
+        from app.sources.rss_registry import feed_enabled_map
+
+        enabled = feed_enabled_map().get(source, True)
+        return RSS_FAMILY if enabled else replace(RSS_FAMILY, enabled=False)
     return EXPECTATIONS.get(source)
+
+
+def declared_sources() -> frozenset[str]:
+    """Every concrete declaration, including parked members of a family."""
+    from app.sources.rss_registry import feed_enabled_map
+
+    return frozenset(set(EXPECTATIONS) | set(feed_enabled_map()))

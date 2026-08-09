@@ -295,7 +295,7 @@ def test_a_source_whose_newest_row_predates_retention_is_a_finding():
 
 
 def test_a_source_with_no_rows_reports_no_data_and_nothing_else():
-    """Paused sources (#160, #155) legitimately have none — not an error."""
+    """An active source with no rows must not disappear from the audit."""
     findings = checks.run_all(
         _stats(
             rows=0,
@@ -313,6 +313,74 @@ def test_a_source_with_no_rows_reports_no_data_and_nothing_else():
     )
 
     assert _names(findings) == {"no_data"}
+
+
+def test_a_disabled_source_with_no_rows_is_clean():
+    disabled = Expectation(
+        severity="continuous",
+        country="required",
+        feeds_composite=True,
+        enabled=False,
+    )
+
+    findings = checks.run_all(
+        _stats(
+            rows=0,
+            severity_present=0,
+            severity_distinct=0,
+            severity_top_share=None,
+            severity_std=None,
+            country_present=0,
+            earliest=None,
+            latest=None,
+            composite_eligible=0,
+            state="disabled",
+        ),
+        disabled,
+        now=NOW,
+    )
+
+    assert findings == []
+
+
+def test_a_disabled_source_with_rows_still_gets_semantic_checks():
+    disabled = Expectation(
+        severity="continuous",
+        country="required",
+        feeds_composite=False,
+        enabled=False,
+    )
+
+    findings = checks.run_all(
+        _stats(severity_present=0),
+        disabled,
+        now=NOW,
+    )
+
+    assert "severity_coverage" in _names(findings)
+
+
+def test_a_disabled_source_is_exempt_from_staleness_but_not_future_dates():
+    disabled = Expectation(
+        severity="continuous",
+        country="required",
+        feeds_composite=False,
+        enabled=False,
+    )
+
+    stale = checks.run_all(
+        _stats(latest=NOW - timedelta(days=365)),
+        disabled,
+        now=NOW,
+    )
+    future = checks.run_all(
+        _stats(latest=NOW + timedelta(days=2)),
+        disabled,
+        now=NOW,
+    )
+
+    assert "occurred_at_plausible" not in _names(stale)
+    assert "occurred_at_plausible" in _names(future)
 
 
 def test_findings_name_the_source_and_carry_detail():

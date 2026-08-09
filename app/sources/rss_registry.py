@@ -181,6 +181,17 @@ def feed_cadence_map() -> dict[str, int]:
     }
 
 
+def feed_enabled_map() -> dict[str, bool]:
+    """Every declared RSS slug and whether the scheduler may run it.
+
+    Unlike ``feed_cadence_map``, this deliberately retains parked feeds. Audit
+    completeness needs to distinguish "disabled on purpose" from "active and
+    produced no rows"; dropping both from the registry makes them identical.
+    """
+    raw = json.loads(_FEEDS_PATH.read_text(encoding="utf-8"))
+    return {entry["source"]: entry.get("enabled") is not False for entry in raw}
+
+
 def build_rss_fetchers() -> dict[str, RssNewsFetcher]:
     """One ``RssNewsFetcher`` instance per configured feed, keyed by slug.
 
