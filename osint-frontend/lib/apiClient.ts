@@ -6,15 +6,45 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:800
  *  development stack, where the API is open and says so at startup. */
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? ""
 
+/** How long any single API call may take before it is treated as a failure.
+ *
+ * A dead API is indistinguishable from a slow one to a client that waits
+ * forever (#839). When the uvicorn worker was OOM-killed, the container kept
+ * the socket bound with nothing behind it: connections were accepted and never
+ * answered, so every panel sat on "loading…" indefinitely and the console had
+ * no way to say the API was not answering.
+ *
+ * Generous rather than tight — a wide viewport page legitimately takes a few
+ * seconds — but bounded, because an unbounded wait is not patience, it is a
+ * missing error state. */
+export const API_TIMEOUT_MS = 15_000
+
+/** Combine the caller's cancellation with the timeout, so a viewport change
+ *  still aborts in-flight work and a hung API still gives up. */
+function withTimeout(signal: AbortSignal | null | undefined, timeoutMs: number): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs)
+  if (!signal) return timeout
+  // `AbortSignal.any` is the standard composition; fall back to the caller's
+  // own signal where it is unavailable rather than dropping their cancellation.
+  return typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeout]) : signal
+}
+
 /** Every request to the API goes through here.
  *
  * A header the caller has to remember is a header somebody will forget on the
- * next endpoint, and the failure mode is a panel that silently 401s. */
-export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  if (!API_TOKEN) return fetch(input, init)
+ * next endpoint, and the failure mode is a panel that silently 401s. The same
+ * argument applies to the timeout: a call that can hang is a spinner that can
+ * never resolve, and no panel should have to remember to guard against it. */
+export async function apiFetch(
+  input: string,
+  init: RequestInit = {},
+  { timeoutMs = API_TIMEOUT_MS }: { timeoutMs?: number } = {},
+): Promise<Response> {
+  const signal = withTimeout(init.signal, timeoutMs)
+  if (!API_TOKEN) return fetch(input, { ...init, signal })
   const headers = new Headers(init.headers)
   headers.set("X-API-Key", API_TOKEN)
-  return fetch(input, { ...init, headers })
+  return fetch(input, { ...init, headers, signal })
 }
 
 
