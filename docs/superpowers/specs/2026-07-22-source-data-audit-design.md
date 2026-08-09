@@ -88,17 +88,23 @@ events table
   -> scripts/data_audit.py         prints
 ```
 
-`SourceStats` carries: rows, severity non-null count, distinct severity count,
-top-value share, severity std, min/max severity, country non-null count,
+`SourceStats` carries: rows, severity non-null count, shape-sample count,
+distinct severity count, top-value share, severity std, country non-null count,
 earliest and latest `occurred_at`, and rows passing the composite's real filter.
+
+Severity coverage and distribution shape are separate populations (#863). RSS
+coverage counts both the ingest-safe graded keyword fallback and post-ingest
+model grades. Its continuous shape is inferred only from rows carrying the
+current model method. Shape and constant checks wait for at least 30 eligible
+rows, so one small scheduler batch cannot become a population-level finding.
 
 ## Checks
 
 | check | fires when | catches today |
 |---|---|---|
 | `severity_coverage` | declared `continuous`/`graded`, non-null share below 99% | FRED (0%), FIRMS pre-#577 (13.7%) |
-| `severity_shape` | declared `continuous`, distinct <= 3 or top value > 90% | RSS, urlhaus, GDACS |
-| `severity_constant` | std == 0 with more than one row, any declaration | OpenSky |
+| `severity_shape` | at least 30 eligible rows, declared `continuous`, distinct <= 3 or top value > 90% | large RSS model samples |
+| `severity_constant` | at least 30 eligible rows and std == 0, any declaration | OpenSky |
 | `severity_absent_but_present` | declared `none`, yet severity is set | drift |
 | `country_coverage` | declared `required`, non-null share below 99% | — |
 | `composite_reachability` | `feeds_composite` true, zero rows pass the real filters | Polymarket |

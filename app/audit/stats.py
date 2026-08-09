@@ -29,6 +29,19 @@ class SourceStats:
     #: severity and country non-null. Zero here with a source that declares it
     #: feeds the composite means the domain never sees it.
     composite_eligible: int
+    #: Rows used to infer distribution shape. This can be narrower than
+    #: `severity_present`: RSS coverage includes the ingest fallback, while its
+    #: continuous-shape contract describes only post-ingest model grades.
+    severity_shape_present: int | None = None
+
+    @property
+    def shape_sample_size(self) -> int:
+        """Distribution sample, falling back for constructed/legacy stats."""
+        return (
+            self.severity_present
+            if self.severity_shape_present is None
+            else self.severity_shape_present
+        )
 
     @property
     def severity_coverage(self) -> float:
