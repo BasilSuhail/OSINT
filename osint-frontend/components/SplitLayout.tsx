@@ -8,6 +8,7 @@ import type { VisibleEvent } from "@/lib/queries"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
+import { usePlaceStore } from "@/stores/placeStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { useEventDetailStore } from "@/stores/eventDetailStore"
@@ -26,6 +27,7 @@ import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { WorldDetailCard } from "./panels/WorldDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
 import { TrustPanel } from "./panels/TrustPanel"
+import { PlacePanel } from "./panels/PlacePanel"
 import { SelectionPanel } from "./panels/SelectionPanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
 import { SituationPanel } from "./panels/SituationPanel"
@@ -79,7 +81,8 @@ export function SplitLayout() {
   const popupOpen = storyDetailOpen || worldDetailOpen || eventDetail !== null
   const entity = useRightPaneModeStore((s) => s.entity)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
-  const openCountry = useRightPaneModeStore((s) => s.openCountry)
+  const openCountry = usePlaceStore((s) => s.openCountry)
+  const placeOpen = usePlaceStore((s) => s.target !== null)
   const openEventDetail = useEventDetailStore((s) => s.openEventDetail)
   const [searchOpen, setSearchOpen] = useState(false)
   const selectedEventId = entity?.kind === "event" ? entity.event.id : null
@@ -214,6 +217,19 @@ export function SplitLayout() {
   }
 
 
+  //: Right-clicking the map asks what a place is, and that is a different
+  //: question from what a left-click asks (#862). It gets its own screen so a
+  //: right-click never destroys the list a left-click built. Appended after
+  //: the selection card, so opening one does not renumber the other.
+  if (placeOpen) {
+    deckCards.push({
+      key: "place",
+      title: "place",
+      fill: true,
+      content: <PlacePanel />,
+    })
+  }
+
   //: The scoreboard shows itself once it has something graded (#694). Every
   //: Brier is null today because nothing has matured, and an empty table
   //: promising a track record is the one thing this card must never be. It
@@ -228,6 +244,7 @@ export function SplitLayout() {
   if (process.env.NODE_ENV !== "production") {
     const expected = deckPageKeys({
       selection: Boolean(selection),
+      place: placeOpen,
       scoreboard: scoreboardReady,
     }).join()
     const actual = deckCards.map((card) => card.key).join()
@@ -344,7 +361,7 @@ export function SplitLayout() {
                     location={eventDetailLocation}
                     embedded
                     onClose={closeEventDetail}
-                    onSelectCountry={(iso) => openCountry(iso)}
+                    onSelectCountry={openCountry}
                   />
                 ) : (
                   <WorldDetailCard />
