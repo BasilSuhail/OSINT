@@ -15,7 +15,7 @@ from typing import Any, Final
 from app.enrichment.country_codes import iso3_to_iso2
 from app.models import Category, Event
 from app.settings import settings
-from app.sources.base import Fetcher
+from app.sources.base import Fetcher, SourceMisconfiguredError
 
 _SEVERITY_BY_TYPE: Final[dict[str, float]] = {
     "earthquake": 0.8,
@@ -157,10 +157,10 @@ class EmdatFetcher(Fetcher):
 
     def fetch(self) -> list[Event]:
         if not settings.emdat_csv_path:
-            return []
+            raise SourceMisconfiguredError("EMDAT_CSV_PATH is not configured")
         path = Path(settings.emdat_csv_path).expanduser()
         if not path.exists():
-            return []
+            raise SourceMisconfiguredError("the configured EM-DAT input file does not exist")
         return parse_emdat_csv(path.read_text(encoding="utf-8-sig"), fetched_at=datetime.now(UTC))
 
     def archive_path(self) -> str:

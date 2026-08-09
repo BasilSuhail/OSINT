@@ -20,6 +20,7 @@ import {
 import { useEvents } from "@/app/providers"
 import { CLIENT_LIMITS, fetchEvents, fetchIngestHealth, fetchScores, fetchSourceCoverage } from "@/lib/apiClient"
 import { buildNewsStories } from "@/lib/dashboardHelpers"
+import { latestIngestClocks, sourceFreshnessTimestamp } from "@/lib/systemHealth"
 import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "@/lib/types"
 
 const COMPOSITE_BUCKETS = 30
@@ -289,10 +290,11 @@ const SOURCE_CADENCE_MIN: Record<string, number> = {
 
 interface SourceLatencyRow {
   source: string
-  lastSuccess: string | null
+  lastSignal: string | null
+  state: IngestHealthRow["last_state"]
   ageMin: number | null
   cadenceMin: number | null
-  band: "ok" | "warn" | "stale"
+  band: "ok" | "warn" | "stale" | "offline"
   failure24h: number
 }
 
@@ -309,14 +311,15 @@ function useSourceLatency(): SourceLatencyRow[] {
 
   return useMemo(() => {
     const latest = new Map<string, IngestHealthRow>()
+    const clocks = latestIngestClocks(rows)
     for (const r of rows) {
       const existing = latest.get(r.source)
       if (!existing) {
         latest.set(r.source, r)
         continue
       }
-      const a = new Date(r.last_success ?? r.day).getTime()
-      const b = new Date(existing.last_success ?? existing.day).getTime()
+      const a = new Date(r.last_checked ?? r.last_success ?? r.day).getTime()
+      const b = new Date(existing.last_checked ?? existing.last_success ?? existing.day).getTime()
       if (a > b) latest.set(r.source, r)
     }
 
@@ -334,18 +337,21 @@ function useSourceLatency(): SourceLatencyRow[] {
     const out: SourceLatencyRow[] = []
     for (const [source, h] of latest) {
       const cadence = SOURCE_CADENCE_MIN[source] ?? null
-      const lastSuccess = h.last_success
-      const ageMin = lastSuccess
-        ? (Date.now() - new Date(lastSuccess).getTime()) / 60_000
+      const lastSignal = sourceFreshnessTimestamp(source, h, undefined, clocks.get(source))
+      const ageMin = lastSignal
+        ? (Date.now() - new Date(lastSignal).getTime()) / 60_000
         : null
-      let band: SourceLatencyRow["band"] = "ok"
+      let band: SourceLatencyRow["band"] = lastSignal ? "ok" : "offline"
       if (ageMin != null && cadence != null) {
         if (ageMin > cadence * 3) band = "stale"
         else if (ageMin > cadence * 1.5) band = "warn"
       }
+      if (h.last_state === "empty" && band === "ok") band = "warn"
+      if (h.last_state === "misconfigured" || h.last_state === "failed") band = "offline"
       out.push({
         source,
-        lastSuccess,
+        lastSignal,
+        state: h.last_state,
         ageMin,
         cadenceMin: cadence,
         band,
@@ -353,7 +359,7 @@ function useSourceLatency(): SourceLatencyRow[] {
       })
     }
     return out.sort((a, b) => {
-      const bandRank = { stale: 0, warn: 1, ok: 2 }
+      const bandRank = { offline: 0, stale: 1, warn: 2, ok: 3 }
       if (a.band !== b.band) return bandRank[a.band] - bandRank[b.band]
       return (b.ageMin ?? 0) - (a.ageMin ?? 0)
     })
@@ -1866,12 +1872,12 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
 
         {/* Source latency (#144). Replaces the old buffer-bar source-health
          *  panel with a real read against the ingest_health table. Each
-         *  row shows last_success age vs the source's expected cadence
+         *  row shows usable-output age vs the source's expected cadence
          *  from the beat schedule. Green / amber / red bands match the
          *  watchdog thresholds (1.5x = warn, 3x = stale). */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 lg:col-span-5">
           <h3 className="mb-2 font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-            Source latency · last_success vs cadence
+            Source latency · usable output vs cadence
           </h3>
           {sourceLatency.length === 0 ? (
             <p className="px-1 py-2 font-mono text-[10px] text-neutral-600">
@@ -1882,7 +1888,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
               {sourceLatency.map((r) => {
                 const dotColor =
-                  r.band === "stale"
+                  r.band === "offline" || r.band === "stale"
                     ? "#ef4444"
                     : r.band === "warn"
                       ? "#f59e0b"
@@ -1891,7 +1897,7 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
                   <li
                     key={r.source}
                     className="flex items-center gap-2 rounded px-2 py-1.5 text-[11px] hover:bg-neutral-900"
-                    title={`cadence ${r.cadenceMin ?? "?"} min · failures 24h: ${r.failure24h}`}
+                    title={`state ${r.state ?? "legacy"} · cadence ${r.cadenceMin ?? "?"} min · failures 24h: ${r.failure24h}`}
                   >
                     <span
                       className="inline-block h-2 w-2 shrink-0 rounded-full"
@@ -1919,8 +1925,8 @@ export function DashboardSection({ configured }: DashboardSectionProps) {
             </ul>
           )}
           <p className="mt-2 font-mono text-[10px] text-neutral-600">
-            Green = within cadence. Amber = 1.5x cadence overdue. Red = 3x
-            overdue. Cadences match the beat schedule in app/tasks.py.
+            Green = usable output within cadence. Amber = empty or 1.5x overdue.
+            Red = failed, misconfigured, or 3x overdue. Cadences match the beat schedule.
           </p>
         </div>
 

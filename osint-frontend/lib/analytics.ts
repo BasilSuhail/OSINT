@@ -413,6 +413,16 @@ export interface ConsoleHealth {
     retry_after: string
     detail: string
   }>
+  output_health: Array<{
+    source: string
+    state: "empty" | "misconfigured" | "failed"
+    last_checked: string | null
+    last_output: string | null
+    fetched: number
+    accepted: number
+    inserted: number
+    rejected: number
+  }>
   audit: {
     ran_at: string | null
     findings_total: number

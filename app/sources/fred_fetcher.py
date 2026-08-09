@@ -26,7 +26,7 @@ from fredapi import Fred
 from app.composite.normalization import DEFAULT_WINDOW_MONTHS, MIN_HISTORY, rolling_zscore
 from app.models import Category, Event
 from app.settings import settings
-from app.sources.base import Fetcher
+from app.sources.base import Fetcher, SourceMisconfiguredError
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +207,7 @@ class FredFetcher(Fetcher):
 
     def fetch(self) -> list[Event]:
         if not settings.fred_api_key:
-            return []
+            raise SourceMisconfiguredError("FRED_API_KEY is not configured")
 
         fred = Fred(api_key=settings.fred_api_key)
         now = datetime.now(UTC)

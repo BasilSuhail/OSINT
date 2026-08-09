@@ -205,8 +205,31 @@ class IngestHealthRow(Base):
     day: Mapped[Date] = mapped_column(Date, primary_key=True)
     success_n: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failure_n: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    new_data_n: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unchanged_n: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    empty_n: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    misconfigured_n: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fetched_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    accepted_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    inserted_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rejected_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_state: Mapped[str | None] = mapped_column(Text)
+    last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_output: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_fetched: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_accepted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_inserted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_success: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_failure: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "last_state IS NULL OR last_state IN "
+            "('new_data', 'unchanged', 'empty', 'misconfigured', 'failed')",
+            name="ingest_health_state_allowed",
+        ),
+    )
 
 
 class IngestFailureRow(Base):
