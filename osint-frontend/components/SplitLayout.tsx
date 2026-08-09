@@ -213,33 +213,6 @@ export function SplitLayout() {
     })
   }
 
-  //: A story is a page, not a curtain (#842). It used to replace the whole
-  //: deck in the narrow layout, so opening an article from the situation list
-  //: destroyed the selection the reader had open and left nothing to swipe
-  //: back to. Appended, never inserted, for the same reason the selection card
-  //: is: a deck whose pages move is not a place you can learn.
-  if (popupOpen) {
-    deckCards.push({
-      key: "popup",
-      title: storyDetailOpen ? "story" : eventDetail ? "detail" : "world",
-      fill: true,
-      //: Whatever was asked for, in one slot (#850). A story, an event opened
-      //: from any list, or the world tile.
-      content: storyDetailOpen ? (
-        <StoryDetailCard />
-      ) : eventDetail ? (
-        <EventDetailCard
-          event={eventDetail}
-          location={eventDetailLocation}
-          embedded
-          onClose={closeEventDetail}
-          onSelectCountry={(iso) => openCountry(iso)}
-        />
-      ) : (
-        <WorldDetailCard />
-      ),
-    })
-  }
 
   //: The scoreboard shows itself once it has something graded (#694). Every
   //: Brier is null today because nothing has matured, and an empty table
@@ -255,7 +228,6 @@ export function SplitLayout() {
   if (process.env.NODE_ENV !== "production") {
     const expected = deckPageKeys({
       selection: Boolean(selection),
-      popup: popupOpen,
       scoreboard: scoreboardReady,
     }).join()
     const actual = deckCards.map((card) => card.key).join()
@@ -333,7 +305,11 @@ export function SplitLayout() {
                 //: inside the deck, so nothing beside it needs reserving — and
                 //: the special case that put the collapse handle in open map
                 //: is deleted rather than corrected.
-                "--panel-width": deckCollapsed ? "0px" : PANEL_WIDTH,
+                "--panel-width": deckCollapsed
+                  ? "0px"
+                  : popupOpen
+                    ? `calc(${PANEL_WIDTH} * 2 + 1.25rem)`
+                    : PANEL_WIDTH,
               } as React.CSSProperties
             }
           >
@@ -351,6 +327,30 @@ export function SplitLayout() {
 
             {/* With a fixed deck width the pop-out's position is arithmetic
              *  rather than plumbing the panel's measured pixels. */}
+
+            {/* Screen 4: the pop-up. A second column beside the panel you
+             *  clicked from — never a page in that panel, and never replacing
+             *  it. Position is arithmetic off the fixed deck width. */}
+            {popupOpen && !deckCollapsed ? (
+              <FloatingPanel
+                className="absolute bottom-3 top-3 z-30"
+                style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
+              >
+                {storyDetailOpen ? (
+                  <StoryDetailCard />
+                ) : eventDetail ? (
+                  <EventDetailCard
+                    event={eventDetail}
+                    location={eventDetailLocation}
+                    embedded
+                    onClose={closeEventDetail}
+                    onSelectCountry={(iso) => openCountry(iso)}
+                  />
+                ) : (
+                  <WorldDetailCard />
+                )}
+              </FloatingPanel>
+            ) : null}
 
             {/* Collapse handle rides the outer edge of whatever is showing,
              *  tracked by --panel-width. It cannot live inside the deck: that
