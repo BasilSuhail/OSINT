@@ -2,7 +2,7 @@
 
 ## What the licence covers
 
-[`LICENSE.md`](LICENSE.md) covers the code in this repository and nothing else.
+[`LICENSE`](LICENSE) covers the code in this repository and nothing else.
 
 It does not cover, and cannot cover, the data this software fetches. Those
 feeds belong to the organisations that publish them, each on its own terms.
@@ -60,7 +60,7 @@ enrichment step runs offline:
 | `admin0_countries.geojson` | Natural Earth, 110 m Admin-0 countries | Public domain |
 | `cities.json` | Natural Earth, 10 m populated places | Public domain |
 | `region_coords.json` | Derived from Natural Earth by `scripts/build_region_coords.py` | Public domain |
-| `geo_terms.json` | Written for this project — aliases, demonyms and abbreviations Natural Earth does not carry | Covered by `LICENSE.md` |
+| `geo_terms.json` | Written for this project — aliases, demonyms and abbreviations Natural Earth does not carry | Covered by `LICENSE` |
 
 Natural Earth places its data in the public domain and asks for no
 attribution, though it welcomes credit:
@@ -74,7 +74,7 @@ under it — this repository's licence does not reach them.
 
 ## Warranty
 
-There isn't one. See the No Liability section of [`LICENSE.md`](LICENSE.md).
+There isn't one. See the No Liability section of [`LICENSE`](LICENSE).
 This is a project under development, its outputs have been wrong before and
 will be again, and nothing here is fit to be relied on for any decision that
 matters.
