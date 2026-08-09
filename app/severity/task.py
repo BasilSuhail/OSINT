@@ -46,15 +46,21 @@ def _grade_body(*, batch_limit: int | None = None) -> dict[str, Any]:
             return counters
 
         for index, row in enumerate(rows, start=1):
+            input_title = grade_run._input_title(row)
             result = grade_run.grade_row(row, model=settings.severity_model)
             if result is None:
                 # Guard rejected it (invented numeral, softened wording) or the
-                # row has no title. Leave the stored grade alone.
+                # row has no title. Keep the stored fallback grade, but stamp
+                # this method's terminal attempt so later rows can advance.
+                grade_run.mark_rejected(session, row, expected_title=input_title)
                 counters["rejected"] += 1
                 continue
             value, payload = result
-            row.severity = value
-            row.payload = {**(row.payload or {}), **payload}
+            if not grade_run.apply_grade(
+                session, row, value=value, payload=payload, expected_title=input_title
+            ):
+                counters["rejected"] += 1
+                continue
             counters["graded"] += 1
             progress(f"{index}/{len(rows)} graded")
 

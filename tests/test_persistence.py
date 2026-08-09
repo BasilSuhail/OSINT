@@ -7,7 +7,7 @@ applying the migration against the real Postgres in CI.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -106,6 +106,73 @@ class TestUpsertEvents:
         assert second == 3  # refreshed, not skipped
         assert len(rows) == 3  # no duplicate rows created
         assert all(r.severity == 0.9 for r in rows)  # mutable field updated
+
+    def test_unchanged_rss_refresh_preserves_post_ingest_grade(self, db_session: Session) -> None:
+        event = _make_news_event("article:1", basis="none", country=None, lat=None, lon=None)
+        upsert_events([event], db_session)
+        db_session.commit()
+        row = db_session.execute(select(EventRow)).scalars().one()
+        row.severity = 0.8
+        row.payload = {
+            **row.payload,
+            "severity_method": "news-llm-v1",
+            "severity_band": "grave",
+            "severity_rationale": "model rationale",
+            "severity_grade_completed_at": "2026-08-09T01:00:00+00:00",
+        }
+        db_session.commit()
+
+        fallback = event.model_copy(
+            update={
+                "fetched_at": event.fetched_at + timedelta(microseconds=1),
+                "severity": 0.15,
+                "payload": {
+                    **event.payload,
+                    "severity_method": "news-keyword-v2",
+                    "severity_band": "routine",
+                    "severity_rationale": "fallback rationale",
+                },
+            }
+        )
+        upsert_events([fallback], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        assert row.severity == 0.8
+        assert row.payload["severity_method"] == "news-llm-v1"
+        assert row.payload["severity_rationale"] == "model rationale"
+        assert row.payload["severity_grade_completed_at"] == "2026-08-09T01:00:00+00:00"
+
+    def test_changed_rss_headline_withdraws_old_post_ingest_grade(
+        self, db_session: Session
+    ) -> None:
+        event = _make_news_event("article:1", basis="none", country=None, lat=None, lon=None)
+        upsert_events([event], db_session)
+        db_session.commit()
+        row = db_session.execute(select(EventRow)).scalars().one()
+        row.severity = 0.8
+        row.payload = {**row.payload, "severity_method": "news-llm-v1"}
+        db_session.commit()
+
+        changed = event.model_copy(
+            update={
+                "fetched_at": event.fetched_at + timedelta(microseconds=1),
+                "severity": 0.15,
+                "payload": {
+                    **event.payload,
+                    "title": "A corrected story",
+                    "severity_method": "news-keyword-v2",
+                },
+            }
+        )
+        upsert_events([changed], db_session)
+        db_session.commit()
+        db_session.expire_all()
+
+        row = db_session.execute(select(EventRow)).scalars().one()
+        assert row.severity == 0.15
+        assert row.payload["severity_method"] == "news-keyword-v2"
 
     def test_refresh_keeps_locally_enriched_payload_keys(self, db_session: Session) -> None:
         # A refresh used to overwrite payload wholesale, so every enrichment key
