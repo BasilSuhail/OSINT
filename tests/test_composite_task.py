@@ -130,6 +130,73 @@ class TestComputeCompositeBody:
             assert len(scores) == 1  # not duplicated
 
 
+class TestEventsAreStreamed:
+    """The read must never materialise the events table.
+
+    The body used to call `.all()` and then build a list of one dict per row.
+    Both lists were alive at once, so peak memory scaled with the number of
+    events rather than with the number of country-months they reduce to. At
+    1.85M rows in the lookback window that crossed the analytics worker's
+    1500 MB ceiling; the kernel killed it, `task_acks_late` redelivered the
+    task, and the worker OOM-looped without ever draining the queue.
+
+    Aggregation only ever needs one event at a time, so the fix is to feed it
+    a stream. Peak memory is then the bucket dict — countries x months — which
+    is bounded no matter how far the events table grows.
+    """
+
+    def test_aggregator_is_fed_a_stream_not_a_list(
+        self, global_sqlite_db: Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _session_for(global_sqlite_db) as session:
+            for i in range(3):
+                _insert_event(
+                    session,
+                    source="yfinance",
+                    source_event_id=f"SPY:{i}",
+                    country="US",
+                    category="market",
+                    severity=0.4,
+                    occurred_at=datetime.now(UTC),
+                )
+            session.commit()
+
+        seen: list[object] = []
+        real = composite_task.aggregate_events_to_domain_signals
+
+        def spy(events):
+            seen.append(events)
+            return real(events)
+
+        monkeypatch.setattr(composite_task, "aggregate_events_to_domain_signals", spy)
+        composite_task._compute_composite_body()
+
+        assert len(seen) == 1
+        passed = seen[0]
+        # A generator is its own iterator; a list is not. Anything that has
+        # already been materialised fails here.
+        assert iter(passed) is passed, f"aggregator received a materialised {type(passed).__name__}"
+
+    def test_events_read_still_counts_every_row(self, global_sqlite_db: Engine) -> None:
+        """Streaming loses `len()`, and the count is the run's audit trail."""
+        with _session_for(global_sqlite_db) as session:
+            for i in range(7):
+                _insert_event(
+                    session,
+                    source="yfinance",
+                    source_event_id=f"SPY:{i}",
+                    country="US",
+                    category="market",
+                    severity=0.4,
+                    occurred_at=datetime.now(UTC),
+                )
+            session.commit()
+
+        result = composite_task._compute_composite_body()
+
+        assert result["events_read"] == 7
+
+
 class TestCeleryTaskDefault:
     """The Celery entry point must not carry its own version literal (#584).
 

@@ -7,6 +7,7 @@ keep all task registrations in one place.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -29,6 +30,11 @@ DEFAULT_LOOKBACK_MONTHS: int = 24
 #: docs/architecture/04-schema.md.
 COMPOSITE_CATEGORIES = ("market", "geopolitical", "hazard")
 
+#: Rows the driver buffers per round trip while streaming events. The lookback
+#: window holds more events than the worker's memory ceiling can hold objects
+#: for, so they are aggregated a chunk at a time rather than read into a list.
+EVENT_STREAM_CHUNK: int = 10_000
+
 
 def _compute_composite_body(
     *,
@@ -38,6 +44,8 @@ def _compute_composite_body(
 ) -> dict[str, Any]:
     """Pure orchestrator — read events, aggregate, normalize, score, upsert."""
     cutoff = datetime.now(UTC) - timedelta(days=30 * lookback_months)
+
+    events_read = 0
 
     with session_scope() as session:
         rows = session.execute(
@@ -53,22 +61,27 @@ def _compute_composite_body(
             .where(EventRow.category.in_(COMPOSITE_CATEGORIES))
             .where(EventRow.severity.isnot(None))
             .where(EventRow.country.isnot(None))
-        ).all()
-        events = [
-            {
-                "country": r.country,
-                "category": r.category,
-                "severity": r.severity,
-                "occurred_at": r.occurred_at,
-                # FIRMS is routed to the wildfire domain by source, and
-                # summed on FRP rather than max'd on severity (#579).
-                "source": r.source,
-                "frp": r.frp,
-            }
-            for r in rows
-        ]
+            .execution_options(yield_per=EVENT_STREAM_CHUNK)
+        )
 
-    aggregated = aggregate_events_to_domain_signals(events)
+        def _stream() -> Iterator[dict[str, Any]]:
+            nonlocal events_read
+            for r in rows:
+                events_read += 1
+                yield {
+                    "country": r.country,
+                    "category": r.category,
+                    "severity": r.severity,
+                    "occurred_at": r.occurred_at,
+                    # FIRMS is routed to the wildfire domain by source, and
+                    # summed on FRP rather than max'd on severity (#579).
+                    "source": r.source,
+                    "frp": r.frp,
+                }
+
+        # Aggregation consumes the stream inside the session, so the rows are
+        # never all alive at once.
+        aggregated = aggregate_events_to_domain_signals(_stream())
 
     # Record this run's months, then normalise against everything on record —
     # not just what survived retention. Rebuilding history from the events
@@ -90,7 +103,7 @@ def _compute_composite_body(
         upserted = upsert_scores(scores, session)
 
     return {
-        "events_read": len(events),
+        "events_read": events_read,
         "buckets_aggregated": len(aggregated),
         "months_on_record": len(signals),
         "scores_written": len(scores),
