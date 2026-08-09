@@ -22,14 +22,68 @@ const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? ""
  * missing error state. */
 export const API_TIMEOUT_MS = 15_000
 
+/** How long a single ask may take before it is treated as a failure.
+ *
+ * Inference is not a page load and cannot share its budget. Measured against
+ * the live stack, one non-streamed ask took 24.2s end to end — a 4B model on
+ * CPU, working correctly. Under the page budget it was cut off at 15s every
+ * time, which the console then reported as the brain being offline. */
+export const ASK_TIMEOUT_MS = 180_000
+
+/** How long a stream may go quiet before it is treated as dead.
+ *
+ * A streamed answer cannot be judged on total elapsed time: retrieval lands in
+ * about a second and the first token follows only once the model has read the
+ * context — 17.8s on the measured run, with the answer still arriving normally
+ * afterwards. What distinguishes a working generation from a dead one is not
+ * how long it takes but whether anything is still coming, so the clock restarts
+ * on every chunk. */
+export const STREAM_IDLE_TIMEOUT_MS = 45_000
+
 /** Combine the caller's cancellation with the timeout, so a viewport change
- *  still aborts in-flight work and a hung API still gives up. */
-function withTimeout(signal: AbortSignal | null | undefined, timeoutMs: number): AbortSignal {
+ *  still aborts in-flight work and a hung API still gives up.
+ *
+ *  `timeoutMs: null` means the caller owns the deadline — used by the streaming
+ *  ask, which replaces the total budget with an idle one. */
+function withTimeout(
+  signal: AbortSignal | null | undefined,
+  timeoutMs: number | null,
+): AbortSignal | undefined {
+  if (timeoutMs === null) return signal ?? undefined
   const timeout = AbortSignal.timeout(timeoutMs)
   if (!signal) return timeout
   // `AbortSignal.any` is the standard composition; fall back to the caller's
   // own signal where it is unavailable rather than dropping their cancellation.
   return typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeout]) : signal
+}
+
+/** A deadline that only runs while nothing is happening.
+ *
+ * `AbortSignal.timeout` fires a fixed interval after it is created, which is
+ * the right shape for a request that either answers or does not. A stream is
+ * a series of answers, so its guard has to be restarted by each one. */
+function idleDeadline(idleMs: number): {
+  signal: AbortSignal
+  sawActivity: () => void
+  done: () => void
+} {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout>
+  const arm = () => {
+    timer = setTimeout(
+      () => controller.abort(new DOMException("idle timeout", "TimeoutError")),
+      idleMs,
+    )
+  }
+  arm()
+  return {
+    signal: controller.signal,
+    sawActivity: () => {
+      clearTimeout(timer)
+      arm()
+    },
+    done: () => clearTimeout(timer),
+  }
 }
 
 /** Every request to the API goes through here.
@@ -41,7 +95,7 @@ function withTimeout(signal: AbortSignal | null | undefined, timeoutMs: number):
 export async function apiFetch(
   input: string,
   init: RequestInit = {},
-  { timeoutMs = API_TIMEOUT_MS }: { timeoutMs?: number } = {},
+  { timeoutMs = API_TIMEOUT_MS }: { timeoutMs?: number | null } = {},
 ): Promise<Response> {
   const signal = withTimeout(init.signal, timeoutMs)
   if (!API_TOKEN) return fetch(input, { ...init, signal })
@@ -305,11 +359,15 @@ export async function fetchBrainAsk(
   question: string,
   history: AskExchange[] = [],
 ): Promise<BrainAsk> {
-  const res = await apiFetch(`${API_BASE}/brain/ask`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, history }),
-  })
+  const res = await apiFetch(
+    `${API_BASE}/brain/ask`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, history }),
+    },
+    { timeoutMs: ASK_TIMEOUT_MS },
+  )
   if (!res.ok) throw new Error(`brain ask ${res.status}`)
   return (await res.json()) as BrainAsk
 }
@@ -334,14 +392,30 @@ export async function streamBrainAsk(
   question: string,
   handlers: BrainAskStreamHandlers = {},
   history: AskExchange[] = [],
+  { idleMs = STREAM_IDLE_TIMEOUT_MS }: { idleMs?: number } = {},
 ): Promise<BrainAsk> {
-  const res = await apiFetch(`${API_BASE}/brain/ask/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, history }),
-  })
-  if (!res.ok) throw new Error(`brain ask stream ${res.status}`)
-  if (!res.body) return fetchBrainAsk(question, history)
+  //: The stream governs itself: a total budget cannot tell a model that is
+  //: still thinking from one that has died, and cutting off the former is
+  //: what made a working brain report itself offline.
+  const idle = idleDeadline(idleMs)
+  const res = await apiFetch(
+    `${API_BASE}/brain/ask/stream`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, history }),
+      signal: idle.signal,
+    },
+    { timeoutMs: null },
+  )
+  if (!res.ok) {
+    idle.done()
+    throw new Error(`brain ask stream ${res.status}`)
+  }
+  if (!res.body) {
+    idle.done()
+    return fetchBrainAsk(question, history)
+  }
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -364,15 +438,22 @@ export async function streamBrainAsk(
     if (msg.event === "final") latest = msg.data as BrainAsk
   }
 
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (value) {
-      buffer += decoder.decode(value, { stream: !done })
-      const blocks = buffer.split("\n\n")
-      buffer = blocks.pop() || ""
-      for (const block of blocks) handle(block)
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (value) {
+        //: Every chunk is proof the generation is alive, so it restarts the
+        //: clock. Silence, not slowness, is what ends an ask.
+        idle.sawActivity()
+        buffer += decoder.decode(value, { stream: !done })
+        const blocks = buffer.split("\n\n")
+        buffer = blocks.pop() || ""
+        for (const block of blocks) handle(block)
+      }
+      if (done) break
     }
-    if (done) break
+  } finally {
+    idle.done()
   }
   if (buffer.trim()) handle(buffer)
   if (!latest) throw new Error("brain ask stream ended without final")
