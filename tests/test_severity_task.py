@@ -16,14 +16,14 @@ from app.db_models import EventRow
 from app.severity import grade_run, news, task
 
 
-def _news_row(session, i, *, method=None, severity=0.35, title=None):
+def _news_row(session, i, *, method=None, severity=0.35, title=None, source="rss-test"):
     payload = {"title": title if title is not None else f"headline {i}"}
     if method:
         payload["severity_method"] = method
     session.add(
         EventRow(
-            source="rss-test",
-            source_event_id=f"n{i}",
+            source=source,
+            source_event_id=f"{source}-n{i}",
             occurred_at=datetime(2026, 7, 1, tzinfo=UTC) - timedelta(minutes=i),
             fetched_at=datetime(2026, 7, 1, tzinfo=UTC),
             category="news",
@@ -64,6 +64,11 @@ class TestPendingBoundsTheQuery:
 
         assert len(grade_run.pending(db_session, limit=10)) == 1
 
+    def test_category_news_does_not_admit_a_non_rss_source(self, db_session):
+        _news_row(db_session, 0, source="uk-police")
+
+        assert grade_run.pending(db_session, limit=10) == []
+
 
 class TestGradeBody:
     @pytest.fixture(autouse=True)
@@ -97,6 +102,7 @@ class TestGradeBody:
         row = db_session.query(EventRow).one()
         assert row.severity == 0.8
         assert row.payload["severity_method"] == news.METHOD
+        assert row.payload[grade_run.COMPLETED_AT_KEY]
         assert row.payload["title"] == "headline 0"  # existing payload survives
 
     def test_a_rejected_verdict_leaves_the_stored_grade_alone(self, db_session, monkeypatch):
@@ -111,6 +117,11 @@ class TestGradeBody:
         row = db_session.query(EventRow).one()
         assert row.severity == 0.65
         assert "severity_method" not in row.payload
+        assert row.payload[grade_run.ATTEMPTED_METHOD_KEY] == news.METHOD
+        assert row.payload[grade_run.ATTEMPTED_INPUT_KEY] == "headline 0"
+        assert row.payload["severity_grade_status"] == "rejected"
+        db_session.flush()
+        assert grade_run.pending(db_session, limit=10) == []
 
     def test_one_rejection_does_not_stop_the_batch(self, db_session, monkeypatch):
         for i in range(3):

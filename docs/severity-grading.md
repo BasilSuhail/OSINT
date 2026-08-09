@@ -41,6 +41,19 @@ graph LR
 
 **The scheduled pass** (#631) is what keeps it true. News is deleted after 30 days, so a one-off regrade decays to nothing — #597 graded 85 rows by hand and 30 survived to the following month. A beat now grades new headlines twice an hour, in-app, and backs off when the machine is busy.
 
+**The queue is RSS-only and source-fair** (#861). The model prompt was measured
+for headlines, so rows from other producers that happen to use the `news`
+category are not grading work. Pending rank forms source rounds, so every
+source's oldest candidate is considered before any source's second. A durable
+last-served stamp rotates ties when there are more sources than batch slots:
+omitted sources stay older and move ahead on the next tick. No high-volume
+publisher can consume a batch while a quiet feed remains on the keyword
+fallback, and oldest-first ranking protects backlog from retention. A
+guard rejection keeps the known fallback score and records a terminal attempt
+for that headline and grading method, allowing the source's next headline to
+advance. A corrected headline or changed method version receives a fresh
+attempt.
+
 ---
 
 ## What runs in production
@@ -75,8 +88,9 @@ graph TD
     B --> C[("stored in events")]
     C --> D{"beat fires<br/>:14 and :44"}
     D -->|"machine busy"| E["skip — next tick<br/>picks up the same rows"]
-    D -->|"idle"| F["model reads headline<br/>→ score + written reason"]
-    F --> G{"guards"}
+    D -->|"idle"| F["oldest per RSS source first<br/>→ fair bounded batch"]
+    F --> K["model reads headline<br/>→ score + written reason"]
+    K --> G{"guards"}
     G -->|"cites a number the<br/>headline never had"| H["reject — keeps old grade"]
     G -->|"softens a lethal event<br/>'incident' not 'killed'"| H
     G -->|"passes"| I["score + reason stored"]

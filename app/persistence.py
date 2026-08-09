@@ -136,6 +136,36 @@ def _payload_refresh(excluded: Any, dialect: str) -> Any:
     return func.json_patch(EventRow.payload, excluded.payload)
 
 
+def _rss_grade_is_current(excluded: Any) -> Any:
+    """Whether a stored post-ingest RSS grade still describes this headline."""
+    stored_method = EventRow.payload["severity_method"].as_string()
+    stored_title = func.coalesce(EventRow.payload["title"].as_string(), "")
+    incoming_title = func.coalesce(excluded.payload["title"].as_string(), "")
+    return and_(
+        excluded.source.like("rss-%"),
+        stored_method.like("news-llm-%"),
+        stored_title == incoming_title,
+    )
+
+
+def _rss_grade_payload(excluded: Any, dialect: str) -> Any:
+    """Refresh upstream fields while keeping a current post-ingest RSS grade."""
+    merged = _payload_refresh(excluded, dialect)
+    grade_values = {
+        key: EventRow.payload[key].as_string()
+        for key in ("severity_method", "severity_band", "severity_rationale")
+    }
+    if dialect == "postgresql":
+        grade_patch = func.jsonb_build_object(
+            *[item for pair in grade_values.items() for item in pair]
+        )
+        preserved = merged.op("||")(grade_patch)
+    else:
+        grade_patch = func.json_object(*[item for pair in grade_values.items() for item in pair])
+        preserved = func.json_patch(merged, grade_patch)
+    return case((_rss_grade_is_current(excluded), preserved), else_=merged)
+
+
 def _dedup_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Collapse duplicate `(source, source_event_id)` within one batch, keeping
     the last occurrence — ON CONFLICT DO UPDATE cannot touch the same key twice
@@ -175,12 +205,22 @@ def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) ->
         )
 
     refreshed: dict[str, Any] = {col: base.excluded[col] for col in _REFRESH_COLS}
+    has_rss = any(str(row["source"]).startswith("rss-") for row in rows)
+    if has_rss:
+        refreshed["severity"] = case(
+            (_rss_grade_is_current(base.excluded), EventRow.severity),
+            else_=base.excluded.severity,
+        )
     # PostgreSQL now() is fixed at transaction start. clock_timestamp() marks
     # the actual upsert statement, preventing a long transaction from publishing
     # a revision older than work that committed while it was running.
     refreshed["updated_at"] = func.clock_timestamp() if dialect == "postgresql" else func.now()
     refreshed.update({col: _geo_refresh(base.excluded, col) for col in _GEO_COLS})
-    refreshed["payload"] = _payload_refresh(base.excluded, dialect)
+    refreshed["payload"] = (
+        _rss_grade_payload(base.excluded, dialect)
+        if has_rss
+        else _payload_refresh(base.excluded, dialect)
+    )
     stmt = base.on_conflict_do_update(
         index_elements=["source", "source_event_id"],
         set_=refreshed,
