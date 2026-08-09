@@ -1339,3 +1339,34 @@ Rendered assets live in [`docs/supplementary/`](docs/supplementary/) as **SVG** 
 **Why it runs on a Raspberry Pi** — raw events are pruned at ~30 days, the small permanent derivations are kept forever.
 
 ![Retention vs derived lifecycle](docs/supplementary/retention-lifecycle.png)
+
+---
+
+## Licence
+
+PolyForm Noncommercial 1.0.0 — the full text is in [`LICENSE.md`](LICENSE.md).
+
+**This is source-available, not open source.** The distinction is not
+pedantry: every OSI-approved licence permits commercial use, so calling this
+open source would tell you that you have a right you do not have.
+
+You may use it, run it, study it, fork it, modify it and share your changes,
+for any noncommercial purpose — personal projects, study and research, and use
+by charities, educational institutions, public research bodies and government.
+You may not sell it or use it commercially.
+
+Two reasons, and the second is the real one:
+
+- It is under development. Its outputs have been wrong before. The composite
+  is a coin flip in all three pre-registered exams, and that is written down a
+  few sections above rather than hidden. Nothing here is fit to sell.
+- It ingests third-party feeds. Several are free for noncommercial or research
+  use and require a separate agreement for anything else. Those terms are not
+  the maintainer's to hand on, so they are not handed on.
+
+[`NOTICE.md`](NOTICE.md) lists every feed and where its terms live. If you
+deploy this, you fetch that data under your own credentials and your own
+agreements with those providers. Read them.
+
+The bundled gazetteer files under `app/enrichment/data/` are Natural Earth,
+which is public domain.
