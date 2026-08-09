@@ -1,3 +1,5 @@
+import type { PlaceTarget } from "@/stores/placeStore"
+import { placeUrl } from "./placeUrl"
 import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "./types"
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -407,4 +409,69 @@ export async function fetchSearch(
   const res = await apiFetch(`${API_BASE}/search?${qs.toString()}`, { signal: options.signal })
   if (!res.ok) throw new Error(`search failed: ${res.status}`)
   return (await res.json()) as SearchResponse
+}
+
+/** What the server knows about a place (#862).
+ *
+ *  Every block is nullable and every null one is named in `degraded`. Three
+ *  third-party services answer this and none of them is ours, so a missing
+ *  block is an ordinary Tuesday rather than an error — the screen says which
+ *  went quiet instead of pretending the place has no capital.
+ */
+export interface PlaceCountry {
+  iso2: string
+  name: string
+  border_distance_km: number | null
+  near_border: boolean
+}
+
+export interface PlaceProfile {
+  capital: string | null
+  population: number | null
+  area_km2: number | null
+  languages: string[]
+  currencies: string[]
+}
+
+export interface PlaceGovernment {
+  type: string | null
+  head_of_state: string | null
+  head_of_government: string | null
+  as_of: string
+}
+
+export interface PlaceSummary {
+  title: string | null
+  extract: string | null
+  url: string | null
+  thumbnail: string | null
+}
+
+export interface PlaceImagery {
+  url: string
+  full_url: string
+  captured_at: string | null
+  cloud_cover_pct: number | null
+  item_id: string
+}
+
+export interface PlaceAnswer {
+  point: { lat: number; lon: number } | null
+  country: PlaceCountry | null
+  profile: PlaceProfile | null
+  government: PlaceGovernment | null
+  summary: PlaceSummary | null
+  imagery: PlaceImagery | null
+  degraded: string[]
+}
+
+export async function fetchPlace(
+  target: PlaceTarget,
+  options: { signal?: AbortSignal } = {},
+): Promise<PlaceAnswer | null> {
+  const url = placeUrl(target, API_BASE)
+  if (!url) return null
+  const res = await apiFetch(url, { signal: options.signal })
+  if (!res.ok) throw new Error(`place failed: ${res.status}`)
+  return (await res.json()) as PlaceAnswer
 }
