@@ -15,13 +15,13 @@ counts in ``payload``. ``source_event_id`` is keyed to the hour, so the
 upsert refreshes an existing row rather than appending — an hour of polling
 costs one row per country, whatever the cadence.
 
-Severity is 0: aviation activity isn't stress, it's situational awareness.
+Severity is absent: aviation activity is situational awareness, not a measure
+of harm. Aircraft counts in the payload are the source's actual signal.
 
 Note that divergence still counts *rows*, so this feed contributes a constant
-per country. Divergence scoring excludes this source (#497): its severity is
-hard-coded 0.0, so it could never register on the magnitude axis the physical
-side uses. ``aircraft_count`` in the payload is the real signal and is waiting
-for an intensity of its own.
+per country. Divergence scoring excludes this source (#497): flight density has
+no mapping onto the magnitude axis the physical side uses. ``aircraft_count``
+in the payload is waiting for an intensity of its own.
 
 See issues #160, #496.
 """
@@ -116,7 +116,7 @@ def parse_opensky_body(body: dict[str, Any], *, fetched_at: datetime) -> list[Ev
                 occurred_at=hour,
                 fetched_at=fetched_at,
                 category=Category.TRACKING,
-                severity=0.0,
+                severity=None,
                 confidence=None,
                 keywords=["adsb", "aircraft", "flight-density"],
                 country=iso,

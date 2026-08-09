@@ -73,7 +73,7 @@ def test_event_shape_is_country_scoped_hourly_density() -> None:
     ev = events[0]
     assert ev.source == "opensky-adsb"
     assert ev.category == Category.TRACKING
-    assert ev.severity == 0.0
+    assert ev.severity is None
     assert ev.country == "US"
     # A country aggregate has no single position.
     assert ev.lat is None
