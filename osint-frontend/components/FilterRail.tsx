@@ -41,6 +41,8 @@ import { cameoLabel } from "@/lib/cameo"
 import { countryCodesForEvent } from "@/lib/countryMatching"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
+import { IMAGERY_LAYERS, imageryDate } from "@/lib/imageryLayers"
+import { useImageryStore } from "@/stores/imageryStore"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
@@ -191,6 +193,13 @@ export function FilterRail({
   const reset = useStore((s) => s.reset)
 
   const [countryOpen, setCountryOpen] = useState(false)
+
+  //: The backdrop reads the same clock the markers do (#875).
+  const activeImagery = useImageryStore((s) => s.active)
+  const imageryMissing = useImageryStore((s) => s.missing)
+  const toggleImagery = useImageryStore((s) => s.toggle)
+  const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
+  const imageryDay = imageryDate(Date.now() - windowEndOffsetMs)
 
   /** Windowed count for the rail header — the same pipeline the map markers
    *  use, so the header and the dots always agree. The event *list* left with
@@ -551,6 +560,55 @@ export function FilterRail({
                 </button>
               )
             })}
+          </div>
+
+          {/* Satellite backdrop (#875). One at a time, off by default: two
+           *  rasters stacked on a dark style is mud, and the map's ordinary
+           *  appearance is not up for renegotiation as a side effect of adding
+           *  an option. The day shown is the scrubber's day, said out loud so
+           *  the backdrop can never quietly disagree with the markers. */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+                Satellite
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">
+                {imageryDay}
+              </span>
+            </div>
+            {IMAGERY_LAYERS.map((layer) => {
+              const on = activeImagery === layer.id
+              return (
+                <button
+                  key={layer.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleImagery(layer.id)}
+                  className={cn(
+                    "flex flex-col gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors",
+                    on
+                      ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
+                      : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
+                  )}
+                >
+                  <span className="text-[13px]">{layer.label}</span>
+                  <span className="font-mono text-[10px] text-neutral-600">{layer.hint}</span>
+                </button>
+              )
+            })}
+            {/* A gap in the archive is normal — whole days are absent from a
+             *  record that otherwise reaches back years. A blank backdrop with
+             *  no explanation reads as a broken map, so it is named. */}
+            {activeImagery && imageryMissing && (
+              <span className="px-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
+                no imagery for {imageryDay}
+              </span>
+            )}
+            {activeImagery && (
+              <span className="px-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
+                NASA GIBS · Worldview
+              </span>
+            )}
           </div>
 
           {/* Disaster types — replaces the single GDACS "multi-hazard" switch so

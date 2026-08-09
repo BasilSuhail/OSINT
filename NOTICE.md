@@ -39,6 +39,7 @@ change. Read the current ones for any feed you actually enable.
 | Wikidata — capital, population, area, languages, currency, form of government, office holders | `app/enrichment/place_screen.py` | <https://www.wikidata.org/wiki/Wikidata:Licensing> |
 | Wikipedia — place summaries | `app/enrichment/place_screen.py` | <https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use> |
 | Copernicus Sentinel-2, reached through Microsoft Planetary Computer | `app/enrichment/place_screen.py` | <https://planetarycomputer.microsoft.com/terms> and <https://sentinels.copernicus.eu/web/sentinel/terms-conditions> |
+| NASA GIBS — satellite imagery tiles (nightlights, true colour) | `osint-frontend/lib/imageryLayers.ts` | <https://nasa-gibs.github.io/gibs-api-docs/> |
 
 Some of these are open government data and some are not. Several are free for
 noncommercial or research use specifically and require a separate agreement for
@@ -51,7 +52,9 @@ which requires attribution.
 
 Copernicus Sentinel-2 imagery is published under CC-BY 4.0 by the European
 Union and the European Space Agency, Wikipedia text under CC-BY-SA, and
-Wikidata under CC0. The first two require attribution, which the place screen
+Wikidata under CC0. NASA imagery is generally free of copyright, and the
+agency asks to be credited rather than implied to endorse anything; the map
+credits it beside the layer switch. The first two require attribution, which the place screen
 renders beneath the data it shows rather than burying here.
 
 News feeds are fetched for headline, link, publication time and derived
