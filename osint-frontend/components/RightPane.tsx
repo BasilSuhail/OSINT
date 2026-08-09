@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect } from "react"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { ClusterListPanel } from "./ClusterListPanel"
 import { CountrySidePanel } from "./CountrySidePanel"
@@ -19,15 +18,11 @@ export function RightPane() {
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
 
-  // Esc closes a locked entity and restores the world status view.
-  useEffect(() => {
-    if (!entity) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeEntity()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [entity, closeEntity])
+  //: Escape no longer closes the locked entity (#842). Doing so removed the
+  //: selection *page* from the deck, which is the reader's place rather than a
+  //: pop-out over it — so a keypress meant to dismiss a detail card took a
+  //: page away instead. The selection closes by its own control, and the way
+  //: back from it is to swipe.
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-neutral-950">

@@ -168,33 +168,19 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     return () => window.removeEventListener("keydown", onKey)
   }, [expanded, setExpanded])
 
-  //: Escape returns the deck to the first card, wherever it was and whatever
-  //: it was showing. Home is a fixed place or it is not home: closing a
-  //: selection used to leave the deck on whichever page the vanishing card
-  //: had pushed it to, so the same keypress landed somewhere different
-  //: depending on where you started.
+  //: Escape does not move the deck (#842).
   //:
-  //: Runs after the handlers that close a story, an entity or the expanded
-  //: state, so one Escape both dismisses what is open and comes home rather
-  //: than needing two.
+  //: It used to force the deck home on every press. The reasoning was sound
+  //: for the problem it had (#778): closing a selection removed a card, which
+  //: shrank the track, which left the deck on an arbitrary page — so the key
+  //: was made to always land somewhere known. That fixed the symptom by giving
+  //: one key three jobs, and the cost showed up in use: a reader dismissing a
+  //: detail card was thrown back to page one with their selection gone.
   //:
-  //: Instant, not smooth (#781). The same keypress closes the selection, which
-  //: removes a card, which shrinks the track by a page — and the browser
-  //: clamps scrollLeft to the new maximum, killing the animation on page 2.
-  //: Worse, every frame of that animation fires onScroll, which writes the
-  //: intermediate page back into activeRef, so the re-align below faithfully
-  //: restores the page the clamp stopped on. Landing on 0 inside the handler
-  //: leaves the clamp nothing to clamp. Coming home is not a journey worth
-  //: animating.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return
-      activeRef.current = 0
-      goTo(0, false)
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [goTo])
+  //: Pages are now left where the reader put them, and the way back from a
+  //: page is to swipe. The re-align below still keeps the deck on its current
+  //: card when the track's width changes, which is the part that was actually
+  //: load-bearing.
 
   return (
     //: Fills whatever it is given, in both states (#707). It used to go
