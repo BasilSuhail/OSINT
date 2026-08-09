@@ -455,6 +455,12 @@ export interface PlaceImagery {
   item_id: string
 }
 
+export interface PlaceNextPass {
+  at: string
+  platform: string
+  hours_away: number
+}
+
 export interface PlaceAnswer {
   point: { lat: number; lon: number } | null
   country: PlaceCountry | null
@@ -462,6 +468,7 @@ export interface PlaceAnswer {
   government: PlaceGovernment | null
   summary: PlaceSummary | null
   imagery: PlaceImagery | null
+  next_pass: PlaceNextPass | null
   degraded: string[]
 }
 

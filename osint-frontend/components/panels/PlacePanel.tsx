@@ -84,6 +84,17 @@ function formatArea(value: number | null | undefined): string | null {
  *
  * Splitting on a full stop followed by a space keeps abbreviations intact well
  * enough for an opening paragraph, and the link out carries the rest. */
+/** "next pass in 14 hours" — rounded, because the arithmetic is finer than the
+ * question. The moment the spacecraft is overhead is not the same instant as
+ * the timestamp printed on a product, which is the sensing start of a whole
+ * datastrip; at this resolution the difference does not survive rounding. */
+function nextPassLabel(pass: { platform: string; hours_away: number }): string {
+  const hours = pass.hours_away
+  if (hours < 1) return `${pass.platform} overhead within the hour`
+  if (hours < 36) return `${pass.platform} passes in ${Math.round(hours)}h`
+  return `${pass.platform} passes in ${Math.round(hours / 24)} days`
+}
+
 function twoSentences(extract: string): string {
   const parts = extract.split(/(?<=\.)\s+/)
   return parts.slice(0, 2).join(" ")
@@ -243,6 +254,14 @@ export function PlacePanel() {
                       Full scene →
                     </a>
                   </div>
+                  {/* Why the picture is as old as it is. Without this, nine
+                      days old and two days old look like the same fact, and
+                      the reader cannot tell whether waiting would help. */}
+                  {place.next_pass && (
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                      {nextPassLabel(place.next_pass)}
+                    </span>
+                  )}
                 </>
               )}
             </div>
