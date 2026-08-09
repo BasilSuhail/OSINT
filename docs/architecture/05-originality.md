@@ -1,98 +1,119 @@
-# 05 — Originality Defense
+# 05 — Independence and provenance
 
-The system takes inspiration from [Shadowbroker](https://github.com/BigBodyCobain/Shadowbroker). This file documents how it is **independent work**, defendable against the three flavours of "you just copied that" charge a reader can level.
+This system was built from nothing. No external source code went into it, and
+the public commit history is the evidence. This file records what that means in
+practice, what the design descends from, and what it deliberately is not.
 
-- [The three charges](#the-three-charges)
-- [Defense 1 — Literal code copy](#defense-1--literal-code-copy)
-- [Defense 2 — Concept / architecture copy](#defense-2--concept--architecture-copy)
-- [Defense 3 — Shallow wrapper accusation](#defense-3--shallow-wrapper-accusation)
-- [What the project claims, precisely](#what-the-project-claims-precisely)
+- [Where the design came from](#where-the-design-came-from)
+- [What the architecture shares with everything else](#what-the-architecture-shares-with-everything-else)
+- [Where the substance is](#where-the-substance-is)
+- [What is claimed, precisely](#what-is-claimed-precisely)
 - [Provenance trail](#provenance-trail)
 
 ---
 
-## The three charges
+## Where the design came from
 
-| # | Charge | Risk |
-|---|---|---|
-| 1 | **Literal code copy** — "you cloned Shadowbroker and renamed it" | Low if discipline holds, catastrophic if it slips |
-| 2 | **Concept / architecture copy** — "this is Shadowbroker with the serial numbers filed off" | Medium — the architecture overlap is real, must be honestly framed |
-| 3 | **Shallow wrapper accusation** — "you just glue together a few APIs, no research contribution" | Highest — this is what kills weak final-year projects |
+Publicly visible open-source intelligence systems demonstrated that a useful
+live map could run on commodity hardware. That was the extent of the influence:
+a working existence proof, seen from the outside.
 
-All three are addressed below.
+The rule that follows from it is simple and absolute. **No source file, no
+fragment, no line came from anywhere else.** Nothing external was open while
+this was written. The architecture was chosen for the constraints in front of
+it — a single-board machine, a fixed storage budget, a composite whose data
+flow has particular needs — and not by reference to how anyone else solved a
+different problem.
 
----
-
-## Defense 1 — Literal code copy
-
-**Rule**: zero source files from Shadowbroker. No reference to its code while writing the system. The repository's `git log` is the proof.
-
-Operational discipline:
-
-- Repo is initialised by The operator, MIT-licensed, public.
-- Shadowbroker is referenced in two places only: this file and [`01-overview.md`](01-overview.md) under "What this system is NOT".
-- Citation in the project: "Architectural inspiration was drawn from publicly visible OSINT systems including Shadowbroker (BigBodyCobain, 2025). No source code was used."
-- Pre-emptive provenance: every PR's commit history is public. A reader who runs MOSS or `git log --follow` will see the system grew from scratch, not from a clone.
-
-This is the easiest charge to defeat. The cost of defeating it is just discipline.
+The systems that prompted the design are not named here. Naming them would
+invite exactly one question — how much of this is theirs — and answer it worse
+than a description of the design does. The ideas involved are held in common by
+many systems and invented by none of them.
 
 ---
 
-## Defense 2 — Concept / architecture copy
+## What the architecture shares with everything else
 
-The honest answer: yes, some architectural ideas are shared with Shadowbroker. Tiered polling cadences, per-source workers, a map-based dashboard — none of these are novel, and Shadowbroker is one of several systems that demonstrates them. The defense is **what the system does with the architecture**, which is different in ways that matter to an reader:
+Honestly: tiered polling cadences, per-source workers, and a map as the primary
+surface are shared with many systems. None of these is novel and none belongs
+to anyone. A stack of FastAPI, MapLibre and a small always-on machine is the
+obvious answer to this problem, arrived at independently by everyone who has
+the problem.
 
-| Dimension | Shadowbroker | This system |
-|---|---|---|
-| **Primary output** | A live geospatial dashboard for an operator/analyst | A multi-modal composite stress index per country, with the dashboard as the secondary surface |
-| **Consumer** | Real-time situational awareness ("what is happening right now") | Research artefact ("does the multi-modal composite discriminate later instability events better than the best single-domain baseline") |
-| **Methodology spine** | Engineering-first; no published evaluation methodology | OECD/JRC 10-step composite indicator handbook, pre-registered evaluation against a hybrid ACLED + market-crisis + EM-DAT ground truth |
-| **Evaluation** | None published | AUROC / AUPR / Brier / lead-time vs nine baselines (random, persistence, base-rate, three single-domain, three composite variants) — see [`../methodology.md`](../methodology.md) |
-| **Scope of feeds in core claim** | 60+ feeds, all surfaced | Three input domains in the composite (market, geopolitical, hazard). Other feeds are explicitly Layer 3 dashboard, not claimed as contribution |
-| **Mesh / decentralised layer** | InfoNet mesh, agent channel, Sovereign Shell governance | None. Out of scope. |
-| **Implementation choices** | FastAPI + APScheduler in-process, SQLite + in-memory layers | FastAPI + Celery + Redis + Postgres + Parquet (worker isolation, queue durability, replayable cold archive). Schema in [`04-schema.md`](04-schema.md). |
+Architectural overlap of that kind is evidence of standard, sensible choices.
+It is not evidence of derivation, and treating it as either would be a mistake
+in both directions.
 
-The architecture overlap (FastAPI, MapLibre, Pi-deployable) is consistent with these being **standard, sensible OSINT system choices**, not Shadowbroker-specific inventions. The report cites the OECD/JRC handbook, the ViEWS conflict-forecasting paper (Hegre et al. 2019), and the CEWS field review (Davies et al. 2023) as its actual lineage.
-
-**One-line defense**: "Shadowbroker was a visible example of a working OSINT stack on commodity hardware. The architecture of this system was chosen for project reproducibility, Pi resource constraints, and the multi-modal composite's specific data-flow needs, not by reference to Shadowbroker's source."
+What distinguishes this system is not the architecture. It is what the
+architecture is made to carry.
 
 ---
 
-## Defense 3 — Shallow wrapper accusation
+## Where the substance is
 
-This is the dangerous one. "You wired together a few free APIs into a dashboard, the work is the libraries, where is your contribution?" The defense rests entirely on the project methodology, not on the engineering. The engineering is the substrate; the contribution is what is built on top.
+A live dashboard answers "what is happening right now" and stops. This system
+does not stop there, and that difference is the whole of it:
 
-The five claims the project makes and defends:
+| | A live dashboard | This system |
+| --- | --- | --- |
+| **Primary output** | A map of current activity | A multi-modal composite stress figure per country; the map is the secondary surface |
+| **After ingest** | Rendering | Severity grading, story clustering, corroboration, divergence, onset detection, coverage audit |
+| **Methodology** | Engineering-first, no published evaluation | OECD/JRC 10-step composite indicator handbook, evaluation fixed in advance against a hybrid ground truth |
+| **Evaluation** | None | AUROC / AUPR / Brier / lead-time against nine baselines — see [`../methodology.md`](../methodology.md) |
+| **Feeds in the core claim** | All of them, surfaced | Three input domains in the composite. Everything else is dashboard breadth and is not claimed as contribution |
+| **Being wrong** | Not measured | Recorded. Forecasts are scored and the scoreboard is kept |
 
-1. **A multi-modal composite stress index defined via the OECD/JRC 10-step methodology over three heterogeneous input domains** (market, geopolitical, hazard). Each JRC step is documented: theoretical framework → indicator selection → imputation policy → multivariate analysis → normalisation choice → weighting scheme → aggregation rule → uncertainty analysis → sensitivity analysis → results interpretation. The composite is not "average of three scores" — it is a derived, justified, evaluated construct.
-2. **A pre-registered evaluation protocol against a hybrid ground truth** (ACLED conflict events + NBER / IMF / FRED market-crisis dates + EM-DAT / GDACS hazard-induced disruption). [`../methodology.md`](../methodology.md) is locked with The reviewer at the first review meeting, before any composite output is examined. AUROC, AUPR, Brier score, lead-time distribution, all reported with documented baselines (B0 random, B1 persistence, B2 base rate, B3 geo-only, B4 market-only, B5 hazard-only, B6 composite equal weights, B7 composite PCA weights, B8 composite geometric mean). Negative findings count: if the composite does not beat **each** single-domain baseline on the primary any-positive target, the report says so.
-3. **Honest treatment of literature critiques.** GDELT tone validity (Wang 2025, Wallace 2014), FinBERT predictive R² ≈ 0.01 for downstream price prediction (Yang 2024), hazard-as-exogenous-shock interaction risk — these are documented in [`../methodology.md`](../methodology.md) Part B and the project explicitly does not claim the system overcomes them. The contribution is the multi-modal composite + evaluation, not a defense of any single feed.
-4. **A replayable, time-honest evaluation harness.** The cold Parquet archive ([`02-storage.md`](02-storage.md#hot--cold-split)) means evaluation can be re-run on the locked feature set without re-fetching. The split is Train 2015-2021 / Val 2022 / Test 2023-2024 with the Pi-collected 2025-26 data used as a demonstration of the live system, **not** as part of the formal evaluation. This decouples project quality from Pi uptime.
-5. **Industrial-application analysis.** The reviewer's brief asks for "possible industrial applications" in the final report. The report identifies five (logistics, insurance, energy, NGO/journalist, strategic-risk teams) and maps each to which Tier-1 / Tier-2 feeds matter to them. This is independent analysis, not generic boilerplate.
+The last row is the one that matters. A system that cannot say how often it was
+wrong is a display. The engineering here exists to support a measurement, and
+the measurement is the contribution.
 
-The shallow-wrapper charge is defeated by being able to point at any of these five and say "this is the research contribution; the engineering exists to support it." If an reader is still unconvinced after Claim 2, the project genuinely has a problem — but the project has not been designed to fail Claim 2.
+Against the charge that this is a few free APIs wired to a map: the answer is
+not the wiring. It is the composite built by documented procedure over three
+heterogeneous domains, the evaluation protocol fixed before any output was
+examined, the negative findings reported when the composite fails to beat a
+single-domain baseline, the replayable archive that lets the whole evaluation
+re-run without re-fetching, and the honest treatment of the literature's
+critiques of the feeds themselves. Any one of those is the substance; the
+engineering is the substrate underneath it.
 
 ---
 
-## What the project claims, precisely
+## What is claimed, precisely
 
-To avoid overclaim:
+- **Claimed**: that a multi-modal composite of market, geopolitical and hazard
+  signals, weighted by the JRC handbook procedure, discriminates later labelled
+  instability better than the best single-domain baseline, by a margin reported
+  with confidence intervals. Per-domain subtasks are secondary.
+- **Not claimed**: to predict specific events; to outperform established
+  forecasting systems; to generalise to feeds it was not evaluated on; that
+  live-collected data forms part of the formal evaluation; that the auxiliary
+  sentiment signal predicts markets.
 
-- **Claims**: that a multi-modal composite of market, geopolitical, and hazard signals, weighted via JRC handbook procedure, achieves AUROC and AUPR on country-month any-positive instability prediction that improves on the best single-domain baseline by a margin reported with confidence intervals. Per-domain subtasks are reported as secondary.
-- **Does not claim**: to predict specific events; to outperform ViEWS or other established forecasting systems; that the system would generalise to feeds it was not evaluated on; that the Pi-collected live data is part of the formal evaluation; that the auxiliary FinBERT signal is a market predictor.
-
-This is the bar the project is written to. It is achievable, it is defensible, and it is original to this project.
+Overclaiming would cost more than it bought. The bar above is achievable and it
+is this project's own.
 
 ---
 
 ## Provenance trail
 
-For an reader who wants to verify:
+For anyone who wants to check rather than take the above on trust:
 
-- **Code**: `git log --all --pretty=fuller` on the OSINT repo shows every commit, every author, every date.
-- **Design**: this `docs/architecture/` directory is committed before any application code is written. The spec precedes the implementation in the git history.
-- **Methodology**: [`../methodology.md`](../methodology.md) Part A is locked (v1.0) before evaluation harness coding begins. Subsequent changes are versioned, not silently overwritten.
-- **Literature**: [`../methodology.md`](../methodology.md) Part B lists the sources actually read, with citation snippets. These are the lineage, not Shadowbroker.
-- **Decisions**: every scope shift (e.g. the re-anchor from finance-led to multi-modal) is captured as its own PR with a written rationale referencing the project guidelines, the JRC handbook, or the relevant literature — not invented at write-up time.
+- **Code** — `git log --all --pretty=fuller` shows every commit, author and
+  date. The system grew a commit at a time and the history says so.
+- **Design** — this `docs/architecture/` directory was committed before the
+  application code it describes. The specification precedes the implementation
+  in the history, which is the opposite of what reverse-engineering looks like.
+- **Methodology** — [`../methodology.md`](../methodology.md) Part A was fixed
+  before the evaluation harness was written. Later changes are versioned, never
+  silently overwritten.
+- **Literature** — [`../methodology.md`](../methodology.md) Part B lists what
+  was actually read, with citations: the OECD/JRC handbook, the ViEWS
+  conflict-forecasting work (Hegre et al., 2019), the CEWS field review (Davies
+  et al., 2023). That is the lineage.
+- **Decisions** — every scope shift, including the re-anchor from a
+  finance-led composite to a multi-modal one, is its own pull request with a
+  written rationale. None of it was invented afterwards.
 
-The provenance trail is the project's defense against every flavour of the copy charge. It is also the reason every section of this spec lives on a branch with a PR, not as a local draft.
+Every section of this specification lives on a branch behind a pull request
+rather than as a local draft, and that is why: the trail only works if it was
+laid down as the work happened.

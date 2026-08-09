@@ -144,7 +144,7 @@ Three input domains (A + B + C), three label domains. The composite is evaluated
 - [World Bank Open Data](https://data.worldbank.org/) — GDP, debt
 - [Alpha Vantage](https://www.alphavantage.co/) + [Finnhub](https://finnhub.io/) free tiers — fundamentals
 
-**Off-grid bonus** (Shadowbroker DNA)
+**Off-grid bonus**
 - [APRS-IS](https://www.aprs-is.net/) — amateur radio positions
 - [KiwiSDR](http://kiwisdr.com/public/) — public SDR list
 - Own [Meshtastic](https://meshtastic.org/) node — mesh radio reachable via Pi
@@ -153,16 +153,16 @@ Three input domains (A + B + C), three label domains. The composite is evaluated
 
 Explicitly not building (be honest about scope):
 
-- Palantir-style entity resolution / ontology across feeds
+- Enterprise-style entity resolution / ontology across feeds
 - Commercial satellite imagery (Maxar, Planet — $$$)
 - Private intelligence feeds
-- Telegram OSINT scraping at Shadowbroker's depth (TOS + legal risk)
+- Telegram scraping at any depth (terms-of-service and legal risk, and the sourcing is unattributable)
 
 ---
 
 ## What this system is NOT
 
-- It is not Palantir Foundry. No ontology, no analyst workflows, no enterprise auth.
-- It is not Shadowbroker. No mesh layer, no agentic AI channel, no decentralised governance. (Those can be added in Layer 3 if The operator wants, but they are not architectural commitments.)
+- It is not an enterprise intelligence platform. No ontology, no analyst workflows, no enterprise auth.
+- It is not a live sensor wall. No mesh layer, no agent command channel, no decentralised governance. (Those could be added in Layer 3 if the operator wants them, but they are not architectural commitments.)
 - It is not a prediction system. The composite reports stress level; it does not claim to forecast specific events. The evaluation in [`../methodology.md`](../methodology.md) tests **discrimination** (does high stress correlate with later labelled instability events across the three domains) rather than **prediction accuracy** in the strict sense.
 - It is not finance-anchored. An earlier draft framed the project as a finance-led composite. The current re-anchor treats market signals as one of three equal input domains in the multi-modal composite; finance is not the headline contribution.

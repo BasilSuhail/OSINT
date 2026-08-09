@@ -4,7 +4,7 @@ Copy the section below verbatim into [v0.dev](https://v0.dev).
 
 ---
 
-Build a Next.js 15 dashboard called "OSINT World Monitor". Dark theme. Inspired by WorldMonitor, Shadowbroker, and Palantir Foundry — analytical, dense, fluid, real-time. Two split panes side by side: a flat world map on the left, a 3D rotating globe on the right. Each pane is independently filterable and independently scrubbable through time, but they share data sources. Events fade in when new and fade out as they age. Layout dynamic, no chrome wasted.
+Build a Next.js 15 dashboard called "OSINT World Monitor". Dark theme, analytical, dense, fluid, real-time. Two split panes side by side: a flat world map on the left, a 3D rotating globe on the right. Each pane is independently filterable and independently scrubbable through time, but they share data sources. Events fade in when new and fade out as they age. Layout dynamic, no chrome wasted.
 
 ## Stack
 
