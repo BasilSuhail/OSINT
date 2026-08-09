@@ -71,10 +71,10 @@ export function SplitLayout() {
   //: One slot, whichever tile asked for it (#705). A story wins if both are
   //: somehow set — opening one never closes the other, so it is the later click.
   const sidePanel = storyDetailOpen ? "story" : worldDetailOpen ? "world" : null
-  //: Is a second floating panel actually on screen? Written once and read by
-  //: both the pop-out and the width variable (#844): the same condition in two
-  //: places drifted the moment a story stopped being a panel.
-  const popOutOpen = worldDetailOpen && !storyDetailOpen
+  //: Page four is the pop-up, whatever opened it (#846). One slot, so there is
+  //: no second condition to drift out of step with the first — which is what
+  //: put the collapse handle in the middle of the map.
+  const popupOpen = storyDetailOpen || worldDetailOpen
   const entity = useRightPaneModeStore((s) => s.entity)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -83,11 +83,18 @@ export function SplitLayout() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      //: Escape removes no page (#844). The story is a deck page now, and a
-      //: page is the reader's place: it closes by its own control or by being
-      //: swiped away from. Escape belongs to what sits *on top of* a page —
-      //: the expanded deck, the search overlay, a card floating over the map.
-      if (e.key === "Escape") return
+      //: Escape closes the pop-up and nothing else (#846). Page four is the
+      //: pop-up; pages one to three are the reader's place and no keypress
+      //: removes them. Works while typing, because dismissing what is on top
+      //: is the one thing a keyboard should always be able to do.
+      if (e.key === "Escape") {
+        if (useStoryDetailStore.getState().storyId !== null) {
+          useStoryDetailStore.getState().closeStory()
+        } else if (useWorldDetailStore.getState().open) {
+          useWorldDetailStore.getState().closeWorld()
+        }
+        return
+      }
       const target = e.target as HTMLElement
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return
       if (e.key === "[") {
@@ -203,12 +210,12 @@ export function SplitLayout() {
   //: destroyed the selection the reader had open and left nothing to swipe
   //: back to. Appended, never inserted, for the same reason the selection card
   //: is: a deck whose pages move is not a place you can learn.
-  if (storyDetailOpen) {
+  if (popupOpen) {
     deckCards.push({
-      key: "story",
-      title: "story",
+      key: "popup",
+      title: sidePanel === "story" ? "story" : "detail",
       fill: true,
-      content: <StoryDetailCard />,
+      content: sidePanel === "story" ? <StoryDetailCard /> : <WorldDetailCard />,
     })
   }
 
@@ -226,7 +233,7 @@ export function SplitLayout() {
   if (process.env.NODE_ENV !== "production") {
     const expected = deckPageKeys({
       selection: Boolean(selection),
-      story: storyDetailOpen,
+      popup: popupOpen,
       scoreboard: scoreboardReady,
     }).join()
     const actual = deckCards.map((card) => card.key).join()
@@ -281,11 +288,10 @@ export function SplitLayout() {
               style={{ display: activePane === "right" ? "block" : "none" }}
             >
               <FloatingPanel className="h-full w-full">
-                {/* The deck is always the surface here (#842). A story is one
-                    of its pages now, so only the world tile still takes the
-                    slot — replacing the deck was what stole the reader's
-                    place. */}
-                {sidePanel === "world" ? <WorldDetailCard /> : <CardDeck cards={deckCards} />}
+                {/* The deck is always the surface (#846). Every pop-up is page
+                    four inside it, so nothing replaces it — replacing the deck
+                    was what stole the reader's place to begin with. */}
+                <CardDeck cards={deckCards} />
               </FloatingPanel>
             </div>
           </div>
@@ -301,15 +307,11 @@ export function SplitLayout() {
             //: detail card too when it is open, and collapses to 0 with the deck.
             style={
               {
-                //: Reserves room for a *second* panel only when one is
-                //: actually rendered (#844). A story stopped being a panel in
-                //: #843 and became a page, but this still counted it — so the
-                //: collapse handle, which rides this edge, floated in open map.
-                "--panel-width": deckCollapsed
-                  ? "0px"
-                  : popOutOpen
-                    ? `calc(${PANEL_WIDTH} * 2 + 0.5rem)`
-                    : PANEL_WIDTH,
+                //: One panel column, always (#846). The pop-up is page four
+                //: inside the deck, so nothing beside it needs reserving — and
+                //: the special case that put the collapse handle in open map
+                //: is deleted rather than corrected.
+                "--panel-width": deckCollapsed ? "0px" : PANEL_WIDTH,
               } as React.CSSProperties
             }
           >
@@ -327,16 +329,6 @@ export function SplitLayout() {
 
             {/* With a fixed deck width the pop-out's position is arithmetic
              *  rather than plumbing the panel's measured pixels. */}
-            {/* The story no longer rides this slot — it is a deck page (#842),
-                so this is the world tile's alone. */}
-            {popOutOpen && !deckCollapsed ? (
-              <FloatingPanel
-                className="absolute bottom-3 top-3 z-30"
-                style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
-              >
-                <WorldDetailCard />
-              </FloatingPanel>
-            ) : null}
 
             {/* Collapse handle rides the outer edge of whatever is showing,
              *  tracked by --panel-width. It cannot live inside the deck: that

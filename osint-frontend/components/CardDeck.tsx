@@ -2,7 +2,9 @@
 
 import { Maximize2, Minimize2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { POPUP_PAGE } from "@/lib/deckPages"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
+import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import { useDeckExpandStore } from "@/stores/deckExpandStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 
@@ -157,18 +159,19 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     goTo(selectionIndex)
   }, [entityToken, selectionIndex, goTo])
 
-  //: A story opens on its own page, so the deck goes to it (#844) — the same
-  //: reason the selection card does: a page that arrives silently off-screen
-  //: makes the click look like it did nothing. Keyed on the story's identity
-  //: rather than the index, so opening a different story from the page you are
-  //: already on still moves nothing that should not move.
-  const storyToken = useStoryDetailStore((st) => st.storyId)
-  const storyIndex = cards.findIndex((c) => c.key === "story")
+  //: The deck goes to the pop-up when it opens (#846) — the same reason the
+  //: selection card does: a page that arrives silently off-screen makes the
+  //: click look like it did nothing. Keyed on what popped up rather than on
+  //: the index, so opening a second story from the page you are already on
+  //: does not re-scroll.
+  const popupToken = useStoryDetailStore((st) => st.storyId)
+  const worldOpen = useWorldDetailStore((st) => st.open)
+  const popupIndex = cards.findIndex((c) => c.key === POPUP_PAGE)
   useEffect(() => {
-    if (storyToken === null || storyIndex < 0) return
-    activeRef.current = storyIndex
-    goTo(storyIndex)
-  }, [storyToken, storyIndex, goTo])
+    if ((popupToken === null && !worldOpen) || popupIndex < 0) return
+    activeRef.current = popupIndex
+    goTo(popupIndex)
+  }, [popupToken, worldOpen, popupIndex, goTo])
 
   useEffect(() => {
     if (!expanded) return

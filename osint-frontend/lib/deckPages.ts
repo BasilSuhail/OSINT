@@ -19,13 +19,20 @@
 export interface DeckState {
   /** Something on the map is picked. */
   selection: boolean
-  /** A story is open. */
-  story: boolean
+  /** Something is popped up beside what the reader was reading — a story, a
+   *  country, the world detail. All of them land in one place (#846). */
+  popup: boolean
   /** The scoreboard has something graded to show. */
   scoreboard: boolean
 }
 
-export type DeckPageKey = "situation" | "world" | "selection" | "story" | "scoreboard"
+export type DeckPageKey = "situation" | "world" | "selection" | "popup" | "scoreboard"
+
+/** The pop-up page. Stated as a named invariant because three consecutive
+ *  changes each satisfied the request in front of them and moved something
+ *  else: **page four is the pop-up, whatever opened it, and Escape closes it
+ *  and nothing else** (#846). */
+export const POPUP_PAGE: DeckPageKey = "popup"
 
 /** The standing pages, always present and always first. */
 export const STANDING_PAGES: readonly DeckPageKey[] = ["situation", "world"] as const
@@ -33,7 +40,7 @@ export const STANDING_PAGES: readonly DeckPageKey[] = ["situation", "world"] as 
 export function deckPageKeys(state: DeckState): DeckPageKey[] {
   const keys: DeckPageKey[] = [...STANDING_PAGES]
   if (state.selection) keys.push("selection")
-  if (state.story) keys.push("story")
+  if (state.popup) keys.push(POPUP_PAGE)
   if (state.scoreboard) keys.push("scoreboard")
   return keys
 }
