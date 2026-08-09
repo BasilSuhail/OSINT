@@ -1,7 +1,6 @@
 "use client"
 
 import { X } from "lucide-react"
-import { useEffect } from "react"
 import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import { WorldStatusPanel } from "../WorldStatusPanel"
 import { BriefingPanel } from "./BriefingPanel"
@@ -21,13 +20,9 @@ import { CoveragePanel } from "./CoveragePanel"
 export function WorldDetailCard() {
   const closeWorld = useWorldDetailStore((s) => s.closeWorld)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeWorld()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [closeWorld])
+  //: Escape is owned by the layout (#846): page four is the pop-up and one
+  //: handler closes whatever is in it. Two handlers doing the same job is how
+  //: the last three changes each moved something nobody asked to move.
 
   return (
     <div className="flex h-full w-full flex-col bg-neutral-950">
