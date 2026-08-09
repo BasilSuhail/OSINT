@@ -2,7 +2,7 @@
 
 ## What the licence covers
 
-[`LICENSE.md`](LICENSE.md) covers the code in this repository and nothing else.
+[`LICENSE`](LICENSE) covers the code in this repository and nothing else.
 
 It does not cover, and cannot cover, the data this software fetches. Those
 feeds belong to the organisations that publish them, each on its own terms.
@@ -36,6 +36,9 @@ change. Read the current ones for any feed you actually enable.
 | abuse.ch — threat intelligence feeds | `app/sources/abuse_ch_fetchers.py` | <https://abuse.ch/> |
 | Yahoo Finance, via the `yfinance` package | `app/sources/yfinance_fetcher.py` | Yahoo's terms of service, plus the `yfinance` project's own notes on what that package is |
 | News RSS feeds | `app/sources/rss_news_fetcher.py` | Each publisher's own terms; see `app/sources/rss_feeds.json` for the list |
+| Wikidata — capital, population, area, languages, currency, form of government, office holders | `app/enrichment/place_screen.py` | <https://www.wikidata.org/wiki/Wikidata:Licensing> |
+| Wikipedia — place summaries | `app/enrichment/place_screen.py` | <https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use> |
+| Copernicus Sentinel-2, reached through Microsoft Planetary Computer | `app/enrichment/place_screen.py` | <https://planetarycomputer.microsoft.com/terms> and <https://sentinels.copernicus.eu/web/sentinel/terms-conditions> |
 
 Some of these are open government data and some are not. Several are free for
 noncommercial or research use specifically and require a separate agreement for
@@ -45,6 +48,11 @@ is. Do not assume a feed is permissive because its neighbour in the table is.
 UK Police data is published under the Open Government Licence v3.0
 (<https://nationalarchives.gov.uk/doc/open-government-licence/version/3/>),
 which requires attribution.
+
+Copernicus Sentinel-2 imagery is published under CC-BY 4.0 by the European
+Union and the European Space Agency, Wikipedia text under CC-BY-SA, and
+Wikidata under CC0. The first two require attribution, which the place screen
+renders beneath the data it shows rather than burying here.
 
 News feeds are fetched for headline, link, publication time and derived
 metadata. Publishers keep copyright in their articles; this software does not
@@ -58,9 +66,10 @@ enrichment step runs offline:
 | File | Origin | Terms |
 | --- | --- | --- |
 | `admin0_countries.geojson` | Natural Earth, 110 m Admin-0 countries | Public domain |
+| `admin0_countries_50m.geojson` | Natural Earth, 50 m Admin-0 countries, rebuilt by `scripts/build_admin0_50m.py` | Public domain |
 | `cities.json` | Natural Earth, 10 m populated places | Public domain |
 | `region_coords.json` | Derived from Natural Earth by `scripts/build_region_coords.py` | Public domain |
-| `geo_terms.json` | Written for this project — aliases, demonyms and abbreviations Natural Earth does not carry | Covered by `LICENSE.md` |
+| `geo_terms.json` | Written for this project — aliases, demonyms and abbreviations Natural Earth does not carry | Covered by `LICENSE` |
 
 Natural Earth places its data in the public domain and asks for no
 attribution, though it welcomes credit:
@@ -74,7 +83,7 @@ under it — this repository's licence does not reach them.
 
 ## Warranty
 
-There isn't one. See the No Liability section of [`LICENSE.md`](LICENSE.md).
+There isn't one. See the No Liability section of [`LICENSE`](LICENSE).
 This is a project under development, its outputs have been wrong before and
 will be again, and nothing here is fit to be relied on for any decision that
 matters.

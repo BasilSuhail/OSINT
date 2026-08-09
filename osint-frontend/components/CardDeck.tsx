@@ -3,6 +3,7 @@
 import { Maximize2, Minimize2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useDeckExpandStore } from "@/stores/deckExpandStore"
+import { usePlaceStore } from "@/stores/placeStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 
 export interface DeckCard {
@@ -141,12 +142,10 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
   const entityToken = useRightPaneModeStore((st) => {
     const e = st.entity
     if (!e) return null
-    return e.kind === "country"
-      ? `country:${e.iso}`
-      : e.kind === "cluster"
-        ? `cluster:${e.label}`
-        : e.kind === "area"
-          ? `area:${e.lat}:${e.lon}:${e.radiusKm}`
+    return e.kind === "cluster"
+      ? `cluster:${e.label}`
+      : e.kind === "area"
+        ? `area:${e.lat}:${e.lon}:${e.radiusKm}`
         : `event:${e.event.id}`
   })
   const selectionIndex = cards.findIndex((c) => c.key === "selection")
@@ -155,6 +154,22 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     activeRef.current = selectionIndex
     goTo(selectionIndex)
   }, [entityToken, selectionIndex, goTo])
+
+  //: The same for the place screen (#862). Keyed on what was asked about, not
+  //: on the card's index: right-clicking a second point while the screen is
+  //: already open does not change the index, and without this the deck would
+  //: sit still while the content changed underneath it.
+  const placeToken = usePlaceStore((st) => {
+    const t = st.target
+    if (!t) return null
+    return `place:${t.iso ?? ""}:${t.lat ?? ""}:${t.lon ?? ""}`
+  })
+  const placeIndex = cards.findIndex((c) => c.key === "place")
+  useEffect(() => {
+    if (!placeToken || placeIndex < 0) return
+    activeRef.current = placeIndex
+    goTo(placeIndex)
+  }, [placeToken, placeIndex, goTo])
 
 
   useEffect(() => {

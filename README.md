@@ -1344,7 +1344,7 @@ Rendered assets live in [`docs/supplementary/`](docs/supplementary/) as **SVG** 
 
 ## Licence
 
-PolyForm Noncommercial 1.0.0 — the full text is in [`LICENSE.md`](LICENSE.md).
+PolyForm Noncommercial 1.0.0 — the full text is in [`LICENSE`](LICENSE).
 
 **This is source-available, not open source.** The distinction is not
 pedantry: every OSI-approved licence permits commercial use, so calling this
