@@ -2,7 +2,8 @@
 
 import { Maximize2, Minimize2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { POPUP_PAGE } from "@/lib/deckPages"
+import { pageAfterPopupCloses, POPUP_PAGE } from "@/lib/deckPages"
+import { useEventDetailStore } from "@/stores/eventDetailStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import { useDeckExpandStore } from "@/stores/deckExpandStore"
@@ -159,19 +160,40 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     goTo(selectionIndex)
   }, [entityToken, selectionIndex, goTo])
 
-  //: The deck goes to the pop-up when it opens (#846) — the same reason the
-  //: selection card does: a page that arrives silently off-screen makes the
-  //: click look like it did nothing. Keyed on what popped up rather than on
-  //: the index, so opening a second story from the page you are already on
-  //: does not re-scroll.
-  const popupToken = useStoryDetailStore((st) => st.storyId)
+  //: The deck goes to the pop-up when it opens, and to a chosen page when it
+  //: closes (#850).
+  //:
+  //: Keyed on an open *counter* rather than on what was opened: reopening the
+  //: same story, or opening an event after a story, has to move the deck too,
+  //: and identity alone cannot see either.
+  //:
+  //: On close the page is decided by `pageAfterPopupCloses`, not by the scroll
+  //: clamp. Removing the pop-up shortens the track, the browser clamps to the
+  //: new maximum, and the reader landed on whichever page happened to be last
+  //: — screen two, with no selection open. A page nobody chose.
+  const popupOpens = useStoryDetailStore((st) => st.opens)
+  const eventOpens = useEventDetailStore((st) => st.opens)
   const worldOpen = useWorldDetailStore((st) => st.open)
   const popupIndex = cards.findIndex((c) => c.key === POPUP_PAGE)
+  const openToken = `${popupOpens}:${eventOpens}:${worldOpen ? 1 : 0}`
+  const hadPopupRef = useRef(false)
   useEffect(() => {
-    if ((popupToken === null && !worldOpen) || popupIndex < 0) return
-    activeRef.current = popupIndex
-    goTo(popupIndex)
-  }, [popupToken, worldOpen, popupIndex, goTo])
+    const hasPopup = popupIndex >= 0
+    if (hasPopup) {
+      hadPopupRef.current = true
+      activeRef.current = popupIndex
+      goTo(popupIndex)
+      return
+    }
+    if (!hadPopupRef.current) return
+    hadPopupRef.current = false
+    const home = pageAfterPopupCloses({
+      selection: cards.some((c) => c.key === "selection"),
+      scoreboard: cards.some((c) => c.key === "scoreboard"),
+    })
+    activeRef.current = home
+    goTo(home, false)
+  }, [openToken, popupIndex, cards, goTo])
 
   useEffect(() => {
     if (!expanded) return

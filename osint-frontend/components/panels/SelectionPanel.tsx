@@ -1,5 +1,6 @@
 "use client"
 
+import { useEventDetailStore } from "@/stores/eventDetailStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { ClusterListPanel } from "../ClusterListPanel"
 import { CountrySidePanel } from "../CountrySidePanel"
@@ -26,7 +27,11 @@ import { EventDetailCard } from "../EventDetailCard"
 export function SelectionPanel() {
   const entity = useRightPaneModeStore((s) => s.entity)
   const closeEntity = useRightPaneModeStore((s) => s.closeEntity)
-  const openEvent = useRightPaneModeStore((s) => s.openEvent)
+  //: A row in these lists opens the pop-up (#850). It used to call the
+  //: map-selection opener, which replaced this very page — the reader lost
+  //: the list they were reading and no pop-up appeared. Screen three is built
+  //: by clicking the map and by nothing else.
+  const openEventDetail = useEventDetailStore((s) => s.openEventDetail)
   const openCountry = useRightPaneModeStore((s) => s.openCountry)
 
   if (!entity) return null
@@ -39,7 +44,7 @@ export function SelectionPanel() {
         <ClusterListPanel
           label={entity.label}
           selections={entity.selections}
-          onSelectEvent={openEvent}
+          onSelectEvent={openEventDetail}
           onClose={closeEntity}
         />
       ) : entity.kind === "area" ? (
@@ -53,7 +58,7 @@ export function SelectionPanel() {
             labelKind: entity.labelKind,
             dataState: entity.dataState,
           }}
-          onSelectEvent={openEvent}
+          onSelectEvent={openEventDetail}
           onClose={closeEntity}
         />
       ) : (

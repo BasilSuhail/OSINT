@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { deckPageKeys, STANDING_PAGES } from "./deckPages"
+import {
+  deckPageKeys,
+  pageAfterPopupCloses,
+  pageForPopup,
+  STANDING_PAGES,
+} from "./deckPages"
 
 const state = (over: Partial<Parameters<typeof deckPageKeys>[0]> = {}) => ({
   selection: false,
@@ -73,5 +78,35 @@ describe("where the deck should be looking", () => {
     const before = deckPageKeys({ selection: true, popup: true, scoreboard: false })
     const after = deckPageKeys({ selection: true, popup: true, scoreboard: true })
     expect(after.indexOf("popup")).toBe(before.indexOf("popup"))
+  })
+})
+
+
+describe("where the deck goes when the pop-up closes", () => {
+  it("returns to screen 3 when a map selection is open", () => {
+    // The reported defect: Escape landed on screen 2, because removing the
+    // pop-up let the scroll clamp choose the page.
+    expect(pageAfterPopupCloses({ selection: true, scoreboard: false })).toBe(2)
+  })
+
+  it("returns to screen 1 when there is no screen 3", () => {
+    expect(pageAfterPopupCloses({ selection: false, scoreboard: false })).toBe(0)
+  })
+
+  it("is not the last page just because the last page exists", () => {
+    // With a scoreboard present the clamp would have landed there too.
+    expect(pageAfterPopupCloses({ selection: false, scoreboard: true })).toBe(0)
+    expect(pageAfterPopupCloses({ selection: true, scoreboard: true })).toBe(2)
+  })
+})
+
+describe("where the deck goes when the pop-up opens", () => {
+  it("goes to the pop-up, wherever it landed", () => {
+    expect(pageForPopup({ selection: true, popup: true, scoreboard: false })).toBe(3)
+    expect(pageForPopup({ selection: false, popup: true, scoreboard: false })).toBe(2)
+  })
+
+  it("reports no page when nothing is popped up", () => {
+    expect(pageForPopup({ selection: true, popup: false, scoreboard: false })).toBe(-1)
   })
 })

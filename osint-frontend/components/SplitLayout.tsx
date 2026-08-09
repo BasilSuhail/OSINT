@@ -10,6 +10,7 @@ import { useMediaQuery } from "@/lib/useMediaQuery"
 import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
+import { useEventDetailStore } from "@/stores/eventDetailStore"
 import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import useSWR from "swr"
 import { fetchScoreboard } from "@/lib/analytics"
@@ -20,6 +21,7 @@ import { SearchPanel } from "./SearchPanel"
 import { deckPageKeys } from "@/lib/deckPages"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
+import { EventDetailCard } from "./EventDetailCard"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { WorldDetailCard } from "./panels/WorldDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
@@ -68,15 +70,17 @@ export function SplitLayout() {
   //: Story pop-out (#448): a second card left of the deck, same width.
   const storyDetailOpen = useStoryDetailStore((s) => s.storyId !== null)
   const worldDetailOpen = useWorldDetailStore((s) => s.open)
-  //: One slot, whichever tile asked for it (#705). A story wins if both are
-  //: somehow set — opening one never closes the other, so it is the later click.
-  const sidePanel = storyDetailOpen ? "story" : worldDetailOpen ? "world" : null
   //: Page four is the pop-up, whatever opened it (#846). One slot, so there is
   //: no second condition to drift out of step with the first — which is what
   //: put the collapse handle in the middle of the map.
-  const popupOpen = storyDetailOpen || worldDetailOpen
+  const eventDetail = useEventDetailStore((s) => s.event)
+  const eventDetailLocation = useEventDetailStore((s) => s.location)
+  const closeEventDetail = useEventDetailStore((s) => s.closeEventDetail)
+  const popupOpen = storyDetailOpen || worldDetailOpen || eventDetail !== null
   const entity = useRightPaneModeStore((s) => s.entity)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
+  const openCountry = useRightPaneModeStore((s) => s.openCountry)
+  const openEventDetail = useEventDetailStore((s) => s.openEventDetail)
   const [searchOpen, setSearchOpen] = useState(false)
   const selectedEventId = entity?.kind === "event" ? entity.event.id : null
 
@@ -90,6 +94,8 @@ export function SplitLayout() {
       if (e.key === "Escape") {
         if (useStoryDetailStore.getState().storyId !== null) {
           useStoryDetailStore.getState().closeStory()
+        } else if (useEventDetailStore.getState().event !== null) {
+          useEventDetailStore.getState().closeEventDetail()
         } else if (useWorldDetailStore.getState().open) {
           useWorldDetailStore.getState().closeWorld()
         }
@@ -156,7 +162,9 @@ export function SplitLayout() {
             <SearchPanel
               open={searchOpen}
               onOpenChange={setSearchOpen}
-              onSelectEvent={(ev) => openEvent(ev)}
+              //: Search is screen two, so a result opens the pop-up like any
+              //: other list — it must not build or replace screen three (#850).
+              onSelectEvent={(ev) => openEventDetail(ev)}
             />
           </div>
           {!searchOpen && (
@@ -213,9 +221,23 @@ export function SplitLayout() {
   if (popupOpen) {
     deckCards.push({
       key: "popup",
-      title: sidePanel === "story" ? "story" : "detail",
+      title: storyDetailOpen ? "story" : eventDetail ? "detail" : "world",
       fill: true,
-      content: sidePanel === "story" ? <StoryDetailCard /> : <WorldDetailCard />,
+      //: Whatever was asked for, in one slot (#850). A story, an event opened
+      //: from any list, or the world tile.
+      content: storyDetailOpen ? (
+        <StoryDetailCard />
+      ) : eventDetail ? (
+        <EventDetailCard
+          event={eventDetail}
+          location={eventDetailLocation}
+          embedded
+          onClose={closeEventDetail}
+          onSelectCountry={(iso) => openCountry(iso)}
+        />
+      ) : (
+        <WorldDetailCard />
+      ),
     })
   }
 
