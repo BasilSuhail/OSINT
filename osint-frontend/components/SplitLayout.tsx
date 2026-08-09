@@ -17,6 +17,7 @@ import { scoreboardIsReady } from "@/lib/deckReadiness"
 import { CardDeck, type DeckCard } from "./CardDeck"
 import { FloatingPanel } from "./FloatingPanel"
 import { SearchPanel } from "./SearchPanel"
+import { deckPageKeys } from "@/lib/deckPages"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
@@ -78,9 +79,15 @@ export function SplitLayout() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      //: Esc closes the story pop-out from anywhere, even while typing.
+      //: Esc closes the story, from anywhere, even while typing — it is the
+      //: one thing on screen that is genuinely dismissable from a keyboard.
+      //: It does not touch the deck's position or any other page (#842):
+      //: Escape used to close a pop-out, remove the selection card *and*
+      //: scroll home, which made it the key that loses your place.
       if (e.key === "Escape") {
-        useStoryDetailStore.getState().closeStory()
+        if (useStoryDetailStore.getState().storyId !== null) {
+          useStoryDetailStore.getState().closeStory()
+        }
         return
       }
       const target = e.target as HTMLElement
@@ -120,6 +127,9 @@ export function SplitLayout() {
   const scoreboardReady = scoreboardIsReady(scoreboardRows)
   const selection = useRightPaneModeStore((s) => s.entity)
 
+  //: The order these are pushed in is the rule tested in lib/deckPages.ts:
+  //: standing pages first, transient ones appended in a fixed sequence. This
+  //: assertion is what keeps the two from drifting apart.
   const deckCards: DeckCard[] = [
     //: fill — the panel is its own scroll surface (live list + transcript) with
     //: a fixed ask-box footer; the deck's non-fill outer scroll would defeat it.
@@ -190,12 +200,41 @@ export function SplitLayout() {
     })
   }
 
+  //: A story is a page, not a curtain (#842). It used to replace the whole
+  //: deck in the narrow layout, so opening an article from the situation list
+  //: destroyed the selection the reader had open and left nothing to swipe
+  //: back to. Appended, never inserted, for the same reason the selection card
+  //: is: a deck whose pages move is not a place you can learn.
+  if (storyDetailOpen) {
+    deckCards.push({
+      key: "story",
+      title: "story",
+      fill: true,
+      content: <StoryDetailCard />,
+    })
+  }
+
   //: The scoreboard shows itself once it has something graded (#694). Every
   //: Brier is null today because nothing has matured, and an empty table
   //: promising a track record is the one thing this card must never be. It
   //: returns on its own — no flag to flip, nothing to remember.
   if (scoreboardReady) {
     deckCards.push({ key: "scoreboard", title: "scoreboard", content: <ScoreboardPanel /> })
+  }
+
+  //: The same composition the pure rule describes (#842). Two lists that must
+  //: agree, written in two places, will eventually disagree — and here the
+  //: disagreement is a page number that quietly means something else.
+  if (process.env.NODE_ENV !== "production") {
+    const expected = deckPageKeys({
+      selection: Boolean(selection),
+      story: storyDetailOpen,
+      scoreboard: scoreboardReady,
+    }).join()
+    const actual = deckCards.map((card) => card.key).join()
+    if (expected !== actual) {
+      console.warn(`deck page order drifted: expected ${expected}, got ${actual}`)
+    }
   }
 
   return (
@@ -244,13 +283,11 @@ export function SplitLayout() {
               style={{ display: activePane === "right" ? "block" : "none" }}
             >
               <FloatingPanel className="h-full w-full">
-                {sidePanel === "story" ? (
-                  <StoryDetailCard />
-                ) : sidePanel === "world" ? (
-                  <WorldDetailCard />
-                ) : (
-                  <CardDeck cards={deckCards} />
-                )}
+                {/* The deck is always the surface here (#842). A story is one
+                    of its pages now, so only the world tile still takes the
+                    slot — replacing the deck was what stole the reader's
+                    place. */}
+                {sidePanel === "world" ? <WorldDetailCard /> : <CardDeck cards={deckCards} />}
               </FloatingPanel>
             </div>
           </div>
@@ -288,12 +325,14 @@ export function SplitLayout() {
 
             {/* With a fixed deck width the pop-out's position is arithmetic
              *  rather than plumbing the panel's measured pixels. */}
-            {sidePanel && !deckCollapsed ? (
+            {/* The story no longer rides this slot — it is a deck page (#842),
+                so this is the world tile's alone. */}
+            {worldDetailOpen && !storyDetailOpen && !deckCollapsed ? (
               <FloatingPanel
                 className="absolute bottom-3 top-3 z-30"
                 style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
               >
-                {sidePanel === "story" ? <StoryDetailCard /> : <WorldDetailCard />}
+                <WorldDetailCard />
               </FloatingPanel>
             ) : null}
 
