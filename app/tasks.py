@@ -1,8 +1,8 @@
 """Celery tasks.
 
-`run_fetcher(name)` is the universal task wrapper: it resolves a fetcher by
-name, runs its `fetch()` method, persists the events idempotently, and
-records the outcome in `ingest_health` (success) or `ingest_failures` (failure).
+`run_fetcher(name)` is the universal task wrapper: it resolves a fetcher, runs
+it, persists events idempotently, and records transport, output and row movement
+as distinct evidence in `ingest_health`.
 
 The task body lives in `_run_fetcher_body()` so it can be unit tested without
 going through Celery's broker.
@@ -11,12 +11,12 @@ going through Celery's broker.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 from celery.schedules import crontab
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.celery_app import app
@@ -24,9 +24,11 @@ from app.cii.scoring import CII_METHOD_VERSION
 from app.composite.config import DEFAULT_METHOD_VERSION
 from app.db import session_scope
 from app.db_models import EventRow, IngestFailureRow, IngestHealthRow
-from app.persistence import upsert_events
+from app.ingest import outcome as ingest_outcome
+from app.persistence import upsert_events_report
 from app.runtime import load as runtime_load
 from app.settings import settings
+from app.sources.base import FetchBatch, SourceMisconfiguredError
 from app.sources.rss_registry import feed_cadence_map
 
 logger = logging.getLogger(__name__)
@@ -48,26 +50,83 @@ def _skip_optional_heavy() -> dict[str, Any] | None:
     return {"skipped": True, "reason": reason}
 
 
-def _record_success(session: Session, *, source: str) -> None:
-    today = date.today()
-    now = datetime.now(UTC)
+def _health_row(session: Session, *, source: str, now: datetime) -> IngestHealthRow:
+    today = now.date()
     row = session.get(IngestHealthRow, (source, today))
     if row is None:
-        session.add(IngestHealthRow(source=source, day=today, success_n=1, last_success=now))
-    else:
+        last_success, last_output = session.execute(
+            select(
+                func.max(IngestHealthRow.last_success),
+                func.max(IngestHealthRow.last_output),
+            ).where(IngestHealthRow.source == source)
+        ).one()
+        row = IngestHealthRow(
+            source=source,
+            day=today,
+            success_n=0,
+            failure_n=0,
+            last_success=last_success,
+            last_output=last_output,
+        )
+        session.add(row)
+    return row
+
+
+def _record_outcome(
+    session: Session,
+    *,
+    source: str,
+    result: ingest_outcome.IngestOutcome,
+    now: datetime | None = None,
+) -> None:
+    """Persist one classified run without flattening it into success/failure."""
+    now = now or datetime.now(UTC)
+    row = _health_row(session, source=source, now=now)
+    row.last_state = result.state
+    row.last_checked = now
+    row.last_fetched = result.fetched
+    row.last_accepted = result.accepted
+    row.last_inserted = result.inserted
+    row.last_rejected = result.rejected
+    row.fetched_rows = (row.fetched_rows or 0) + result.fetched
+    row.accepted_rows = (row.accepted_rows or 0) + result.accepted
+    row.inserted_rows = (row.inserted_rows or 0) + result.inserted
+    row.rejected_rows = (row.rejected_rows or 0) + result.rejected
+
+    if result.state in ("new_data", "unchanged"):
         row.success_n = (row.success_n or 0) + 1
         row.last_success = now
-
-
-def _record_failure(session: Session, *, source: str, exc: BaseException) -> None:
-    today = date.today()
-    now = datetime.now(UTC)
-    row = session.get(IngestHealthRow, (source, today))
-    if row is None:
-        session.add(IngestHealthRow(source=source, day=today, failure_n=1, last_failure=now))
-    else:
+        counter = "new_data_n" if result.state == "new_data" else "unchanged_n"
+        setattr(row, counter, (getattr(row, counter) or 0) + 1)
+    elif result.state == "empty":
+        row.empty_n = (row.empty_n or 0) + 1
+    elif result.state == "misconfigured":
+        row.misconfigured_n = (row.misconfigured_n or 0) + 1
+    elif result.state == "failed":
         row.failure_n = (row.failure_n or 0) + 1
         row.last_failure = now
+
+    # Usable accepted rows are output even when an idempotent snapshot refresh
+    # inserts nothing new. A zero-row or all-rejected run must not move this.
+    if result.accepted > 0:
+        row.last_output = now
+
+
+def _record_failure(
+    session: Session,
+    *,
+    source: str,
+    exc: BaseException,
+    fetched: int = 0,
+    rejected: int = 0,
+) -> None:
+    now = datetime.now(UTC)
+    _record_outcome(
+        session,
+        source=source,
+        result=ingest_outcome.terminal("failed", fetched=fetched, rejected=rejected),
+        now=now,
+    )
     session.add(
         IngestFailureRow(
             source=source,
@@ -92,7 +151,20 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
 
     fetcher = get_fetcher(name)
     try:
-        events = fetcher.fetch()
+        fetched = fetcher.fetch()
+    except SourceMisconfiguredError as exc:
+        with session_scope() as session:
+            _record_outcome(
+                session,
+                source=name,
+                result=ingest_outcome.terminal("misconfigured"),
+            )
+            # The source was reached and its current diagnosis is local
+            # configuration. An expired transport quarantine no longer
+            # describes it and must not remain visible as a second problem.
+            quarantine.record_success(session, source=name)
+        logger.warning("misconfigured %s: %s", name, exc)
+        return {"state": "misconfigured", "misconfigured": True, "reason": str(exc)}
     except Exception as exc:
         with session_scope() as session:
             _record_failure(session, source=name, exc=exc)
@@ -113,46 +185,80 @@ def _run_fetcher_body(name: str) -> dict[str, Any]:
             # failure is already recorded in ingest_failures and ingest_health,
             # and the quarantine row says what broke and when it is next tried.
             logger.warning("quarantined %s until %s: %s", name, retry_at, detail)
-            return {"failed": True, "quarantined": True, "retry_after": retry_at, "reason": detail}
+            return {
+                "state": "failed",
+                "failed": True,
+                "quarantined": True,
+                "retry_after": retry_at,
+                "reason": detail,
+            }
         raise
 
-    # A story is not published in the future (#766). Repair before the
-    # freshness gate: the old order rejected a feed's whole batch over a
-    # timezone label, which discarded real news to fix a clock.
-    events, time_report = publication_time.normalize(events)
+    unchanged_hint = isinstance(fetched, FetchBatch) and fetched.unchanged
+    events = fetched.events if isinstance(fetched, FetchBatch) else fetched
+    stale: list[freshness.Rejection] = []
+    try:
+        # A story is not published in the future (#766). Repair before the
+        # freshness gate: the old order rejected a feed's whole batch over a
+        # timezone label, which discarded real news to fix a clock.
+        events, time_report = publication_time.normalize(events)
 
-    # Freshness is checked here, on the live path only: backfills legitimately
-    # insert old rows and call upsert_events directly (#571).
-    fresh, stale = freshness.partition(events)
+        # Freshness is checked here, on the live path only: backfills legitimately
+        # insert old rows and call upsert_events directly (#571).
+        fresh, stale = freshness.partition(events)
 
-    with session_scope() as session:
-        inserted = upsert_events(fresh, session)
-        _record_success(session, source=name)
-        quarantine.record_success(session, source=name)
-        if stale:
-            # Recorded, never silently dropped. A feed that starts serving
-            # junk has to become visible, otherwise this trades one invisible
-            # problem for another. Health counters are deliberately untouched:
-            # the fetch itself succeeded, and marking the source failed would
-            # turn a data-quality signal into a false outage.
-            summary = freshness.summarize(stale)
-            logger.warning("%s: %s", name, summary)
-            session.add(
-                IngestFailureRow(
-                    source=name,
-                    error_class="StaleEventsRejected",
-                    error_message=summary,
-                )
+        with session_scope() as session:
+            persistence = upsert_events_report(fresh, session)
+            result = ingest_outcome.classify(
+                fetched=len(events),
+                accepted=persistence.accepted,
+                affected=persistence.affected,
+                inserted=persistence.inserted,
+                rejected=len(stale),
+                unchanged_hint=unchanged_hint,
             )
+            _record_outcome(session, source=name, result=result)
+            quarantine.record_success(session, source=name)
+            if stale:
+                # Rejection is output evidence, not a transport outage. It is
+                # counted on the run and retained in the failure-detail table.
+                summary = freshness.summarize(stale)
+                logger.warning("%s: %s", name, summary)
+                session.add(
+                    IngestFailureRow(
+                        source=name,
+                        error_class="StaleEventsRejected",
+                        error_message=summary,
+                    )
+                )
+    except Exception as exc:
+        # Parsing normalization and persistence are part of the run contract,
+        # not invisible work after a successful fetch.
+        with session_scope() as session:
+            _record_failure(
+                session,
+                source=name,
+                exc=exc,
+                fetched=len(events),
+                rejected=len(stale),
+            )
+        raise
     time_note = time_report.summary()
     if time_note:
         logger.info("%s", time_note)
-    result = {"fetched": len(events), "inserted": inserted}
+    response: dict[str, Any] = {
+        "state": result.state,
+        "fetched": result.fetched,
+        "accepted": result.accepted,
+        "affected": result.affected,
+        "inserted": result.inserted,
+        "rejected": result.rejected,
+    }
     if stale:
-        result["rejected_stale"] = len(stale)
+        response["rejected_stale"] = len(stale)
     if time_report.shifted or time_report.clamped:
-        result["time_adjusted"] = time_report.shifted + time_report.clamped
-    return result
+        response["time_adjusted"] = time_report.shifted + time_report.clamped
+    return response
 
 
 @app.task(

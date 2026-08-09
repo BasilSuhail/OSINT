@@ -9,11 +9,34 @@ See `docs/architecture/03-ingestion.md` for the design rationale.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Literal
 
 from app.models import Event
 
 Queue = Literal["fast", "slow"]
+
+
+class SourceMisconfiguredError(RuntimeError):
+    """A scheduled source cannot run until its local configuration changes.
+
+    This is neither a transport failure worth retrying nor a healthy empty
+    response.  The universal task wrapper records it as its own output state.
+    """
+
+
+@dataclass(frozen=True)
+class FetchBatch:
+    """Fetcher output plus a fact only the fetcher itself can know.
+
+    Most fetchers return a plain list.  Static inputs may return this wrapper
+    when they checked the same immutable revision and deliberately skipped
+    reparsing it; an empty list alone cannot distinguish that from a source
+    which answered with no usable records.
+    """
+
+    events: list[Event] = field(default_factory=list)
+    unchanged: bool = False
 
 
 class Fetcher(ABC):
@@ -38,7 +61,7 @@ class Fetcher(ABC):
     stable_urls: bool = True
 
     @abstractmethod
-    def fetch(self) -> list[Event]:
+    def fetch(self) -> list[Event] | FetchBatch:
         """Pull the source and return a list of canonical `Event` objects."""
 
     @abstractmethod

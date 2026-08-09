@@ -36,7 +36,7 @@ from app.enrichment.country import country_for
 from app.models import Category, Event
 from app.settings import settings
 from app.severity import scale
-from app.sources.base import Fetcher
+from app.sources.base import Fetcher, SourceMisconfiguredError
 
 FIRMS_URL_TEMPLATE: Final[str] = (
     "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{map_key}/VIIRS_SNPP_NRT/world/1/{date}"
@@ -265,7 +265,7 @@ class NasaFirmsFetcher(Fetcher):
 
     def fetch(self) -> list[Event]:
         if not settings.firms_map_key:
-            return []
+            raise SourceMisconfiguredError("FIRMS_MAP_KEY is not configured")
         fetched_at = datetime.now(UTC)
         url = FIRMS_URL_TEMPLATE.format(map_key=settings.firms_map_key, date=self._target_date())
         with httpx.Client(

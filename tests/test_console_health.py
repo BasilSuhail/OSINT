@@ -14,7 +14,13 @@ from fastapi.testclient import TestClient
 
 from app import console_health
 from app.api import app, get_session
-from app.db_models import AuditFindingRow, AuditRunRow, EventRow, SourceQuarantineRow
+from app.db_models import (
+    AuditFindingRow,
+    AuditRunRow,
+    EventRow,
+    IngestHealthRow,
+    SourceQuarantineRow,
+)
 
 NOW = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
 
@@ -146,6 +152,66 @@ class TestRestedSources:
         assert "403" in rested[0].detail
 
 
+class TestOutputHealth:
+    def test_empty_and_misconfigured_states_are_visible(self, db_session) -> None:
+        db_session.add_all(
+            [
+                IngestHealthRow(
+                    source="acled",
+                    day=NOW.date(),
+                    success_n=0,
+                    failure_n=0,
+                    last_state="empty",
+                    last_checked=NOW,
+                    last_fetched=5,
+                    last_accepted=0,
+                    last_inserted=0,
+                    last_rejected=5,
+                ),
+                IngestHealthRow(
+                    source="emdat",
+                    day=NOW.date(),
+                    success_n=0,
+                    failure_n=0,
+                    last_state="misconfigured",
+                    last_checked=NOW,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        rows = console_health.build(db_session, now=NOW).output_health
+
+        assert [(row.source, row.state) for row in rows] == [
+            ("acled", "empty"),
+            ("emdat", "misconfigured"),
+        ]
+        assert rows[0].fetched == rows[0].rejected == 5
+
+    def test_latest_healthy_state_removes_old_output_issue(self, db_session) -> None:
+        db_session.add_all(
+            [
+                IngestHealthRow(
+                    source="gdelt",
+                    day=NOW.date() - timedelta(days=1),
+                    success_n=0,
+                    failure_n=0,
+                    last_state="empty",
+                ),
+                IngestHealthRow(
+                    source="gdelt",
+                    day=NOW.date(),
+                    success_n=1,
+                    failure_n=0,
+                    last_state="new_data",
+                    last_output=NOW,
+                ),
+            ]
+        )
+        db_session.commit()
+        assert console_health.build(db_session, now=NOW).output_health == []
+
+
 class TestAuditSummary:
     def test_it_reports_the_last_stored_run(self, db_session) -> None:
         run = AuditRunRow(
@@ -191,6 +257,7 @@ class TestThroughTheApi:
             "generated_at",
             "silent",
             "rested",
+            "output_health",
             "audit",
             "composition",
             "precision",

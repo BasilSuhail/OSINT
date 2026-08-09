@@ -37,10 +37,16 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from app.db_models import AuditFindingRow, AuditRunRow, EventRow, SourceQuarantineRow
+from app.db_models import (
+    AuditFindingRow,
+    AuditRunRow,
+    EventRow,
+    IngestHealthRow,
+    SourceQuarantineRow,
+)
 from app.location_precision import precision_of
 
 #: How a source is grouped for composition and freshness. A wire, a machine
@@ -102,6 +108,18 @@ class RestedSource:
 
 
 @dataclass
+class OutputIssue:
+    source: str
+    state: str
+    last_checked: str | None
+    last_output: str | None
+    fetched: int
+    accepted: int
+    inserted: int
+    rejected: int
+
+
+@dataclass
 class ClassHealth:
     name: str
     rows: int
@@ -115,6 +133,7 @@ class ConsoleHealth:
     generated_at: str
     silent: list[SilentSource] = field(default_factory=list)
     rested: list[RestedSource] = field(default_factory=list)
+    output_health: list[OutputIssue] = field(default_factory=list)
     audit: dict[str, Any] = field(default_factory=dict)
     composition: list[ClassHealth] = field(default_factory=list)
     precision: dict[str, int] = field(default_factory=dict)
@@ -131,7 +150,11 @@ def _silent(session: Session, now: datetime) -> list[SilentSource]:
     for source, state in check_sources(session, now=now).items():
         if not state.get("is_stale"):
             continue
-        last = state.get("last_success")
+        last = (
+            state.get("last_output")
+            if state.get("freshness_basis") == "output"
+            else state.get("last_success")
+        )
         minutes = (
             int((now - _as_utc(last)).total_seconds() / 60) if isinstance(last, datetime) else None
         )
@@ -161,6 +184,49 @@ def _rested(session: Session) -> list[RestedSource]:
             detail=(row.detail or "")[:140],
         )
         for row in rows
+    ]
+
+
+def _output_health(session: Session) -> list[OutputIssue]:
+    """Latest explicit non-healthy output state for each measured source."""
+    latest = (
+        select(IngestHealthRow.source, func.max(IngestHealthRow.day).label("day"))
+        .group_by(IngestHealthRow.source)
+        .subquery()
+    )
+    output_clock = (
+        select(
+            IngestHealthRow.source,
+            func.max(IngestHealthRow.last_output).label("last_output"),
+        )
+        .group_by(IngestHealthRow.source)
+        .subquery()
+    )
+    rows = session.execute(
+        select(IngestHealthRow, output_clock.c.last_output)
+        .join(
+            latest,
+            and_(
+                latest.c.source == IngestHealthRow.source,
+                latest.c.day == IngestHealthRow.day,
+            ),
+        )
+        .join(output_clock, output_clock.c.source == IngestHealthRow.source)
+        .where(IngestHealthRow.last_state.in_(("empty", "misconfigured", "failed")))
+        .order_by(IngestHealthRow.source)
+    ).all()
+    return [
+        OutputIssue(
+            source=health.source,
+            state=str(health.last_state),
+            last_checked=health.last_checked.isoformat() if health.last_checked else None,
+            last_output=last_output.isoformat() if last_output else None,
+            fetched=int(health.last_fetched or 0),
+            accepted=int(health.last_accepted or 0),
+            inserted=int(health.last_inserted or 0),
+            rejected=int(health.last_rejected or 0),
+        )
+        for health, last_output in rows
     ]
 
 
@@ -266,6 +332,7 @@ def build(session: Session, *, now: datetime | None = None) -> ConsoleHealth:
         generated_at=moment.isoformat(),
         silent=_silent(session, moment),
         rested=_rested(session),
+        output_health=_output_health(session),
         audit=_audit(session),
         composition=_composition(session, moment),
         precision=_precision(session, moment),

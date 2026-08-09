@@ -11,6 +11,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db_models import Base, SourceQuarantineRow
 from app.ingest import quarantine
+from app.persistence import UpsertReport
+from app.sources.base import SourceMisconfiguredError
 
 
 @pytest.fixture
@@ -181,7 +183,11 @@ class TestFetcherWiring:
         from app import tasks
 
         monkeypatch.setattr(tasks, "session_scope", _scope(session))
-        monkeypatch.setattr(tasks, "upsert_events", lambda events, session: 0)
+        monkeypatch.setattr(
+            tasks,
+            "upsert_events_report",
+            lambda events, session: UpsertReport(),
+        )
         quarantine.record_failure(session, source="rss-arab-news", exc=_http_error(403))
         session.execute(
             SourceQuarantineRow.__table__.update().values(
@@ -192,6 +198,28 @@ class TestFetcherWiring:
         _install_fetcher(monkeypatch, "rss-arab-news", boom=None)
 
         tasks._run_fetcher_body("rss-arab-news")
+        assert session.execute(select(SourceQuarantineRow)).first() is None
+
+    def test_misconfiguration_replaces_an_expired_quarantine(self, monkeypatch, session) -> None:
+        from app import tasks
+
+        monkeypatch.setattr(tasks, "session_scope", _scope(session))
+        quarantine.record_failure(session, source="rss-arab-news", exc=_http_error(403))
+        session.execute(
+            SourceQuarantineRow.__table__.update().values(
+                retry_after=datetime.now(UTC) - timedelta(hours=1)
+            )
+        )
+        session.commit()
+        _install_fetcher(
+            monkeypatch,
+            "rss-arab-news",
+            boom=SourceMisconfiguredError("required input missing"),
+        )
+
+        result = tasks._run_fetcher_body("rss-arab-news")
+
+        assert result["state"] == "misconfigured"
         assert session.execute(select(SourceQuarantineRow)).first() is None
 
 

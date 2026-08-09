@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app import tasks
 from app.db_models import EventRow, IngestHealthRow, NotificationRow
 from app.watchdog import (
+    OUTPUT_OPTIONAL_SOURCES,
     SOURCE_CADENCE_MIN,
     STALE_MULTIPLIER,
     _persist_notification,
@@ -29,6 +30,7 @@ def _seed_health(session: Session, *, source: str, last_success: datetime | None
             failure_n=0,
             last_success=last_success,
             last_failure=None,
+            last_output=last_success,
         )
     )
     session.commit()
@@ -113,6 +115,49 @@ class TestCheckSources:
         _seed_health(db_session, source="yfinance", last_success=now - timedelta(minutes=35))
         report_b = check_sources(db_session, now=now + timedelta(days=1))
         assert report_b["yfinance"]["is_stale"] is True
+
+    def test_required_source_uses_output_not_transport_success(self, db_session: Session) -> None:
+        now = datetime.now(UTC)
+        db_session.add(
+            IngestHealthRow(
+                source="gdelt",
+                day=now.date(),
+                success_n=1,
+                failure_n=0,
+                last_success=now,
+                last_output=now - timedelta(hours=2),
+                last_state="empty",
+            )
+        )
+        db_session.commit()
+
+        report = check_sources(db_session, now=now)
+
+        assert report["gdelt"]["freshness_basis"] == "output"
+        assert report["gdelt"]["is_stale"] is True
+
+    @pytest.mark.parametrize("source", sorted(OUTPUT_OPTIONAL_SOURCES))
+    def test_static_source_can_check_successfully_without_new_output(
+        self, db_session: Session, source: str
+    ) -> None:
+        now = datetime.now(UTC)
+        db_session.add(
+            IngestHealthRow(
+                source=source,
+                day=now.date(),
+                success_n=1,
+                failure_n=0,
+                last_success=now,
+                last_output=None,
+                last_state="unchanged",
+            )
+        )
+        db_session.commit()
+
+        report = check_sources(db_session, now=now)
+
+        assert report[source]["freshness_basis"] == "check"
+        assert report[source]["is_stale"] is False
 
 
 class TestPersistNotification:

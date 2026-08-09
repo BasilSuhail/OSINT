@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.models import Category
+from app.sources.base import SourceMisconfiguredError
 from app.sources.emdat_fetcher import EmdatFetcher, parse_emdat_csv
 
 FETCHED_AT = datetime(2026, 6, 29, 12, 0, tzinfo=UTC)
@@ -36,11 +37,20 @@ def test_parse_emdat_csv_shape() -> None:
     assert ev.payload["total_deaths"] == 12
 
 
-def test_fetch_noops_without_path(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_reports_missing_path(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import settings as settings_module
 
     monkeypatch.setattr(settings_module.settings, "emdat_csv_path", "")
-    assert EmdatFetcher().fetch() == []
+    with pytest.raises(SourceMisconfiguredError, match="EMDAT_CSV_PATH"):
+        EmdatFetcher().fetch()
+
+
+def test_fetch_reports_configured_file_absent(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import settings as settings_module
+
+    monkeypatch.setattr(settings_module.settings, "emdat_csv_path", str(tmp_path / "missing.csv"))
+    with pytest.raises(SourceMisconfiguredError, match="does not exist"):
+        EmdatFetcher().fetch()
 
 
 def test_fetch_reads_configured_csv(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:

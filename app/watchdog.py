@@ -66,6 +66,11 @@ SOURCE_CADENCE_MIN: dict[str, int] = {
     **feed_cadence_map(),
 }
 
+#: Static archives can be checked successfully without producing rows on every
+#: cadence. Every other scheduled source is expected to return at least one
+#: usable row often enough for its normal staleness window.
+OUTPUT_OPTIONAL_SOURCES: frozenset[str] = frozenset({"acled", "emdat"})
+
 #: A source is "stale" once last_success is older than this many cadence
 #: windows. With STALE_MULTIPLIER=6, a 15-min fetcher is flagged after 90 min
 #: of silence — enough headroom that one missed beat doesn't trip the alarm,
@@ -90,6 +95,27 @@ def _last_success(session: Session, source: str) -> datetime | None:
     if row is None:
         return None
     value = row[0]
+    if value is not None and value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value
+
+
+def _last_source_output(session: Session, source: str) -> datetime | None:
+    """Most recent run which returned at least one usable row."""
+    value = session.execute(
+        select(func.max(IngestHealthRow.last_output)).where(IngestHealthRow.source == source)
+    ).scalar_one_or_none()
+    if value is None:
+        # Model-created test databases do not run migrations. Preserve their
+        # pre-#848 rows only when no row has ever used the new state contract;
+        # a real empty/misconfigured row must never fall back to transport green.
+        states = session.execute(
+            select(func.count())
+            .select_from(IngestHealthRow)
+            .where(IngestHealthRow.source == source, IngestHealthRow.last_state.is_not(None))
+        ).scalar_one()
+        if states == 0:
+            value = _last_success(session, source)
     if value is not None and value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value
@@ -156,10 +182,15 @@ def check_sources(session: Session, *, now: datetime | None = None) -> dict[str,
     for source, cadence_min in SOURCE_CADENCE_MIN.items():
         threshold = timedelta(minutes=cadence_min * STALE_MULTIPLIER)
         last_success = _last_success(session, source)
-        is_stale = last_success is None or (now - last_success) > threshold
+        last_output = _last_source_output(session, source)
+        output_required = source not in OUTPUT_OPTIONAL_SOURCES
+        freshness = last_output if output_required else last_success
+        is_stale = freshness is None or (now - freshness) > threshold
 
         report[source] = {
             "last_success": last_success,
+            "last_output": last_output,
+            "freshness_basis": "output" if output_required else "check",
             "is_stale": is_stale,
             "alerted": False,
         }
@@ -167,12 +198,14 @@ def check_sources(session: Session, *, now: datetime | None = None) -> dict[str,
         if not is_stale:
             continue
 
-        if last_success is None:
-            message = f"{source}: no successful fetch on record (cadence {cadence_min} min)"
+        if freshness is None:
+            evidence = "usable output" if output_required else "successful check"
+            message = f"{source}: no {evidence} on record (cadence {cadence_min} min)"
         else:
-            age_min = int((now - last_success).total_seconds() / 60)
+            age_min = int((now - freshness).total_seconds() / 60)
+            field = "last_output" if output_required else "last_success"
             message = (
-                f"{source}: last_success {age_min} min ago "
+                f"{source}: {field} {age_min} min ago "
                 f"(cadence {cadence_min} min x {STALE_MULTIPLIER} = stale)"
             )
 

@@ -302,9 +302,11 @@ class TestFredFetcherContract:
         with pytest.raises(ValueError):
             FredFetcher(lookback_days=-5)
 
-    def test_fetch_returns_empty_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fetch_reports_missing_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from app import settings as settings_module
+        from app.sources.base import SourceMisconfiguredError
 
         monkeypatch.setattr(settings_module.settings, "fred_api_key", "")
         fetcher = FredFetcher()
-        assert fetcher.fetch() == []
+        with pytest.raises(SourceMisconfiguredError, match="FRED_API_KEY"):
+            fetcher.fetch()

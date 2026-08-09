@@ -13,9 +13,10 @@ parse cost low and to leave headroom if the row shape grows.
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 from typing import Any, Final
 
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -27,6 +28,20 @@ from app.models import Event
 #: Rows per upsert statement. 12 cols x 1000 = 12 000 bound params — well under
 #: Postgres' 65 535 cap, generous headroom if columns are added later.
 DEFAULT_BATCH_SIZE = 1000
+
+
+@dataclass(frozen=True)
+class UpsertReport:
+    """Portable row movement for one persistence call.
+
+    ``affected`` preserves the historical return contract: inserts plus
+    refreshes. ``inserted`` is deliberately narrower and is what ingest health
+    uses to distinguish new data from an unchanged snapshot.
+    """
+
+    accepted: int = 0
+    affected: int = 0
+    inserted: int = 0
 
 
 def _event_to_row(event: Event) -> dict[str, Any]:
@@ -191,10 +206,40 @@ def _dedup_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return passthrough + list(keyed.values())
 
 
-def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) -> int:
-    """Run a single batch upsert and return the number of rows affected
-    (inserted OR refreshed) via RETURNING."""
+def _sqlite_existing_keys(rows: list[dict[str, Any]], session: Session) -> set[tuple[str, str]]:
+    """Identity keys present before a SQLite batch.
+
+    Production Postgres reports insert-vs-update directly from ``RETURNING``.
+    SQLite has no equivalent, so the hermetic test dialect takes a bounded
+    pre-image. Queries are split to stay below conservative bind limits.
+    """
+    grouped: dict[str, list[str]] = {}
+    for row in rows:
+        source = str(row["source"])
+        source_id = row["source_event_id"]
+        if source_id is not None:
+            grouped.setdefault(source, []).append(str(source_id))
+
+    existing: set[tuple[str, str]] = set()
+    for source, source_ids in grouped.items():
+        for start in range(0, len(source_ids), 400):
+            chunk = source_ids[start : start + 400]
+            existing.update(
+                (str(found_source), str(found_id))
+                for found_source, found_id in session.execute(
+                    select(EventRow.source, EventRow.source_event_id).where(
+                        EventRow.source == source,
+                        EventRow.source_event_id.in_(chunk),
+                    )
+                ).all()
+            )
+    return existing
+
+
+def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) -> UpsertReport:
+    """Run a batch and report inserts separately from refreshed rows."""
     rows = _dedup_rows(rows)
+    existing = _sqlite_existing_keys(rows, session) if dialect == "sqlite" else set()
     if dialect == "postgresql":
         base = pg_insert(EventRow).values(rows)
     elif dialect == "sqlite":
@@ -241,28 +286,40 @@ def _upsert_batch(rows: list[dict[str, Any]], session: Session, dialect: str) ->
     # RETURNING yields every affected row (inserted + updated). Both Postgres and
     # SQLite ≥ 3.35 support it, avoiding the `rowcount = -1` quirk some drivers
     # exhibit on multi-row ON CONFLICT statements.
-    stmt = stmt.returning(EventRow.id)
-    result = session.execute(stmt)
-    return len(result.fetchall())
+    if dialect == "postgresql":
+        # xmax is zero for a tuple inserted by this statement and nonzero for a
+        # tuple produced by ON CONFLICT DO UPDATE. It is read, never stored.
+        returned = session.execute(
+            stmt.returning(EventRow.id, literal_column("xmax = 0").label("inserted"))
+        ).all()
+        inserted = sum(1 for row in returned if bool(row.inserted))
+    else:
+        returned = session.execute(stmt.returning(EventRow.id)).all()
+        inserted = sum(
+            1
+            for row in rows
+            if row["source_event_id"] is not None
+            and (str(row["source"]), str(row["source_event_id"])) not in existing
+        )
+    return UpsertReport(accepted=len(rows), affected=len(returned), inserted=inserted)
 
 
-def upsert_events(
+def upsert_events_report(
     events: list[Event],
     session: Session,
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
-) -> int:
+) -> UpsertReport:
     """Upsert events keyed on `(source, source_event_id)`.
 
     New rows are inserted; a row whose key already exists is REFRESHED (its
     occurred_at / fetched_at / severity / geo / payload updated from the latest
     fetch) so snapshot feeds like GDACS and EONET keep their ongoing hazards
     current instead of freezing at first-seen. Splits the input into chunks of
-    `batch_size` to stay under Postgres' 65 535-parameter cap. Returns the number
-    of rows affected (inserted or refreshed).
+    ``batch_size`` and returns accepted, affected and genuinely inserted counts.
     """
     if not events:
-        return 0
+        return UpsertReport()
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
 
@@ -297,12 +354,31 @@ def upsert_events(
     )
     changed_story_ids = changed_assigned_rss_story_ids(session, rows)
 
-    affected = 0
+    report = UpsertReport()
     for start in range(0, len(rows), batch_size):
-        affected += _upsert_batch(rows[start : start + batch_size], session, dialect)
+        batch = _upsert_batch(rows[start : start + batch_size], session, dialect)
+        report = UpsertReport(
+            accepted=report.accepted + batch.accepted,
+            affected=report.affected + batch.affected,
+            inserted=report.inserted + batch.inserted,
+        )
     refresh_assigned_rss_stories(session, changed_story_ids)
     # A dead Redis must never fail an ingest; the SSE clients fall back to
     # their 30s SWR poll. Swallow and continue.
     with contextlib.suppress(Exception):
-        publish_new_events(affected)
-    return affected
+        publish_new_events(report.affected)
+    return report
+
+
+def upsert_events(
+    events: list[Event],
+    session: Session,
+    *,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> int:
+    """Compatibility entry point returning inserts plus refreshes.
+
+    Callers which need to distinguish new rows use ``upsert_events_report``;
+    backfills retain the original integer contract.
+    """
+    return upsert_events_report(events, session, batch_size=batch_size).affected
