@@ -819,13 +819,20 @@ export function MapPane({
   //: left-click one is untouched, because the radius selection it builds is
   //: well-worn and this feature does not get to disturb it.
   //:
-  //: The browser's own menu is suppressed: a context menu offering "reload
-  //: image" over a map is not an answer to anything, and leaving it there
-  //: would put it on top of the screen the click just opened.
+  //: Registering this handler is also what suppresses the browser's own menu,
+  //: and that is worth writing down because nothing here looks like it does
+  //: that. MapLibre prevents the native event whenever the map has a
+  //: `contextmenu` listener — `this._map.listens("contextmenu") &&
+  //: e.preventDefault()` — so the mechanism is the subscription, not anything
+  //: this function calls. Move the handler onto a wrapping element and the
+  //: menu comes back.
+  //:
+  //: `e.preventDefault()` was here for that job and never did it: on a
+  //: MapMouseEvent it blocks map behaviours only — drag-pan, drag-rotate,
+  //: box-zoom, double-click zoom — none of which a right-click raises.
   const openPlace = usePlaceStore((s) => s.openPoint)
   const handleContextMenu = useCallback(
     (e: MapLayerMouseEvent) => {
-      e.preventDefault()
       openPlace(e.lngLat.lat, e.lngLat.lng)
       onOpenSelection()
     },
