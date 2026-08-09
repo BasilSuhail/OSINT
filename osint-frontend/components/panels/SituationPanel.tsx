@@ -10,12 +10,7 @@
 
 import { useEffect, useReducer, useRef, useState } from "react"
 import useSWR from "swr"
-import {
-  fetchBrainAsk,
-  fetchBrainNarrative,
-  streamBrainAsk,
-  type BrainSource,
-} from "@/lib/apiClient"
+import { fetchBrainNarrative, streamBrainAsk, type BrainSource } from "@/lib/apiClient"
 import {
   fetchAuditLatest,
   fetchContestedStories,
@@ -191,22 +186,12 @@ function useBrainChat() {
         reasoning: reasoning ?? null,
       })
     } catch {
-      try {
-        const { answer, sources, closest_matches, claims, reasoning } = await fetchBrainAsk(
-          question,
-          history,
-        )
-        dispatch({
-          type: "finalize",
-          answer,
-          sources,
-          closest: closest_matches ?? [],
-          claims: claims ?? [],
-          reasoning: reasoning ?? null,
-        })
-      } catch {
-        dispatch({ type: "fail" })
-      }
+      //: No second attempt here. The stream already falls back to the
+      //: non-streamed endpoint when the response carries no body, which is the
+      //: case this branch was covering; reaching it now means the ask itself
+      //: failed, and asking again only spends another full generation to fail
+      //: the same way while the reader waits through both.
+      dispatch({ type: "fail" })
     } finally {
       setPending(false)
     }
