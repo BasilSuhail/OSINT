@@ -23,6 +23,11 @@ MIN_CONTINUOUS_DISTINCT = 4
 #: distinct values and still be a constant with noise.
 MAX_CONTINUOUS_TOP_SHARE = 0.90
 
+#: A distribution claim needs a population, not a handful of observations.
+#: Thirty is the audit floor: below it the check waits for evidence instead of
+#: converting one small batch into a standing shape/constant finding.
+MIN_SEVERITY_SHAPE_SAMPLE = 30
+
 #: A source with nothing newer than this has gone quiet, or is republishing
 #: archive content as if it were current (#571). Deliberately not the retention
 #: window: FRED and EM-DAT are retention-exempt, and FRED's monthly series
@@ -75,7 +80,7 @@ def check_severity_coverage(stats: SourceStats, expectation: Expectation) -> Fin
 
 def check_severity_shape(stats: SourceStats, expectation: Expectation) -> Finding | None:
     """A continuous declaration against a column that is really a flag."""
-    if expectation.severity != "continuous" or not stats.severity_present:
+    if expectation.severity != "continuous" or stats.shape_sample_size < MIN_SEVERITY_SHAPE_SAMPLE:
         return None
     if stats.severity_distinct < MIN_CONTINUOUS_DISTINCT:
         return Finding(
@@ -100,14 +105,14 @@ def check_severity_constant(stats: SourceStats, expectation: Expectation) -> Fin
     A constant carries no information by construction, so whatever reads it is
     computing a number from nothing. OpenSky: 58,793 rows, severity 0.0.
     """
-    if stats.severity_present <= 1 or stats.severity_std is None:
+    if stats.shape_sample_size < MIN_SEVERITY_SHAPE_SAMPLE or stats.severity_std is None:
         return None
     if stats.severity_std > 0.0:
         return None
     return Finding(
         stats.source,
         "severity_constant",
-        f"severity is the same value on all {stats.severity_present:,} rows that carry one",
+        f"severity is the same value on all {stats.shape_sample_size:,} rows in the shape sample",
     )
 
 

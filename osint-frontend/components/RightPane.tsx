@@ -1,9 +1,9 @@
 "use client"
 
 import { useEventDetailStore } from "@/stores/eventDetailStore"
+import { usePlaceStore } from "@/stores/placeStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { ClusterListPanel } from "./ClusterListPanel"
-import { CountrySidePanel } from "./CountrySidePanel"
 import { EventDetailCard } from "./EventDetailCard"
 import { WorldStatusPanel } from "./WorldStatusPanel"
 
@@ -16,7 +16,7 @@ import { WorldStatusPanel } from "./WorldStatusPanel"
 export function RightPane() {
   const entity = useRightPaneModeStore((s) => s.entity)
   const closeEntity = useRightPaneModeStore((s) => s.closeEntity)
-  const openCountry = useRightPaneModeStore((s) => s.openCountry)
+  const openPlace = usePlaceStore((s) => s.openCountry)
   //: A row in these lists opens the pop-up, never the map selection (#850) —
   //: screen three is built by clicking the map and by nothing else.
   const openEventDetail = useEventDetailStore((s) => s.openEventDetail)
@@ -31,9 +31,7 @@ export function RightPane() {
     <div className="relative h-full w-full overflow-hidden bg-neutral-950">
       {entity ? (
         <div className="absolute inset-0 overflow-y-auto bg-neutral-950 p-3">
-          {entity.kind === "country" ? (
-            <CountrySidePanel country={entity.iso} onClose={closeEntity} />
-          ) : entity.kind === "cluster" ? (
+          {entity.kind === "cluster" ? (
             <ClusterListPanel
               label={entity.label}
               selections={entity.selections}
@@ -60,7 +58,7 @@ export function RightPane() {
               location={entity.location}
               embedded
               onClose={closeEntity}
-              onSelectCountry={(iso) => openCountry(iso)}
+              onSelectCountry={openPlace}
             />
           )}
         </div>

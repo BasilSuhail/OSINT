@@ -18,6 +18,7 @@ from app.audit import checks, expectations
 from app.audit.stats import SourceStats
 from app.db_models import EventRow
 from app.enrichment.place import PLACE_EVIDENCE_FIELD
+from app.severity import news
 
 #: The composite's own category filter, restated rather than imported.
 #: Deliberate: this check must fail when the composite's filter and a source's
@@ -25,17 +26,32 @@ from app.enrichment.place import PLACE_EVIDENCE_FIELD
 COMPOSITE_CATEGORIES = ("market", "geopolitical", "hazard")
 
 
-def _severity_counts(session: Session) -> dict[str, dict[float, int]]:
-    """{source: {severity_value: rows}} over rows that carry a severity."""
+def _severity_counts(
+    session: Session,
+) -> tuple[dict[str, dict[float, int]], dict[str, dict[float, int]]]:
+    """Coverage and shape counts over rows carrying severity.
+
+    RSS ingestion always writes a graded keyword fallback. Coverage must count
+    it, but a continuous-shape claim describes the later model protocol only.
+    Non-RSS sources use every severity for both profiles.
+    """
+    method = EventRow.payload["severity_method"].as_string()
     rows = session.execute(
-        select(EventRow.source, EventRow.severity, func.count())
+        select(EventRow.source, EventRow.severity, method, func.count())
         .where(EventRow.severity.isnot(None))
-        .group_by(EventRow.source, EventRow.severity)
+        .group_by(EventRow.source, EventRow.severity, method)
     ).all()
-    counts: dict[str, dict[float, int]] = defaultdict(dict)
-    for source, severity, count in rows:
-        counts[source][float(severity)] = count
-    return counts
+    coverage: dict[str, dict[float, int]] = defaultdict(lambda: defaultdict(int))
+    shape: dict[str, dict[float, int]] = defaultdict(lambda: defaultdict(int))
+    for source, severity, severity_method, count in rows:
+        value = float(severity)
+        coverage[source][value] += count
+        if not source.startswith("rss-") or severity_method == news.METHOD:
+            shape[source][value] += count
+    return (
+        {source: dict(counts) for source, counts in coverage.items()},
+        {source: dict(counts) for source, counts in shape.items()},
+    )
 
 
 def _spread(counts: dict[float, int]) -> tuple[int, float | None, float | None]:
@@ -55,7 +71,7 @@ def _spread(counts: dict[float, int]) -> tuple[int, float | None, float | None]:
 
 def gather_stats(session: Session) -> list[SourceStats]:
     """Measure every source present in the events table."""
-    severity_counts = _severity_counts(session)
+    severity_counts, shape_counts = _severity_counts(session)
 
     eligible = case(
         (
@@ -80,7 +96,8 @@ def gather_stats(session: Session) -> list[SourceStats]:
     stats: list[SourceStats] = []
     for source, total, country_present, earliest, latest, composite_eligible in rows:
         counts = severity_counts.get(source, {})
-        distinct, top_share, std = _spread(counts)
+        shape = shape_counts.get(source, {})
+        distinct, top_share, std = _spread(shape)
         stats.append(
             SourceStats(
                 source=source,
@@ -93,6 +110,7 @@ def gather_stats(session: Session) -> list[SourceStats]:
                 earliest=_as_utc(earliest),
                 latest=_as_utc(latest),
                 composite_eligible=int(composite_eligible or 0),
+                severity_shape_present=sum(shape.values()),
             )
         )
     stats.sort(key=lambda s: s.source)

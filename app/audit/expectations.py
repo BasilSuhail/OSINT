@@ -58,9 +58,9 @@ RSS_FAMILY = Expectation(
     country="required",
     feeds_composite=False,
     note=(
-        "Sentiment-derived, so nominally continuous. Measured live it takes "
-        "exactly two values, 0.35 and 0.65, across all 19,722 rows — the audit "
-        "should say so rather than the table being edited to match. Country is "
+        "The post-ingest model protocol is continuous; the ingest-safe keyword "
+        "fallback is intentionally graded. Shape checks therefore use current "
+        "model-method rows only, while coverage still counts both. Country is "
         "required because the map uses it for news navigation (#717). Resolver "
         "ambiguity can still leave honest nulls; those shortfalls must remain "
         "visible findings instead of being muted as optional."
@@ -154,7 +154,16 @@ EXPECTATIONS: dict[str, Expectation] = {
         severity="graded", country="optional", feeds_composite=True, note="UNVERIFIED"
     ),
     "uk-police": Expectation(
-        severity="none", country="required", feeds_composite=False, note="UNVERIFIED"
+        severity="graded",
+        country="required",
+        feeds_composite=False,
+        note=(
+            "The fetcher intentionally maps upstream crime categories onto an "
+            "eight-value ordinal harm scale. Measured live on 10,504 retained "
+            "rows: every row carries severity, spanning 0.30 to 0.85, and every "
+            "row carries GB. This is a dashboard crime signal only; it does not "
+            "feed the composite (#859)."
+        ),
     ),
     "opensky-adsb": Expectation(
         severity="none",
