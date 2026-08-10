@@ -154,7 +154,15 @@ export function SplitLayout() {
   const deckCards: DeckCard[] = [
     //: fill — the panel is its own scroll surface (live list + transcript) with
     //: a fixed ask-box footer; the deck's non-fill outer scroll would defeat it.
-    { key: "situation", title: "situation", fill: true, content: <SituationPanel /> },
+    {
+      key: "situation",
+      title: "situation",
+      fill: true,
+      //: The Situation card's full size is the reading page, not a bigger
+      //: card — a separate tab, so the console keeps running beside it.
+      expandHref: "/news",
+      content: <SituationPanel />,
+    },
     //: Two halves (#699). Collapsed: the totals graph as a door, and the
     //: stories summary — counts, window, owner floor, confidence spread — with
     //: the two hundred rows folded away, because a list is not a summary.

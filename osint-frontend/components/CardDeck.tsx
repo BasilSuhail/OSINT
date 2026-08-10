@@ -25,6 +25,14 @@ export interface DeckCard {
    *  this the card would have to guess its own size, and a card that big at
    *  deck scale is unreadable anyway. */
   collapsedContent?: React.ReactNode | ((isActive: boolean) => React.ReactNode)
+  /** Where this card expands *to*, when growing in place is not the point.
+   *
+   *  The Situation card's full size is not a bigger card — it is a page you
+   *  read, with room for sections a deck card has no space for. Given an href,
+   *  the expand control opens it in a new tab instead of covering the console:
+   *  the map keeps running behind, both surfaces can be open at once, and the
+   *  page is reachable directly by anyone who only wants the news. */
+  expandHref?: string
 }
 
 const SWIPE_FINGERS = 3
@@ -58,6 +66,7 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     [setExpandedRaw, toggleExpanded],
   )
   const activeRef = useRef(0)
+  const expandHref = cards[active]?.expandHref
   // Lazy cards mount on first visit and stay mounted (kept warm).
   const [visited, setVisited] = useState<ReadonlySet<number>>(() => new Set([0]))
 
@@ -210,6 +219,8 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
     <div className="relative h-full w-full bg-neutral-950">
       <div className="flex h-full flex-col">
         <div className="flex h-8 shrink-0 items-center justify-between px-3">
+          {/*: Read from the card on screen, so the control means whatever
+              expanding means for that card. */}
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -218,20 +229,33 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
           >
             {cards[active]?.title}
           </button>
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            aria-label={expanded ? "Collapse card" : "Expand card to full page"}
-            className="flex items-center gap-1.5 rounded-md border border-neutral-800 px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400 transition-colors hover:border-cyan-500/60 hover:text-cyan-300"
-          >
-            {expanded ? (
-              <>
-                <Minimize2 className="h-3 w-3" /> esc
-              </>
-            ) : (
+          {expandHref && !expanded ? (
+            <a
+              href={expandHref}
+              target="_blank"
+              rel="noreferrer"
+              title="open the reading page in a new tab"
+              aria-label="Open the reading page in a new tab"
+              className="flex items-center gap-1.5 rounded-md border border-neutral-800 px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400 transition-colors hover:border-cyan-500/60 hover:text-cyan-300"
+            >
               <Maximize2 className="h-3 w-3" />
-            )}
-          </button>
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-label={expanded ? "Collapse card" : "Expand card to full page"}
+              className="flex items-center gap-1.5 rounded-md border border-neutral-800 px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400 transition-colors hover:border-cyan-500/60 hover:text-cyan-300"
+            >
+              {expanded ? (
+                <>
+                  <Minimize2 className="h-3 w-3" /> esc
+                </>
+              ) : (
+                <Maximize2 className="h-3 w-3" />
+              )}
+            </button>
+          )}
         </div>
 
         <div
