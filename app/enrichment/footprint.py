@@ -235,6 +235,37 @@ def normalize_gdacs_footprint(fc: dict[str, Any], color: str) -> dict[str, Any] 
     return fit_to_budget({"type": "FeatureCollection", "features": out})
 
 
+def footprint_source_key(source: str, payload: dict[str, Any]) -> str | None:
+    """Address of the upstream resource a stored footprint was built from.
+
+    A footprint is only as current as the document it came from, and one of
+    those documents moves: GDACS republishes an event as *episodes*, each at its
+    own URL, and a tropical cyclone's episodes walk thousands of kilometres
+    across the ocean. Enrichment fills a row once and never looks again, so the
+    map kept drawing the wind cones from the episode we happened to see first
+    while the marker tracked the storm — the reported position and the geometry
+    around it ended up an ocean apart (#880).
+
+    Storing this key next to the geometry lets the scan ask a cheap question:
+    is the footprint we hold still made from the document the event now points
+    at? A different address means a newer episode and a refetch.
+
+    ``None`` where the address carries no version — USGS quakes and EONET events
+    are fetched from a fixed per-event URL, so there is nothing here to compare
+    and their rows keep today's fetch-once behaviour.
+    """
+    if source != "gdacs":
+        return None
+    geometry_url = payload.get("geometry_url")
+    if isinstance(geometry_url, str) and geometry_url.startswith("http"):
+        return geometry_url
+    event_type = payload.get("event_type")
+    event_id = payload.get("gdacs_event_id")
+    if isinstance(event_type, str) and isinstance(event_id, str) and event_id:
+        return gdacs_footprint_url(event_type, event_id)
+    return None
+
+
 def alert_color(alert_level: str | None) -> str:
     """Map a GDACS alert level to its footprint colour."""
     if not alert_level:
