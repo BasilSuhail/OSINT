@@ -409,31 +409,33 @@ export function FilterRail({
         }
       }}
     >
-      {/*: Put away: one handle, the width of a scrollbar, and the map has its
-          whole edge back. Deliberately a click and not a hover — the point of
-          hiding the rail is that passing the cursor over it does nothing. */}
-      {/*: Same handle as the deck's, mirrored: square corners against the pane
-          edge it sits on, round corners facing the map. One shape means one
-          gesture, wherever the reader meets it. */}
-      {hidden && (
-        <button
-          type="button"
-          aria-label="Show filters"
-          aria-expanded={false}
-          title="Show filters"
-          onClick={() => setHidden(false)}
-          className={cn(
-            "pointer-events-auto my-auto border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
-            isLeft ? "order-first rounded-l-md rounded-r-xl" : "order-last rounded-l-xl rounded-r-md",
-          )}
-        >
-          {isLeft ? (
-            <ChevronRight size={16} aria-hidden />
-          ) : (
-            <ChevronLeft size={16} aria-hidden />
-          )}
-        </button>
-      )}
+      {/*: The deck's handle, exactly: it floats on the map *outside* the thing
+          it collapses, vertically centred, always there. Because it is the
+          first flex child on this side, whatever the rail is showing — the
+          icon strip alone, or the strip with the panel open beside it — grows
+          away from the handle, and the handle rides along on the outer edge.
+          Square corners against what it moves, round corners toward the map.
+          The arrow points the way the rail will go. */}
+      <button
+        type="button"
+        aria-label={hidden ? "Show filters" : "Hide filters"}
+        aria-expanded={!hidden}
+        title={hidden ? "Show filters" : "Hide filters"}
+        onClick={() => {
+          if (!hidden) onOpenChange(false)
+          setHidden(!hidden)
+        }}
+        className={cn(
+          "pointer-events-auto my-auto shrink-0 border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
+          isLeft ? "order-last rounded-l-md rounded-r-xl" : "order-first rounded-l-xl rounded-r-md",
+        )}
+      >
+        {isLeft === hidden ? (
+          <ChevronRight size={16} aria-hidden />
+        ) : (
+          <ChevronLeft size={16} aria-hidden />
+        )}
+      </button>
 
       {/* Edge hover zone: a 16 px transparent column at the pane edge requests
        *  open the moment the cursor enters. Wider than before (was 6 px) so a
@@ -528,23 +530,6 @@ export function FilterRail({
               </button>
             )
           })}
-        {/*: Put the rail away entirely. Last in the strip, under the toggles,
-            because it is the one control here that is not a filter. */}
-        <button
-          type="button"
-          aria-label="Hide the filter rail"
-          onClick={() => {
-            onOpenChange(false)
-            setHidden(true)
-          }}
-          className="mt-1 grid h-6 w-8 place-items-center rounded-md text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
-        >
-          {isLeft ? (
-            <ChevronLeft className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5" />
-          )}
-        </button>
       </div>
       )}
 
