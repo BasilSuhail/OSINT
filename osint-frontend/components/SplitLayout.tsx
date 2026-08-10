@@ -12,6 +12,7 @@ import { usePlaceStore } from "@/stores/placeStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
 import { useEventDetailStore } from "@/stores/eventDetailStore"
+import { useMapFocusStore } from "@/stores/mapFocusStore"
 import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import useSWR from "swr"
 import { fetchScoreboard } from "@/lib/analytics"
@@ -101,6 +102,12 @@ export function SplitLayout() {
           useEventDetailStore.getState().closeEventDetail()
         } else if (useWorldDetailStore.getState().open) {
           useWorldDetailStore.getState().closeWorld()
+        } else if (useMapFocusStore.getState().focusedEventId !== null) {
+          //: Last in the ladder, because focus is not on top of anything — it
+          //: is how the map underneath is drawn. Ending it brings the faded
+          //: neighbours and their contours back and leaves the selection card
+          //: exactly where it was: nothing the reader was reading is removed.
+          useMapFocusStore.getState().clearFocus()
         }
         return
       }
