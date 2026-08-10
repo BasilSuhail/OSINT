@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { PRECISION_LABEL, PRECISION_OPACITY, PRECISION_RADIUS_PX, precisionOf } from "./precision"
+import { MARKER_RADIUS_PX, PRECISION_LABEL, precisionOf } from "./precision"
 import type { EventRow } from "./types"
 
 const row = (over: Partial<EventRow> = {}): EventRow =>
@@ -31,17 +31,11 @@ describe("precisionOf", () => {
 })
 
 describe("how a claim is drawn", () => {
-  it("draws a vaguer claim wider", () => {
-    expect(PRECISION_RADIUS_PX.exact).toBeLessThan(PRECISION_RADIUS_PX.city)
-    expect(PRECISION_RADIUS_PX.city).toBeLessThan(PRECISION_RADIUS_PX.area)
-    expect(PRECISION_RADIUS_PX.area).toBeLessThan(PRECISION_RADIUS_PX.country)
-  })
-
-  it("keeps only the verified point solid", () => {
-    expect(PRECISION_OPACITY.exact).toBe(1)
-    for (const key of ["city", "area", "country", "unknown"] as const) {
-      expect(PRECISION_OPACITY[key]).toBeLessThan(1)
-    }
+  it("draws every claim the same size (#891)", () => {
+    // Sizing by vagueness made the least informative point the largest mark
+    // on the map, and fading by vagueness on top of the age fade left an
+    // empty ring. One radius, small enough that a lone event reads as a dot.
+    expect(MARKER_RADIUS_PX).toBeLessThanOrEqual(5)
   })
 
   it("says it in words a reader can act on", () => {

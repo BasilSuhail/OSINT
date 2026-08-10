@@ -18,26 +18,15 @@ export const PRECISION_LABEL: Record<LocationPrecision, string> = {
   unknown: "location not established",
 }
 
-/** Marker size in pixels.
+/** Marker size in pixels: one size, whatever the coordinate claims (#891).
  *
- * A vaguer claim is drawn wider, never tighter. The numbers are screen-space
- * rather than a projection of the metre radius on purpose: at low zoom a
- * country radius would swallow the map, and the point of the distinction is
- * that a reader can see it at the zoom they are actually at. */
-export const PRECISION_RADIUS_PX: Record<LocationPrecision, number> = {
-  exact: 4,
-  city: 7,
-  area: 9,
-  country: 11,
-  unknown: 5,
-}
-
-/** Fill opacity. An exact point is solid; a claim about an area is not, so it
- *  reads as a region rather than as a pin somebody surveyed. */
-export const PRECISION_OPACITY: Record<LocationPrecision, number> = {
-  exact: 1,
-  city: 0.45,
-  area: 0.3,
-  country: 0.25,
-  unknown: 0.4,
-}
+ * Sizing a lone point by vagueness made the least informative marks the
+ * largest ones on the map — a country-precision story drew wider than a
+ * two-event cluster — and fading them by vagueness on top of the age fade
+ * multiplied to nearly nothing, so the fill vanished and left a bright empty
+ * ring that read as data still loading.
+ *
+ * Precision is still said, in the only place that can say it without
+ * inflating anything: the words in the side panel, and `location_precision`
+ * with `location_radius_m` on the API row. */
+export const MARKER_RADIUS_PX = 4
