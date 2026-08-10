@@ -1,8 +1,13 @@
 """Vectorize layer — headline → tf-idf token vector, cosine similarity.
 
 Pure functions, dict-based sparse vectors. Titles are short so tf is
-effectively binary; idf (over the rolling window corpus) is what pushes
-boilerplate tokens like "news" or "live" toward zero weight.
+effectively binary.
+
+Idf demotes a token that is *common in the window*, which is not the same as
+demoting boilerplate: a stock phrase used a few times a week is rare enough to
+score as highly distinctive, and smoothing floors every weight at 1.0 besides.
+Formula words are therefore removed by name in the stopword list below rather
+than left for idf to handle, because idf measurably does not (#913).
 """
 
 from __future__ import annotations
@@ -73,6 +78,23 @@ _STOPWORDS: frozenset[str] = frozenset(
         "briefing",
         "digest",
         "latest",
+        #: The explainer formula (#913). "What we know so far" ran on eight
+        #: headlines of a 6,561-headline window, so document frequency read it
+        #: as one of the most discriminating things in the corpus — `know`
+        #: weighed 7.016 against `earthquake` at 5.897. Two explainers about
+        #: unrelated events then matched on the heaviest tokens either of them
+        #: had, and one story collected a football tournament, a Berlin attack,
+        #: two Japanese earthquakes and Iraqi militias.
+        #:
+        #: These belong here for the same reason the words above do: they name
+        #: the shape of a piece, never its subject. Deliberately only three.
+        #: `far` is half of "far right", `learn` is a verb about the world, and
+        #: `who` is a health agency as often as it is a pronoun — all three were
+        #: measured and none is needed, because the formula cannot reach the two
+        #: shared tokens a join requires without these.
+        "what",
+        "know",
+        "about",
     ]
 )
 
