@@ -18,9 +18,13 @@ const SPEEDS: { label: string; value: number }[] = [
 interface TimeScrubberProps {
   useStore: FilterStore
   windowEnd: number
+  /** Whether the filter panel is showing. It is docked to the right edge and
+   *  runs the full height of the map, so the bar stops short of it rather
+   *  than sliding underneath. */
+  panelOpen: boolean
 }
 
-export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
+export function TimeScrubber({ useStore, windowEnd, panelOpen }: TimeScrubberProps) {
   const playing = useStore((s) => s.playing)
   const speed = useStore((s) => s.speed)
   const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
@@ -45,83 +49,85 @@ export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
   const [hidden, setHidden] = useState(false)
 
   //: The deck's handle, turned to face the bottom edge: it floats on the map
-  //: *outside* the bar, never inside it — in the gutter to the right of the
-  //: bar and level with it, so the handle keeps one position whether the bar
-  //: is up or down and the eye never has to hunt for it. Square corners
-  //: against the bar it moves, round corners toward the map, and the arrow
-  //: points the way the bar will go.
-  const handle = (
-    <button
-      type="button"
-      onClick={() => setHidden(!hidden)}
-      title={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
-      aria-label={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
-      aria-expanded={!hidden}
-      className="pointer-events-auto absolute bottom-3 right-6 z-20 grid h-11 min-h-[44px] place-items-center rounded-l-md rounded-r-xl border border-white/10 bg-neutral-950/85 px-2 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100"
-    >
-      {hidden ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
-    </button>
-  )
-
-  if (hidden) return handle
-
+  //: *outside* the bar, never inside it, centred on the span the bar occupies
+  //: and sitting on its top edge. It keeps that one spot whether the bar is up
+  //: or down, so the control that brings the bar back is never somewhere new.
+  //: Square corners against the bar it moves, round corners toward the map,
+  //: and the arrow points the way the bar will go.
   return (
-    <>
-      {handle}
-    <div className="pointer-events-auto absolute bottom-3 left-[calc(var(--panel-width,0px)+1.5rem)] right-20 z-20 flex h-11 min-h-[44px] items-center gap-3 rounded-2xl border border-white/10 bg-neutral-950/85 px-3 shadow-2xl shadow-black/60 backdrop-blur-xl">
+    <div
+      className={cn(
+        "pointer-events-none absolute bottom-3 left-[calc(var(--panel-width,0px)+1.5rem)] z-20 h-11",
+        panelOpen ? "right-[21.25rem]" : "right-20",
+      )}
+    >
       <button
         type="button"
-        onClick={togglePlaying}
-        aria-label={playing ? "Pause" : "Play"}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-neutral-700 bg-neutral-900 text-neutral-200 transition-colors hover:bg-neutral-800"
+        onClick={() => setHidden(!hidden)}
+        title={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
+        aria-label={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
+        aria-expanded={!hidden}
+        className="pointer-events-auto absolute bottom-full left-1/2 grid -translate-x-1/2 place-items-center rounded-t-xl rounded-b-md border border-white/10 bg-neutral-950/85 px-6 py-1.5 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100"
       >
-        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        {hidden ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
       </button>
 
-      <div className="flex shrink-0 items-center gap-1">
-        {SPEEDS.map((s) => (
+      {!hidden && (
+        <div className="pointer-events-auto flex h-full min-h-[44px] items-center gap-3 rounded-2xl border border-white/10 bg-neutral-950/85 px-3 shadow-2xl shadow-black/60 backdrop-blur-xl">
           <button
-            key={s.value}
             type="button"
-            onClick={() => setSpeed(s.value)}
-            className={cn(
-              "rounded px-1.5 py-1 font-mono text-[11px] transition-colors",
-              speed === s.value
-                ? "bg-emerald-500/20 text-emerald-300"
-                : "text-neutral-500 hover:text-neutral-200",
-            )}
+            onClick={togglePlaying}
+            aria-label={playing ? "Pause" : "Play"}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-neutral-700 bg-neutral-900 text-neutral-200 transition-colors hover:bg-neutral-800"
           >
-            {s.label}
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
-        ))}
-      </div>
 
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <Slider
-          value={[sliderValue]}
-          min={0}
-          max={WINDOW_SPAN_MS}
-          step={60_000}
-          onValueChange={(v) => setWindowEndOffset(WINDOW_SPAN_MS - (Array.isArray(v) ? v[0] : v))}
-          aria-label="Time window"
-          className="flex-1"
-        />
-      </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {SPEEDS.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => setSpeed(s.value)}
+                className={cn(
+                  "rounded px-1.5 py-1 font-mono text-[11px] transition-colors",
+                  speed === s.value
+                    ? "bg-emerald-500/20 text-emerald-300"
+                    : "text-neutral-500 hover:text-neutral-200",
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
 
-      <div className="flex shrink-0 flex-col items-end font-mono leading-tight">
-        <span className="text-[11px] text-neutral-200">
-          {format(windowStart, "MMM d HH:mm")} → {format(windowEnd, "MMM d HH:mm")}
-        </span>
-        <span
-          className={cn(
-            "text-[10px] uppercase tracking-widest",
-            isLive ? "text-emerald-400" : "text-amber-400",
-          )}
-        >
-          {isLive ? "● live" : "○ scrubbing"}
-        </span>
-      </div>
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <Slider
+              value={[sliderValue]}
+              min={0}
+              max={WINDOW_SPAN_MS}
+              step={60_000}
+              onValueChange={(v) => setWindowEndOffset(WINDOW_SPAN_MS - (Array.isArray(v) ? v[0] : v))}
+              aria-label="Time window"
+              className="flex-1"
+            />
+          </div>
+
+          <div className="flex shrink-0 flex-col items-end font-mono leading-tight">
+            <span className="text-[11px] text-neutral-200">
+              {format(windowStart, "MMM d HH:mm")} → {format(windowEnd, "MMM d HH:mm")}
+            </span>
+            <span
+              className={cn(
+                "text-[10px] uppercase tracking-widest",
+                isLive ? "text-emerald-400" : "text-amber-400",
+              )}
+            >
+              {isLive ? "● live" : "○ scrubbing"}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
-    </>
   )
 }

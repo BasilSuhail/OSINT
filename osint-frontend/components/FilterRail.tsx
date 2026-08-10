@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Activity,
   AlertTriangle,
@@ -16,7 +16,6 @@ import {
   Newspaper,
   RotateCcw,
   Search,
-  SlidersHorizontal,
   ShieldAlert,
   Snowflake,
   Sun,
@@ -203,11 +202,10 @@ export function FilterRail({
   const reset = useStore((s) => s.reset)
 
   const [countryOpen, setCountryOpen] = useState(false)
-  //: The rail can be put away entirely. Hovering the pane edge opens it, which
-  //: is convenient until the thing you want to look at is *under* it — the
-  //: strip covers a column of the map and re-opens the moment the cursor
-  //: passes. Hidden, only a small handle remains, and no hover reaches it.
-  const [hidden, setHidden] = useState(false)
+  //: Severity, country and keyword are not layers — they cannot be read off
+  //: the map the way a switched-off source can, and inline they turned a list
+  //: of layers into a form. Folded away by default, one click from open.
+  const [moreOpen, setMoreOpen] = useState(false)
 
   //: The backdrop reads the same clock the markers do (#875).
   const activeImagery = useImageryStore((s) => s.active)
@@ -345,196 +343,48 @@ export function FilterRail({
 
   const isLeft = side === "left"
 
-  // Hover open/close: immediate on the way in, patient on the way out (250 ms
-  // grace) so the cursor can dip into the panel without it collapsing if you
-  // graze the edge.
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const clearTimers = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
-    }
-  }
-
-  const requestOpen = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
-    }
-    if (open) return
-    onOpenChange(true)
-  }
-
-  const requestClose = () => {
-    if (!open) return
-    closeTimerRef.current = setTimeout(() => onOpenChange(false), 250)
-  }
-
-  useEffect(() => () => clearTimers(), [])
-
-  // Window-level fallback: when the cursor sails toward the very edge of the
-  // pane (within 18 px) we open the rail immediately. Catches the case where
-  // the user flicks the mouse past the edge faster than the local
-  // mouseenter handler can pick it up — common on trackpads + larger screens.
-  // 16 px is the size of the wider edge zone, plus a 2 px cushion for cursor
-  // hot-spot offset.
-  useEffect(() => {
-    if (open || hidden) return
-    const PROXIMITY_PX = 18
-    const handle = (e: MouseEvent) => {
-      if (isLeft) {
-        if (e.clientX <= PROXIMITY_PX) requestOpen()
-      } else {
-        if (window.innerWidth - e.clientX <= PROXIMITY_PX) requestOpen()
-      }
-    }
-    window.addEventListener("mousemove", handle, { passive: true })
-    return () => window.removeEventListener("mousemove", handle)
-    // requestOpen reads `open`, refresh listener when state changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, hidden, isLeft])
-
   return (
     <div
       className={cn(
         "pointer-events-none absolute bottom-3 top-3 z-20 flex items-stretch gap-2",
         isLeft ? "left-3" : "right-3",
       )}
-      onMouseLeave={requestClose}
-      onMouseEnter={() => {
-        if (closeTimerRef.current) {
-          clearTimeout(closeTimerRef.current)
-          closeTimerRef.current = null
-        }
-      }}
     >
       {/*: The deck's handle, exactly: it floats on the map *outside* the thing
           it collapses, vertically centred, always there. Because it is the
-          first flex child on this side, whatever the rail is showing — the
-          icon strip alone, or the strip with the panel open beside it — grows
-          away from the handle, and the handle rides along on the outer edge.
-          Square corners against what it moves, round corners toward the map.
-          The arrow points the way the rail will go. */}
+          first flex child on this side, the panel grows away from the handle
+          and the handle rides along on the outer edge. Square corners against
+          what it moves, round corners toward the map. The arrow points the way
+          the panel will go. */}
       <button
         type="button"
-        aria-label={hidden ? "Show filters" : "Hide filters"}
-        aria-expanded={!hidden}
-        title={hidden ? "Show filters" : "Hide filters"}
-        onClick={() => {
-          if (!hidden) onOpenChange(false)
-          setHidden(!hidden)
-        }}
+        aria-label={open ? "Hide filters" : "Show filters"}
+        aria-expanded={open}
+        title={open ? "Hide filters" : "Show filters"}
+        onClick={() => onOpenChange(!open)}
         className={cn(
-          "pointer-events-auto my-auto shrink-0 border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
+          "pointer-events-auto relative my-auto shrink-0 border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
           isLeft ? "order-last rounded-l-md rounded-r-xl" : "order-first rounded-l-xl rounded-r-md",
         )}
       >
-        {isLeft === hidden ? (
+        {isLeft === !open ? (
           <ChevronRight size={16} aria-hidden />
         ) : (
           <ChevronLeft size={16} aria-hidden />
         )}
+        {/*: Put away, the panel takes every filter with it. The count rides
+            the handle so a map narrowed by an earlier click still says so. */}
+        {!open && activeCount > 0 && (
+          <span className="absolute -left-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-emerald-500 px-1 font-mono text-[10px] font-medium text-neutral-950">
+            {activeCount}
+          </span>
+        )}
       </button>
 
-      {/* Edge hover zone: a 16 px transparent column at the pane edge requests
-       *  open the moment the cursor enters. Wider than before (was 6 px) so a
-       *  cursor flicked into the viewport edge still lands on it; mouseenter
-       *  is debounce-free so the open feels instant. */}
-      {!open && !hidden && (
-        <div
-          aria-hidden
-          className={cn(
-            "pointer-events-auto absolute inset-y-0 z-10 w-4",
-            isLeft ? "-left-3" : "-right-3",
-          )}
-          onMouseEnter={requestOpen}
-          onPointerEnter={requestOpen}
-        />
-      )}
-
-      {/* Collapsed icon strip — hovering anywhere on it (the 44 px wide column
-       *  with the slider button + colored source dots) opens the rail too,
-       *  not just the bare edge cushion. Lets the user mouse over the dots
-       *  and have the panel slide out without precision-aiming the edge. */}
-      {!hidden && (
-      <div
-        className={cn(
-          "pointer-events-auto flex w-11 flex-col items-center gap-2 rounded-2xl border border-white/10 bg-neutral-950/85 py-3 shadow-2xl shadow-black/60 backdrop-blur-xl",
-          isLeft ? "order-first" : "order-last",
-        )}
-        onMouseEnter={requestOpen}
-        onPointerEnter={requestOpen}
-      >
-        <button
-          type="button"
-          aria-label={open ? "Collapse filters" : "Expand filters"}
-          aria-expanded={open}
-          onClick={() => onOpenChange(!open)}
-          className={cn(
-            "relative grid h-8 w-8 place-items-center rounded-md border text-neutral-300 transition-colors",
-            open
-              ? "border-neutral-600 bg-neutral-800 text-neutral-50"
-              : "border-neutral-800 hover:border-neutral-600 hover:text-neutral-100",
-          )}
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          {activeCount > 0 && (
-            <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-emerald-500 px-1 font-mono text-[10px] font-medium text-neutral-950">
-              {activeCount}
-            </span>
-          )}
-        </button>
-        {/* Source type icons as quick toggles */}
-        {paneFilters.map((f) => {
-          const Icon = SOURCE_ICONS[f.key]
-          const on = sources[f.key]
-          return (
-            <button
-              key={f.key}
-              type="button"
-              aria-label={`${f.label} ${on ? "on" : "off"}`}
-              aria-pressed={on}
-              onClick={() => toggleSource(f.key)}
-              className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
-            >
-              <span
-                className="grid h-5 w-5 place-items-center rounded-md transition-opacity"
-                style={{ backgroundColor: f.hex, opacity: on ? 1 : 0.25 }}
-              >
-                {Icon && <Icon className="h-3 w-3 text-neutral-950" strokeWidth={2.5} />}
-              </span>
-            </button>
-          )
-        })}
-        {/* Disaster-type quick toggles (map pane) — same set as the expanded
-         *  Disasters section, so the collapsed strip shows every filter too. */}
-        {HAZARD_TYPE_FILTERS.map((h) => {
-            const Icon = HAZARD_TYPE_ICONS[h.key]
-            const on = hazardTypes[h.key]
-            return (
-              <button
-                key={h.key}
-                type="button"
-                aria-label={`${h.label} ${on ? "on" : "off"}`}
-                aria-pressed={on}
-                onClick={() => toggleHazardType(h.key)}
-                className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-neutral-800"
-              >
-                <span
-                  className="grid h-5 w-5 place-items-center rounded-md transition-opacity"
-                  style={{ backgroundColor: h.hex, opacity: on ? 1 : 0.25 }}
-                >
-                  <Icon className="h-3 w-3 text-neutral-950" strokeWidth={2.5} />
-                </span>
-              </button>
-            )
-          })}
-      </div>
-      )}
-
-      {/* Expanded panel */}
-      {open && !hidden && (
+      {/*: One panel, not a panel and a strip of the same switches beside it.
+          Every layer is a row in the list below; the strip said the same
+          things in icons, in a column the map had to make room for. */}
+      {open && (
         <div
           className={cn(
             "pointer-events-auto flex w-[280px] flex-col gap-4 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/85 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl",
@@ -797,222 +647,250 @@ export function FilterRail({
             </div>
           )}
 
-          {/* Severity */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Severity
-              </span>
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "font-mono text-[11px]",
-                    narrowedSeverity ? "text-amber-300/90" : "text-neutral-300",
-                  )}
-                >
-                  {severity[0].toFixed(2)} – {severity[1].toFixed(2)}
-                </span>
-                {/*: The track moves the nearest thumb wherever it is clicked,
-                    so this range narrows by accident more than by intent. One
-                    click puts it back without resetting anything else. */}
-                {narrowedSeverity && (
-                  <button
-                    type="button"
-                    onClick={() => setSeverity([...FULL_SEVERITY])}
-                    className="rounded px-1 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                  >
-                    all
-                  </button>
-                )}
-              </div>
-            </div>
-            <Slider
-              value={severity}
-              min={0}
-              max={1}
-              step={0.01}
-              onValueChange={(v) => {
-                if (Array.isArray(v)) setSeverity([v[0], v[1]])
-              }}
-              aria-label="Severity range"
-            />
-          </div>
-
-          {/* Country multiselect */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Country
-              </span>
-              <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-                {distinctCountries.length.toLocaleString()} known
-              </span>
-            </div>
-            <Popover open={countryOpen} onOpenChange={setCountryOpen}>
-              <PopoverTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={countryOpen}
-                    className="h-9 justify-between border-neutral-700 bg-neutral-900 font-mono text-xs text-neutral-200 hover:bg-neutral-800 hover:text-neutral-100"
-                  />
-                }
-              >
-                {countries.length > 0 ? `${countries.length} selected` : "All countries"}
-                <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                className="w-[248px] border-neutral-700 bg-neutral-900 p-0"
-              >
-                <Command className="bg-neutral-900">
-                  <CommandInput
-                    placeholder="Search country or ISO…"
-                    className="text-xs"
-                  />
-                  <CommandList className="max-h-72">
-                    <CommandEmpty className="py-4 text-center text-xs text-neutral-500">
-                      No country found.
-                    </CommandEmpty>
-                    <CommandGroup>
-                      {[...distinctCountries]
-                        .sort(
-                          (a, b) => (countryCounts.get(b) ?? 0) - (countryCounts.get(a) ?? 0),
-                        )
-                        .map((c) => {
-                          const flag = countryFlagEmoji(c)
-                          const name = countryDisplayName(c)
-                          const n = countryCounts.get(c) ?? 0
-                          // cmdk filters on value, so concatenate ISO + name so
-                          // typing 'pak' matches PK / Pakistan.
-                          const value = `${c} ${name}`
-                          return (
-                            <CommandItem
-                              key={c}
-                              value={value}
-                              onSelect={() => toggleCountry(c)}
-                              className="flex items-center gap-2 font-mono text-xs"
-                            >
-                              <Check
-                                className={cn(
-                                  "h-3.5 w-3.5",
-                                  countries.includes(c) ? "opacity-100" : "opacity-0",
-                                )}
-                              />
-                              <span className="w-5">{flag}</span>
-                              <span className="w-7 text-neutral-300">{c}</span>
-                              <span className="flex-1 truncate text-[11px] text-neutral-400">
-                                {name}
-                              </span>
-                              <span className="tabular-nums text-[10px] text-neutral-500">
-                                {n.toLocaleString()}
-                              </span>
-                            </CommandItem>
-                          )
-                        })}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            {countries.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {countries.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => toggleCountry(c)}
-                    className="flex items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-300 hover:bg-neutral-700"
-                  >
-                    {c}
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Keyword */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Keyword
-              </span>
-              {keyword.trim() && (
-                <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-                  {keywordMatches.toLocaleString()} match
-                  {keywordMatches === 1 ? "" : "es"}
+          {/*: Severity, country and keyword are not layers. A layer that is
+              off can be read off the map; a narrowed severity range or a
+              keyword cannot, and inline they turned a list of layers into a
+              form. Folded away, one click from open, and the header above
+              still says when one of them is hiding something. */}
+          <div className="flex flex-col gap-3 border-t border-neutral-800 pt-3">
+            <button
+              type="button"
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen(!moreOpen)}
+              className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-neutral-400 transition-colors hover:text-neutral-100"
+            >
+              <ChevronRight
+                className={cn("h-3 w-3 shrink-0 transition-transform", moreOpen && "rotate-90")}
+                aria-hidden
+              />
+              More filters
+              {!moreOpen && (
+                <span className="ml-auto text-[9px] tracking-wider text-neutral-600">
+                  severity · country · keyword
                 </span>
               )}
-            </div>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
-              <Input
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="Try: protest, fire, USGS, drawdown…"
-                className="h-9 border-neutral-700 bg-neutral-900 pl-8 font-mono text-xs text-neutral-200 placeholder:text-neutral-600"
-              />
-            </div>
-            <p className="font-mono text-[10px] leading-snug text-neutral-500">
-              Searches event source, category, country, keywords + payload values.
-            </p>
+            </button>
+            {moreOpen && (
+              <>
+              {/* Severity */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+                    Severity
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "font-mono text-[11px]",
+                        narrowedSeverity ? "text-amber-300/90" : "text-neutral-300",
+                      )}
+                    >
+                      {severity[0].toFixed(2)} – {severity[1].toFixed(2)}
+                    </span>
+                    {/*: The track moves the nearest thumb wherever it is clicked,
+                        so this range narrows by accident more than by intent. One
+                        click puts it back without resetting anything else. */}
+                    {narrowedSeverity && (
+                      <button
+                        type="button"
+                        onClick={() => setSeverity([...FULL_SEVERITY])}
+                        className="rounded px-1 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                      >
+                        all
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <Slider
+                  value={severity}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  onValueChange={(v) => {
+                    if (Array.isArray(v)) setSeverity([v[0], v[1]])
+                  }}
+                  aria-label="Severity range"
+                />
+              </div>
 
-            {/* Live preview: top matches against the current keyword. Sits
-             *  under the helper text in the Filters tab so the user can see
-             *  the dataset shaping in real time without flipping to Events. */}
-            {keyword.trim() && keywordPreview.length > 0 && (
-              <div className="mt-1 flex flex-col gap-0.5 rounded-md border border-neutral-800 bg-neutral-900/50 p-1">
-                <div className="flex items-center justify-between px-1 pb-0.5">
-                  <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500">
-                    Top matches
+              {/* Country multiselect */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+                    Country
+                  </span>
+                  <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+                    {distinctCountries.length.toLocaleString()} known
                   </span>
                 </div>
-                {keywordPreview.map((ev) => {
-                  const sev = typeof ev.severity === "number" ? ev.severity : 0
-                  const when = formatDistanceToNowStrict(new Date(ev.occurred_at), {
-                    addSuffix: false,
-                  })
-                  return (
-                    <div
-                      key={ev.id}
-                      className="flex items-center gap-2 rounded px-1.5 py-1 text-[11px] hover:bg-neutral-800"
-                      title={`${ev.source} · sev ${sev.toFixed(2)} · ${when} ago`}
-                    >
-                      <span
-                        className="inline-block h-3 w-1 shrink-0 rounded-sm"
-                        style={{ backgroundColor: severityBarColor(sev) }}
+                <Popover open={countryOpen} onOpenChange={setCountryOpen}>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={countryOpen}
+                        className="h-9 justify-between border-neutral-700 bg-neutral-900 font-mono text-xs text-neutral-200 hover:bg-neutral-800 hover:text-neutral-100"
                       />
-                      <span className="w-7 shrink-0 text-center" aria-label={ev.country ?? ""}>
-                        {ev.country ? countryFlagEmoji(ev.country) : "—"}
-                      </span>
-                      <span className="flex-1 truncate text-neutral-200">
-                        {eventListTitle(ev)}
-                      </span>
-                      <span className="shrink-0 font-mono text-[9px] tabular-nums text-neutral-500">
-                        {when}
+                    }
+                  >
+                    {countries.length > 0 ? `${countries.length} selected` : "All countries"}
+                    <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[248px] border-neutral-700 bg-neutral-900 p-0"
+                  >
+                    <Command className="bg-neutral-900">
+                      <CommandInput
+                        placeholder="Search country or ISO…"
+                        className="text-xs"
+                      />
+                      <CommandList className="max-h-72">
+                        <CommandEmpty className="py-4 text-center text-xs text-neutral-500">
+                          No country found.
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {[...distinctCountries]
+                            .sort(
+                              (a, b) => (countryCounts.get(b) ?? 0) - (countryCounts.get(a) ?? 0),
+                            )
+                            .map((c) => {
+                              const flag = countryFlagEmoji(c)
+                              const name = countryDisplayName(c)
+                              const n = countryCounts.get(c) ?? 0
+                              // cmdk filters on value, so concatenate ISO + name so
+                              // typing 'pak' matches PK / Pakistan.
+                              const value = `${c} ${name}`
+                              return (
+                                <CommandItem
+                                  key={c}
+                                  value={value}
+                                  onSelect={() => toggleCountry(c)}
+                                  className="flex items-center gap-2 font-mono text-xs"
+                                >
+                                  <Check
+                                    className={cn(
+                                      "h-3.5 w-3.5",
+                                      countries.includes(c) ? "opacity-100" : "opacity-0",
+                                    )}
+                                  />
+                                  <span className="w-5">{flag}</span>
+                                  <span className="w-7 text-neutral-300">{c}</span>
+                                  <span className="flex-1 truncate text-[11px] text-neutral-400">
+                                    {name}
+                                  </span>
+                                  <span className="tabular-nums text-[10px] text-neutral-500">
+                                    {n.toLocaleString()}
+                                  </span>
+                                </CommandItem>
+                              )
+                            })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {countries.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {countries.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => toggleCountry(c)}
+                        className="flex items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-300 hover:bg-neutral-700"
+                      >
+                        {c}
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Keyword */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
+                    Keyword
+                  </span>
+                  {keyword.trim() && (
+                    <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+                      {keywordMatches.toLocaleString()} match
+                      {keywordMatches === 1 ? "" : "es"}
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
+                  <Input
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    placeholder="Try: protest, fire, USGS, drawdown…"
+                    className="h-9 border-neutral-700 bg-neutral-900 pl-8 font-mono text-xs text-neutral-200 placeholder:text-neutral-600"
+                  />
+                </div>
+                <p className="font-mono text-[10px] leading-snug text-neutral-500">
+                  Searches event source, category, country, keywords + payload values.
+                </p>
+
+                {/* Live preview: top matches against the current keyword. Sits
+                 *  under the helper text in the Filters tab so the user can see
+                 *  the dataset shaping in real time without flipping to Events. */}
+                {keyword.trim() && keywordPreview.length > 0 && (
+                  <div className="mt-1 flex flex-col gap-0.5 rounded-md border border-neutral-800 bg-neutral-900/50 p-1">
+                    <div className="flex items-center justify-between px-1 pb-0.5">
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500">
+                        Top matches
                       </span>
                     </div>
-                  )
-                })}
+                    {keywordPreview.map((ev) => {
+                      const sev = typeof ev.severity === "number" ? ev.severity : 0
+                      const when = formatDistanceToNowStrict(new Date(ev.occurred_at), {
+                        addSuffix: false,
+                      })
+                      return (
+                        <div
+                          key={ev.id}
+                          className="flex items-center gap-2 rounded px-1.5 py-1 text-[11px] hover:bg-neutral-800"
+                          title={`${ev.source} · sev ${sev.toFixed(2)} · ${when} ago`}
+                        >
+                          <span
+                            className="inline-block h-3 w-1 shrink-0 rounded-sm"
+                            style={{ backgroundColor: severityBarColor(sev) }}
+                          />
+                          <span className="w-7 shrink-0 text-center" aria-label={ev.country ?? ""}>
+                            {ev.country ? countryFlagEmoji(ev.country) : "—"}
+                          </span>
+                          <span className="flex-1 truncate text-neutral-200">
+                            {eventListTitle(ev)}
+                          </span>
+                          <span className="shrink-0 font-mono text-[9px] tabular-nums text-neutral-500">
+                            {when}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                {keyword.trim() && keywordPreview.length === 0 && (
+                  <p className="rounded-md border border-neutral-800 bg-neutral-900/50 p-2 text-center font-mono text-[10px] text-neutral-600">
+                    No events match this keyword in the current pane window.
+                  </p>
+                )}
               </div>
-            )}
-            {keyword.trim() && keywordPreview.length === 0 && (
-              <p className="rounded-md border border-neutral-800 bg-neutral-900/50 p-2 text-center font-mono text-[10px] text-neutral-600">
-                No events match this keyword in the current pane window.
-              </p>
+
+              <Button
+                variant="ghost"
+                onClick={reset}
+                className="mt-auto h-8 justify-center gap-2 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset filters
+              </Button>
+              </>
             )}
           </div>
-
-          <Button
-            variant="ghost"
-            onClick={reset}
-            className="mt-auto h-8 justify-center gap-2 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Reset filters
-          </Button>
 
         </div>
       )}
