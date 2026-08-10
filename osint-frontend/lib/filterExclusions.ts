@@ -14,8 +14,6 @@ export interface FilterSnapshot {
   sources: Record<string, boolean>
   hazardTypes: Record<string, boolean>
   severity: [number, number]
-  countries: string[]
-  keyword: string
 }
 
 /** The full severity range — anything else is narrowing. */
@@ -42,14 +40,21 @@ export function activeExclusions(filters: FilterSnapshot): string[] {
   if (severityIsNarrowed(filters.severity)) {
     out.push(`severity ${filters.severity[0].toFixed(2)}–${filters.severity[1].toFixed(2)}`)
   }
-  if (filters.countries.length > 0) {
-    out.push(
-      `${filters.countries.length} countr${filters.countries.length === 1 ? "y" : "ies"}`,
-    )
-  }
-  const keyword = filters.keyword.trim()
-  if (keyword) out.push(`keyword “${keyword}”`)
   return out
+}
+
+/**
+ * Is the map showing less than everything it has, because someone asked it to?
+ *
+ * The map's own "no events match" overlay exists for the case that looks like
+ * a fault — the window has events and none of them are on screen. Switching
+ * every layer off produces that same emptiness on purpose, and an overlay
+ * arguing with a deliberate choice is noise sitting on top of the map the
+ * choice was meant to clear. The filter panel already says what is excluded
+ * and offers the way back, so the map can stay quiet.
+ */
+export function filtersAreNarrowed(filters: FilterSnapshot): boolean {
+  return activeExclusions(filters).length > 0
 }
 
 /**

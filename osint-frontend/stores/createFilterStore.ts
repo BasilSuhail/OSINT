@@ -8,8 +8,6 @@ export interface FilterState {
    *  events are filtered by these instead of by their lump-sum source. */
   hazardTypes: Record<HazardTypeKey, boolean>
   severity: [number, number]
-  countries: string[]
-  keyword: string
   /** Time scrubber: offset (ms) of the *end* of the visible window from "now".
    *  0 = window ends now. Positive = window ends in the past. */
   windowEndOffsetMs: number
@@ -19,14 +17,15 @@ export interface FilterState {
   speed: number
 
   toggleSource: (key: SourceKey) => void
-  /** Turn every source on (select all) or off (clear all) at once. */
-  setAllSources: (on: boolean) => void
+  /** Turn sources on (select all) or off (clear all) at once. `keys` scopes it
+   *  to the rows a section actually lists: the hazard sources are filtered by
+   *  disaster type in their own section, and an unscoped "none" switched them
+   *  off from a list that never showed them — the disaster rows stayed ticked
+   *  while their events left the map. */
+  setAllSources: (on: boolean, keys?: SourceKey[]) => void
   toggleHazardType: (key: HazardTypeKey) => void
   setAllHazardTypes: (on: boolean) => void
   setSeverity: (range: [number, number]) => void
-  setCountries: (countries: string[]) => void
-  toggleCountry: (country: string) => void
-  setKeyword: (kw: string) => void
   setWindowEndOffset: (ms: number) => void
   setPlaying: (playing: boolean) => void
   togglePlaying: () => void
@@ -62,8 +61,6 @@ export function createFilterStore(): FilterStore {
     sources: { ...defaultSources },
     hazardTypes: { ...defaultHazardTypes },
     severity: [0, 1],
-    countries: [],
-    keyword: "",
     windowEndOffsetMs: 0,
     windowLengthMs: DEFAULT_WINDOW,
     playing: false,
@@ -71,10 +68,10 @@ export function createFilterStore(): FilterStore {
 
     toggleSource: (key) =>
       set((s) => ({ sources: { ...s.sources, [key]: !s.sources[key] } })),
-    setAllSources: (on) =>
+    setAllSources: (on, keys) =>
       set((s) => {
         const next = { ...s.sources }
-        for (const k of Object.keys(next) as SourceKey[]) next[k] = on
+        for (const k of keys ?? (Object.keys(next) as SourceKey[])) next[k] = on
         return { sources: next }
       }),
     toggleHazardType: (key) =>
@@ -86,14 +83,6 @@ export function createFilterStore(): FilterStore {
         return { hazardTypes: next }
       }),
     setSeverity: (range) => set({ severity: range }),
-    setCountries: (countries) => set({ countries }),
-    toggleCountry: (country) =>
-      set((s) => ({
-        countries: s.countries.includes(country)
-          ? s.countries.filter((c) => c !== country)
-          : [...s.countries, country],
-      })),
-    setKeyword: (keyword) => set({ keyword }),
     setWindowEndOffset: (ms) =>
       set({ windowEndOffsetMs: Math.max(0, Math.min(THIRTY_DAYS, ms)) }),
     setPlaying: (playing) => set({ playing }),
@@ -104,8 +93,6 @@ export function createFilterStore(): FilterStore {
         sources: { ...defaultSources },
         hazardTypes: { ...defaultHazardTypes },
         severity: [0, 1],
-        countries: [],
-        keyword: "",
         windowEndOffsetMs: 0,
         playing: false,
         speed: 1,

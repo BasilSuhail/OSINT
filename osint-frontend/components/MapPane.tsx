@@ -64,6 +64,7 @@ import { useMapFocusStore } from "@/stores/mapFocusStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { FilterRail } from "./FilterRail"
 import { PaneStatus } from "./PaneStatus"
+import { filtersAreNarrowed } from "@/lib/filterExclusions"
 import { TimeScrubber } from "./TimeScrubber"
 
 const HAZARD_ICONS: Record<Exclude<HazardIcon, "dot">, typeof Activity> = {
@@ -247,6 +248,20 @@ export function MapPane({
   const windowLengthMs = useStore((s) => s.windowLengthMs)
   const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
   const playing = useStore((s) => s.playing)
+  //: Read only to tell "the map is empty because it was asked to be" from "the
+  //: map is empty and nobody asked" — the two look identical on screen.
+  const filterSources = useStore((s) => s.sources)
+  const filterHazardTypes = useStore((s) => s.hazardTypes)
+  const filterSeverity = useStore((s) => s.severity)
+  const filtersNarrowed = useMemo(
+    () =>
+      filtersAreNarrowed({
+        sources: filterSources,
+        hazardTypes: filterHazardTypes,
+        severity: filterSeverity,
+      }),
+    [filterSources, filterHazardTypes, filterSeverity],
+  )
   const [viewport, setViewport] = useState<ViewportBounds | null>(null)
   const [zoom, setZoom] = useState<number>(INITIAL_ZOOM)
   const [viewportSnapshot, setViewportSnapshot] = useState<ViewportSnapshot | null>(null)
@@ -1392,7 +1407,11 @@ export function MapPane({
           message="Viewport refresh failed. Showing last complete snapshot; move map to retry."
         />
       )}
-      {configured && allEvents.length > 0 && positioned.length === 0 && (
+      {/*: An empty map is only worth interrupting for when nobody asked for it.
+          Switch every layer off and the emptiness is the answer, not a fault —
+          the panel says what is excluded and offers the way back, so the map
+          shows the map. */}
+      {configured && allEvents.length > 0 && positioned.length === 0 && !filtersNarrowed && (
         <PaneStatus mode="empty" onReset={() => useStore.getState().reset()} />
       )}
 
