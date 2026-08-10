@@ -64,6 +64,15 @@ _STOPWORDS: frozenset[str] = frozenset(
         "breaking",
         "report",
         "reports",
+        #: Names of recurring columns rather than words about the world (#890).
+        #: An outlet's daily edition is called the same thing every day, so
+        #: these tokens describe the slot a piece was published in, never what
+        #: happened in it.
+        "recap",
+        "roundup",
+        "briefing",
+        "digest",
+        "latest",
     ]
 )
 

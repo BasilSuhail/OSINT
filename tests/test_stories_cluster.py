@@ -173,3 +173,70 @@ def test_empty_input_noop() -> None:
 def test_untitled_articles_skipped() -> None:
     result = cluster_articles([_article(1, "")], existing=[])
     assert result.new_stories == []
+
+
+# --------------------------------------------------------------------------- #
+# Thin headlines (issue #890)                                                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_one_word_headline_founds_nothing() -> None:
+    # "Morning update" is a daily column's name, not a claim about the world.
+    # `update` is boilerplate, so the headline reduces to a single token, and a
+    # one-token centroid points at every article that happens to use the word.
+    result = cluster_articles([_article(1, "Morning update")], existing=[])
+    assert result.new_stories == []
+    assert result.new_members == []
+
+
+def test_a_column_name_does_not_join_a_real_story() -> None:
+    result = cluster_articles(
+        [
+            _article(1, "Seoul stocks down late Tuesday morning on tech losses", "rss-yonhap"),
+            _article(2, "Morning update", "rss-mee", minutes=30),
+        ],
+        existing=[],
+    )
+    assert {m["event_id"] for m in result.new_members} == {1}, (
+        "a newsletter's name was read as a second outlet telling the market story"
+    )
+    (story,) = result.new_stories
+    assert story["outlet_count"] == 1
+
+
+def test_a_thin_headline_already_in_a_story_stops_pulling_others_in() -> None:
+    # The centroid is rebuilt from member titles every run. A one-token member
+    # left in that rebuild keeps the story pointed at its single word, which is
+    # how one newsletter's name kept collecting the next day's edition.
+    existing = [{"event_id": 1, "story_id": 7, "title": "Morning update"}]
+    result = cluster_articles(
+        [_article(2, "Morning recap", "rss-mee", minutes=60)],
+        existing=existing,
+    )
+    assert result.new_members == []
+
+
+def test_one_shared_word_is_not_a_shared_story() -> None:
+    # Both headlines are substantial and both are about Iran; they are not
+    # about the same event, and a single overlapping token cannot tell them
+    # apart from a paraphrase.
+    result = cluster_articles(
+        [
+            _article(1, "Iran warns it will not be pressured into fresh nuclear talks"),
+            _article(2, "Trump sends Congress formal notice on strikes", minutes=5),
+        ],
+        existing=[],
+    )
+    assert len(result.new_stories) == 2
+
+
+def test_two_shared_words_still_cluster() -> None:
+    result = cluster_articles(
+        [
+            _article(1, "Powerful earthquake strikes Tokyo, dozens injured", "rss-a"),
+            _article(2, "Tokyo earthquake leaves dozens injured", "rss-b", minutes=5),
+        ],
+        existing=[],
+    )
+    assert len(result.new_stories) == 1
+    assert {m["event_id"] for m in result.new_members} == {1, 2}
