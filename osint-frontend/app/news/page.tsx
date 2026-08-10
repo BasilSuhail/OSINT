@@ -32,6 +32,7 @@ import {
 } from "@/lib/analytics"
 import { rankStories, relativeAge, type RankedStory } from "@/lib/newsRanking"
 import { StoryReader } from "@/components/news/StoryReader"
+import { AskDock } from "@/components/news/AskDock"
 
 const REFRESH_MS = 60_000
 //: The window the page reads over. Long enough that a story running for two
@@ -200,13 +201,20 @@ export default function NewsPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[100rem] px-6">
-        <div className="flex gap-10">
+      <div className="px-6">
+        {/*: Centred, not left-hugging. Laid out as a plain row inside a very
+            wide container the column pinned to the left edge and left a third
+            of the screen empty beside it, which reads as a page missing its
+            other half rather than as a column (#905). Centring the row means
+            the column is centred alone and the pair is centred together. */}
+        <div className="mx-auto flex w-fit max-w-full justify-center gap-10">
           {/*: The column narrows rather than being covered, so the list a
-              reader was scanning is still beside what they opened. */}
+              reader was scanning is still beside what they opened. Wider than
+              it was on both sides of that: at 52rem a two-clause headline wrapped
+              to two lines with empty screen next to it. */}
           <main
-            className={`min-w-0 flex-1 pt-10 transition-[max-width] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-              open ? "max-w-[38rem]" : "max-w-[52rem]"
+            className={`min-w-0 flex-1 pb-40 pt-10 transition-[max-width] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+              open ? "max-w-[44rem]" : "max-w-[62rem]"
             }`}
           >
             {loading && <p className="py-24 text-center text-neutral-600">reading the window…</p>}
@@ -269,7 +277,7 @@ export default function NewsPage() {
           </main>
 
           {open && (
-            <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-[34rem] shrink-0 overflow-y-auto py-10 lg:block">
+            <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-[38rem] shrink-0 overflow-y-auto pb-40 pt-10 lg:block">
               <StoryReader storyId={openId} now={now} onClose={() => setOpenId(null)} />
             </aside>
           )}
@@ -279,10 +287,15 @@ export default function NewsPage() {
       {/*: Below the breakpoint there is no room beside the column, so the
           reader takes the screen instead of squeezing both. */}
       {open && (
-        <div className="fixed inset-0 z-30 overflow-y-auto bg-neutral-950 px-6 py-8 lg:hidden">
+        <div className="fixed inset-0 z-30 overflow-y-auto bg-neutral-950 px-6 pb-40 pt-8 lg:hidden">
           <StoryReader storyId={openId} now={now} onClose={() => setOpenId(null)} />
         </div>
       )}
+
+      {/*: Above the reader on purpose (z-40 over z-30): a question about the
+          story you have open is the ordinary case, so the composer must not be
+          the thing that opening a story buries. */}
+      <AskDock onOpenStory={setOpenId} />
     </div>
   )
 }

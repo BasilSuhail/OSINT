@@ -244,8 +244,12 @@ function StoryLine({
   )
 }
 
-/** Transcript state + ask flow, persisted per-tab in sessionStorage (#439). */
-function useBrainChat() {
+/** Transcript state + ask flow, persisted per-tab in sessionStorage (#439).
+ *
+ *  Exported so the reading page runs the same ask the console does (#905). Two
+ *  implementations of one conversation is how two surfaces start disagreeing
+ *  about what the brain said. */
+export function useBrainChat() {
   const [messages, dispatch] = useReducer(chatReducer, [])
   const [pending, setPending] = useState(false)
   const [hydrated, setHydrated] = useState(false)
@@ -313,7 +317,7 @@ function sourceSpans(items: BrainSource[]) {
 const CHIP_BASE =
   "mx-0.5 align-baseline text-[11px] underline decoration-dotted underline-offset-2"
 
-function ChatEntry({
+export function ChatEntry({
   m,
   onOpenStory,
   onElaborate,
@@ -432,7 +436,7 @@ function ChatEntry({
  * Silent when the audit has never completed — an empty frame reading "0
  * findings" would be a clean bill of health the system has not earned.
  */
-function DataQualityLine({ audit }: { audit: AuditLatest | undefined }) {
+export function DataQualityLine({ audit }: { audit: AuditLatest | undefined }) {
   const [open, setOpen] = useState(false)
   if (!audit || !audit.present || audit.findings_total === null) return null
 
