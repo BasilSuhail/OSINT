@@ -56,8 +56,11 @@ export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
       title={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
       aria-label={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
       aria-expanded={!hidden}
+      //: Anchored to the bar's LEFT end, not its right: the filter panel opens
+      //: over the right edge of the pane and both sit at z-20, so a handle out
+      //: there would float on top of the panel's own controls.
       className={cn(
-        "pointer-events-auto absolute right-20 z-20 grid place-items-center rounded-t-xl rounded-b-md border border-white/10 bg-neutral-950/85 px-6 py-1.5 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
+        "pointer-events-auto absolute left-[calc(var(--panel-width,0px)+1.5rem)] z-20 grid place-items-center rounded-t-xl rounded-b-md border border-white/10 bg-neutral-950/85 px-6 py-1.5 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
         hidden ? "bottom-0" : "bottom-[3.75rem]",
       )}
     >

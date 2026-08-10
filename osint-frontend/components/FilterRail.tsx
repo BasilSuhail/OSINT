@@ -41,6 +41,7 @@ import {
 import { hazardKind } from "@/lib/hazardSymbols"
 import { cameoLabel } from "@/lib/cameo"
 import { countryCodesForEvent } from "@/lib/countryMatching"
+import { mapSummary } from "@/lib/mapSummary"
 import {
   FULL_SEVERITY,
   activeExclusions,
@@ -166,6 +167,142 @@ const HAZARD_TYPE_ICONS: Record<HazardTypeKey, LucideIcon> = {
   ICE: Snowflake,
 }
 
+/** A group's caption, outside its container — the list's only headings. */
+function GroupCaption({
+  label,
+  note,
+  onAll,
+  onNone,
+}: {
+  label: string
+  note?: string
+  onAll?: () => void
+  onNone?: () => void
+}) {
+  return (
+    <div className="mb-1.5 flex items-center justify-between px-1">
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+        {label}
+      </span>
+      {onAll && onNone ? (
+        <span className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onAll}
+            className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-100"
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={onNone}
+            className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-100"
+          >
+            None
+          </button>
+        </span>
+      ) : note ? (
+        <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-600">
+          {note}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+/** The inset container every group's rows sit in: one border, hairlines
+ *  between rows, no border per row. The list reads as a list. */
+function ListGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
+      {children}
+    </div>
+  )
+}
+
+/** One row: what it is on the left, how many there are, and its switch. */
+function ToggleRow({
+  icon: Icon,
+  hex,
+  label,
+  hint,
+  count,
+  on,
+  disabled,
+  onToggle,
+}: {
+  icon?: LucideIcon
+  hex?: string
+  label: string
+  hint?: string
+  count?: number
+  on: boolean
+  disabled?: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      //: No aria-label: it would replace the accessible name with the bare
+      //: label and silence the count beside it and the hint beneath it — the
+      //: line that explains why Military air is disabled lives in the hint.
+      disabled={disabled}
+      onClick={onToggle}
+      className={cn(
+        "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+        disabled ? "cursor-not-allowed opacity-40" : "hover:bg-white/[0.04]",
+      )}
+    >
+      {Icon && hex && (
+        <span
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-[7px] transition-opacity"
+          style={{ backgroundColor: hex, opacity: on ? 1 : 0.3 }}
+        >
+          <Icon className="h-3.5 w-3.5 text-neutral-950" strokeWidth={2.5} aria-hidden />
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span
+          className={cn(
+            "block truncate text-[13px]",
+            on ? "text-neutral-100" : "text-neutral-400",
+          )}
+        >
+          {label}
+        </span>
+        {hint && (
+          <span className="mt-0.5 block truncate font-mono text-[10px] text-neutral-600">
+            {hint}
+          </span>
+        )}
+      </span>
+      {typeof count === "number" && (
+        <span className="shrink-0 font-mono text-[11px] tabular-nums text-neutral-500">
+          {count.toLocaleString()}
+        </span>
+      )}
+      {/*: A switch, not a checkbox: these say what the map is showing right
+          now, which is a state, not a form field waiting to be submitted. */}
+      <span
+        aria-hidden
+        className={cn(
+          "relative h-[18px] w-[30px] shrink-0 rounded-full transition-colors",
+          on ? "bg-emerald-500" : "bg-white/15",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-transform",
+            on ? "translate-x-[14px]" : "translate-x-[2px]",
+          )}
+        />
+      </span>
+    </button>
+  )
+}
+
 interface FilterRailProps {
   side: "left" | "right"
   useStore: FilterStore
@@ -226,7 +363,15 @@ export function FilterRail({
   /** Windowed count for the rail header — the same pipeline the map markers
    *  use, so the header and the dots always agree. The event *list* left with
    *  the EVENTS tab (#510); reading events is the situation list's job. */
-  const { total: visibleTotal } = useEventsInWindow(useStore, supplementalEvents)
+  const { events: visibleEvents, total: visibleTotal } = useEventsInWindow(
+    useStore,
+    supplementalEvents,
+  )
+
+  //: What is on the map, counted from the events that survived the filters —
+  //: the same list the markers are drawn from, so the header and the map can
+  //: never disagree about what is being looked at.
+  const summaryChips = useMemo(() => mapSummary(visibleEvents), [visibleEvents])
 
   /** Source toggles, minus the hazard sources (USGS / GDACS / EONET) — those
    *  are filtered by disaster type instead, below. */
@@ -350,6 +495,17 @@ export function FilterRail({
   // graze the edge.
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  //: Closing by hand beats hovering, until the cursor leaves.
+  //:
+  //: The panel occupies the pane edge while it is open, so its close control
+  //: sits over the ground the collapsed strip returns to. Click it and the
+  //: strip re-mounts under a stationary cursor, whose next pixel of movement
+  //: is a fresh `mouseenter` — the panel reopens and the close button reads as
+  //: broken. A deliberate close therefore suppresses hover-open until the
+  //: pointer has actually left the rail, which is the event that proves the
+  //: reader moved rather than the UI moving under them.
+  const suppressHoverRef = useRef(false)
+
   const clearTimers = () => {
     if (closeTimerRef.current) {
       clearTimeout(closeTimerRef.current)
@@ -357,7 +513,14 @@ export function FilterRail({
     }
   }
 
+  const closeByHand = () => {
+    suppressHoverRef.current = true
+    clearTimers()
+    onOpenChange(false)
+  }
+
   const requestOpen = () => {
+    if (suppressHoverRef.current) return
     if (closeTimerRef.current) {
       clearTimeout(closeTimerRef.current)
       closeTimerRef.current = null
@@ -401,7 +564,10 @@ export function FilterRail({
         "pointer-events-none absolute bottom-3 top-3 z-20 flex items-stretch gap-2",
         isLeft ? "left-3" : "right-3",
       )}
-      onMouseLeave={requestClose}
+      onMouseLeave={() => {
+        suppressHoverRef.current = false
+        requestClose()
+      }}
       onMouseEnter={() => {
         if (closeTimerRef.current) {
           clearTimeout(closeTimerRef.current)
@@ -422,7 +588,7 @@ export function FilterRail({
         aria-expanded={!hidden}
         title={hidden ? "Show filters" : "Hide filters"}
         onClick={() => {
-          if (!hidden) onOpenChange(false)
+          if (!hidden) closeByHand()
           setHidden(!hidden)
         }}
         className={cn(
@@ -457,7 +623,10 @@ export function FilterRail({
        *  with the slider button + colored source dots) opens the rail too,
        *  not just the bare edge cushion. Lets the user mouse over the dots
        *  and have the panel slide out without precision-aiming the edge. */}
-      {!hidden && (
+      {/*: The strip is the panel's collapsed form, not a second copy of it.
+          While the panel is open the right side is the list and nothing else,
+          which is the whole point of the redesign. */}
+      {!hidden && !open && (
       <div
         className={cn(
           "pointer-events-auto flex w-11 flex-col items-center gap-2 rounded-2xl border border-white/10 bg-neutral-950/85 py-3 shadow-2xl shadow-black/60 backdrop-blur-xl",
@@ -533,487 +702,388 @@ export function FilterRail({
       </div>
       )}
 
-      {/* Expanded panel */}
+      {/* The panel: one list, nothing else.
+       *
+       * It used to be a stack of differently-shaped blocks — bordered cards
+       * for sources, more cards for disasters, loose controls under them —
+       * which made a short list of toggles read as five unrelated widgets.
+       * Now it is one scroll: a summary of what is on the map, then grouped
+       * rows in inset containers, hairlines between them, the group caption
+       * the only thing outside the container. Everything on this side of the
+       * console filters the map, and nothing on this side does anything else.
+       */}
       {open && !hidden && (
-        <div
-          className={cn(
-            "pointer-events-auto flex w-[280px] flex-col gap-4 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/85 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl",
-          )}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Map · {paneTotal.toLocaleString()} pane / {visibleTotal.toLocaleString()} in window
-              </span>
-              {/*: What is being excluded, and by which control. Every filter
-                  here can empty the map, and the severity range can do it from
-                  one stray click on its track — which looks exactly like the
-                  map breaking. */}
-              {exclusions.length > 0 && (
-                <span className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
-                  {exclusions.join(" · ")}
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              aria-label="Close panel"
-              onClick={() => onOpenChange(false)}
-              className="text-neutral-500 hover:text-neutral-200"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/*: An empty map and a broken map look alike, so the one case that
-              is neither gets said out loud, with the way back attached. */}
-          {everythingHidden && (
-            <button
-              type="button"
-              onClick={reset}
-              className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-left font-mono text-[10px] uppercase tracking-wider text-amber-200/90 transition-colors hover:border-amber-400/70"
-            >
-              <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-              <span>
-                filters hide all {paneTotal.toLocaleString()} events — reset
-              </span>
-            </button>
-          )}
-
-          {/* Source toggles — every source on by default; click one to hide it
-           *  (e.g. mute the quakes when they crowd the map). Select-all /
-           *  clear-all flip them in one go. */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between px-0.5">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Layers
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setAllSources(true)}
-                  className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                >
-                  All
-                </button>
-                <span className="text-neutral-700">·</span>
-                <button
-                  type="button"
-                  onClick={() => setAllSources(false)}
-                  className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                >
-                  None
-                </button>
+        <div className="pointer-events-auto flex w-[330px] flex-col overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/85 shadow-2xl shadow-black/60 backdrop-blur-xl">
+          {/*: The header answers the question a map raises — what am I looking
+              at — and answers it from the events that survived the filters, so
+              it can never disagree with the markers. The buffer count stays,
+              small, because "6,154 of 7,500 held" is the honest frame. */}
+          <header className="sticky top-0 z-10 border-b border-white/5 bg-neutral-950/90 px-4 pb-3 pt-3.5 backdrop-blur-xl">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+                  On the map
+                </p>
+                <p className="mt-1 flex items-baseline gap-1.5">
+                  <span className="text-[26px] font-medium leading-none tabular-nums text-neutral-50">
+                    {visibleTotal.toLocaleString()}
+                  </span>
+                  {/*: Two quantities, named — not "of N", which would blame
+                      the filters for what the time window did. The buffer
+                      spans days; the map shows one window of it. */}
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                    shown · {paneTotal.toLocaleString()} buffered
+                  </span>
+                </p>
               </div>
+              <button
+                type="button"
+                aria-label="Close panel"
+                onClick={closeByHand}
+                className="-mr-1 -mt-1 rounded-md p-1 text-neutral-600 transition-colors hover:bg-white/5 hover:text-neutral-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            {paneFilters.map((f) => {
-              const n = sourceCounts.get(f.key) ?? 0
-              const Icon = SOURCE_ICONS[f.key]
-              const on = sources[f.key]
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleSource(f.key)}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
-                    on
-                      ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
-                      : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
-                  )}
-                >
+
+            {summaryChips.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1">
+                {summaryChips.map((chip) => (
                   <span
-                    className="grid h-6 w-6 shrink-0 place-items-center rounded-md transition-opacity"
-                    style={{ backgroundColor: f.hex, opacity: on ? 1 : 0.25 }}
-                  >
-                    {Icon && <Icon className="h-3.5 w-3.5 text-neutral-950" strokeWidth={2.5} />}
-                  </span>
-                  <span className="flex-1">{f.label}</span>
-                  <span className="font-mono text-[10px] tabular-nums text-neutral-400">
-                    {n.toLocaleString()}
-                  </span>
-                  <span
-                    className={cn(
-                      "grid h-4 w-4 shrink-0 place-items-center rounded-sm border",
-                      on ? "border-emerald-500 bg-emerald-500/20" : "border-neutral-700",
-                    )}
-                  >
-                    {on && <Check className="h-3 w-3 text-emerald-400" strokeWidth={3} />}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Satellite backdrop (#875). One at a time, off by default: two
-           *  rasters stacked on a dark style is mud, and the map's ordinary
-           *  appearance is not up for renegotiation as a side effect of adding
-           *  an option. The day shown is the scrubber's day, said out loud so
-           *  the backdrop can never quietly disagree with the markers. */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between px-0.5">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Satellite
-              </span>
-              <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">
-                {imageryDay}
-              </span>
-            </div>
-            {IMAGERY_LAYERS.map((layer) => {
-              const on = activeImagery === layer.id
-              return (
-                <button
-                  key={layer.id}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleImagery(layer.id)}
-                  className={cn(
-                    "flex flex-col gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors",
-                    on
-                      ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
-                      : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
-                  )}
-                >
-                  <span className="text-[13px]">{layer.label}</span>
-                  <span className="font-mono text-[10px] text-neutral-600">{layer.hint}</span>
-                </button>
-              )
-            })}
-            {/* A gap in the archive is normal — whole days are absent from a
-             *  record that otherwise reaches back years. A blank backdrop with
-             *  no explanation reads as a broken map, so it is named. */}
-            {activeImagery && imageryMissing && (
-              <span className="px-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
-                no imagery for {imageryDay}
-              </span>
-            )}
-            {activeImagery && (
-              <span className="px-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
-                NASA GIBS · Worldview
-              </span>
-            )}
-          </div>
-
-          {/* Live aircraft (#873). Not events: these never enter the counts,
-           *  the source filters, the clustering or the situation list. */}
-          <div className="flex flex-col gap-1.5">
-            <span className="px-0.5 font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-              Live
-            </span>
-            <button
-              type="button"
-              aria-pressed={presenceOn}
-              disabled={!presenceAtNow}
-              onClick={togglePresence}
-              className={cn(
-                "flex flex-col gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors",
-                !presenceAtNow
-                  ? "cursor-not-allowed border-neutral-800/40 text-neutral-700"
-                  : presenceOn
-                    ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
-                    : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
-              )}
-            >
-              <span className="text-[13px]">Military air</span>
-              <span className="font-mono text-[10px] text-neutral-600">
-                {presenceAtNow
-                  ? "military and distress squawks, live"
-                  : "live only \u2014 scrub back to now"}
-              </span>
-            </button>
-            {presenceOn && presenceAtNow && (
-              <span className="px-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
-                adsb.lol \u00b7 ODbL
-              </span>
-            )}
-          </div>
-
-          {/* Disaster types — replaces the single GDACS "multi-hazard" switch so
-           *  each disaster (earthquake / cyclone / flood / volcano / drought /
-           *  wildfire) can be hidden on its own. */}
-          {(
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between px-0.5">
-                <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                  Disasters
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setAllHazardTypes(true)}
-                    className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                  >
-                    All
-                  </button>
-                  <span className="text-neutral-700">·</span>
-                  <button
-                    type="button"
-                    onClick={() => setAllHazardTypes(false)}
-                    className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                  >
-                    None
-                  </button>
-                </div>
-              </div>
-              {HAZARD_TYPE_FILTERS.map((h) => {
-                const Icon = HAZARD_TYPE_ICONS[h.key]
-                const on = hazardTypes[h.key]
-                const n = typeCounts.get(h.key) ?? 0
-                return (
-                  <button
-                    key={h.key}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => toggleHazardType(h.key)}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
-                      on
-                        ? "border-neutral-700 bg-neutral-800/60 text-neutral-100"
-                        : "border-neutral-800/60 text-neutral-500 hover:border-neutral-700",
-                    )}
+                    key={chip.key}
+                    className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] py-0.5 pl-1.5 pr-2"
                   >
                     <span
-                      className="grid h-6 w-6 shrink-0 place-items-center rounded-md transition-opacity"
-                      style={{ backgroundColor: h.hex, opacity: on ? 1 : 0.25 }}
-                    >
-                      <Icon className="h-3.5 w-3.5 text-neutral-950" strokeWidth={2.5} />
+                      aria-hidden
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: chip.hex }}
+                    />
+                    <span className="font-mono text-[10px] tabular-nums text-neutral-100">
+                      {chip.count.toLocaleString()}
                     </span>
-                    <span className="flex-1">{h.label}</span>
-                    <span className="font-mono text-[10px] tabular-nums text-neutral-400">
-                      {n.toLocaleString()}
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                      {chip.label}
                     </span>
-                    <span
-                      className={cn(
-                        "grid h-4 w-4 shrink-0 place-items-center rounded-sm border",
-                        on ? "border-emerald-500 bg-emerald-500/20" : "border-neutral-700",
-                      )}
-                    >
-                      {on && <Check className="h-3 w-3 text-emerald-400" strokeWidth={3} />}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Severity */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Severity
-              </span>
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "font-mono text-[11px]",
-                    narrowedSeverity ? "text-amber-300/90" : "text-neutral-300",
-                  )}
-                >
-                  {severity[0].toFixed(2)} – {severity[1].toFixed(2)}
-                </span>
-                {/*: The track moves the nearest thumb wherever it is clicked,
-                    so this range narrows by accident more than by intent. One
-                    click puts it back without resetting anything else. */}
-                {narrowedSeverity && (
-                  <button
-                    type="button"
-                    onClick={() => setSeverity([...FULL_SEVERITY])}
-                    className="rounded px-1 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                  >
-                    all
-                  </button>
-                )}
-              </div>
-            </div>
-            <Slider
-              value={severity}
-              min={0}
-              max={1}
-              step={0.01}
-              onValueChange={(v) => {
-                if (Array.isArray(v)) setSeverity([v[0], v[1]])
-              }}
-              aria-label="Severity range"
-            />
-          </div>
-
-          {/* Country multiselect */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Country
-              </span>
-              <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-                {distinctCountries.length.toLocaleString()} known
-              </span>
-            </div>
-            <Popover open={countryOpen} onOpenChange={setCountryOpen}>
-              <PopoverTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={countryOpen}
-                    className="h-9 justify-between border-neutral-700 bg-neutral-900 font-mono text-xs text-neutral-200 hover:bg-neutral-800 hover:text-neutral-100"
-                  />
-                }
-              >
-                {countries.length > 0 ? `${countries.length} selected` : "All countries"}
-                <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                className="w-[248px] border-neutral-700 bg-neutral-900 p-0"
-              >
-                <Command className="bg-neutral-900">
-                  <CommandInput
-                    placeholder="Search country or ISO…"
-                    className="text-xs"
-                  />
-                  <CommandList className="max-h-72">
-                    <CommandEmpty className="py-4 text-center text-xs text-neutral-500">
-                      No country found.
-                    </CommandEmpty>
-                    <CommandGroup>
-                      {[...distinctCountries]
-                        .sort(
-                          (a, b) => (countryCounts.get(b) ?? 0) - (countryCounts.get(a) ?? 0),
-                        )
-                        .map((c) => {
-                          const flag = countryFlagEmoji(c)
-                          const name = countryDisplayName(c)
-                          const n = countryCounts.get(c) ?? 0
-                          // cmdk filters on value, so concatenate ISO + name so
-                          // typing 'pak' matches PK / Pakistan.
-                          const value = `${c} ${name}`
-                          return (
-                            <CommandItem
-                              key={c}
-                              value={value}
-                              onSelect={() => toggleCountry(c)}
-                              className="flex items-center gap-2 font-mono text-xs"
-                            >
-                              <Check
-                                className={cn(
-                                  "h-3.5 w-3.5",
-                                  countries.includes(c) ? "opacity-100" : "opacity-0",
-                                )}
-                              />
-                              <span className="w-5">{flag}</span>
-                              <span className="w-7 text-neutral-300">{c}</span>
-                              <span className="flex-1 truncate text-[11px] text-neutral-400">
-                                {name}
-                              </span>
-                              <span className="tabular-nums text-[10px] text-neutral-500">
-                                {n.toLocaleString()}
-                              </span>
-                            </CommandItem>
-                          )
-                        })}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            {countries.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {countries.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => toggleCountry(c)}
-                    className="flex items-center gap-1 rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-300 hover:bg-neutral-700"
-                  >
-                    {c}
-                    <X className="h-2.5 w-2.5" />
-                  </button>
+                  </span>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Keyword */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
-                Keyword
-              </span>
-              {keyword.trim() && (
-                <span className="font-mono text-[10px] tabular-nums text-neutral-500">
-                  {keywordMatches.toLocaleString()} match
-                  {keywordMatches === 1 ? "" : "es"}
-                </span>
-              )}
-            </div>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
-              <Input
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="Try: protest, fire, USGS, drawdown…"
-                className="h-9 border-neutral-700 bg-neutral-900 pl-8 font-mono text-xs text-neutral-200 placeholder:text-neutral-600"
-              />
-            </div>
-            <p className="font-mono text-[10px] leading-snug text-neutral-500">
-              Searches event source, category, country, keywords + payload values.
-            </p>
-
-            {/* Live preview: top matches against the current keyword. Sits
-             *  under the helper text in the Filters tab so the user can see
-             *  the dataset shaping in real time without flipping to Events. */}
-            {keyword.trim() && keywordPreview.length > 0 && (
-              <div className="mt-1 flex flex-col gap-0.5 rounded-md border border-neutral-800 bg-neutral-900/50 p-1">
-                <div className="flex items-center justify-between px-1 pb-0.5">
-                  <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500">
-                    Top matches
-                  </span>
-                </div>
-                {keywordPreview.map((ev) => {
-                  const sev = typeof ev.severity === "number" ? ev.severity : 0
-                  const when = formatDistanceToNowStrict(new Date(ev.occurred_at), {
-                    addSuffix: false,
-                  })
-                  return (
-                    <div
-                      key={ev.id}
-                      className="flex items-center gap-2 rounded px-1.5 py-1 text-[11px] hover:bg-neutral-800"
-                      title={`${ev.source} · sev ${sev.toFixed(2)} · ${when} ago`}
-                    >
-                      <span
-                        className="inline-block h-3 w-1 shrink-0 rounded-sm"
-                        style={{ backgroundColor: severityBarColor(sev) }}
-                      />
-                      <span className="w-7 shrink-0 text-center" aria-label={ev.country ?? ""}>
-                        {ev.country ? countryFlagEmoji(ev.country) : "—"}
-                      </span>
-                      <span className="flex-1 truncate text-neutral-200">
-                        {eventListTitle(ev)}
-                      </span>
-                      <span className="shrink-0 font-mono text-[9px] tabular-nums text-neutral-500">
-                        {when}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-            {keyword.trim() && keywordPreview.length === 0 && (
-              <p className="rounded-md border border-neutral-800 bg-neutral-900/50 p-2 text-center font-mono text-[10px] text-neutral-600">
-                No events match this keyword in the current pane window.
+            {/*: What is being excluded, and by which control. Every filter here
+                can empty the map, and the severity range can do it from one
+                stray click on its track — which looks exactly like the map
+                breaking. */}
+            {exclusions.length > 0 && (
+              <p className="mt-2 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
+                {exclusions.join(" · ")}
               </p>
             )}
+          </header>
+
+          <div className="flex flex-col gap-5 px-4 pb-4 pt-4">
+            {/*: An empty map and a broken map look alike, so the one case that
+                is neither gets said out loud, with the way back attached. */}
+            {everythingHidden && (
+              <button
+                type="button"
+                onClick={reset}
+                className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-wider text-amber-200/90 transition-colors hover:border-amber-400/70"
+              >
+                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                <span>filters hide all {paneTotal.toLocaleString()} events — reset</span>
+              </button>
+            )}
+
+            <section>
+              <GroupCaption
+                label="Sources"
+                onAll={() => setAllSources(true)}
+                onNone={() => setAllSources(false)}
+              />
+              <ListGroup>
+                {paneFilters.map((f) => (
+                  <ToggleRow
+                    key={f.key}
+                    icon={SOURCE_ICONS[f.key]}
+                    hex={f.hex}
+                    label={f.label}
+                    count={sourceCounts.get(f.key) ?? 0}
+                    on={sources[f.key]}
+                    onToggle={() => toggleSource(f.key)}
+                  />
+                ))}
+              </ListGroup>
+            </section>
+
+            <section>
+              <GroupCaption
+                label="Disasters"
+                onAll={() => setAllHazardTypes(true)}
+                onNone={() => setAllHazardTypes(false)}
+              />
+              <ListGroup>
+                {HAZARD_TYPE_FILTERS.map((h) => (
+                  <ToggleRow
+                    key={h.key}
+                    icon={HAZARD_TYPE_ICONS[h.key]}
+                    hex={h.hex}
+                    label={h.label}
+                    count={typeCounts.get(h.key) ?? 0}
+                    on={hazardTypes[h.key]}
+                    onToggle={() => toggleHazardType(h.key)}
+                  />
+                ))}
+              </ListGroup>
+            </section>
+
+            <section>
+              <GroupCaption label="Refine" />
+              <ListGroup>
+                {/* Severity */}
+                <div className="px-3 py-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] text-neutral-200">Severity</span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "font-mono text-[11px] tabular-nums",
+                          narrowedSeverity ? "text-amber-300/90" : "text-neutral-400",
+                        )}
+                      >
+                        {severity[0].toFixed(2)} – {severity[1].toFixed(2)}
+                      </span>
+                      {/*: The track moves the nearest thumb wherever it is
+                          clicked, so this range narrows by accident more than
+                          by intent. One click puts it back without resetting
+                          anything else. */}
+                      {narrowedSeverity && (
+                        <button
+                          type="button"
+                          onClick={() => setSeverity([...FULL_SEVERITY])}
+                          className="rounded px-1 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
+                        >
+                          all
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <Slider
+                    className="mt-3"
+                    value={severity}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onValueChange={(v) => {
+                      if (Array.isArray(v)) setSeverity([v[0], v[1]])
+                    }}
+                    aria-label="Severity range"
+                  />
+                </div>
+
+                {/* Country */}
+                <div className="px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[13px] text-neutral-200">Country</span>
+                    <Popover open={countryOpen} onOpenChange={setCountryOpen}>
+                      <PopoverTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            role="combobox"
+                            aria-expanded={countryOpen}
+                            className="h-7 gap-1.5 px-2 font-mono text-[11px] text-neutral-300 hover:bg-white/10 hover:text-neutral-100"
+                          />
+                        }
+                      >
+                        {countries.length > 0 ? `${countries.length} selected` : "All"}
+                        <ChevronsUpDown className="h-3 w-3 opacity-50" />
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="end"
+                        className="w-[248px] border-neutral-700 bg-neutral-900 p-0"
+                      >
+                        <Command className="bg-neutral-900">
+                          <CommandInput placeholder="Search country or ISO…" className="text-xs" />
+                          <CommandList className="max-h-72">
+                            <CommandEmpty className="py-4 text-center text-xs text-neutral-500">
+                              No country found.
+                            </CommandEmpty>
+                            <CommandGroup>
+                              {[...distinctCountries]
+                                .sort(
+                                  (a, b) => (countryCounts.get(b) ?? 0) - (countryCounts.get(a) ?? 0),
+                                )
+                                .map((c) => {
+                                  const flag = countryFlagEmoji(c)
+                                  const name = countryDisplayName(c)
+                                  const n = countryCounts.get(c) ?? 0
+                                  // cmdk filters on value, so concatenate ISO +
+                                  // name so typing 'pak' matches PK / Pakistan.
+                                  const value = `${c} ${name}`
+                                  return (
+                                    <CommandItem
+                                      key={c}
+                                      value={value}
+                                      onSelect={() => toggleCountry(c)}
+                                      className="flex items-center gap-2 font-mono text-xs"
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "h-3.5 w-3.5",
+                                          countries.includes(c) ? "opacity-100" : "opacity-0",
+                                        )}
+                                      />
+                                      <span className="w-5">{flag}</span>
+                                      <span className="w-7 text-neutral-300">{c}</span>
+                                      <span className="flex-1 truncate text-[11px] text-neutral-400">
+                                        {name}
+                                      </span>
+                                      <span className="tabular-nums text-[10px] text-neutral-500">
+                                        {n.toLocaleString()}
+                                      </span>
+                                    </CommandItem>
+                                  )
+                                })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  {countries.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {countries.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => toggleCountry(c)}
+                          className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[10px] text-neutral-300 hover:bg-white/20"
+                        >
+                          {c}
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Keyword */}
+                <div className="px-3 py-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] text-neutral-200">Keyword</span>
+                    {keyword.trim() && (
+                      <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+                        {keywordMatches.toLocaleString()} match
+                        {keywordMatches === 1 ? "" : "es"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative mt-2">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-600" />
+                    <Input
+                      value={keyword}
+                      onChange={(e) => setKeyword(e.target.value)}
+                      placeholder="protest, fire, USGS, drawdown…"
+                      className="h-8 border-white/10 bg-white/[0.04] pl-8 font-mono text-xs text-neutral-200 placeholder:text-neutral-600"
+                    />
+                  </div>
+                  {/*: Live preview: the dataset shaping in real time, so a
+                      keyword that matches nothing is obvious before it is
+                      blamed on the map. */}
+                  {keyword.trim() && keywordPreview.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-0.5">
+                      {keywordPreview.map((ev) => {
+                        const sev = typeof ev.severity === "number" ? ev.severity : 0
+                        const when = formatDistanceToNowStrict(new Date(ev.occurred_at), {
+                          addSuffix: false,
+                        })
+                        return (
+                          <div
+                            key={ev.id}
+                            className="flex items-center gap-2 rounded-md px-1 py-1 text-[11px] hover:bg-white/5"
+                            title={`${ev.source} · sev ${sev.toFixed(2)} · ${when} ago`}
+                          >
+                            <span
+                              className="inline-block h-3 w-1 shrink-0 rounded-sm"
+                              style={{ backgroundColor: severityBarColor(sev) }}
+                            />
+                            <span className="w-5 shrink-0 text-center" aria-label={ev.country ?? ""}>
+                              {ev.country ? countryFlagEmoji(ev.country) : "—"}
+                            </span>
+                            <span className="flex-1 truncate text-neutral-300">
+                              {eventListTitle(ev)}
+                            </span>
+                            <span className="shrink-0 font-mono text-[9px] tabular-nums text-neutral-600">
+                              {when}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {keyword.trim() && keywordPreview.length === 0 && (
+                    <p className="mt-2 font-mono text-[10px] text-neutral-600">
+                      Nothing in the window matches this keyword.
+                    </p>
+                  )}
+                </div>
+              </ListGroup>
+            </section>
+
+            {/*: Last, and its own group: the backdrop and the live layer are
+                not filters — they add to the map rather than subtracting from
+                it — but they are still things the map is showing, so this is
+                where they belong. */}
+            <section>
+              <GroupCaption label="Backdrop" note={activeImagery ? imageryDay : undefined} />
+              <ListGroup>
+                {IMAGERY_LAYERS.map((layer) => (
+                  <ToggleRow
+                    key={layer.id}
+                    label={layer.label}
+                    hint={layer.hint}
+                    on={activeImagery === layer.id}
+                    onToggle={() => toggleImagery(layer.id)}
+                  />
+                ))}
+                <ToggleRow
+                  label="Military air"
+                  hint={
+                    presenceAtNow
+                      ? "military and distress squawks, live"
+                      : "live only — scrub back to now"
+                  }
+                  on={presenceOn}
+                  disabled={!presenceAtNow}
+                  onToggle={togglePresence}
+                />
+              </ListGroup>
+              {activeImagery && imageryMissing && (
+                <p className="mt-1.5 px-1 font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
+                  no imagery for {imageryDay}
+                </p>
+              )}
+              {activeImagery && (
+                <p className="mt-1 px-1 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
+                  NASA GIBS · Worldview
+                </p>
+              )}
+              {presenceOn && presenceAtNow && (
+                <p className="mt-1 px-1 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
+                  adsb.lol · ODbL
+                </p>
+              )}
+            </section>
+
+            <Button
+              variant="ghost"
+              onClick={reset}
+              className="h-8 justify-center gap-2 text-xs text-neutral-500 hover:bg-white/5 hover:text-neutral-100"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset filters
+            </Button>
           </div>
-
-          <Button
-            variant="ghost"
-            onClick={reset}
-            className="mt-auto h-8 justify-center gap-2 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Reset filters
-          </Button>
-
         </div>
       )}
     </div>
