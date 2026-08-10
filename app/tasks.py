@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 from celery.schedules import crontab
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.celery_app import app
@@ -540,6 +540,15 @@ def _enrich_footprints_body(
     Python instead let the ever-refreshing, mostly ShakeMap-less USGS quakes
     occupy the whole window, so slower-moving GDACS hazards — droughts above
     all — kept falling back to the synthesized circle on the map.
+
+    A row that already has geometry is a candidate again once the event points
+    at a different upstream document (issue #880). GDACS publishes a moving
+    hazard as a numbered series of episodes, each at its own URL: the stored
+    footprint is a photograph of where the storm was when we first saw it, and
+    for a cyclone crossing an ocean that is thousands of kilometres from the
+    position the same row reports. Comparing the stored
+    ``footprint_source_key`` with the event's current geometry URL costs one
+    string comparison in SQL and refetches only what actually moved.
     """
     from app.enrichment import footprint as footprint_mod
 
@@ -550,6 +559,16 @@ def _enrich_footprints_body(
     # form where a missing key reads back as SQL NULL on both dialects.
     geojson_at = EventRow.payload["footprint_geojson"].as_string()
     checked_at = EventRow.payload["footprint_checked_at"].as_string()
+    source_key = EventRow.payload["footprint_source_key"].as_string()
+    geometry_url = EventRow.payload["geometry_url"].as_string()
+    #: The geometry we hold was built from another document than the one this
+    #: event now points at — a newer GDACS episode. A row enriched before this
+    #: key existed has no key at all, which is the same answer: refetch once,
+    #: then it carries its own provenance like every row written since.
+    footprint_moved = and_(
+        geometry_url.is_not(None),
+        or_(source_key.is_(None), source_key != geometry_url),
+    )
     retry_before = (datetime.now(UTC) - _FOOTPRINT_RETRY_AFTER).isoformat()
     scanned = 0
     enriched = 0
@@ -558,7 +577,7 @@ def _enrich_footprints_body(
             stmt = (
                 select(EventRow)
                 .where(EventRow.source.in_(_FOOTPRINT_SOURCES))
-                .where(geojson_at.is_(None))
+                .where(or_(geojson_at.is_(None), footprint_moved))
                 .where(or_(checked_at.is_(None), checked_at < retry_before))
                 .order_by(EventRow.occurred_at.desc())
                 .limit(limit)
@@ -574,6 +593,11 @@ def _enrich_footprints_body(
                 else:
                     payload["footprint_geojson"] = geojson
                     payload.pop("footprint_checked_at", None)
+                    # Record which upstream document this geometry came from, so
+                    # the next episode is recognised as a different one (#880).
+                    source_key_value = footprint_mod.footprint_source_key(row.source, payload)
+                    if source_key_value is not None:
+                        payload["footprint_source_key"] = source_key_value
                     enriched += 1
                 row.payload = payload  # reassign so SQLAlchemy flags the jsonb dirty
     finally:

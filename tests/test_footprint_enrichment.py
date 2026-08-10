@@ -18,6 +18,7 @@ from app.enrichment.footprint import (
     fetch_usgs_footprint,
     fit_to_budget,
     footprint_for_event,
+    footprint_source_key,
     gdacs_footprint_url,
     geojson_bytes,
     normalize_gdacs_footprint,
@@ -505,3 +506,120 @@ def test_a_stale_cooldown_is_retried(monkeypatch, db_session) -> None:
     asked, _ = _run_body(monkeypatch, db_session, limit=5, fetched={})
 
     assert asked == ["q1"], "a day-old ShakeMap check was never retried"
+
+
+# --------------------------------------------------------------------------- #
+# Footprint provenance / moving episodes (issue #880)                          #
+# --------------------------------------------------------------------------- #
+
+
+def test_source_key_is_the_gdacs_geometry_url() -> None:
+    url = "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=TC&eventid=9&episodeid=55"
+    assert footprint_source_key("gdacs", {"geometry_url": url}) == url
+
+
+def test_source_key_falls_back_to_the_contentdata_resource() -> None:
+    key = footprint_source_key("gdacs", {"event_type": "TC", "gdacs_event_id": "9"})
+    assert key == gdacs_footprint_url("TC", "9")
+
+
+def test_source_key_is_absent_where_the_address_carries_no_version() -> None:
+    # A USGS quake and an EONET event are fetched from a fixed per-event URL,
+    # so there is nothing to compare and nothing to re-ask for.
+    assert footprint_source_key("usgs-quake", {"usgs_id": "q1"}) is None
+    assert footprint_source_key("eonet", {"eonet_id": "EONET_1"}) is None
+
+
+def test_source_key_is_absent_when_gdacs_identifies_nothing() -> None:
+    assert footprint_source_key("gdacs", {}) is None
+
+
+def _geometry_url(episode: int) -> str:
+    return (
+        "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry"
+        f"?eventtype=TC&eventid=1&episodeid={episode}"
+    )
+
+
+def test_a_newer_episode_refetches_the_footprint(monkeypatch, db_session) -> None:
+    # A cyclone's episodes walk across an ocean. The stored geometry was built
+    # from episode 1; the row now points at episode 55, so the wind cones on the
+    # map belong thousands of kilometres from the position the row reports.
+    db_session.add(
+        _hazard_row(
+            "gdacs",
+            "TC:1",
+            minutes_ago=1,
+            payload={
+                "gdacs_event_id": "1",
+                "event_type": "TC",
+                "geometry_url": _geometry_url(55),
+                "footprint_geojson": {"features": [_polygon()]},
+                "footprint_source_key": _geometry_url(1),
+            },
+        )
+    )
+    db_session.flush()
+
+    asked, result = _run_body(
+        monkeypatch, db_session, limit=5, fetched={"1": {"features": [_polygon()]}}
+    )
+
+    assert asked == ["1"], "the stale episode was never re-asked"
+    assert result["enriched"] == 1
+    row = db_session.query(EventRow).filter_by(source_event_id="TC:1").one()
+    assert row.payload["footprint_source_key"] == _geometry_url(55), (
+        "the refetched geometry must record the episode it came from"
+    )
+
+
+def test_the_same_episode_is_left_alone(monkeypatch, db_session) -> None:
+    db_session.add(
+        _hazard_row(
+            "gdacs",
+            "TC:2",
+            minutes_ago=1,
+            payload={
+                "gdacs_event_id": "2",
+                "event_type": "TC",
+                "geometry_url": _geometry_url(7),
+                "footprint_geojson": {"features": [_polygon()]},
+                "footprint_source_key": _geometry_url(7),
+            },
+        )
+    )
+    db_session.flush()
+
+    asked, result = _run_body(monkeypatch, db_session, limit=5, fetched={})
+
+    assert asked == [], "an unchanged episode was refetched for nothing"
+    assert result["scanned"] == 0
+
+
+def test_geometry_enriched_before_provenance_existed_is_refetched_once(
+    monkeypatch, db_session
+) -> None:
+    # Rows written before the key existed carry geometry of unknown vintage.
+    # One refetch settles it and they carry their own provenance from then on.
+    db_session.add(
+        _hazard_row(
+            "gdacs",
+            "TC:3",
+            minutes_ago=1,
+            payload={
+                "gdacs_event_id": "3",
+                "event_type": "TC",
+                "geometry_url": _geometry_url(12),
+                "footprint_geojson": {"features": [_polygon()]},
+            },
+        )
+    )
+    db_session.flush()
+
+    asked, _ = _run_body(
+        monkeypatch, db_session, limit=5, fetched={"3": {"features": [_polygon()]}}
+    )
+    assert asked == ["3"]
+
+    again, _ = _run_body(monkeypatch, db_session, limit=5, fetched={})
+    assert again == [], "the row was re-asked after it had recorded its episode"

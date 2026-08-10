@@ -113,6 +113,7 @@ def _geo_refresh(excluded: Any, col: str) -> Any:
 ENRICHMENT_PAYLOAD_KEYS: Final = (
     "footprint_geojson",  # real hazard geometry (app/enrichment/footprint.py, #205)
     "footprint_checked_at",  # cooldown stamp for footprints with no upstream geometry (#604)
+    "footprint_source_key",  # upstream document the stored geometry came from (#880)
     "city",  # scripts/backfill_news_cities.py
     "news_scope",  # scripts/backfill_news_scope.py
     "sentiment",  # scripts/backfill_news_sentiment.py
