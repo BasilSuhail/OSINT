@@ -21,6 +21,28 @@ METHOD_VERSION: str = "stories-v1.0"
 #: same-story new-angle headlines ~0.4, unrelated ~0.0-0.1.
 SIMILARITY_THRESHOLD: float = 0.35
 
+#: Distinct content tokens a headline must carry to take part in clustering at
+#: all (#890). Below this it says nothing about the world: "Morning update" is
+#: the name of a daily column, and with `update` already boilerplate it reduces
+#: to the single word `morning`. A one-token vector points in one direction, so
+#: it scores high against every article that happens to use that word — an
+#: outlet's newsletter collected a foreign market wrap into a six-day "story"
+#: told by two independent owners, which is a corroboration claim about two
+#: pieces that shared nothing but the hour they were published at.
+MIN_CONTENT_TOKENS: int = 2
+
+#: Tokens an article must share with a story before similarity is allowed to
+#: speak (#890). Cosine cannot tell a paraphrase from a coincidence on the
+#: strength of one word: real retellings of the same event overlap on several.
+#: Measured against the live corpus, this refuses 1.1% of existing joins, and
+#: the refused ones read as "who", "here", "tomorrow", "latest".
+MIN_SHARED_TOKENS: int = 2
+
+
+def _is_substantial(tokens: list[str]) -> bool:
+    """Whether a tokenized headline says enough to be clustered at all (#890)."""
+    return len(set(tokens)) >= MIN_CONTENT_TOKENS
+
 
 @dataclass
 class ClusterResult:
@@ -53,6 +75,11 @@ def cluster_articles(
 ) -> ClusterResult:
     """Assign unassigned articles to stories.
 
+    A headline carrying fewer than `MIN_CONTENT_TOKENS` content words takes no
+    part: it neither founds a story nor joins one, and it is left out of the
+    centroid rebuild (#890). A join also needs `MIN_SHARED_TOKENS` words in
+    common with the story before its similarity counts.
+
     `articles`: unassigned news events — event_id, title, source, occurred_at.
     `existing`: current members in the window — event_id, story_id, title.
     `owner_map`: source slug → content owner (#355). A slug with no recorded
@@ -65,7 +92,7 @@ def cluster_articles(
     existing = list(existing)
 
     tokenized_articles = [(a, tokenize(a.get("title") or "")) for a in articles]
-    tokenized_articles = [(a, t) for a, t in tokenized_articles if t]
+    tokenized_articles = [(a, t) for a, t in tokenized_articles if _is_substantial(t)]
     if not tokenized_articles:
         return ClusterResult()
 
@@ -76,7 +103,10 @@ def cluster_articles(
     stories: dict[int | tuple[str, int], _Story] = {}
     for member in existing:
         tokens = tokenize(member["title"] or "")
-        if not tokens:
+        # A thin headline is left out of the rebuild as well as the intake.
+        # Kept in, it holds the centroid on its single word and the story goes
+        # on collecting tomorrow's edition of the same column (#890).
+        if not _is_substantial(tokens):
             continue
         vector = vectorize(tokens, idf)
         story = stories.get(member["story_id"])
@@ -96,6 +126,8 @@ def cluster_articles(
         best: _Story | None = None
         best_similarity = 0.0
         for story in stories.values():
+            if len(vector.keys() & story.centroid.keys()) < MIN_SHARED_TOKENS:
+                continue
             similarity = cosine(vector, story.centroid)
             if similarity >= SIMILARITY_THRESHOLD and similarity > best_similarity:
                 best, best_similarity = story, similarity
