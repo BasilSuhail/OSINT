@@ -62,7 +62,10 @@ export function SplitLayout() {
   const configured = useConfigured()
   const isNarrow = useMediaQuery("(max-width: 900px)")
 
-  const [leftRailOpen, setLeftRailOpen] = useState(false)
+  //: Open on arrival. The filter panel is the map's legend as much as its
+  //: controls — what each colour is, and how many of it there are — and it is
+  //: the only place those live now that the icon strip is gone.
+  const [leftRailOpen, setLeftRailOpen] = useState(true)
   const [activePane, setActivePane] = useState<"left" | "right">("left")
   const [, setLeftCount] = useState(0)
   //: Transient "let me see the map" gesture, not a stored preference (#503).
