@@ -1,11 +1,18 @@
-"""One-shot CLI — score B0/B1/B2 on the panel and write the report.
+"""One-shot CLI — score every baseline on the panel and write the report.
 
 Usage:
     python -m app.baselines.run       # reads $OSINT_DATA_DIR/exports/panel.parquet
     make baselines
 
-Eval window 2015-01 → 2022-12 (train + validation years). The 2023-2024 test
-window stays untouched per the pre-registered protocol in docs/methodology.md.
+Scores B0-B6 over two windows, reported separately and never pooled:
+train+validation 2015-01 → 2022-12, and the held-out test window
+2023-01 → 2024-12.
+
+The claim this decides is the project's headline one — that combining three
+domains discriminates later instability better than the best single domain.
+Until B3/B4/B5 existed it could not be evaluated at all: what had been
+measured was the composite against the no-skill trio, which is a different and
+much weaker question.
 """
 
 from __future__ import annotations
@@ -19,18 +26,48 @@ import pandas as pd
 
 from app.baselines.metrics import aupr, auroc, brier
 from app.baselines.predictors import (
+    DOMAIN_COLUMNS,
     score_base_rate,
     score_composite,
+    score_domain,
     score_persistence,
     score_random,
 )
 from app.baselines.targets import build_targets
+from app.baselines.verdict import judge_claim
 from app.paths import exports_dir
 
 EVAL_START = datetime(2015, 1, 1, tzinfo=UTC)
 EVAL_END = datetime(2022, 12, 1, tzinfo=UTC)
+TEST_START = datetime(2023, 1, 1, tzinfo=UTC)
+TEST_END = datetime(2024, 12, 1, tzinfo=UTC)
+
+#: Windows are scored and reported separately, never pooled. A single number
+#: spanning both would hide which side of the split it came from.
+WINDOWS: tuple[tuple[str, datetime, datetime], ...] = (
+    ("train+validation 2015-01 → 2022-12", EVAL_START, EVAL_END),
+    ("held-out test 2023-01 → 2024-12", TEST_START, TEST_END),
+)
+
+#: The date the held-out window was first opened to scoring.
+#:
+#: The pre-registered protocol says the test years stay untouched until the
+#: methodology is locked, and it was not locked when this landed — the Step 10
+#: reporting checklist in docs/methodology.md stood at 0 of 12. Opening it was
+#: a deliberate choice, and recording the date is what keeps it visible. A
+#: reader comparing this report against the protocol is entitled to know the
+#: exam was sat early rather than to infer it was sat under proper conditions.
+TEST_WINDOW_OPENED = "2026-08-10"
+
 HORIZONS = (1, 3, 6)
 RANDOM_SEED = 20260703
+
+COMPOSITE_NAME = "B6 composite"
+DOMAIN_BASELINES: dict[str, str] = {
+    "B3 geopolitical only": "geopolitical",
+    "B4 market only": "market",
+    "B5 hazard only": "hazard",
+}
 
 
 def _fmt(value: float | None) -> str:
@@ -45,12 +82,25 @@ def _run() -> int:
         return 1
 
     frame = pd.read_parquet(panel_path)
-    panel = frame[["country", "month", "label_any", "composite_score"]].to_dict("records")
+    needed = ["country", "month", "label_any", "composite_score", *DOMAIN_COLUMNS.values()]
+    absent = [column for column in needed if column not in frame.columns]
+    if absent:
+        print(
+            f"{panel_path} is missing {', '.join(absent)} — rebuild it with `make panel`.",
+            file=sys.stderr,
+        )
+        return 1
+    panel = frame[needed].to_dict("records")
 
     baselines = {
         "B0 random": score_random(panel, seed=RANDOM_SEED),
         "B1 persistence": score_persistence(panel),
         "B2 base rate": score_base_rate(panel),
+    }
+    #: B3/B4/B5 — each domain alone. These are the rivals the claim is defined
+    #: against; the no-skill trio above only establishes a floor.
+    domains = {
+        name: score_domain(panel, domain=domain) for name, domain in DOMAIN_BASELINES.items()
     }
     composite = score_composite(panel)
 
@@ -68,39 +118,75 @@ def _run() -> int:
             "brier": brier(s, y),
         }
 
-    results: list[dict[str, Any]] = []
-    head_to_head: list[dict[str, Any]] = []
-    for horizon in HORIZONS:
-        targets = build_targets(panel, horizon=horizon)
-        eval_keys = sorted(key for key in targets if EVAL_START <= key[1] <= EVAL_END)
-        y = [targets[key] for key in eval_keys]
-        for name, scores in baselines.items():
-            results.append(_score_rows(name, scores, eval_keys, y, horizon))
+    contenders = {**baselines, **domains, COMPOSITE_NAME: composite}
 
-        # Head-to-head on common support: only rows where the composite has a
-        # value, with the no-skill trio recomputed on the same rows.
-        common = [key for key in eval_keys if key in composite]
-        y_common = [targets[key] for key in common]
-        for name, scores in {**baselines, "B6 composite": composite}.items():
-            head_to_head.append(_score_rows(name, scores, common, y_common, horizon))
+    windows: list[dict[str, Any]] = []
+    for label, start, end in WINDOWS:
+        results: list[dict[str, Any]] = []
+        head_to_head: list[dict[str, Any]] = []
+        verdicts: list[dict[str, Any]] = []
+        for horizon in HORIZONS:
+            targets = build_targets(panel, horizon=horizon)
+            window_keys = sorted(key for key in targets if start <= key[1] <= end)
+            y = [targets[key] for key in window_keys]
+            for name, scores in baselines.items():
+                results.append(_score_rows(name, scores, window_keys, y, horizon))
 
-    eval_frame = frame[(frame["month"] >= EVAL_START) & (frame["month"] <= EVAL_END)]
-    code_rates = {
-        code: round(float(eval_frame[code].mean()), 4)
-        for code in ("label_p1", "label_p2", "label_p3", "label_any")
-    }
+            # Common support: only rows every contender can score. The
+            # composite and each domain drop out on different months, and
+            # scoring them on different populations would compare the
+            # difficulty of their rows rather than the quality of their
+            # forecasts.
+            common = [
+                key for key in window_keys if all(key in scores for scores in contenders.values())
+            ]
+            y_common = [targets[key] for key in common]
+            rows = [
+                _score_rows(name, scores, common, y_common, horizon)
+                for name, scores in contenders.items()
+            ]
+            head_to_head.extend(rows)
 
-    report_md = _render_markdown(results, head_to_head, code_rates, len(eval_frame))
+            verdict = judge_claim(rows, composite=COMPOSITE_NAME, rivals=tuple(DOMAIN_BASELINES))
+            verdicts.append(
+                {
+                    "horizon_months": horizon,
+                    "n": len(common),
+                    "passed": verdict.passed,
+                    "undecided": verdict.undecided,
+                    "beaten": verdict.beaten,
+                    "lost_to": verdict.lost_to,
+                    "summary": verdict.summary,
+                }
+            )
+
+        window_frame = frame[(frame["month"] >= start) & (frame["month"] <= end)]
+        windows.append(
+            {
+                "window": label,
+                "span": [start.date().isoformat(), end.date().isoformat()],
+                "rows": len(window_frame),
+                "results": results,
+                "head_to_head_common_support": head_to_head,
+                "verdicts": verdicts,
+                "code_positive_rates": {
+                    code: (
+                        round(float(window_frame[code].mean()), 4) if len(window_frame) else None
+                    )
+                    for code in ("label_p1", "label_p2", "label_p3", "label_any")
+                },
+            }
+        )
+
+    report_md = _render_markdown(windows)
     (exports / "baselines-report.md").write_text(report_md)
     (exports / "baselines-report.json").write_text(
         json.dumps(
             {
                 "generated_at": datetime.now(UTC).isoformat(),
-                "eval_window": [EVAL_START.date().isoformat(), EVAL_END.date().isoformat()],
+                "test_window_opened": TEST_WINDOW_OPENED,
                 "random_seed": RANDOM_SEED,
-                "code_positive_rates": code_rates,
-                "results": results,
-                "head_to_head_common_support": head_to_head,
+                "windows": windows,
             },
             indent=2,
         )
@@ -125,48 +211,84 @@ def _table(rows: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def _render_markdown(
-    results: list[dict[str, Any]],
-    head_to_head: list[dict[str, Any]],
-    code_rates: dict[str, float],
-    eval_rows: int,
-) -> str:
-    full_n = results[0]["n"] if results else 0
-    common_n = head_to_head[0]["n"] if head_to_head else 0
-    coverage = f"{common_n / full_n:.0%}" if full_n else "n/a"
+def _verdict_lines(verdicts: list[dict[str, Any]]) -> list[str]:
     lines = [
-        "# Baseline report — no-skill trio + composite on the country-month panel",
+        "| k | n | verdict |",
+        "|---|---|---|",
+    ]
+    for row in verdicts:
+        lines.append(f"| {row['horizon_months']} | {row['n']} | {row['summary']} |")
+    return lines
+
+
+def _render_markdown(windows: list[dict[str, Any]]) -> str:
+    lines = [
+        "# Baseline report — the composite against every rival it is defined against",
         "",
-        f"Eval window **2015-01 → 2022-12** ({eval_rows} country-months). The 2023-2024",
-        "test window is untouched per the pre-registered protocol (methodology.md).",
+        "The claim under test: a composite of market, geopolitical and hazard",
+        "signals discriminates later instability better than the best single",
+        "domain. It clears the bar only by beating **each** of B3/B4/B5 on",
+        "**both** AUROC and AUPR — beating the no-skill trio is a floor, not the",
+        "claim.",
         "",
-        "## Full panel — B0 / B1 / B2",
+        f"The held-out test window was first opened to scoring on **{TEST_WINDOW_OPENED}**,",
+        "before the methodology was locked: the Step 10 reporting checklist in",
+        "`docs/methodology.md` stood at 0 of 12. The test numbers below are",
+        "therefore not a clean pre-registered read, and no later write-up should",
+        "present them as one.",
         "",
-        *_table(results),
+    ]
+
+    for window in windows:
+        results = window["results"]
+        head_to_head = window["head_to_head_common_support"]
+        full_n = results[0]["n"] if results else 0
+        common_n = head_to_head[0]["n"] if head_to_head else 0
+        coverage = f"{common_n / full_n:.0%}" if full_n else "n/a"
+
+        lines += [
+            f"## {window['window']}",
+            "",
+            f"{window['rows']} country-months in the panel.",
+            "",
+            "### Verdict",
+            "",
+            *_verdict_lines(window["verdicts"]),
+            "",
+            "### Full panel — B0 / B1 / B2",
+            "",
+            *_table(results),
+            "",
+            "Per-code positive rates: "
+            + ", ".join(f"{code} = {rate}" for code, rate in window["code_positive_rates"].items()),
+            "",
+            "### Head-to-head on common support — B0-B2, B3-B5, B6",
+            "",
+            f"Restricted to rows every contender can score ({common_n} of {full_n} "
+            f"at k=1, {coverage} coverage). The composite and each domain drop out on "
+            "different months, so scoring them on their own rows would compare the "
+            "difficulty of those rows rather than the quality of the forecasts.",
+            "",
+            *_table(head_to_head),
+            "",
+        ]
+
+    lines += [
+        "## Reading the single-domain rivals",
         "",
-        "Per-code positive rates in the eval window: "
-        + ", ".join(f"{code} = {rate}" for code, rate in code_rates.items()),
+        "B3/B4/B5 are not separate models. The composite z-scores each domain",
+        "before combining them, and the panel stores those components, so each",
+        "rival is the composite deprived of its other inputs — the exact",
+        "counterfactual the claim needs. If a rival wins, the extra domains are",
+        "costing information rather than adding it.",
         "",
-        "## Head-to-head on common support — B6 composite vs the trio",
-        "",
-        f"Restricted to eval-window rows where the composite has a value "
-        f"({common_n} of {full_n} rows at k=1, {coverage} coverage); B0-B2 recomputed "
-        "on the same rows so the comparison is apples-to-apples.",
-        "",
-        *_table(head_to_head),
-        "",
-        "**Reading**: the composite carries all three domains (market + "
-        "geopolitical + hazard; GDELT-backfilled, #331). A coin-flip AUROC "
-        "against a ~0.93 per-country base rate is a statement about "
-        "construction, not about signal absence: rolling within-country "
-        "z-scores deliberately remove the cross-sectional differences that "
-        "dominate P1-P3 *incidence* (chronically conflicted countries stay "
-        "positive month after month, and the base rate collects exactly "
-        "that). What the composite measures is deviation from a country's "
-        "own baseline — an *onset/escalation*-shaped signal. The natural "
-        "next evaluation, to be pre-registered before running, restricts "
-        "scoring to onset months (no positive in the preceding window), "
-        "where per-country base rates lose their advantage by construction.",
+        "Rolling within-country z-scores deliberately remove the cross-sectional",
+        "differences that dominate P1-P3 incidence, so all six contenders measure",
+        "deviation from a country's own baseline. That is an onset-shaped signal,",
+        "and against a ~0.93 per-country base rate a coin-flip AUROC is a",
+        "statement about construction rather than about signal absence. The",
+        "onset-restricted evaluation this points to must be pre-registered before",
+        "it is run.",
         "",
     ]
     return "\n".join(lines)
