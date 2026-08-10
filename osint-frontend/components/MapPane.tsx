@@ -45,6 +45,12 @@ import {
   hazardKind,
   type HazardIcon,
 } from "@/lib/hazardSymbols"
+import {
+  ambientFootprints,
+  focusLayerOpacity,
+  focusOpacity,
+  focusable,
+} from "@/lib/mapFocus"
 import { hazardFootprintCollections } from "@/lib/mapFootprints"
 import {
   eventPointCollection,
@@ -54,6 +60,7 @@ import {
 import { addMissingStyleImagePlaceholder } from "@/lib/mapStyleImages"
 import type { EventRow } from "@/lib/types"
 import type { FilterStore } from "@/stores/createFilterStore"
+import { useMapFocusStore } from "@/stores/mapFocusStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { FilterRail } from "./FilterRail"
 import { PaneStatus } from "./PaneStatus"
@@ -141,12 +148,18 @@ function EventMarker({
   lon,
   location,
   onSelect,
+  focusActive,
+  isFocused,
 }: {
   ev: VisibleEvent
   lat: number
   lon: number
   location?: MarkerLocationContext
   onSelect: (ev: VisibleEvent, location?: MarkerLocationContext) => void
+  /** True while some hazard holds the map's focus. */
+  focusActive: boolean
+  /** True when this marker is the one holding it. */
+  isFocused: boolean
 }) {
   const style = markerStyle(ev)
   const size = style.size
@@ -163,7 +176,12 @@ function EventMarker({
       }}
     >
       <div
-        style={{ width: HIT_SIZE, height: HIT_SIZE, cursor: "pointer", opacity: ev.opacity }}
+        style={{
+          width: HIT_SIZE,
+          height: HIT_SIZE,
+          cursor: "pointer",
+          opacity: focusOpacity(ev.opacity, focusActive, isFocused),
+        }}
         className="relative grid place-items-center"
         title={ev.ongoing ? "Ongoing — still live in its source feed, older than the window" : undefined}
       >
@@ -792,10 +810,32 @@ export function MapPane({
    *  so the paint keeps it full-opacity at every zoom — it must not fade away
    *  while its detail card is open, even fully zoomed out (#218). Cyclones also
    *  expand from track line to full cones when selected. */
-  const { ambient: ambientHazardFootprints, selected: selectedHazardFootprints } = useMemo(
+  const { ambient: allAmbientHazardFootprints, selected: selectedHazardFootprints } = useMemo(
     () => hazardFootprintCollections(positioned, selectedEventId),
     [positioned, selectedEventId],
   )
+
+  /** Focus mode: clicking a hazard isolates it. Its neighbours keep their
+   *  markers — faded, so the reader can still see that they are there — but
+   *  drop every contour, ring and extent, which is what was covering the
+   *  footprint the reader actually opened. Escape ends it (SplitLayout owns
+   *  that key), and the detail card stays open when it does: focus is how the
+   *  map is drawn, not what is being read. */
+  const focusedEventId = useMapFocusStore((s) => s.focusedEventId)
+  const focus = useMapFocusStore((s) => s.focus)
+  const clearFocus = useMapFocusStore((s) => s.clearFocus)
+  const focusActive = focusedEventId !== null
+  const ambientHazardFootprints = useMemo(
+    () => ambientFootprints(allAmbientHazardFootprints, focusActive),
+    [allAmbientHazardFootprints, focusActive],
+  )
+  const dimMultiplier = focusLayerOpacity(focusActive)
+
+  //: Closing the card puts the map back. A focused hazard with nothing open
+  //: would leave the reader looking at a faded world and no way to read why.
+  useEffect(() => {
+    if (selectedEventId === null && focusActive) clearFocus()
+  }, [clearFocus, focusActive, selectedEventId])
 
   //: Live aircraft (#873). Presence, not evidence: fetched, drawn, discarded.
   //: Nothing here enters the event counts, the filters, the clustering or the
@@ -849,8 +889,13 @@ export function MapPane({
       // Bubble up to the shared centred detail overlay (#207); the map no longer
       // renders its own popup. Selecting a cyclone also expands its footprint.
       onSelectEvent(ev, location)
+      // A hazard takes the map with it; anything else hands the map back,
+      // because a news dot has no footprint to isolate and leaving the last
+      // hazard focused would fade the map around a row that did not ask for it.
+      if (focusable(ev)) focus(ev.id)
+      else clearFocus()
     },
-    [onSelectEvent],
+    [clearFocus, focus, onSelectEvent],
   )
 
   /** Cluster click exposes every unique story without changing camera state.
@@ -1189,6 +1234,10 @@ export function MapPane({
               "circle-color": "rgba(96, 165, 250, 0.35)",
               "circle-stroke-color": "rgba(147, 197, 253, 0.9)",
               "circle-stroke-width": 1,
+              //: Clusters are news, so they are never the focused hazard —
+              //: they only ever recede while one is being read.
+              "circle-opacity": dimMultiplier,
+              "circle-stroke-opacity": dimMultiplier,
               "circle-radius": [
                 "step",
                 ["get", "point_count"],
@@ -1234,6 +1283,9 @@ export function MapPane({
               //: is drawn solid.
               "circle-opacity": [
                 "*",
+                //: Focus scales the whole expression rather than replacing it,
+                //: so age and precision still say what they said before.
+                dimMultiplier,
                 ["coalesce", ["get", "opacity"], 1],
                 [
                   "match",
@@ -1264,6 +1316,7 @@ export function MapPane({
               ],
               "circle-stroke-color": ["get", "color"],
               "circle-stroke-width": 1,
+              "circle-stroke-opacity": dimMultiplier,
             }}
           />
         </Source>
@@ -1276,6 +1329,8 @@ export function MapPane({
             lon={lon}
             location={location}
             onSelect={handleSelectMarker}
+            focusActive={focusActive}
+            isFocused={ev.id === focusedEventId}
           />
         ))}
         {typeof selectedAreaLat === "number" && typeof selectedAreaLon === "number" && (
