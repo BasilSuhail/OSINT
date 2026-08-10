@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   activeExclusions,
+  filtersAreNarrowed,
   filtersHideEverything,
   severityIsNarrowed,
   type FilterSnapshot,
@@ -11,8 +12,6 @@ function filters(over: Partial<FilterSnapshot> = {}): FilterSnapshot {
     sources: { NEWS: true, GDELT: true, CYBER: true },
     hazardTypes: { EQ: true, TC: true, FL: true },
     severity: [0, 1],
-    countries: [],
-    keyword: "",
     ...over,
   }
 }
@@ -37,23 +36,16 @@ describe("activeExclusions", () => {
     expect(activeExclusions(filters({ severity: [0, 0.5] }))).toEqual(["severity 0.00–0.50"])
   })
 
-  it("names countries and a keyword", () => {
-    expect(activeExclusions(filters({ countries: ["UA"] }))).toEqual(["1 country"])
-    expect(activeExclusions(filters({ countries: ["UA", "IL"] }))).toEqual(["2 countries"])
-    expect(activeExclusions(filters({ keyword: "  quake " }))).toEqual(["keyword “quake”"])
-  })
-
   it("lists every excluding filter, rail order", () => {
     expect(
       activeExclusions(
         filters({
           sources: { NEWS: false, GDELT: true, CYBER: true },
+          hazardTypes: { EQ: true, TC: false, FL: true },
           severity: [0.2, 0.9],
-          countries: ["UA"],
-          keyword: "flood",
         }),
       ),
-    ).toEqual(["1 layer off", "severity 0.20–0.90", "1 country", "keyword “flood”"])
+    ).toEqual(["1 layer off", "1 disaster type off", "severity 0.20–0.90"])
   })
 })
 
@@ -76,5 +68,17 @@ describe("filtersHideEverything", () => {
 
   it("stays quiet while anything is visible", () => {
     expect(filtersHideEverything(1, 7500)).toBe(false)
+  })
+})
+
+describe("filtersAreNarrowed", () => {
+  it("is false when every filter is at its default", () => {
+    expect(filtersAreNarrowed(filters())).toBe(false)
+  })
+
+  it("is true once anything is switched off or narrowed", () => {
+    expect(filtersAreNarrowed(filters({ sources: { NEWS: false, GDELT: true } }))).toBe(true)
+    expect(filtersAreNarrowed(filters({ hazardTypes: { EQ: false } }))).toBe(true)
+    expect(filtersAreNarrowed(filters({ severity: [0.4, 1] }))).toBe(true)
   })
 })

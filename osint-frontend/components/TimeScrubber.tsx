@@ -50,14 +50,18 @@ export function TimeScrubber({ useStore, windowEnd, panelOpen }: TimeScrubberPro
 
   //: The deck's handle, turned to face the bottom edge: it floats on the map
   //: *outside* the bar, never inside it, centred on the span the bar occupies
-  //: and sitting on its top edge. It keeps that one spot whether the bar is up
-  //: or down, so the control that brings the bar back is never somewhere new.
+  //: and sitting on its top edge. Put the bar away and the handle goes with it,
+  //: down onto the bottom edge of the screen — a control for something no
+  //: longer on screen should not keep the space that thing used to occupy.
   //: Square corners against the bar it moves, round corners toward the map,
   //: and the arrow points the way the bar will go.
   return (
     <div
       className={cn(
-        "pointer-events-none absolute bottom-3 left-[calc(var(--panel-width,0px)+1.5rem)] z-20 h-11",
+        "pointer-events-none absolute left-[calc(var(--panel-width,0px)+1.5rem)] z-20",
+        //: With the bar gone the strip has no height, so the handle hanging off
+        //: its top edge lands flush on the bottom of the screen.
+        hidden ? "bottom-0 h-0" : "bottom-3 h-11",
         panelOpen ? "right-[21.25rem]" : "right-20",
       )}
     >

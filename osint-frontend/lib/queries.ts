@@ -18,7 +18,6 @@ import type { PlaceTarget } from "@/stores/placeStore"
 import { sourceKeyForEvent, type EventRow, type HazardTypeKey, type ScoreRow } from "./types"
 import { hazardKind } from "./hazardSymbols"
 import { isPersistentActiveHazard } from "./hazardActivity"
-import { eventMatchesCountry } from "./countryMatching"
 import { mergeEventRows } from "./eventMerge"
 import type { FilterStore } from "@/stores/createFilterStore"
 
@@ -59,8 +58,6 @@ export function useEventsInWindow(
   const sources = useStore((s) => s.sources)
   const hazardTypes = useStore((s) => s.hazardTypes)
   const severity = useStore((s) => s.severity)
-  const countries = useStore((s) => s.countries)
-  const keyword = useStore((s) => s.keyword)
   const windowLengthMs = useStore((s) => s.windowLengthMs)
   const playing = useStore((s) => s.playing)
   const speed = useStore((s) => s.speed)
@@ -91,8 +88,6 @@ export function useEventsInWindow(
     const realNow = Date.now()
     const windowEnd = realNow - windowEndOffsetMs
     const windowStart = windowEnd - windowLengthMs
-    const kw = keyword.trim().toLowerCase()
-    const countrySet = new Set(countries)
 
     //: Newest fetched_at per source. A hazard that has ended drops out of its
     //: upstream feed and stops being re-upserted, which is the only signal that
@@ -120,11 +115,6 @@ export function useEventsInWindow(
         if (kind !== "other" && hazardTypes[kind as HazardTypeKey] === false) continue
       }
       if (ev.severity < severity[0] || ev.severity > severity[1]) continue
-      if (!eventMatchesCountry(ev, countrySet)) continue
-      if (kw) {
-        const hay = `${ev.keywords?.join(" ") ?? ""} ${ev.category} ${JSON.stringify(ev.payload)}`.toLowerCase()
-        if (!hay.includes(kw)) continue
-      }
       const occurredMs = +new Date(ev.occurred_at)
       // Only active, stateful hazards are persistent. Closed GDACS cyclones /
       // volcanoes and point-in-time hazards should obey the scrubber window.
@@ -149,7 +139,7 @@ export function useEventsInWindow(
       })
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }
-  }, [allEvents, sources, hazardTypes, severity, countries, keyword, windowLengthMs, windowEndOffsetMs])
+  }, [allEvents, sources, hazardTypes, severity, windowLengthMs, windowEndOffsetMs])
 }
 
 /** Server-side world stats for the status panel (#499).
