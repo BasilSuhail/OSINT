@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.stories.cluster import MIN_SHARED_TOKENS
 from app.stories.vectorize import build_idf, cosine, tokenize, vectorize
 
 
@@ -51,3 +52,47 @@ class TestCosine:
 
     def test_empty_vector_is_zero(self) -> None:
         assert cosine({}, {"quake": 1.0}) == 0.0
+
+
+class TestExplainerFormula:
+    """A stock headline formula is a slot, not a subject (#913).
+
+    "What we know so far" appears on eight headlines in a 72-hour window of
+    6,561, so document frequency reads it as one of the most discriminating
+    things in the corpus — `know` scored 7.016 against `earthquake` at 5.897.
+    Two explainers about unrelated events then share the heaviest tokens they
+    have, and the cluster that results is a bag of everything the formula was
+    used on that week.
+
+    These are function words, like the `says` / `live` / `report` already in
+    the list. Nothing in the world is ever about them.
+    """
+
+    def test_interrogative_words_are_dropped(self) -> None:
+        assert tokenize("What to Know About Iraq's Militias") == ["iraq", "militias"]
+
+    def test_explainer_headlines_about_different_events_cannot_reach_a_join(self) -> None:
+        """`far` survives — it is half of "far right" — so the two headlines
+        still share it. One token is below the two a join requires, which is
+        the guarantee that matters: the formula alone can no longer carry a
+        pair over the threshold."""
+        berlin = set(tokenize("Berlin Pride attack: What we know so far"))
+        japan = set(tokenize("Japan earthquake: What we know so far"))
+        assert len(berlin & japan) < MIN_SHARED_TOKENS
+
+    def test_the_same_event_still_survives_the_formula(self) -> None:
+        a = tokenize("Berlin Pride attack: What we know so far")
+        b = tokenize("What we know so far about the Berlin Pride ramming attack")
+        assert {"berlin", "pride", "attack"} <= set(a) & set(b)
+
+    def test_who_the_agency_is_not_a_stopword(self) -> None:
+        """81 headlines in one window carry `who`, and one of them is the
+        health agency reporting on an Ebola outbreak. Dropping it would cost a
+        subject to spare a pronoun."""
+        headline = "DRC's Ebola outbreak began months before it was declared, says WHO"
+        assert "who" in tokenize(headline)
+
+    def test_far_right_keeps_its_meaning(self) -> None:
+        """`far` was a candidate for removal — it is in the formula. It is also
+        half of a political label, so it stays."""
+        assert "far" in tokenize("Police urged to crack down on far right protesters")
