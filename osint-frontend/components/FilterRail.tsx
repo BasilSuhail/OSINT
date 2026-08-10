@@ -5,6 +5,8 @@ import {
   Activity,
   AlertTriangle,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ChevronsUpDown,
   Droplets,
   Flame,
@@ -39,6 +41,12 @@ import {
 import { hazardKind } from "@/lib/hazardSymbols"
 import { cameoLabel } from "@/lib/cameo"
 import { countryCodesForEvent } from "@/lib/countryMatching"
+import {
+  FULL_SEVERITY,
+  activeExclusions,
+  filtersHideEverything,
+  severityIsNarrowed,
+} from "@/lib/filterExclusions"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { IMAGERY_LAYERS, imageryDate } from "@/lib/imageryLayers"
@@ -195,6 +203,11 @@ export function FilterRail({
   const reset = useStore((s) => s.reset)
 
   const [countryOpen, setCountryOpen] = useState(false)
+  //: The rail can be put away entirely. Hovering the pane edge opens it, which
+  //: is convenient until the thing you want to look at is *under* it — the
+  //: strip covers a column of the map and re-opens the moment the cursor
+  //: passes. Hidden, only a small handle remains, and no hover reaches it.
+  const [hidden, setHidden] = useState(false)
 
   //: The backdrop reads the same clock the markers do (#875).
   const activeImagery = useImageryStore((s) => s.active)
@@ -267,6 +280,14 @@ export function FilterRail({
   }, [countryCounts])
 
   const paneTotal = paneEvents.length
+
+  //: Said in the panel rather than inferred from an empty map (#—, this PR).
+  const exclusions = useMemo(
+    () => activeExclusions({ sources, hazardTypes, severity, countries, keyword }),
+    [sources, hazardTypes, severity, countries, keyword],
+  )
+  const everythingHidden = filtersHideEverything(visibleTotal, paneTotal)
+  const narrowedSeverity = severityIsNarrowed(severity)
 
   /** Live count of pane-scoped events matching the current keyword across
    *  source/category/country/keywords/payload — the same fields the global
@@ -359,7 +380,7 @@ export function FilterRail({
   // 16 px is the size of the wider edge zone, plus a 2 px cushion for cursor
   // hot-spot offset.
   useEffect(() => {
-    if (open) return
+    if (open || hidden) return
     const PROXIMITY_PX = 18
     const handle = (e: MouseEvent) => {
       if (isLeft) {
@@ -372,7 +393,7 @@ export function FilterRail({
     return () => window.removeEventListener("mousemove", handle)
     // requestOpen reads `open`, refresh listener when state changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isLeft])
+  }, [open, hidden, isLeft])
 
   return (
     <div
@@ -388,11 +409,37 @@ export function FilterRail({
         }
       }}
     >
+      {/*: Put away: one handle, the width of a scrollbar, and the map has its
+          whole edge back. Deliberately a click and not a hover — the point of
+          hiding the rail is that passing the cursor over it does nothing. */}
+      {/*: Same handle as the deck's, mirrored: square corners against the pane
+          edge it sits on, round corners facing the map. One shape means one
+          gesture, wherever the reader meets it. */}
+      {hidden && (
+        <button
+          type="button"
+          aria-label="Show filters"
+          aria-expanded={false}
+          title="Show filters"
+          onClick={() => setHidden(false)}
+          className={cn(
+            "pointer-events-auto my-auto border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
+            isLeft ? "order-first rounded-l-md rounded-r-xl" : "order-last rounded-l-xl rounded-r-md",
+          )}
+        >
+          {isLeft ? (
+            <ChevronRight size={16} aria-hidden />
+          ) : (
+            <ChevronLeft size={16} aria-hidden />
+          )}
+        </button>
+      )}
+
       {/* Edge hover zone: a 16 px transparent column at the pane edge requests
        *  open the moment the cursor enters. Wider than before (was 6 px) so a
        *  cursor flicked into the viewport edge still lands on it; mouseenter
        *  is debounce-free so the open feels instant. */}
-      {!open && (
+      {!open && !hidden && (
         <div
           aria-hidden
           className={cn(
@@ -408,6 +455,7 @@ export function FilterRail({
        *  with the slider button + colored source dots) opens the rail too,
        *  not just the bare edge cushion. Lets the user mouse over the dots
        *  and have the panel slide out without precision-aiming the edge. */}
+      {!hidden && (
       <div
         className={cn(
           "pointer-events-auto flex w-11 flex-col items-center gap-2 rounded-2xl border border-white/10 bg-neutral-950/85 py-3 shadow-2xl shadow-black/60 backdrop-blur-xl",
@@ -480,10 +528,28 @@ export function FilterRail({
               </button>
             )
           })}
+        {/*: Put the rail away entirely. Last in the strip, under the toggles,
+            because it is the one control here that is not a filter. */}
+        <button
+          type="button"
+          aria-label="Hide the filter rail"
+          onClick={() => {
+            onOpenChange(false)
+            setHidden(true)
+          }}
+          className="mt-1 grid h-6 w-8 place-items-center rounded-md text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+        >
+          {isLeft ? (
+            <ChevronLeft className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+        </button>
       </div>
+      )}
 
       {/* Expanded panel */}
-      {open && (
+      {open && !hidden && (
         <div
           className={cn(
             "pointer-events-auto flex w-[280px] flex-col gap-4 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/85 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl",
@@ -494,6 +560,15 @@ export function FilterRail({
               <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
                 Map · {paneTotal.toLocaleString()} pane / {visibleTotal.toLocaleString()} in window
               </span>
+              {/*: What is being excluded, and by which control. Every filter
+                  here can empty the map, and the severity range can do it from
+                  one stray click on its track — which looks exactly like the
+                  map breaking. */}
+              {exclusions.length > 0 && (
+                <span className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+                  {exclusions.join(" · ")}
+                </span>
+              )}
             </div>
             <button
               type="button"
@@ -504,6 +579,21 @@ export function FilterRail({
               <X className="h-4 w-4" />
             </button>
           </div>
+
+          {/*: An empty map and a broken map look alike, so the one case that
+              is neither gets said out loud, with the way back attached. */}
+          {everythingHidden && (
+            <button
+              type="button"
+              onClick={reset}
+              className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-left font-mono text-[10px] uppercase tracking-wider text-amber-200/90 transition-colors hover:border-amber-400/70"
+            >
+              <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                filters hide all {paneTotal.toLocaleString()} events — reset
+              </span>
+            </button>
+          )}
 
           {/* Source toggles — every source on by default; click one to hide it
            *  (e.g. mute the quakes when they crowd the map). Select-all /
@@ -728,9 +818,28 @@ export function FilterRail({
               <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">
                 Severity
               </span>
-              <span className="font-mono text-[11px] text-neutral-300">
-                {severity[0].toFixed(2)} – {severity[1].toFixed(2)}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "font-mono text-[11px]",
+                    narrowedSeverity ? "text-amber-300/90" : "text-neutral-300",
+                  )}
+                >
+                  {severity[0].toFixed(2)} – {severity[1].toFixed(2)}
+                </span>
+                {/*: The track moves the nearest thumb wherever it is clicked,
+                    so this range narrows by accident more than by intent. One
+                    click puts it back without resetting anything else. */}
+                {narrowedSeverity && (
+                  <button
+                    type="button"
+                    onClick={() => setSeverity([...FULL_SEVERITY])}
+                    className="rounded px-1 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                  >
+                    all
+                  </button>
+                )}
+              </div>
             </div>
             <Slider
               value={severity}
