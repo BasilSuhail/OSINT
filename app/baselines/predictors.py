@@ -1,7 +1,12 @@
-"""Predictors layer — B0 random, B1 persistence, B2 expanding base rate.
+"""Predictors layer — B0 random, B1 persistence, B2 base rate, B3-B5 single
+domain, B6 composite.
 
-Each returns {(country, month): score in [0, 1]} for every panel cell. Scores
-at month t may use information from months <= t only.
+Each returns {(country, month): score} for every panel cell it can score.
+Scores at month t may use information from months <= t only.
+
+B0-B2 return values in [0, 1]. The domain and composite predictors return the
+panel's own z-scored signals, which are unbounded — AUROC and AUPR are rank
+statistics, so only the ordering matters and no rescaling is needed.
 """
 
 from __future__ import annotations
@@ -43,6 +48,51 @@ def score_base_rate(
         for n, (month, label) in enumerate(cells, start=1):
             running += label
             scores[(country, month)] = running / n
+    return scores
+
+
+#: The domains a single-domain baseline may be built from, and the panel
+#: column each one reads. Kept explicit so a typo raises instead of quietly
+#: scoring nothing, which would drop a contender out of the race unnoticed.
+DOMAIN_COLUMNS: dict[str, str] = {
+    "market": "signal_market",
+    "geopolitical": "signal_geopolitical",
+    "hazard": "signal_hazard",
+}
+
+
+def score_domain(
+    panel: Iterable[Mapping[str, Any]], *, domain: str
+) -> dict[tuple[str, datetime], float]:
+    """B3/B4/B5 — one domain's signal used alone as the forecast.
+
+    These are the baselines the headline claim is actually defined against:
+    the composite must beat each of them, not merely beat random. Without
+    them the only comparison available was against the no-skill trio, which
+    answers a different and much easier question.
+
+    No new arithmetic is involved. The composite z-scores each domain before
+    combining, and `app/panel/assemble.py` stores those components, so a
+    single-domain baseline is the composite deprived of its other inputs —
+    which is exactly the counterfactual the claim needs.
+
+    Rows where the domain has no value are omitted rather than scored zero: a
+    month with no market data is not a calm market month, and inventing a
+    reading would answer the question with evidence that does not exist.
+    """
+    column = DOMAIN_COLUMNS.get(domain)
+    if column is None:
+        raise ValueError(f"unknown composite domain: {domain!r}")
+
+    scores: dict[tuple[str, datetime], float] = {}
+    for row in panel:
+        value = row.get(column)
+        if value is None:
+            continue
+        value = float(value)
+        if value != value:  # NaN from pandas
+            continue
+        scores[(row["country"], row["month"])] = value
     return scores
 
 
