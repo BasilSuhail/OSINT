@@ -348,7 +348,7 @@ export function ChatEntry({
  * Silent when the audit has never completed — an empty frame reading "0
  * findings" would be a clean bill of health the system has not earned.
  */
-export function DataQualityLine({ audit }: { audit: AuditLatest | undefined }) {
+function DataQualityLine({ audit }: { audit: AuditLatest | undefined }) {
   const [open, setOpen] = useState(false)
   if (!audit || !audit.present || audit.findings_total === null) return null
 

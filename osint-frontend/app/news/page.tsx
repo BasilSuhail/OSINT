@@ -32,6 +32,10 @@ import {
 } from "@/lib/analytics"
 import { rankStories, relativeAge, type RankedStory } from "@/lib/newsRanking"
 import { StoryReader } from "@/components/news/StoryReader"
+import { FeedFilter, type FeedSort } from "@/components/news/FeedFilter"
+import { feedCategories, filterByCategory } from "@/lib/newsFeed"
+import { sortByActivity } from "@/lib/situation"
+import { TagChip } from "@/components/ListRow"
 import { AskDock } from "@/components/news/AskDock"
 
 const REFRESH_MS = 60_000
@@ -50,14 +54,21 @@ function Meta({ children }: { children: React.ReactNode }) {
   )
 }
 
-function StoryLine({
+/**
+ * A developing story: the page's one heavy row.
+ *
+ * These earn the space — multi-day, still gathering coverage, and the reason
+ * someone opened the page. The gist and the evidence for the pin are printed
+ * rather than hidden, because this is the section a reader stops at.
+ */
+function DevelopingLine({
   ranked,
   rank,
   now,
   active,
   onOpen,
 }: {
-  ranked: RankedStory<StoryRow>
+  ranked: RankedStory<DevelopingStory>
   rank: number
   now: number
   active: boolean
@@ -69,7 +80,7 @@ function StoryLine({
       type="button"
       onClick={onOpen}
       aria-current={active ? "true" : undefined}
-      className={`group grid w-full grid-cols-[2.5rem_1fr] gap-x-5 border-t border-neutral-800/70 py-6 text-left transition-colors first:border-t-0 ${
+      className={`group grid w-full grid-cols-[2rem_1fr] gap-x-4 border-t border-neutral-800/70 py-4 text-left transition-colors first:border-t-0 ${
         active ? "bg-neutral-900/40" : "hover:bg-neutral-900/25"
       }`}
     >
@@ -81,7 +92,7 @@ function StoryLine({
         {String(rank).padStart(2, "0")}
       </span>
       <span className="min-w-0">
-        <span className="mb-2 flex items-center gap-3">
+        <span className="mb-1 flex items-center gap-3">
           <Meta>{relativeAge(story.last_seen, now)}</Meta>
           {story.escalating === "escalating" && (
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-400/90">
@@ -91,23 +102,83 @@ function StoryLine({
           {story.category && <Meta>{story.category}</Meta>}
         </span>
         <span
-          className={`block font-serif text-[1.4rem] leading-[1.28] tracking-[-0.011em] transition-colors ${
+          className={`block font-serif text-[1.2rem] leading-[1.25] tracking-[-0.011em] transition-colors ${
             active ? "text-neutral-50" : "text-neutral-100 group-hover:text-white"
           }`}
         >
           {story.title}
         </span>
         {story.gist && (
-          <span className="mt-2 block max-w-[42rem] text-[0.95rem] leading-relaxed text-neutral-400">
+          <span className="mt-1 block max-w-[46rem] text-[0.9rem] leading-snug text-neutral-400">
             {story.gist}
           </span>
         )}
-        <span className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="mt-1.5 flex flex-wrap items-center gap-x-3">
           {reasons.map((reason) => (
             <Meta key={reason}>{reason}</Meta>
           ))}
         </span>
       </span>
+    </button>
+  )
+}
+
+/**
+ * A news row (#911).
+ *
+ * The console says the same thing — rank, clock, headline, tag — in two tight
+ * lines, and sixty of them fit in a panel a fifth of this width. The reading
+ * page was spending `py-6` and a 1.4rem serif on every one of them, so four
+ * stories filled a screen and the reader scrolled past air rather than news.
+ *
+ * Same shape as the console's row at reading size: one clock, one headline,
+ * one tag, no gist. The gist is a click away in the reader beside it, and a
+ * feed is for finding the story rather than for reading it.
+ */
+function NewsLine({
+  story,
+  rank,
+  now,
+  active,
+  onOpen,
+}: {
+  story: StoryRow
+  rank: number
+  now: number
+  active: boolean
+  onOpen: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-current={active ? "true" : undefined}
+      className={`group flex w-full items-baseline gap-3 border-t border-neutral-800/50 px-1 py-2 text-left transition-colors first:border-t-0 ${
+        active ? "bg-neutral-900/40" : "hover:bg-neutral-900/25"
+      }`}
+    >
+      <span
+        className={`w-6 shrink-0 text-right font-mono text-[10px] tabular-nums transition-colors ${
+          active ? "text-cyan-300" : "text-neutral-700 group-hover:text-neutral-500"
+        }`}
+      >
+        {rank}
+      </span>
+      <time
+        dateTime={story.last_seen}
+        title={new Date(story.last_seen).toLocaleString()}
+        className="w-14 shrink-0 font-mono text-[10px] tabular-nums text-neutral-500"
+      >
+        {relativeAge(story.last_seen, now)}
+      </time>
+      <span
+        className={`min-w-0 flex-1 text-[0.98rem] leading-snug transition-colors ${
+          active ? "text-neutral-50" : "text-neutral-200 group-hover:text-white"
+        }`}
+      >
+        {story.title}
+      </span>
+      <TagChip category={story.category} escalating={story.escalating} />
     </button>
   )
 }
@@ -138,6 +209,8 @@ function Section({
 
 export default function NewsPage() {
   const [openId, setOpenId] = useState<string | null>(null)
+  const [sort, setSort] = useState<FeedSort>("newest")
+  const [category, setCategory] = useState<string | null>(null)
   //: One clock for the whole render. Reading `Date.now()` per row would make
   //: two stories filed in the same minute disagree about how old they are.
   const [now, setNow] = useState(() => Date.now())
@@ -168,12 +241,27 @@ export default function NewsPage() {
 
   const pinnedIds = useMemo(() => new Set((developing ?? []).map((s) => s.id)), [developing])
   const pinned = useMemo(() => rankStories(developing ?? [], now), [developing, now])
+
   //: A pinned story is not repeated below; the page would otherwise rank the
   //: same thing twice and read as two stories.
-  const rest = useMemo(
-    () => rankStories((top ?? []).filter((s) => !pinnedIds.has(s.id)), now),
-    [top, pinnedIds, now],
+  const unpinned = useMemo(
+    () => (top ?? []).filter((s) => !pinnedIds.has(s.id)),
+    [top, pinnedIds],
   )
+  const categories = useMemo(() => feedCategories(unpinned), [unpinned])
+  //: A tag that stops appearing must not leave the feed empty and unexplained
+  //: — the chip goes, so the filter goes with it.
+  const activeCategory = category !== null && categories.includes(category) ? category : null
+  //: Newest first, because a feed of news that is not in time order is not a
+  //: feed. The composite rank still decides Developing above; down here the
+  //: reader asked what happened last, and the ranked order answered a
+  //: different question while looking like this one (#911).
+  const rest = useMemo(() => {
+    const narrowed = filterByCategory(unpinned, activeCategory)
+    return sort === "newest"
+      ? sortByActivity(narrowed)
+      : [...narrowed].sort((a, b) => b.owner_count - a.owner_count)
+  }, [unpinned, activeCategory, sort])
 
   const loading = developing === undefined && top === undefined
   const failed = developingError && topError
@@ -233,7 +321,7 @@ export default function NewsPage() {
                     note="multi-day, still gathering coverage"
                   >
                     {pinned.map((ranked, i) => (
-                      <StoryLine
+                      <DevelopingLine
                         key={ranked.story.id}
                         ranked={ranked}
                         rank={i + 1}
@@ -245,23 +333,40 @@ export default function NewsPage() {
                   </Section>
                 )}
 
-                <Section
-                  label="Ranked"
-                  note={`last ${TOP_HOURS}h · independent owners, reach, freshness`}
-                >
+                <Section label="News" note={`last ${TOP_HOURS}h`}>
+                  <FeedFilter
+                    sort={sort}
+                    onSort={setSort}
+                    categories={categories}
+                    category={activeCategory}
+                    onCategory={setCategory}
+                    showing={rest.length}
+                    total={unpinned.length}
+                  />
                   {rest.length === 0 ? (
-                    <p className="py-10 text-neutral-600">
-                      Nothing else in the window. An empty page is a finding, not an error.
-                    </p>
+                    /*: A filter that empties the list says so, and says how to
+                        undo it. A silent empty feed reads as a broken page. */
+                    activeCategory !== null ? (
+                      <button
+                        onClick={() => setCategory(null)}
+                        className="w-full rounded-lg border border-neutral-800 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500 transition-colors hover:text-neutral-300"
+                      >
+                        no {activeCategory} stories in this window — show all
+                      </button>
+                    ) : (
+                      <p className="py-10 text-neutral-600">
+                        Nothing else in the window. An empty page is a finding, not an error.
+                      </p>
+                    )
                   ) : (
-                    rest.map((ranked, i) => (
-                      <StoryLine
-                        key={ranked.story.id}
-                        ranked={ranked}
-                        rank={pinned.length + i + 1}
+                    rest.map((story, i) => (
+                      <NewsLine
+                        key={story.id}
+                        story={story}
+                        rank={i + 1}
                         now={now}
-                        active={openId === ranked.story.id}
-                        onOpen={() => setOpenId(ranked.story.id)}
+                        active={openId === story.id}
+                        onOpen={() => setOpenId(story.id)}
                       />
                     ))
                   )}
@@ -269,7 +374,8 @@ export default function NewsPage() {
 
                 <footer className="border-t border-neutral-800 py-8">
                   <Meta>
-                    ranking is stated, not felt — every row shows the counts it was ranked on
+                    developing is ranked on independent owners, reach and freshness — the news
+                    below it is in the order it arrived
                   </Meta>
                 </footer>
               </>
