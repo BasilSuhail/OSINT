@@ -22,21 +22,14 @@
  */
 
 import { useEffect, useRef, useState } from "react"
-import useSWR from "swr"
-import { fetchAuditLatest } from "@/lib/analytics"
-import { ChatEntry, DataQualityLine, useBrainChat } from "@/components/panels/SituationPanel"
+import { ChatEntry, useBrainChat } from "@/components/panels/SituationPanel"
 
-//: The audit runs once a night, so anything faster is polling for nothing.
-const AUDIT_REFRESH_MS = 15 * 60_000
 //: Within this many px of the bottom still counts as "pinned" for auto-scroll.
 const PIN_THRESHOLD_PX = 40
 
 export function AskDock({ onOpenStory }: { onOpenStory: (id: string) => void }) {
   const { messages, pending, ask, clear } = useBrainChat()
   const [question, setQuestion] = useState("")
-  const { data: audit } = useSWR("audit-latest", fetchAuditLatest, {
-    refreshInterval: AUDIT_REFRESH_MS,
-  })
 
   const scrollRef = useRef<HTMLDivElement>(null)
   //: Only auto-scroll while the reader sits at the bottom, so a streaming
@@ -71,11 +64,14 @@ export function AskDock({ onOpenStory }: { onOpenStory: (id: string) => void }) 
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-6 pb-6">
-      <div className="pointer-events-auto mx-auto w-full max-w-[62rem] rounded-2xl border border-neutral-800 bg-neutral-950/90 shadow-2xl shadow-black/60 backdrop-blur-xl">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-6 pb-5">
+      {/*: Narrower than the column and see-through: it floats over the news it
+          is asking about, and a solid bar the full width of the page reads as
+          a second page rather than as a thing resting on this one (#911). */}
+      <div className="pointer-events-auto mx-auto w-full max-w-[42rem] rounded-xl border border-neutral-700/40 bg-neutral-950/55 shadow-xl shadow-black/40 backdrop-blur-2xl">
         {messages.length > 0 && (
           <div className="border-b border-neutral-800/80">
-            <div className="flex items-baseline justify-between px-4 pt-3">
+            <div className="flex items-baseline justify-between px-3 pt-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-neutral-500">
                 ask — transcript
               </p>
@@ -91,7 +87,7 @@ export function AskDock({ onOpenStory }: { onOpenStory: (id: string) => void }) 
             <div
               ref={scrollRef}
               onScroll={onScroll}
-              className="max-h-[42vh] overflow-y-auto px-4 pb-2"
+              className="max-h-[38vh] overflow-y-auto px-3 pb-2"
             >
               <div className="divide-y divide-neutral-800/60">
                 {messages.map((m, i) => (
@@ -112,8 +108,7 @@ export function AskDock({ onOpenStory }: { onOpenStory: (id: string) => void }) 
           </div>
         )}
 
-        <div className="px-4 pb-3 pt-3">
-          <DataQualityLine audit={audit} />
+        <div className="p-2">
           <div className="flex gap-2">
             <input
               value={question}
@@ -124,12 +119,12 @@ export function AskDock({ onOpenStory }: { onOpenStory: (id: string) => void }) 
               placeholder="ask the brain…"
               disabled={pending}
               aria-label="Ask the brain"
-              className="flex-1 rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-2.5 text-[0.95rem] text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-700 focus:outline-none disabled:opacity-50"
+              className="flex-1 rounded-lg border border-neutral-700/40 bg-neutral-900/40 px-3 py-1.5 text-[0.875rem] text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none disabled:opacity-50"
             />
             <button
               onClick={submit}
               disabled={pending || !question.trim()}
-              className="rounded-xl border border-neutral-700 px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-300 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:opacity-40"
+              className="rounded-lg border border-neutral-700/40 px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:opacity-40"
             >
               {pending ? "…" : "ask"}
             </button>
