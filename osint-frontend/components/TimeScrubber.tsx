@@ -45,10 +45,11 @@ export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
   const [hidden, setHidden] = useState(false)
 
   //: The deck's handle, turned to face the bottom edge: it floats on the map
-  //: *outside* the bar — above it while the bar is up, sitting on the edge once
-  //: the bar is down — never inside it. Square corners against the bar it
-  //: moves, round corners toward the map, and the arrow points the way the bar
-  //: will go.
+  //: *outside* the bar, never inside it — in the gutter to the right of the
+  //: bar and level with it, so the handle keeps one position whether the bar
+  //: is up or down and the eye never has to hunt for it. Square corners
+  //: against the bar it moves, round corners toward the map, and the arrow
+  //: points the way the bar will go.
   const handle = (
     <button
       type="button"
@@ -56,10 +57,7 @@ export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
       title={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
       aria-label={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
       aria-expanded={!hidden}
-      className={cn(
-        "pointer-events-auto absolute right-20 z-20 grid place-items-center rounded-t-xl rounded-b-md border border-white/10 bg-neutral-950/85 px-6 py-1.5 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
-        hidden ? "bottom-0" : "bottom-[3.75rem]",
-      )}
+      className="pointer-events-auto absolute bottom-3 right-6 z-20 grid h-11 min-h-[44px] place-items-center rounded-l-md rounded-r-xl border border-white/10 bg-neutral-950/85 px-2 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100"
     >
       {hidden ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
     </button>

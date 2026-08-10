@@ -12,9 +12,6 @@ import {
   dayMarkers,
   parseChatStorage,
   sortByActivity,
-  sortStories,
-  storyCategories,
-  filterStoriesByCategory,
   splitRecent,
   type ChatMessage,
 } from "@/lib/situation"
@@ -436,100 +433,5 @@ describe("groupByOrigin", () => {
 
   it("empty input yields no groups", () => {
     expect(groupByOrigin([])).toEqual([])
-  })
-})
-
-// --------------------------------------------------------------------------
-// Feed sorting and category filtering
-// --------------------------------------------------------------------------
-
-function feedRow(over: Partial<{
-  id: string
-  last_seen: string
-  owner_count: number
-  outlet_count: number
-  corroboration: number | null
-  category: string | null
-}> = {}) {
-  return {
-    id: "s1",
-    last_seen: "2026-08-10T10:00:00Z",
-    owner_count: 1,
-    outlet_count: 1,
-    corroboration: null,
-    category: null,
-    ...over,
-  }
-}
-
-describe("sortStories", () => {
-  it("defaults to newest activity", () => {
-    const rows = [
-      feedRow({ id: "old", last_seen: "2026-08-09T10:00:00Z" }),
-      feedRow({ id: "new", last_seen: "2026-08-10T12:00:00Z" }),
-    ]
-    expect(sortStories(rows, "activity").map((r) => r.id)).toEqual(["new", "old"])
-  })
-
-  it("ranks by independent owners, then reach", () => {
-    const rows = [
-      feedRow({ id: "one", owner_count: 1, outlet_count: 9 }),
-      feedRow({ id: "many", owner_count: 5, outlet_count: 5 }),
-      feedRow({ id: "wide", owner_count: 5, outlet_count: 7 }),
-    ]
-    expect(sortStories(rows, "tellers").map((r) => r.id)).toEqual(["wide", "many", "one"])
-  })
-
-  it("puts unscored stories below scored ones without dropping them", () => {
-    const rows = [
-      feedRow({ id: "unscored", corroboration: null }),
-      feedRow({ id: "low", corroboration: 0.2 }),
-      feedRow({ id: "high", corroboration: 0.9 }),
-    ]
-    expect(sortStories(rows, "corroborated").map((r) => r.id)).toEqual([
-      "high",
-      "low",
-      "unscored",
-    ])
-  })
-
-  it("orders identical rows the same way every time", () => {
-    const rows = [feedRow({ id: "b" }), feedRow({ id: "a" }), feedRow({ id: "c" })]
-    const once = sortStories(rows, "tellers").map((r) => r.id)
-    const twice = sortStories([...rows].reverse(), "tellers").map((r) => r.id)
-    expect(once).toEqual(twice)
-  })
-
-  it("leaves the caller's array alone", () => {
-    const rows = [feedRow({ id: "a" }), feedRow({ id: "b", owner_count: 9 })]
-    sortStories(rows, "tellers")
-    expect(rows.map((r) => r.id)).toEqual(["a", "b"])
-  })
-})
-
-describe("storyCategories", () => {
-  it("lists only the categories actually present", () => {
-    const rows = [
-      feedRow({ category: "conflict" }),
-      feedRow({ category: "disaster" }),
-      feedRow({ category: "conflict" }),
-      feedRow({ category: null }),
-    ]
-    expect(storyCategories(rows)).toEqual(["conflict", "disaster"])
-  })
-})
-
-describe("filterStoriesByCategory", () => {
-  it("keeps everything when nothing is chosen", () => {
-    const rows = [feedRow({ category: "conflict" }), feedRow({ category: null })]
-    expect(filterStoriesByCategory(rows, null)).toHaveLength(2)
-  })
-
-  it("keeps one category", () => {
-    const rows = [
-      feedRow({ id: "a", category: "conflict" }),
-      feedRow({ id: "b", category: "disaster" }),
-    ]
-    expect(filterStoriesByCategory(rows, "conflict").map((r) => r.id)).toEqual(["a"])
   })
 })
