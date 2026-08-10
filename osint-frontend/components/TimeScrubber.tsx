@@ -44,28 +44,32 @@ export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
   //: not what the console is doing.
   const [hidden, setHidden] = useState(false)
 
-  const handleClasses =
-    "pointer-events-auto absolute z-20 border border-white/10 bg-neutral-950/85 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100"
+  //: The deck's handle, turned to face the bottom edge: it floats on the map
+  //: *outside* the bar — above it while the bar is up, sitting on the edge once
+  //: the bar is down — never inside it. Square corners against the bar it
+  //: moves, round corners toward the map, and the arrow points the way the bar
+  //: will go.
+  const handle = (
+    <button
+      type="button"
+      onClick={() => setHidden(!hidden)}
+      title={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
+      aria-label={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
+      aria-expanded={!hidden}
+      className={cn(
+        "pointer-events-auto absolute right-20 z-20 grid place-items-center rounded-t-xl rounded-b-md border border-white/10 bg-neutral-950/85 px-6 py-1.5 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
+        hidden ? "bottom-0" : "bottom-[3.75rem]",
+      )}
+    >
+      {hidden ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
+    </button>
+  )
 
-  if (hidden) {
-    return (
-      <button
-        type="button"
-        onClick={() => setHidden(false)}
-        title="Show the time scrubber"
-        aria-label="Show the time scrubber"
-        aria-expanded={false}
-        className={cn(
-          handleClasses,
-          "bottom-0 left-[calc(var(--panel-width,0px)+1.5rem)] rounded-t-xl rounded-b-md px-6 py-1.5",
-        )}
-      >
-        <ChevronUp size={16} aria-hidden />
-      </button>
-    )
-  }
+  if (hidden) return handle
 
   return (
+    <>
+      {handle}
     <div className="pointer-events-auto absolute bottom-3 left-[calc(var(--panel-width,0px)+1.5rem)] right-20 z-20 flex h-11 min-h-[44px] items-center gap-3 rounded-2xl border border-white/10 bg-neutral-950/85 px-3 shadow-2xl shadow-black/60 backdrop-blur-xl">
       <button
         type="button"
@@ -119,17 +123,7 @@ export function TimeScrubber({ useStore, windowEnd }: TimeScrubberProps) {
           {isLive ? "● live" : "○ scrubbing"}
         </span>
       </div>
-
-      <button
-        type="button"
-        onClick={() => setHidden(true)}
-        title="Hide the time scrubber"
-        aria-label="Hide the time scrubber"
-        aria-expanded
-        className="-mr-1 grid h-8 w-6 shrink-0 place-items-center rounded-md text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
-      >
-        <ChevronDown size={16} aria-hidden />
-      </button>
     </div>
+    </>
   )
 }
