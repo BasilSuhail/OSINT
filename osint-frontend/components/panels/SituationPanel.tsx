@@ -38,6 +38,7 @@ import {
   type StorySort,
   type ChatMessage,
 } from "@/lib/situation"
+import { developingState } from "@/lib/developing"
 
 const NARRATIVE_REFRESH_MS = 5 * 60_000
 const STORIES_REFRESH_MS = 60_000
@@ -159,21 +160,30 @@ function DevelopingBlock({
   const [showAll, setShowAll] = useState(false)
   //: Silence means "nothing qualifies", which is itself the finding. It must
   //: not also mean "the request failed" — those looked identical on screen for
-  //: as long as the fetch was 422ing (#713).
-  if (failed) {
+  //: as long as the fetch was 422ing (#713). It must not mean "delete what is
+  //: already on screen" either: a failing refresh still leaves the last good
+  //: stories in hand, and blanking a populated slot over one blip throws away
+  //: data the panel is holding (#898). The rule lives in `developingState` so
+  //: the suite can hold it without rendering anything.
+  const state = developingState(stories.length, failed)
+  if (state === "hidden") return null
+  if (state === "unavailable") {
     return (
       <div className="mb-2 border-b border-neutral-800 pb-2 font-mono text-[9px] uppercase tracking-widest text-red-400/80">
         developing — unavailable
       </div>
     )
   }
-  if (stories.length === 0) return null
   const visible = showAll ? stories : stories.slice(0, DEVELOPING_COLLAPSED)
   const hidden = stories.length - visible.length
   return (
     <div className="mb-2 border-b border-neutral-800 pb-2">
-      <div className="mb-1 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
-        developing
+      <div className="mb-1 flex items-baseline gap-2 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
+        <span>developing</span>
+        {/*: Named, not hidden: these are the stories the panel last managed to
+            fetch, and it is currently failing to refresh them. One word is the
+            difference between stale data and a lie. */}
+        {state === "stale" ? <span className="text-red-400/80">stale — retrying</span> : null}
       </div>
       {visible.map((s) => (
         <button
