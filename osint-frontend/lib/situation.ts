@@ -279,3 +279,65 @@ export function parseChatStorage(raw: string | null): ChatMessage[] {
     draft: false,
   }))
 }
+
+/** How the feed is ordered. The default is what the card has always done. */
+export type StorySort = "activity" | "tellers" | "corroborated"
+
+export const STORY_SORTS: { key: StorySort; label: string; hint: string }[] = [
+  { key: "activity", label: "newest", hint: "most recent filing first" },
+  { key: "tellers", label: "tellers", hint: "most independent owners first" },
+  { key: "corroborated", label: "corroborated", hint: "highest corroboration first" },
+]
+
+interface SortableStory {
+  id: string
+  last_seen: string
+  owner_count: number
+  outlet_count: number
+  corroboration: number | null
+  category: string | null
+}
+
+/**
+ * Order the feed.
+ *
+ * Activity is the live-feed order the card was built on and stays the default:
+ * a surface being watched should move when the world does. The other two answer
+ * questions recency cannot — who is telling this, and how much of it is stood
+ * up — and both are read straight off the row, so the order can be checked
+ * against what the row says.
+ *
+ * Ties always fall back to activity and then to id: the same window must render
+ * the same order twice, or the list cannot be read at all.
+ */
+export function sortStories<T extends SortableStory>(rows: T[], mode: StorySort): T[] {
+  const byActivity = (a: T, b: T) => b.last_seen.localeCompare(a.last_seen)
+  const stable = (a: T, b: T) => byActivity(a, b) || a.id.localeCompare(b.id)
+  if (mode === "activity") return [...rows].sort(stable)
+  if (mode === "tellers") {
+    return [...rows].sort(
+      (a, b) => b.owner_count - a.owner_count || b.outlet_count - a.outlet_count || stable(a, b),
+    )
+  }
+  //: An unscored story sorts below every scored one but is never removed —
+  //: corroboration is evidence, and its absence is not a verdict (#449).
+  return [...rows].sort(
+    (a, b) => (b.corroboration ?? -1) - (a.corroboration ?? -1) || stable(a, b),
+  )
+}
+
+/** Categories actually present in the feed, in a fixed order. */
+export function storyCategories<T extends { category: string | null }>(rows: T[]): string[] {
+  const seen = new Set<string>()
+  for (const row of rows) if (row.category) seen.add(row.category)
+  return [...seen].sort((a, b) => a.localeCompare(b))
+}
+
+/** Keep one category. `null` keeps everything, which is the default. */
+export function filterStoriesByCategory<T extends { category: string | null }>(
+  rows: T[],
+  category: string | null,
+): T[] {
+  if (category === null) return rows
+  return rows.filter((row) => row.category === category)
+}

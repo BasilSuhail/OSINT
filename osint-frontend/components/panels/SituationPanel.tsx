@@ -29,9 +29,13 @@ import {
   chatReducer,
   dayMarkers,
   excludePinned,
+  filterStoriesByCategory,
   parseChatStorage,
-  sortByActivity,
+  sortStories,
+  storyCategories,
   splitRecent,
+  STORY_SORTS,
+  type StorySort,
   type ChatMessage,
 } from "@/lib/situation"
 
@@ -50,6 +54,90 @@ const STALE_MS = 40 * 60_000
 const CHAT_STORAGE_KEY = "brain-chat-v1"
 //: Within this many px of the bottom still counts as "pinned" for auto-scroll.
 const PIN_THRESHOLD_PX = 40
+
+/**
+ * Order and category for the feed below.
+ *
+ * Two rows of chips rather than dropdowns: the whole point is that the reader
+ * can see what the list is doing without opening anything, and a closed select
+ * hides its own state. The count on the right is the honest part — it says how
+ * many of the window's stories the current choice is showing.
+ */
+function FeedControls({
+  sort,
+  onSort,
+  categories,
+  category,
+  onCategory,
+  showing,
+  total,
+}: {
+  sort: StorySort
+  onSort: (mode: StorySort) => void
+  categories: string[]
+  category: string | null
+  onCategory: (category: string | null) => void
+  showing: number
+  total: number
+}) {
+  if (total === 0) return null
+  const chip = (on: boolean) =>
+    `rounded-md px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide transition-colors ${
+      on
+        ? "bg-neutral-800 text-neutral-100"
+        : "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+    }`
+  return (
+    <div className="mb-2 flex flex-col gap-1 border-b border-neutral-800 pb-2">
+      <div className="flex items-center gap-1">
+        <span className="mr-0.5 font-mono text-[9px] uppercase tracking-wide text-neutral-600">
+          sort
+        </span>
+        {STORY_SORTS.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            title={option.hint}
+            aria-pressed={sort === option.key}
+            onClick={() => onSort(option.key)}
+            className={chip(sort === option.key)}
+          >
+            {option.label}
+          </button>
+        ))}
+        <span className="ml-auto font-mono text-[9px] tabular-nums text-neutral-600">
+          {showing === total ? `${total}` : `${showing}/${total}`}
+        </span>
+      </div>
+      {categories.length > 1 ? (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="mr-0.5 font-mono text-[9px] uppercase tracking-wide text-neutral-600">
+            show
+          </span>
+          <button
+            type="button"
+            aria-pressed={category === null}
+            onClick={() => onCategory(null)}
+            className={chip(category === null)}
+          >
+            all
+          </button>
+          {categories.map((name) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={category === name}
+              onClick={() => onCategory(category === name ? null : name)}
+              className={chip(category === name)}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 /**
  * The pinned slot (#449): multi-day international stories still gathering
@@ -442,6 +530,10 @@ export function SituationPanel() {
   })
   const openStory = useStoryDetailStore((s) => s.openStory)
   const [showOlder, setShowOlder] = useState(false)
+  //: Session state, not a stored preference: the card opens on the live order
+  //: every time, and a reader who changed it did so for the question they had.
+  const [sort, setSort] = useState<StorySort>("activity")
+  const [category, setCategory] = useState<string | null>(null)
   const [question, setQuestion] = useState("")
   const { messages, pending, ask, clear } = useBrainChat()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -480,15 +572,23 @@ export function SituationPanel() {
   const createdAt = data?.created_at ? new Date(data.created_at).getTime() : 0
   const stale = !data?.present || Date.now() - createdAt > STALE_MS
   const developing = pinned ?? []
-  const sorted = excludePinned(
-    sortByActivity(stories ?? []),
-    developing.map((s) => s.id),
-  )
-  const { recent, older } = splitRecent(sorted)
+  //: Order and category are the reader's, not the card's. The feed's own
+  //: order (newest first) stays the default because a surface being watched
+  //: should move when the world does; the other orders answer questions
+  //: recency cannot, and every one of them is checkable against the row.
+  const unpinned = excludePinned(stories ?? [], developing.map((s) => s.id))
+  const categories = storyCategories(unpinned)
+  //: A category that stops appearing must not leave the feed empty and
+  //: unexplained — the chip goes, so the filter goes with it.
+  const activeCategory = category !== null && categories.includes(category) ? category : null
+  const sorted = sortStories(filterStoriesByCategory(unpinned, activeCategory), sort)
+  //: Day markers only mean anything while the list is in day order.
+  const { recent, older } =
+    sort === "activity" ? splitRecent(sorted) : { recent: sorted, older: [] as typeof sorted }
   //: A quiet spell must not blank the card — with nothing recent, show all.
   const rows = showOlder || recent.length === 0 ? sorted : recent
   const hiddenCount = sorted.length - rows.length
-  const markers = dayMarkers(rows)
+  const markers = sort === "activity" ? dayMarkers(rows) : rows.map(() => null)
 
   return (
     <div className="flex h-full flex-col text-neutral-100">
@@ -515,6 +615,27 @@ export function SituationPanel() {
           onOpen={openStory}
         />
         <ContestedBlock story={(contested ?? [])[0]} onOpen={openStory} />
+
+        <FeedControls
+          sort={sort}
+          onSort={setSort}
+          categories={categories}
+          category={activeCategory}
+          onCategory={setCategory}
+          showing={rows.length}
+          total={unpinned.length}
+        />
+
+        {/*: A filter that empties the list says so, and says how to undo it.
+            A silent empty feed reads as a broken card. */}
+        {rows.length === 0 && unpinned.length > 0 ? (
+          <button
+            onClick={() => setCategory(null)}
+            className="w-full rounded-lg border border-neutral-800 py-2 font-mono text-[10px] uppercase tracking-wide text-neutral-500 hover:text-neutral-300"
+          >
+            no {activeCategory} stories in this window — show all
+          </button>
+        ) : null}
 
         {rows.length > 0 ? (
           <div className="flex flex-col divide-y divide-neutral-800/60">
