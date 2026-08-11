@@ -55,3 +55,44 @@ export function ageLabel(fetchedAt: string, nowMs: number): string {
   const minutes = Math.round(seconds / 60)
   return `as of ${minutes}m ago`
 }
+
+/** The name a listener would hear first, falling back the way the transponder
+ *  degrades: callsign, then registration, then the ICAO hex it always sends. */
+export function aircraftTitle(a: PresenceAircraft): string {
+  const callsign = a.callsign?.trim()
+  if (callsign) return callsign
+  const registration = a.registration?.trim()
+  if (registration) return registration
+  const hex = a.hex?.trim()
+  if (hex) return hex.toUpperCase()
+  return "Unknown aircraft"
+}
+
+/**
+ * What the aircraft is currently transmitting, as label/value lines.
+ *
+ * Fields the transponder never sent are left out rather than rendered blank: an
+ * empty value reads as a measurement of nothing, when what happened is that
+ * nothing was measured. Zero feet is a real reading and says so in words,
+ * because "0 ft" beside a moving aircraft looks like a missing number.
+ */
+export function aircraftFacts(a: PresenceAircraft): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = []
+  const type = a.type?.trim()
+  if (type) out.push({ label: "type", value: type })
+  const registration = a.registration?.trim()
+  if (registration) out.push({ label: "registration", value: registration })
+  if (a.alt_ft != null) {
+    out.push({
+      label: "altitude",
+      value: a.alt_ft <= 0 ? "on the ground" : `${Math.round(a.alt_ft).toLocaleString()} ft`,
+    })
+  }
+  if (a.speed_kt != null) out.push({ label: "speed", value: `${Math.round(a.speed_kt)} kt` })
+  if (a.track != null) out.push({ label: "track", value: `${Math.round(a.track)}°` })
+  const squawk = a.squawk?.trim()
+  if (squawk) out.push({ label: "squawk", value: squawk })
+  const hex = a.hex?.trim()
+  if (hex) out.push({ label: "hex", value: hex.toUpperCase() })
+  return out
+}
