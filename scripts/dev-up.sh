@@ -196,6 +196,63 @@ ensure_ollama() {
 
 FRONTEND_PORT_DEFAULT=3000
 
+#: What the running dashboard was started with. Without it a mode change would
+#: find a live process, report it as satisfying the request, and keep serving
+#: the previous mode (#928).
+#:
+#: The bind address is not enough on its own. `NEXT_PUBLIC_API_URL` is compiled
+#: in at start, so a share on one network and a share on the next — same bind,
+#: different address — would reuse a dashboard pointing at an address that no
+#: longer exists, and fail as an empty console rather than as an error.
+FRONTEND_MODE_FILE="logs/frontend.mode"
+
+frontend_mode_signature() {
+  printf '%s %s' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}"
+}
+
+env_value() { # key — the value in .env, if .env sets one
+  [ -f .env ] || return 0
+  sed -n "s/^$1=//p" .env | tail -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
+apply_network_mode() {
+  # Closed unless sharing was asked for (#928). The derivation — bind address,
+  # CORS origins, and the API URL compiled into the browser bundle, which must
+  # name an address the *guest* can resolve — lives in app/devx/lan_share.py
+  # with its tests. This function only chooses a mode and evals the result.
+  local mode="locked"
+  if [ "${LAN_SHARE:-0}" = "1" ]; then
+    mode="share"
+  fi
+
+  if [ ! -x .venv/bin/python ]; then
+    if [ "$mode" = "share" ]; then
+      echo "Sharing needs the Python environment (.venv). Run: make install" >&2
+      exit 1
+    fi
+    # Locked is two constants, so a missing venv must never stop the safe path.
+    export API_BIND=127.0.0.1 FRONTEND_BIND=127.0.0.1
+    return
+  fi
+
+  # Whatever .env configures stays configured: share mode adds the guest's
+  # origin to the list rather than replacing it.
+  export API_CORS_ORIGINS="${API_CORS_ORIGINS:-$(env_value API_CORS_ORIGINS)}"
+  export API_PORT="${API_PORT:-$(env_value API_PORT)}"
+  export FRONTEND_PORT="${FRONTEND_PORT:-$FRONTEND_PORT_DEFAULT}"
+
+  local exports
+  if ! exports="$(.venv/bin/python -m app.devx.lan_share "$mode" 2>logs/lan-share.err)"; then
+    echo "  $(tail -n1 logs/lan-share.err 2>/dev/null)" >&2
+    if [ "$mode" = "share" ]; then
+      exit 1
+    fi
+    export API_BIND=127.0.0.1 FRONTEND_BIND=127.0.0.1
+    return
+  fi
+  eval "$exports"
+}
+
 frontend_listener_port() {
   local pid="${1:-}"
   if [ -z "$pid" ]; then
@@ -238,6 +295,13 @@ sync_repo() {
 
 echo "→ checkout"
 sync_repo
+
+apply_network_mode
+if [ "$API_BIND" = "127.0.0.1" ]; then
+  echo "→ network: this machine only"
+else
+  echo "→ network: shared on ${LAN_SHARE_URL:-the local network}"
+fi
 
 echo "→ stores (postgres + redis)"
 ensure_docker
@@ -317,21 +381,39 @@ spawn() { # label  cmd...
 spawn_frontend() {
   local pidfile="logs/frontend.pid"
   local pid
+  # Before the signature is taken, not after: the comparison and the recorded
+  # value have to be built from the same environment, or every run would see a
+  # mismatch and restart a dashboard that was already correct.
+  load_frontend_public_env
   pid="$(frontend_pid || true)"
   if [ -n "$pid" ]; then
-    local port
-    port="$(frontend_listener_port "$pid")"
-    if [ -z "$port" ]; then
-      port="$FRONTEND_PORT_DEFAULT"
+    local running_mode wanted_mode
+    running_mode="$(cat "$FRONTEND_MODE_FILE" 2>/dev/null || true)"
+    wanted_mode="$(frontend_mode_signature)"
+    if [ "$running_mode" = "$wanted_mode" ]; then
+      local port
+      port="$(frontend_listener_port "$pid")"
+      if [ -z "$port" ]; then
+        port="$FRONTEND_PORT_DEFAULT"
+      fi
+      echo "  frontend already running (pid $pid on :$port)"
+      echo "$pid" >"$pidfile"
+      return
     fi
-    echo "  frontend already running (pid $pid on :$port)"
-    echo "$pid" >"$pidfile"
-    return
+
+    # Up on the wrong interface. `next dev` cannot be rebound in place, and the
+    # API URL in its bundle is fixed at start, so this has to be a restart.
+    echo "  frontend restarting (${running_mode:-unknown} → ${wanted_mode})"
+    kill "$pid" 2>/dev/null || true
+    # `next dev` supervises a child server, and the sweep in frontend_pid finds
+    # that child once the parent is gone. Stop both or the restart is a no-op.
+    pkill -f "next-server" 2>/dev/null || true
+    rm -f "$pidfile" "$FRONTEND_MODE_FILE"
   fi
 
-  load_frontend_public_env
-  nohup bash -lc "cd osint-frontend && pnpm dev" >"logs/frontend.log" 2>&1 &
+  nohup bash -lc "cd osint-frontend && pnpm dev -H '$FRONTEND_BIND'" >"logs/frontend.log" 2>&1 &
   echo $! >"$pidfile"
+  frontend_mode_signature >"$FRONTEND_MODE_FILE"
   echo "  frontend started (pid $!) → logs/frontend.log"
 }
 
@@ -436,3 +518,13 @@ if [ "$frontend_ok" -ne 1 ]; then
 fi
 
 printf "\nApp is up.\n\nDashboard: http://localhost:%s\nAPI health: http://localhost:8000/health\nLogs: make logs\n\nStop later with: make stop\nFully off later with: make off\n" "$frontend_port"
+
+if [ "$API_BIND" = "127.0.0.1" ]; then
+  printf "\nReachable from this machine only. Share it with: make share\n"
+else
+  # Say plainly what is open and to whom. A share the operator forgets is
+  # the failure #928 exists to prevent, so the way back is on the screen.
+  printf "\nOpen to this network — anyone on it can use the console, with no password.\n"
+  printf "Hand over: %s\n" "${LAN_SHARE_URL:-http://$(hostname):$frontend_port}"
+  printf "Close it again with: make up\n"
+fi

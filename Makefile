@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: severity-grade severity-audit severity-agreement severity-bench within-eval up down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: severity-grade severity-audit severity-agreement severity-bench within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 # ── The three commands ──────────────────────────────────────────────────────
 # Everything else below is either an alias kept for muscle memory or a
@@ -11,6 +11,9 @@ OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
 up:  ## Start everything: Docker stores, backend, frontend, Ollama
 	@bash scripts/dev-up.sh
+
+share:  ## Start everything, reachable from the local network (no password)
+	@LAN_SHARE=1 bash scripts/dev-up.sh
 
 down:  ## Stop everything, keep all data
 	@bash scripts/dev-down.sh

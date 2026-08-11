@@ -128,7 +128,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${API_PORT:-8000}:8000"
+      #: Loopback unless sharing was asked for (#928). #824 closed the stores
+      #: and left this one open, so the console and `POST /brain/ask` were
+      #: served to whatever network the laptop was attached to. `make share`
+      #: sets API_BIND=0.0.0.0 for that run only — see app/devx/lan_share.py.
+      - "${API_BIND:-127.0.0.1}:${API_PORT:-8000}:8000"
     depends_on:
       # Schema first: three services racing `alembic upgrade head` on boot is
       # how you get a half-applied migration.
