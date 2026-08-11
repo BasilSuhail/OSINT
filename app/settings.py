@@ -43,13 +43,22 @@ class Settings(BaseSettings):
     # The brain (#409) — a light always-warm-when-idle local model, separate
     # from the 4b nightly validator above. Localhost only.
     brain_enabled: bool = Field(default=True)
-    brain_model: str = Field(default="qwen2.5:1.5b-instruct-q4_K_M")
-    # Refuse to load the model unless at least this much RAM is free (Pi guard).
-    brain_min_free_mb: int = Field(default=1200)
+    # Moved off the 1.5b in #926. The tags it wrote were not merely sparse but
+    # wrong — a total solar eclipse filed as a disaster, a missile strike on a
+    # ship filed as a crime — and measurement said the model was the limit
+    # rather than the prompt: on the same hand-checked stories the 1.5b scored
+    # 3/7 and this scores 6/7, matching the 4b at roughly half its latency and
+    # a little over half its memory. Bigger buys nothing here.
+    brain_model: str = Field(default="llama3.2:3b")
+    # Refuse to load the model unless at least this much RAM is free (box
+    # guard). Measured resident at the num_ctx=8192 this code sends: the 1.5b
+    # took 1.53 GB and this takes 3.40 GB, so the old 1200 MB floor would have
+    # waved through a load with nowhere near room for it.
+    brain_min_free_mb: int = Field(default=3500)
     brain_keep_alive: str = Field(default="30m")
     # Q&A (#433): user asks run the 4b model per-ask and evict it right after
-    # (keep_alive="0") — the Pi never keeps two models resident. Narrative and
-    # enrichment stay on the warm 1.5b brain_model above.
+    # (keep_alive="0") — the box never keeps two models resident. Narrative and
+    # enrichment stay on the warm brain_model above.
     qa_model: str = Field(default="qwen3.5:4b-q4_K_M")
     qa_min_free_mb: int = Field(default=3800)
     # Semantic ask retrieval (#441): tiny local embedder, always keep_alive=0.

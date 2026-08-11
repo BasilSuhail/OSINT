@@ -46,7 +46,6 @@ from app.severity import agreement, news
 #: the gate still holds.
 CANDIDATES: tuple[str, ...] = (
     "qwen3.5:4b-q4_K_M",
-    "qwen2.5:1.5b-instruct-q4_K_M",
     "qwen3:1.7b",
     "gemma3:1b",
     "llama3.2:3b",

@@ -112,7 +112,7 @@ severity-bench:  ## Replay the human sheet through candidate graders (#646)
 validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
 	.venv/bin/python -m app.validator.run
 
-brain:  ## Run the brain narrate once — needs Ollama + qwen2.5:1.5b (#409)
+brain:  ## Run the brain narrate once — needs Ollama + llama3.2:3b (#409)
 	.venv/bin/python -m app.brain.run
 
 enrich:  ## Run one brain enrichment pass — gist + tags for new stories (#413)
