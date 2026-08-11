@@ -102,6 +102,21 @@ def test_share_honours_non_default_ports() -> None:
     assert "http://203.0.113.42:3001" in env["API_CORS_ORIGINS"].split(",")
 
 
+def test_share_names_the_host_the_dev_server_must_allow() -> None:
+    """The fourth setting that has to agree (#930).
+
+    `next dev` refuses `/_next/*` dev resources for any host that is not
+    localhost, so the dashboard reached the guest as a shell with a dead
+    websocket. The host goes to `allowedDevOrigins`, bare: no scheme, no port.
+    """
+    env = share_env("203.0.113.42")
+    assert env["LAN_SHARE_HOST"] == "203.0.113.42"
+
+
+def test_locked_allows_no_extra_dev_origin() -> None:
+    assert "LAN_SHARE_HOST" not in locked_env()
+
+
 def test_share_reports_the_url_to_hand_over() -> None:
     env = share_env("203.0.113.42", frontend_port=3000)
     assert env["LAN_SHARE_URL"] == "http://203.0.113.42:3000"
@@ -175,6 +190,17 @@ def test_dev_up_reuses_the_dashboard_only_when_the_whole_mode_matches() -> None:
     # comparison and the recorded value disagree and every run restarts.
     body = script.split("spawn_frontend() {", 1)[1]
     assert body.index("load_frontend_public_env") < body.index("frontend_mode_signature")
+
+
+def test_next_config_reads_the_shared_host() -> None:
+    """The derived value has to reach the setting it exists for (#930).
+
+    The parsing is tested next to the frontend code; what this pins is the
+    wiring, which is the half that was missing rather than wrong.
+    """
+    config = (ROOT / "osint-frontend" / "next.config.mjs").read_text()
+    assert "allowedDevOrigins" in config
+    assert "process.env.LAN_SHARE_HOST" in config
 
 
 def test_make_share_exists_and_does_not_persist_the_choice() -> None:

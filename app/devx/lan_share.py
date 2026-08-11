@@ -19,9 +19,9 @@ somewhere else". Share mode is a run-time environment variable, so a stack
 opened at home and restarted on another network comes back closed with no file
 to remember to change back.
 
-## Why three settings, not one
+## Why four settings, not one
 
-A guest device needs all three to agree, and any one of them alone produces a
+A guest device needs all four to agree, and any one of them alone produces a
 console that looks broken rather than one that says why:
 
 - `API_BIND` — the published bind address. Wrong, and the guest reaches
@@ -31,6 +31,13 @@ console that looks broken rather than one that says why:
 - `NEXT_PUBLIC_API_URL` — compiled into the bundle the guest downloads, so it
   must name an address the *guest* can resolve. The default
   `http://localhost:8000`, in a guest's browser, is the guest's own machine.
+- `LAN_SHARE_HOST` → `allowedDevOrigins` — `next dev` refuses its own
+  `/_next/*` dev resources for any host that is not localhost. Missing, and the
+  guest gets a page shell, a websocket retrying forever, and a map that never
+  initialises (#930).
+
+The fourth was missed the first time, which is the argument for deriving them
+together: one address in, everything that depends on it out.
 
 ## Why no credential
 
@@ -114,6 +121,11 @@ def share_env(
         "FRONTEND_BIND": ALL_INTERFACES,
         "NEXT_PUBLIC_API_URL": f"http://{ip}:{api_port}",
         "API_CORS_ORIGINS": ",".join(origins),
+        # `next dev` refuses its own /_next/* dev resources for any host that is
+        # not localhost, which reached the guest as a page shell with a dead
+        # websocket and a map that never initialised (#930). Bare host: the
+        # config wants no scheme and no port.
+        "LAN_SHARE_HOST": ip,
         "LAN_SHARE_URL": guest_origin,
     }
 
