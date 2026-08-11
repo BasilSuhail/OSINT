@@ -50,6 +50,7 @@ alias kept for muscle memory or a one-shot analysis task.
 | Command | What it does |
 |---------|--------------|
 | `make up` | Start everything: Docker stores, worker, beat, API, dashboard, Ollama |
+| `make share` | The same, reachable from the local network — see below |
 | `make down` | Stop everything, keep all data |
 | `make clear` | Remove regenerable junk: build caches, `__pycache__`, logs, Docker cruft |
 
@@ -61,6 +62,23 @@ and `make off` additionally quits Docker Desktop on macOS. `make logs` tails
 the background logs without stopping anything.
 
 Dashboard: **http://localhost:3000** · API health: `curl localhost:8000/health` → `{"status":"ok"}`.
+
+### Letting another device in
+
+`make up` binds the API and the dashboard to `127.0.0.1`: nothing on the
+network can reach either. `make share` starts the same stack open to the local
+network and prints the address to hand over. It sets three things that have to
+agree — the published bind address, the CORS origin list, and the API URL
+compiled into the browser bundle, which must name an address the *other*
+device can resolve — and it sets them for that run only. The next `make up` is
+closed again, with no file to remember to change back.
+
+Share mode adds no password. Anyone already on that network can use the console
+and spend model inference through `POST /brain/ask`, so it is for a network you
+trust, not a cafe. A shared secret would not help: the guest loads the
+dashboard, so `NEXT_PUBLIC_API_TOKEN` travels to them inside the bundle.
+`API_AUTH_TOKEN` (#824) still covers the different case of a stack deliberately
+published beyond one machine.
 
 Local dev keeps raw API pulls deliberately capped so the same data is not held
 at full size by Postgres, FastAPI, Next dev, browser state, and the map at once.
