@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import type { LocalAreaKind } from "@/lib/localMapSelection"
+import type { PresenceAircraft } from "@/lib/presence"
 import type { VisibleEvent } from "@/lib/queries"
 
 export interface EventSelection {
@@ -23,6 +24,10 @@ export interface EventSelection {
  */
 export type RightPaneEntity =
   | { kind: "event"; event: VisibleEvent; location?: MarkerLocationContext }
+  /** A live aircraft. Not an event and never stored, but a map click picked it
+   *  and a map click's answer belongs on the selection screen with every other
+   *  answer — not in the pop-up, which is where a *row in a list* goes. */
+  | { kind: "aircraft"; aircraft: PresenceAircraft; fetchedAt: string | null }
   /** A clicked map cluster / country news pile — a drillable list of events. */
   | { kind: "cluster"; label: string; selections: EventSelection[] }
   | {
@@ -39,6 +44,10 @@ export type RightPaneEntity =
 interface RightPaneModeState {
   entity: RightPaneEntity | null
   openEvent: (event: VisibleEvent, location?: MarkerLocationContext) => void
+  openAircraft: (aircraft: PresenceAircraft, fetchedAt: string | null) => void
+  /** Close only if an aircraft is what is showing: the live layer going away
+   *  must take its own card with it and leave every other selection alone. */
+  closeAircraft: () => void
   openCluster: (label: string, selections: EventSelection[]) => void
   openArea: (
     label: string,
@@ -59,6 +68,9 @@ interface RightPaneModeState {
 export const useRightPaneModeStore = create<RightPaneModeState>((set) => ({
   entity: null,
   openEvent: (event, location) => set({ entity: { kind: "event", event, location } }),
+  openAircraft: (aircraft, fetchedAt) => set({ entity: { kind: "aircraft", aircraft, fetchedAt } }),
+  closeAircraft: () =>
+    set((state) => (state.entity?.kind === "aircraft" ? { entity: null } : state)),
   openCluster: (label, selections) => set({ entity: { kind: "cluster", label, selections } }),
   openArea: (label, labelKind, lat, lon, radiusKm, selections) =>
     set({

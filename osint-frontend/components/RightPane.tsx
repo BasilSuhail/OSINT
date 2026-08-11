@@ -52,7 +52,7 @@ export function RightPane() {
               onSelectEvent={openEventDetail}
               onClose={closeEntity}
             />
-          ) : (
+          ) : entity.kind === "event" ? (
             <EventDetailCard
               event={entity.event}
               location={entity.location}
@@ -60,7 +60,7 @@ export function RightPane() {
               onClose={closeEntity}
               onSelectCountry={openPlace}
             />
-          )}
+          ) : null}
         </div>
       ) : (
         <div className="absolute inset-0">
