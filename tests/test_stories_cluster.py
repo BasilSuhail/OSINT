@@ -240,3 +240,87 @@ def test_two_shared_words_still_cluster() -> None:
     )
     assert len(result.new_stories) == 1
     assert {m["event_id"] for m in result.new_members} == {1, 2}
+
+
+def _member(event_id: int, story_id: int, title: str) -> dict:
+    return {"event_id": event_id, "story_id": story_id, "title": title}
+
+
+def test_two_disasters_in_different_countries_are_two_stories() -> None:
+    # The casualty formula is a headline shape, not a subject: "death toll
+    # rises to N" says the same words about every disaster on earth. Two
+    # quakes a hemisphere apart share every token but the place name, and the
+    # place name is the whole of the difference.
+    result = cluster_articles(
+        [
+            _article(1, "Death toll from Japan earthquake rises to 14 as search continues"),
+            _article(
+                2, "Death toll from Colombia earthquake rises to 14 as search goes on", minutes=5
+            ),
+        ],
+        existing=[],
+    )
+    assert len(result.new_stories) == 2
+
+
+def test_a_story_anchored_on_one_country_refuses_another() -> None:
+    # A running story about Japan does not get to collect Gaza, however alike
+    # the two headlines read.
+    existing = [
+        _member(1, 42, "Death toll from Japan earthquake rises to 14 as search continues"),
+        _member(2, 42, "Japan earthquake death toll rises to 30 as rescuers search rubble"),
+        _member(3, 42, "Death toll from earthquake in Japan rises to 34, rescuers continue"),
+    ]
+    result = cluster_articles(
+        [
+            _article(
+                4, "Death toll from Gaza strike rises to 34 as rescuers search rubble", minutes=30
+            )
+        ],
+        existing=existing,
+    )
+    assert all(m["story_id"] != 42 for m in result.new_members)
+
+
+def test_a_story_keeps_a_country_it_already_tells() -> None:
+    # A story genuinely about two countries must go on accepting both — the
+    # gate refuses a contradiction, never a continuation.
+    existing = [
+        _member(1, 7, "Spain beat Argentina to reach the World Cup final in Dallas"),
+        _member(2, 7, "Argentina and Spain prepare for the World Cup final"),
+        _member(3, 7, "World Cup final: Spain face Argentina"),
+    ]
+    result = cluster_articles(
+        [_article(4, "Spain beat Argentina 1-0 to win the World Cup final", minutes=30)],
+        existing=existing,
+    )
+    (member,) = result.new_members
+    assert member["story_id"] == 7
+
+
+def test_a_headline_naming_nowhere_is_not_blocked() -> None:
+    # Absence is not a contradiction. Most headlines name no country at all,
+    # and a gate that treated silence as a conflict would refuse the corpus.
+    existing = [
+        _member(1, 9, "Death toll from Japan earthquake rises to 14 as search continues"),
+        _member(2, 9, "Japan earthquake death toll rises to 30 as rescuers search rubble"),
+    ]
+    result = cluster_articles(
+        [_article(3, "Death toll rises to 30 as rescuers search rubble after quake", minutes=30)],
+        existing=existing,
+    )
+    (member,) = result.new_members
+    assert member["story_id"] == 9
+
+
+def test_a_story_naming_nowhere_blocks_nothing() -> None:
+    existing = [
+        _member(1, 11, "Central bank raises interest rates amid inflation fears"),
+        _member(2, 11, "Interest rates raised again as inflation fears persist"),
+    ]
+    result = cluster_articles(
+        [_article(3, "Japan raises interest rates amid inflation fears", minutes=30)],
+        existing=existing,
+    )
+    (member,) = result.new_members
+    assert member["story_id"] == 11
