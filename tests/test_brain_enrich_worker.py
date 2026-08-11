@@ -129,3 +129,60 @@ def test_enrich_embed_failure_never_fails_job(monkeypatch):
     result = enrich._enrich_body(now=now)
     assert result["enriched"] == 1
     assert result["embed_failed"] == 1
+
+
+def _factory_with_two_stories(now):
+    """A widely-told story whose latest filing is older than a singleton's."""
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, future=True)
+    with factory() as s:
+        for title, owners, age_minutes in (
+            ("Told by twenty owners", 20, 60),
+            ("Told once, filed a minute ago", 1, 1),
+        ):
+            story = StoryRow(
+                title=title,
+                first_seen=now - timedelta(hours=3),
+                last_seen=now - timedelta(minutes=age_minutes),
+                member_count=owners,
+                outlet_count=owners,
+                owner_count=owners,
+                method_version="stories-v1.0",
+            )
+            s.add(story)
+            s.flush()
+            event = EventRow(
+                source="gdelt",
+                source_event_id=f"e-{owners}",
+                occurred_at=now - timedelta(minutes=age_minutes),
+                fetched_at=now,
+                category="news",
+                payload={"title": title},
+            )
+            s.add(event)
+            s.flush()
+            s.add(StoryMemberRow(event_id=event.id, story_id=story.id, similarity=1.0))
+        s.commit()
+    return factory
+
+
+def test_the_budget_goes_to_the_widely_told_story_first(monkeypatch):
+    # The window holds thousands of single-filing stories against a few dozen
+    # big ones, so ordering on recency alone spent the batch on whatever
+    # arrived last and left the stories a reader opens with no tag (#926).
+    now = datetime.now(UTC)
+    factory = _factory_with_two_stories(now)
+    monkeypatch.setattr(enrich, "_session_factory", lambda: factory)
+    monkeypatch.setattr(enrich.gate, "should_run", lambda session, now=None: (True, "ok"))
+    monkeypatch.setattr(
+        enrich.client,
+        "generate_json",
+        lambda prompt: {"gist": "A summary.", "category": "conflict", "escalating": "no"},
+    )
+    result = enrich._enrich_body(now=now, batch_limit=1)
+    assert result["enriched"] == 1
+    with factory() as s:
+        story_id = s.execute(select(StoryGistRow.story_id)).scalar_one()
+        title = s.execute(select(StoryRow.title).where(StoryRow.id == story_id)).scalar_one()
+    assert title == "Told by twenty owners"

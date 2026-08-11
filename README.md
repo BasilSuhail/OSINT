@@ -582,8 +582,9 @@ enrichment reaches an already-open map (#762).
 
 # Chapter 4 — The brain
 
-The system has a small local brain: a light model (`qwen2.5:1.5b-instruct-q4_K_M`,
-~1 GB) that runs **only when the box has headroom** and narrates what is going on —
+The system has a small local brain: a light model (`llama3.2:3b`, ~3.4 GB
+resident at the 8k context this code sends) that runs **only when the box has
+headroom** and narrates what is going on —
 both the world signal and the pipeline itself.
 
 ### 4.1 Why it isn't always resident
@@ -616,7 +617,7 @@ Expected shape (`GET /brain/narrative/latest`):
 ```json
 {
   "present": true,
-  "model": "qwen2.5:1.5b-instruct-q4_K_M",
+  "model": "llama3.2:3b",
   "created_at": "2026-07-12T12:00:00+00:00",
   "payload": {
     "headline": "Border-clash coverage is the loudest signal; pipeline healthy.",
@@ -670,7 +671,7 @@ Answers reflow into short readable paragraphs rather than one wall of text
 ELI10 mode that spells out each inference step with its own label (#601/#603) —
 for when the terse answer moved too fast.
 
-**Model policy** (#413/#433): the 1.5b `brain_model` stays warm for the scheduled
+**Model policy** (#413/#433/#926): the 3b `brain_model` stays warm for the scheduled
 narrative and story enrichment above; every user ask (`/brain/ask` and
 `/brain/ask/stream`) runs the heavier 4b model per-call with `keep_alive=0`, so
 the 4b never lingers after an ask. The nightly validator reuses the same 4b
@@ -689,14 +690,14 @@ POST /brain/ask  {"question": "what is the most contested story?"}
 
 Phase C evaluated whether the validator's heavier 4b model was worth using for Q&A;
 the answer was yes — Q&A has run the 4b in production since #433. `make brain-qa-eval`
-remains the before/after measurement tool, comparing it with the 1.5b on identical
+remains the before/after measurement tool, comparing it with `brain_model` on identical
 retrieved contexts and writing `data/exports/brain-qa-model-eval.md` and `.json`.
 
 ### 4.6 Enriching new stories
 
 The nightly validator gives stories full claims once a night with the heavy 4b model.
 The brain adds a faster, lighter first-look: every ~20 minutes, on idle windows, the
-1.5b model gives each new story a one-line **gist** plus two tags — a **category**
+3b model gives each new story a one-line **gist** plus two tags — a **category**
 (`conflict`, `economy`, `disaster`, `politics`, `other`) and an **escalating** flag
 (`yes`, `no`, `unclear`). It reads only the story's own headlines and invents nothing;
 anything a small model returns off-vocabulary is coerced to `other` / `unclear`, so the
