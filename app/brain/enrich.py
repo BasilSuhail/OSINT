@@ -1,6 +1,6 @@
 """The brain's story enrichment (#413) — a light gist + two enum tags per story.
 
-Timely first-look from the 1.5b model on idle windows; complements the nightly
+Timely first-look from the 3b model on idle windows; complements the nightly
 4b claim extraction. No-fabrication: the gist describes only the supplied
 headlines, and since #514 that is enforced for figures rather than merely asked
 for — a gist carrying a number its headlines lack is retried once and then
@@ -163,11 +163,19 @@ def _enrich_body(*, now: datetime | None = None, batch_limit: int | None = None)
             return counters
 
         cutoff = now - timedelta(hours=WINDOW_HOURS)
+        #: Widely-told stories first, then the recent (#926). Ordered on
+        #: `last_seen` alone the budget went to whatever arrived last, and
+        #: what arrives last is overwhelmingly a story told once: the window
+        #: holds thousands of single-filing stories against a few dozen big
+        #: ones, so a singleton filed a minute ago outranks a story told by
+        #: twenty independent owners whose latest filing came an hour ago.
+        #: The stories a reader actually opens were the ones left untagged,
+        #: and the feed showed its biggest rows with no tag at all.
         stories = (
             session.execute(
                 select(StoryRow.id)
                 .where(StoryRow.last_seen >= cutoff)
-                .order_by(StoryRow.last_seen.desc())
+                .order_by(StoryRow.owner_count.desc(), StoryRow.last_seen.desc())
             )
             .scalars()
             .all()

@@ -17,7 +17,7 @@ FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-60}"
 DOCKER_WAIT_MESSAGE_EVERY="${DOCKER_WAIT_MESSAGE_EVERY:-10}"
 OLLAMA_WAIT_SECONDS="${OLLAMA_WAIT_SECONDS:-30}"
 # Matches settings.brain_model (env BRAIN_MODEL overrides both).
-OLLAMA_BRAIN_MODEL="${BRAIN_MODEL:-qwen2.5:1.5b-instruct-q4_K_M}"
+OLLAMA_BRAIN_MODEL="${BRAIN_MODEL:-llama3.2:3b}"
 
 load_frontend_public_env() {
   [ -f .env ] || return 0

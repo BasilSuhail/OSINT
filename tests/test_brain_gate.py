@@ -102,3 +102,16 @@ def test_heavy_job_active_true_for_other_job_same_freshness():
     session.add(JobRunRow(job="cluster", status="running", heartbeat_at=now))
     session.commit()
     assert gate.heavy_job_active(session, now=now) is True
+
+
+def test_the_ram_floor_leaves_room_for_the_model_it_guards():
+    # The floor and the model move together or the guard is decoration: it
+    # exists to refuse a load the box cannot hold, so it has to sit above what
+    # the configured model actually occupies. Measured resident at the
+    # num_ctx=8192 this code sends, llama3.2:3b takes 3.40 GB — the 1.5b it
+    # replaced took 1.53 GB, which the old 1200 MB floor was sized for (#926).
+    from app.settings import Settings
+
+    defaults = Settings()
+    assert defaults.brain_model == "llama3.2:3b"
+    assert defaults.brain_min_free_mb >= 3400
