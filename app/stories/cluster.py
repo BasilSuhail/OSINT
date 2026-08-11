@@ -2,16 +2,19 @@
 
 Pure functions. Existing assignments are never revisited: an article joins
 the best-matching story (existing or newly founded this run) when its cosine
-against the story centroid clears the threshold, else founds a new story.
-Deterministic in (occurred_at, event_id) order.
+against the story centroid clears the threshold and it does not contradict the
+story about where the news is, else founds a new story. Deterministic in
+(occurred_at, event_id) order.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.enrichment.geo_terms import find_isos
 from app.stories.independence import independent_owners
 from app.stories.vectorize import build_idf, cosine, tokenize, vectorize
 
@@ -38,6 +41,12 @@ MIN_CONTENT_TOKENS: int = 2
 #: the refused ones read as "who", "here", "tomorrow", "latest".
 MIN_SHARED_TOKENS: int = 2
 
+#: Share of a story's place-naming members that must name a country before it
+#: counts as one the story is about (#924). A single passing mention does not
+#: make a story a story about that country, so a lone reference is not allowed
+#: to hold the gate open; a third of them is a subject.
+PLACE_MIN_SHARE: float = 0.3
+
 
 def _is_substantial(tokens: list[str]) -> bool:
     """Whether a tokenized headline says enough to be clustered at all (#890)."""
@@ -58,13 +67,44 @@ class _Story:
     new_index: int | None
     centroid: dict[str, float]
     n: int
+    #: How often each country is named across the members' headlines, and how
+    #: many of those headlines named anywhere at all. Counted separately
+    #: because the share that matters is of the members that placed
+    #: themselves, not of the members — most headlines name nowhere, and
+    #: dividing by all of them would put every story below the threshold.
+    iso_counts: Counter[str] = field(default_factory=Counter)
+    placed: int = 0
 
-    def add(self, vector: dict[str, float]) -> None:
+    def add(self, vector: dict[str, float], isos: frozenset[str] = frozenset()) -> None:
         merged = {token: weight * self.n for token, weight in self.centroid.items()}
         for token, weight in vector.items():
             merged[token] = merged.get(token, 0.0) + weight
         self.n += 1
         self.centroid = {token: weight / self.n for token, weight in merged.items()}
+        self.iso_counts.update(isos)
+        if isos:
+            self.placed += 1
+
+    def places(self) -> set[str]:
+        """The countries this story is about, as opposed to ones it mentions."""
+        if not self.placed:
+            return set()
+        floor = max(1.0, PLACE_MIN_SHARE * self.placed)
+        return {iso for iso, count in self.iso_counts.items() if count >= floor}
+
+
+def _place_conflict(isos: frozenset[str], story: _Story) -> bool:
+    """Whether the article contradicts the story about where the news is (#924).
+
+    Only a contradiction refuses — silence never does. An article that names
+    nowhere, or a story told entirely by headlines that name nowhere, leaves
+    the gate open, because absence of a place is not evidence of a different
+    one and roughly three quarters of headlines name no country at all.
+    """
+    if not isos:
+        return False
+    places = story.places()
+    return bool(places) and not (isos & places)
 
 
 def cluster_articles(
@@ -109,13 +149,19 @@ def cluster_articles(
         if not _is_substantial(tokens):
             continue
         vector = vectorize(tokens, idf)
+        isos = frozenset(find_isos(member["title"] or ""))
         story = stories.get(member["story_id"])
         if story is None:
             stories[member["story_id"]] = _Story(
-                story_id=member["story_id"], new_index=None, centroid=vector, n=1
+                story_id=member["story_id"],
+                new_index=None,
+                centroid=vector,
+                n=1,
+                iso_counts=Counter(isos),
+                placed=1 if isos else 0,
             )
         else:
-            story.add(vector)
+            story.add(vector, isos)
 
     result = ClusterResult()
     outlet_sets: list[set[str]] = []
@@ -123,10 +169,20 @@ def cluster_articles(
 
     for article, tokens in tokenized_articles:
         vector = vectorize(tokens, idf)
+        isos = frozenset(find_isos(article["title"] or ""))
         best: _Story | None = None
         best_similarity = 0.0
         for story in stories.values():
             if len(vector.keys() & story.centroid.keys()) < MIN_SHARED_TOKENS:
+                continue
+            #: Before similarity is consulted at all, because a high score is
+            #: exactly what this refuses (#924). "Death toll rises to N" is a
+            #: headline shape rather than a subject, so two disasters a
+            #: hemisphere apart share every token but the place — and cosine
+            #: against a mean centroid charges almost nothing for a proper
+            #: noun the article is missing, while a contradicting one should
+            #: be disqualifying.
+            if _place_conflict(isos, story):
                 continue
             similarity = cosine(vector, story.centroid)
             if similarity >= SIMILARITY_THRESHOLD and similarity > best_similarity:
@@ -148,7 +204,14 @@ def cluster_articles(
             )
             outlet_sets.append({article["source"]})
             owner_sets.append(independent_owners([article["source"]], owner_map))
-            story = _Story(story_id=None, new_index=new_index, centroid=vector, n=1)
+            story = _Story(
+                story_id=None,
+                new_index=new_index,
+                centroid=vector,
+                n=1,
+                iso_counts=Counter(isos),
+                placed=1 if isos else 0,
+            )
             stories[("new", new_index)] = story
             result.new_members.append(
                 {
@@ -159,7 +222,7 @@ def cluster_articles(
                 }
             )
         else:
-            best.add(vector)
+            best.add(vector, isos)
             if best.new_index is not None:
                 story_row = result.new_stories[best.new_index]
                 story_row["member_count"] += 1
