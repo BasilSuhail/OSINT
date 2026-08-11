@@ -51,6 +51,13 @@ export default [
     },
   },
   {
+    // Root-level `.mjs` is build configuration: it runs in Node before any of
+    // the app does, and reads process.env legitimately (#930). Declared here
+    // rather than globally so application code stays held to browser globals.
+    files: ["*.mjs"],
+    languageOptions: { globals: { process: "readonly" } },
+  },
+  {
     rules: {
       // Hook deps are useful as warnings, not as hard build failures.
       "react-hooks/exhaustive-deps": "warn",

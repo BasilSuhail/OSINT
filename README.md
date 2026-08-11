@@ -67,10 +67,12 @@ Dashboard: **http://localhost:3000** · API health: `curl localhost:8000/health`
 
 `make up` binds the API and the dashboard to `127.0.0.1`: nothing on the
 network can reach either. `make share` starts the same stack open to the local
-network and prints the address to hand over. It sets three things that have to
-agree — the published bind address, the CORS origin list, and the API URL
-compiled into the browser bundle, which must name an address the *other*
-device can resolve — and it sets them for that run only. The next `make up` is
+network and prints the address to hand over. It sets four things that have to
+agree — the published bind address, the CORS origin list, the API URL compiled
+into the browser bundle (which must name an address the *other* device can
+resolve), and the dev server's `allowedDevOrigins`, without which Next refuses
+to serve its own dev resources to any host but localhost — and it sets them for
+that run only. The next `make up` is
 closed again, with no file to remember to change back.
 
 Share mode adds no password. Anyone already on that network can use the console
