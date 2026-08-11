@@ -155,7 +155,9 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
       ? `cluster:${e.label}`
       : e.kind === "area"
         ? `area:${e.lat}:${e.lon}:${e.radiusKm}`
-        : `event:${e.event.id}`
+        : e.kind === "aircraft"
+          ? `aircraft:${e.aircraft.hex ?? `${e.aircraft.lat},${e.aircraft.lon}`}`
+          : `event:${e.event.id}`
   })
   const selectionIndex = cards.findIndex((c) => c.key === "selection")
   useEffect(() => {
