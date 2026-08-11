@@ -31,6 +31,7 @@ import { markerStyle } from "@/lib/markers"
 import { usePlaceStore } from "@/stores/placeStore"
 import { useImageryStore } from "@/stores/imageryStore"
 import { usePresenceStore } from "@/stores/presenceStore"
+import { useAircraftDetailStore } from "@/stores/aircraftDetailStore"
 import {
   PRESENCE_POLL_MS,
   shouldPoll,
@@ -857,7 +858,12 @@ export function MapPane({
   //: situation list, because none of it is a claim that anything happened.
   const presenceOn = usePresenceStore((st) => st.aircraft)
   const [presenceAircraft, setPresenceAircraft] = useState<PresenceAircraft[]>([])
+  //: When the poll last heard anything, carried into the card so an open card
+  //: can go visibly stale instead of quietly.
+  const [presenceFetchedAt, setPresenceFetchedAt] = useState<string | null>(null)
   const [presenceVisible, setPresenceVisible] = useState(true)
+  const openAircraft = useAircraftDetailStore((st) => st.openAircraft)
+  const closeAircraft = useAircraftDetailStore((st) => st.closeAircraft)
 
   useEffect(() => {
     const onVisibility = () => setPresenceVisible(!document.hidden)
@@ -874,6 +880,11 @@ export function MapPane({
   useEffect(() => {
     if (!presencePolling) {
       setPresenceAircraft([])
+      setPresenceFetchedAt(null)
+      //: The layer going away takes its card with it. A card describing a
+      //: position that is no longer drawn is the one thing this layer must
+      //: never leave behind.
+      closeAircraft()
       return
     }
     let cancelled = false
@@ -881,11 +892,17 @@ export function MapPane({
     const load = async () => {
       try {
         const answer = await fetchPresenceAircraft({ signal: controller.signal })
-        if (!cancelled) setPresenceAircraft(answer.aircraft)
+        if (!cancelled) {
+          setPresenceAircraft(answer.aircraft)
+          setPresenceFetchedAt(answer.fetched_at)
+        }
       } catch {
         //: A refused fetch draws nothing rather than leaving the last known
         //: positions on screen, which would present old locations as current.
-        if (!cancelled) setPresenceAircraft([])
+        if (!cancelled) {
+          setPresenceAircraft([])
+          setPresenceFetchedAt(null)
+        }
       }
     }
     void load()
@@ -895,7 +912,7 @@ export function MapPane({
       controller.abort()
       clearInterval(timer)
     }
-  }, [presencePolling])
+  }, [presencePolling, closeAircraft])
 
   const hillshadeBeforeId = "waterway"
 
@@ -1353,16 +1370,27 @@ export function MapPane({
             <span className="pointer-events-none block h-3 w-3 rounded-full border-2 border-cyan-200 bg-cyan-400/40 shadow-[0_0_8px_rgba(34,211,238,0.9)]" />
           </Marker>
         )}
-        {/* Live aircraft. Deliberately not a Marker with a click handler —
-            presence has no detail card and no place-screen entry, because a
-            thing that is somewhere now is not a story you can open. */}
+        {/*: Live aircraft, and they open. Presence still has no place-screen
+            entry and no history — nothing here is stored — but a mark a reader
+            cannot question is worse than no mark, so clicking one says what it
+            is and who said so. The 16px glyph sits in a 28px target: the arrow
+            is small on purpose and a cursor cannot be asked to hit it. */}
         {presenceAircraft.map((a) => (
-          <Marker key={a.hex ?? `${a.lat},${a.lon}`} longitude={a.lon} latitude={a.lat} anchor="center">
+          <Marker
+            key={a.hex ?? `${a.lat},${a.lon}`}
+            longitude={a.lon}
+            latitude={a.lat}
+            anchor="center"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation()
+              openAircraft(a, presenceFetchedAt)
+            }}
+          >
             <div
               title={[a.callsign, a.type, a.alt_ft ? `${Math.round(a.alt_ft)} ft` : null]
                 .filter(Boolean)
                 .join(" · ")}
-              className="pointer-events-auto grid h-4 w-4 place-items-center"
+              className="pointer-events-auto grid h-7 w-7 cursor-pointer place-items-center"
             >
               <span
                 aria-hidden

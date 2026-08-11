@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { ageLabel, shouldPoll, windowIsNow } from "../lib/presence"
+import {
+  aircraftFacts,
+  aircraftTitle,
+  ageLabel,
+  shouldPoll,
+  windowIsNow,
+  type PresenceAircraft,
+} from "../lib/presence"
 
 describe("when presence may be shown", () => {
   it("is shown at now", () => {
@@ -53,5 +60,61 @@ describe("ageLabel", () => {
     expect(ageLabel("2026-08-09T12:00:10+00:00", Date.parse("2026-08-09T12:00:00Z"))).toBe(
       "as of 0s ago",
     )
+  })
+})
+
+describe("what a clicked aircraft says", () => {
+  const plane = (over: Partial<PresenceAircraft> = {}): PresenceAircraft => ({
+    hex: "43c6e2",
+    callsign: "RRR2317",
+    type: "A400",
+    registration: "ZM413",
+    lat: 51.1,
+    lon: -1.2,
+    track: 128.4,
+    alt_ft: 24_000,
+    speed_kt: 451.2,
+    squawk: "6154",
+    kind: "military",
+    ...over,
+  })
+
+  it("titles a plane by the name a listener would hear first", () => {
+    expect(aircraftTitle(plane())).toBe("RRR2317")
+    expect(aircraftTitle(plane({ callsign: null }))).toBe("ZM413")
+    expect(aircraftTitle(plane({ callsign: null, registration: null }))).toBe("43C6E2")
+    expect(aircraftTitle(plane({ callsign: null, registration: null, hex: null }))).toBe(
+      "Unknown aircraft",
+    )
+  })
+
+  it("reads the numbers the way a transponder means them", () => {
+    expect(aircraftFacts(plane())).toEqual([
+      { label: "type", value: "A400" },
+      { label: "registration", value: "ZM413" },
+      { label: "altitude", value: "24,000 ft" },
+      { label: "speed", value: "451 kt" },
+      { label: "track", value: "128°" },
+      { label: "squawk", value: "6154" },
+      { label: "hex", value: "43C6E2" },
+    ])
+  })
+
+  //: A field the transponder never sent must not appear as a blank row: an
+  //: empty value reads as a measurement of nothing rather than as silence.
+  it("leaves out what was never transmitted", () => {
+    expect(aircraftFacts(plane({ type: null, alt_ft: null, squawk: null }))).toEqual([
+      { label: "registration", value: "ZM413" },
+      { label: "speed", value: "451 kt" },
+      { label: "track", value: "128°" },
+      { label: "hex", value: "43C6E2" },
+    ])
+  })
+
+  it("says on the ground rather than nought feet", () => {
+    expect(aircraftFacts(plane({ alt_ft: 0 }))).toContainEqual({
+      label: "altitude",
+      value: "on the ground",
+    })
   })
 })
