@@ -31,7 +31,6 @@ import { markerStyle } from "@/lib/markers"
 import { usePlaceStore } from "@/stores/placeStore"
 import { useImageryStore } from "@/stores/imageryStore"
 import { usePresenceStore } from "@/stores/presenceStore"
-import { useAircraftDetailStore } from "@/stores/aircraftDetailStore"
 import {
   PRESENCE_POLL_MS,
   shouldPoll,
@@ -862,8 +861,8 @@ export function MapPane({
   //: can go visibly stale instead of quietly.
   const [presenceFetchedAt, setPresenceFetchedAt] = useState<string | null>(null)
   const [presenceVisible, setPresenceVisible] = useState(true)
-  const openAircraft = useAircraftDetailStore((st) => st.openAircraft)
-  const closeAircraft = useAircraftDetailStore((st) => st.closeAircraft)
+  const openAircraft = useRightPaneModeStore((st) => st.openAircraft)
+  const closeAircraft = useRightPaneModeStore((st) => st.closeAircraft)
 
   useEffect(() => {
     const onVisibility = () => setPresenceVisible(!document.hidden)

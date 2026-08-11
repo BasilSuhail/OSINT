@@ -11,7 +11,6 @@ import { useLeftPaneStore } from "@/stores/leftPaneStore"
 import { usePlaceStore } from "@/stores/placeStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { useStoryDetailStore } from "@/stores/storyDetailStore"
-import { useAircraftDetailStore } from "@/stores/aircraftDetailStore"
 import { useEventDetailStore } from "@/stores/eventDetailStore"
 import { useMapFocusStore } from "@/stores/mapFocusStore"
 import { useWorldDetailStore } from "@/stores/worldDetailStore"
@@ -27,7 +26,6 @@ import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
 import { EventDetailCard } from "./EventDetailCard"
 import { StoryDetailCard } from "./panels/StoryDetailCard"
 import { WorldDetailCard } from "./panels/WorldDetailCard"
-import { AircraftDetailCard } from "./panels/AircraftDetailCard"
 import { CoveragePanel } from "./panels/CoveragePanel"
 import { TrustPanel } from "./panels/TrustPanel"
 import { PlacePanel } from "./panels/PlacePanel"
@@ -84,12 +82,7 @@ export function SplitLayout() {
   const eventDetail = useEventDetailStore((s) => s.event)
   const eventDetailLocation = useEventDetailStore((s) => s.location)
   const closeEventDetail = useEventDetailStore((s) => s.closeEventDetail)
-  //: A clicked aircraft uses the same one slot as everything else (#846). It
-  //: is the most transient thing the console can show, so it wins the slot:
-  //: whatever was there is still there to reopen, and the plane will not be.
-  const aircraftDetail = useAircraftDetailStore((s) => s.aircraft)
-  const popupOpen =
-    storyDetailOpen || worldDetailOpen || eventDetail !== null || aircraftDetail !== null
+  const popupOpen = storyDetailOpen || worldDetailOpen || eventDetail !== null
   const entity = useRightPaneModeStore((s) => s.entity)
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
   const openCountry = usePlaceStore((s) => s.openCountry)
@@ -106,9 +99,7 @@ export function SplitLayout() {
       //: removes them. Works while typing, because dismissing what is on top
       //: is the one thing a keyboard should always be able to do.
       if (e.key === "Escape") {
-        if (useAircraftDetailStore.getState().aircraft !== null) {
-          useAircraftDetailStore.getState().closeAircraft()
-        } else if (useStoryDetailStore.getState().storyId !== null) {
+        if (useStoryDetailStore.getState().storyId !== null) {
           useStoryDetailStore.getState().closeStory()
         } else if (useEventDetailStore.getState().event !== null) {
           useEventDetailStore.getState().closeEventDetail()
@@ -380,9 +371,7 @@ export function SplitLayout() {
                 className="absolute bottom-3 top-3 z-30"
                 style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
               >
-                {aircraftDetail ? (
-                  <AircraftDetailCard />
-                ) : storyDetailOpen ? (
+                {storyDetailOpen ? (
                   <StoryDetailCard />
                 ) : eventDetail ? (
                   <EventDetailCard
