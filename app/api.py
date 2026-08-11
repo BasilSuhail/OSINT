@@ -38,6 +38,7 @@ from app.db_models import (
     SourceQuarantineRow,
     StoryCorroborationRow,
     StoryGistRow,
+    StoryMemberRow,
     StoryRow,
     StorySensorCheckRow,
 )
@@ -626,11 +627,48 @@ def scores(
     return [_score_dict(r) for r in session.execute(stmt).scalars()]
 
 
+def _story_countries(session: Session, story_ids: list[int]) -> dict[int, list[str]]:
+    """Where each story's members say the news is, commonest first (#919).
+
+    `events.country` is resolved from the story, not from the outlet that filed
+    it — an Israeli paper's Colombia earthquake files under CO. That is what a
+    reader means by "where". The outlet's own country is `origin_country` on
+    the member and drives the bloc comparison; the two are different questions
+    and must not be mixed.
+
+    A list rather than one value: 3.2% of stories in a measured window span
+    several countries, and choosing one of them would be a claim about the
+    others. Stories whose members carry no country at all are simply absent
+    from the mapping, which is not the same as a story with no members.
+    """
+    if not story_ids:
+        return {}
+    rows = session.execute(
+        select(
+            StoryMemberRow.story_id,
+            EventRow.country,
+            func.count().label("n"),
+        )
+        .join(EventRow, EventRow.id == StoryMemberRow.event_id)
+        .where(StoryMemberRow.story_id.in_(story_ids), EventRow.country.is_not(None))
+        .group_by(StoryMemberRow.story_id, EventRow.country)
+        #: Commonest first so a story reads as being about where most of its
+        #: coverage places it; alphabetical breaks ties so the order is stable
+        #: between requests rather than left to the planner.
+        .order_by(StoryMemberRow.story_id, func.count().desc(), EventRow.country)
+    ).all()
+    out: dict[int, list[str]] = {}
+    for story_id, country, _n in rows:
+        out.setdefault(story_id, []).append(country)
+    return out
+
+
 def _story_payload(
     story: StoryRow,
     corro: StoryCorroborationRow | None,
     checks: dict[str, str],
     gist: StoryGistRow | None,
+    countries: list[str] | None = None,
 ) -> dict:
     """One story as the API renders it — shared by /stories/top and
     /stories/developing so a pinned row and a list row never drift apart."""
@@ -649,6 +687,9 @@ def _story_payload(
         "gist": gist.gist if gist else None,
         "category": gist.category if gist else None,
         "escalating": gist.escalating if gist else None,
+        #: Empty when no member carried a resolved country (#919) — an empty
+        #: list is "we do not know where", never "nowhere".
+        "countries": countries or [],
     }
 
 
@@ -692,8 +733,11 @@ def stories_top(
         ).scalars():
             gists[g.story_id] = g
 
+    countries = _story_countries(session, story_ids)
     return [
-        _story_payload(story, corro, checks.get(story.id, {}), gists.get(story.id))
+        _story_payload(
+            story, corro, checks.get(story.id, {}), gists.get(story.id), countries.get(story.id)
+        )
         for story, corro in rows
     ]
 
@@ -764,8 +808,11 @@ def stories_for_events(
     ).scalars():
         gists[g.story_id] = g
 
+    countries = _story_countries(session, story_ids)
     payloads = {
-        story.id: _story_payload(story, corro, checks.get(story.id, {}), gists.get(story.id))
+        story.id: _story_payload(
+            story, corro, checks.get(story.id, {}), gists.get(story.id), countries.get(story.id)
+        )
         for story, corro in rows
     }
     return {
@@ -818,12 +865,13 @@ def stories_developing(
     ).scalars():
         gists[g.story_id] = g
 
+    countries = _story_countries(session, story_ids)
     out = []
     for sid in sorted(order, key=lambda s: order[s]):
         if sid not in stories:
             continue
         story, corro = stories[sid]
-        row = _story_payload(story, corro, checks.get(sid, {}), gists.get(sid))
+        row = _story_payload(story, corro, checks.get(sid, {}), gists.get(sid), countries.get(sid))
         row["pin_reasons"] = reasons[sid]
         out.append(row)
     return out

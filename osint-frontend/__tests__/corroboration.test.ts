@@ -18,6 +18,7 @@ const story = (over: Partial<StoryRow>): StoryRow => ({
   corroboration: 0,
   corroboration_components: null,
   sensor_checks: {},
+  countries: [],
   method_version: "stories-v1.0",
   gist: null,
   category: null,
