@@ -3,6 +3,7 @@
 import { useEventDetailStore } from "@/stores/eventDetailStore"
 import { usePlaceStore } from "@/stores/placeStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
+import { AircraftDetailCard } from "./AircraftDetailCard"
 import { ClusterListPanel } from "../ClusterListPanel"
 import { EventDetailCard } from "../EventDetailCard"
 
@@ -38,7 +39,13 @@ export function SelectionPanel() {
 
   return (
     <div className="absolute inset-0 overflow-y-auto bg-neutral-950 p-3">
-      {entity.kind === "cluster" ? (
+      {entity.kind === "aircraft" ? (
+        <AircraftDetailCard
+          aircraft={entity.aircraft}
+          fetchedAt={entity.fetchedAt}
+          onClose={closeEntity}
+        />
+      ) : entity.kind === "cluster" ? (
         <ClusterListPanel
           label={entity.label}
           selections={entity.selections}
