@@ -15,6 +15,9 @@ export interface StoryRow {
   gist: string | null
   category: string | null
   escalating: string | null
+  /** Where the members place the news, commonest first (#919). Empty when no
+   *  member carried a resolved country — "we do not know", not "nowhere". */
+  countries: string[]
 }
 
 /** Badge tone for the corroboration-v1.0 score (null = not yet scored). */

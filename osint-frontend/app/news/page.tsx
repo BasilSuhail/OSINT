@@ -33,7 +33,12 @@ import {
 import { rankStories, relativeAge, type RankedStory } from "@/lib/newsRanking"
 import { StoryReader } from "@/components/news/StoryReader"
 import { FeedFilter, type FeedSort } from "@/components/news/FeedFilter"
-import { feedCategories, filterByCategory } from "@/lib/newsFeed"
+import {
+  feedCategories,
+  feedCountries,
+  filterByCategory,
+  filterByCountry,
+} from "@/lib/newsFeed"
 import { sortByActivity } from "@/lib/situation"
 import { TagChip } from "@/components/ListRow"
 import { AskDock } from "@/components/news/AskDock"
@@ -211,6 +216,7 @@ export default function NewsPage() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [sort, setSort] = useState<FeedSort>("newest")
   const [category, setCategory] = useState<string | null>(null)
+  const [country, setCountry] = useState<string | null>(null)
   //: One clock for the whole render. Reading `Date.now()` per row would make
   //: two stories filed in the same minute disagree about how old they are.
   const [now, setNow] = useState(() => Date.now())
@@ -249,6 +255,10 @@ export default function NewsPage() {
     [top, pinnedIds],
   )
   const categories = useMemo(() => feedCategories(unpinned), [unpinned])
+  const countries = useMemo(() => feedCountries(unpinned), [unpinned])
+  //: A place that stops appearing must not leave the feed empty and
+  //: unexplained, the same way a tag must not.
+  const activeCountry = country !== null && countries.includes(country) ? country : null
   //: A tag that stops appearing must not leave the feed empty and unexplained
   //: — the chip goes, so the filter goes with it.
   const activeCategory = category !== null && categories.includes(category) ? category : null
@@ -257,11 +267,11 @@ export default function NewsPage() {
   //: reader asked what happened last, and the ranked order answered a
   //: different question while looking like this one (#911).
   const rest = useMemo(() => {
-    const narrowed = filterByCategory(unpinned, activeCategory)
+    const narrowed = filterByCountry(filterByCategory(unpinned, activeCategory), activeCountry)
     return sort === "newest"
       ? sortByActivity(narrowed)
       : [...narrowed].sort((a, b) => b.owner_count - a.owner_count)
-  }, [unpinned, activeCategory, sort])
+  }, [unpinned, activeCategory, activeCountry, sort])
 
   const loading = developing === undefined && top === undefined
   const failed = developingError && topError
@@ -340,18 +350,25 @@ export default function NewsPage() {
                     categories={categories}
                     category={activeCategory}
                     onCategory={setCategory}
+                    countries={countries}
+                    country={activeCountry}
+                    onCountry={setCountry}
                     showing={rest.length}
                     total={unpinned.length}
                   />
                   {rest.length === 0 ? (
                     /*: A filter that empties the list says so, and says how to
                         undo it. A silent empty feed reads as a broken page. */
-                    activeCategory !== null ? (
+                    activeCategory !== null || activeCountry !== null ? (
                       <button
-                        onClick={() => setCategory(null)}
+                        onClick={() => {
+                          setCategory(null)
+                          setCountry(null)
+                        }}
                         className="w-full rounded-lg border border-neutral-800 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500 transition-colors hover:text-neutral-300"
                       >
-                        no {activeCategory} stories in this window — show all
+                        no {activeCategory ?? "matching"} stories
+                        {activeCountry ? ` in ${activeCountry}` : ""} in this window — show all
                       </button>
                     ) : (
                       <p className="py-10 text-neutral-600">

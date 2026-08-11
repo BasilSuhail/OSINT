@@ -22,9 +22,11 @@ the naive outlet-count rule's false pins: Mount Olympus Unesco listing, Tour de
 France stage report, Indian cabinet appointment. The known false negative persists:
 France wildfires (42,000 hectares, 220,000 evacuated) fails at max severity 0.5
 with only 2 distinct countries because 15 of its 22 members carry the new grade.
-One newly-measured limitation: 69.9% of story members (19,207 of 27,486) carry
-NULL events.country, making country spread the binding gate; the selector is
-conservative by design.
+Country spread is the binding gate, and it is less binding than it was: at the
+2026-07-26 check 69.9% of story members carried NULL events.country, and
+re-measured 2026-08-11 that is 17.4% (3,329 of 4,029 members in a 48h window
+now resolve). The selector stays conservative by design, but the gate it leans
+on is no longer mostly missing data.
 """
 
 from __future__ import annotations

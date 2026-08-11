@@ -15,6 +15,10 @@ export interface Taggable {
   category: string | null
 }
 
+export interface Placeable {
+  countries: string[]
+}
+
 /**
  * Every tag present in the feed, once each, alphabetically.
  *
@@ -34,4 +38,37 @@ export function feedCategories<T extends Taggable>(stories: T[]): string[] {
 export function filterByCategory<T extends Taggable>(stories: T[], category: string | null): T[] {
   if (category === null) return stories
   return stories.filter((story) => story.category === category)
+}
+
+/**
+ * Every place present in the feed, commonest first.
+ *
+ * By count rather than alphabetically, unlike the tags: there are far more
+ * countries than categories, only the first handful fit on the strip, and the
+ * ones worth offering are the ones most of the window is about. Ties break
+ * alphabetically so the order is stable between refreshes.
+ */
+export function feedCountries<T extends Placeable>(stories: T[]): string[] {
+  const counts = new Map<string, number>()
+  for (const story of stories) {
+    for (const code of story.countries) {
+      counts.set(code, (counts.get(code) ?? 0) + 1)
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([code]) => code)
+}
+
+/**
+ * The feed narrowed to one place; `null` means no narrowing.
+ *
+ * A story matches if any of its countries match, because a story that spans
+ * three countries is about all of them. A story with no resolved country
+ * matches nothing — it is not evidence of being somewhere, and quietly keeping
+ * it would make the filter mean less than it says.
+ */
+export function filterByCountry<T extends Placeable>(stories: T[], country: string | null): T[] {
+  if (country === null) return stories
+  return stories.filter((story) => story.countries.includes(country))
 }
