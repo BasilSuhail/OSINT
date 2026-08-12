@@ -1,1393 +1,562 @@
-# OSINT — Multi-modal Early-Warning Dashboard
+# OSINT World Monitor
 
-> A self-hosted dashboard plus a **composite stress index** per country, fed by four independent open-data domains (market signals, geopolitical events, hazards, wildfire load). A personal infrastructure project meant to run for years on a Raspberry Pi.
+[![backend](https://github.com/BasilSuhail/OSINT/actions/workflows/backend.yml/badge.svg)](https://github.com/BasilSuhail/OSINT/actions/workflows/backend.yml)
+[![frontend](https://github.com/BasilSuhail/OSINT/actions/workflows/frontend.yml/badge.svg)](https://github.com/BasilSuhail/OSINT/actions/workflows/frontend.yml)
+[![CodeQL](https://github.com/BasilSuhail/OSINT/actions/workflows/codeql.yml/badge.svg)](https://github.com/BasilSuhail/OSINT/actions/workflows/codeql.yml)
+[![dependency review](https://github.com/BasilSuhail/OSINT/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/BasilSuhail/OSINT/actions/workflows/dependency-review.yml)
+[![licence: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/licence-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 
-The project is built around one specific claim: **a composite of three heterogeneous OSINT signal domains discriminates later instability events better than the best single-domain baseline.** The dashboard, the Pi, the maps — they are the system that lets that claim be measured.
+**A self-hosted world-event monitor that shows its evidence — and publishes the
+experiments where its own predictions failed.**
 
-> **Status, plainly: the claim has been tested five times and failed every
-> time.** The composite does not discriminate better than the dumb baselines —
-> see §2.3. Separately, the *live* composite currently returns the constant
-> `0.5` for every country: retention holds 30 days while the rolling z-score
-> needs at least three monthly observations, so every domain z-scores to zero
-> and the index rescales to its neutral midpoint ([#586](https://github.com/BasilSuhail/OSINT/issues/586)).
-> The historical panel is unaffected — it is built by `app/composite/backfill.py`,
-> which fetches history directly rather than reading the rolling events table.
-> Ingestion, stories, corroboration, coverage bias and the brain are working and
-> are what this system currently does well.
+It collects public data about world events — news, machine-coded event records,
+disasters, markets, cyber indicators, satellite fire detections, aircraft
+presence — normalises it into one row shape, stores it locally, and puts it on a
+map with the provenance attached. It runs on one machine. Nothing leaves it.
 
-## Chapters
+<br>
 
-- [Chapter 1 — Switch it on](#chapter-1--switch-it-on)
-- [Chapter 2 — Can we trust the data?](#chapter-2--can-we-trust-the-data)
-- [Chapter 3 — How the data gets collected](#chapter-3--how-the-data-gets-collected)
-- [Chapter 4 — The brain](#chapter-4--the-brain)
-- [Chapter 5 — How to read the dashboard](#chapter-5--how-to-read-the-dashboard)
-- [Reference shelf](#reference-shelf) — deep architecture material
+[![Read the handbook](https://img.shields.io/badge/READ_THE_HANDBOOK-1f6feb?style=for-the-badge&logo=readthedocs&logoColor=white)](HANDBOOK.md)
+&nbsp;
+[![Quick start](https://img.shields.io/badge/QUICK_START-238636?style=for-the-badge&logo=docker&logoColor=white)](#quick-start)
+&nbsp;
+[![What failed](https://img.shields.io/badge/WHAT_FAILED-8957e5?style=for-the-badge)](#02-the-claim-it-was-built-to-test)
 
----
+<br>
 
-# Chapter 1 — Switch it on
+![The console: story feed, world map, and filter rail](images/console-screenshot-live.jpg)
 
-Everything runs locally. All persistent data lives in **one folder** —
-`$OSINT_DATA_DIR` (default `./data`, gitignored).
-
-### First time only
+## Quick start
 
 ```bash
-# prerequisites: Docker Desktop, Python 3.14, Node + pnpm
-python3 -m venv .venv && .venv/bin/pip install -e .
-cp env.example .env                      # set POSTGRES_PASSWORD (+ any API keys)
-docker compose up -d                     # stores: Postgres + Redis
-.venv/bin/alembic upgrade head           # create the schema
-cd osint-frontend && pnpm install && cd ..
+# install first:  git · docker (running) · node lts · pnpm · ollama (optional)
+
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+cp env.example .env       # then set POSTGRES_PASSWORD — compose will not start without it
+make up                   # postgres · redis · migrations · api · workers · console · ollama if present
+make down                 # stop everything, keep all data
 ```
 
-### Daily driving — three commands
+Open <http://localhost:3000>. First run takes several minutes — images, packages
+and the local model download.
 
-There are only three you need. Everything else in the Makefile is either an
-alias kept for muscle memory or a one-shot analysis task.
+Without Ollama everything still runs; the model-backed summaries and questions
+stay dormant.
 
-| Command | What it does |
-|---------|--------------|
-| `make up` | Start everything: Docker stores, worker, beat, API, dashboard, Ollama |
-| `make share` | The same, reachable from the local network — see below |
-| `make down` | Stop everything, keep all data |
-| `make clear` | Remove regenerable junk: build caches, `__pycache__`, logs, Docker cruft |
+`.env` is the only file you edit, it is git-ignored, and
+[`env.example`](https://github.com/BasilSuhail/OSINT/blob/main/env.example) is
+its template. `POSTGRES_PASSWORD` is the one required value — everything else
+has a working default. Optional source keys, the API token, and moving the data
+directory are all in [§5](HANDBOOK.md#5-configure-it-safely).
 
-Restart after a code change is `make down && make up`. `make clear` never
-touches your data — only things that rebuild themselves.
+Full prerequisites: [§3](HANDBOOK.md#3-what-you-need-before-starting). The
+walkthrough: [§1](HANDBOOK.md#1-start-here-download-install-run-and-stop).
+Anything that goes wrong: [§19](HANDBOOK.md#19-troubleshooting).
 
-Older names still work (`make stop`, `make clean-dev`, `make docker-prune`),
-and `make off` additionally quits Docker Desktop on macOS. `make logs` tails
-the background logs without stopping anything.
+> **Read [§0](#0-what-this-system-is-for-and-what-it-is-not) before trusting any
+> number on the screen.** The predictive claim this project was built to test has
+> been put through every pre-registered protocol built for it and refused every time. That is stated up front, with
+> the tables, rather than buried.
 
-Dashboard: **http://localhost:3000** · API health: `curl localhost:8000/health` → `{"status":"ok"}`.
+**Licence: PolyForm Noncommercial 1.0.0 — source-available, not open source.**
+Security reporting, provider data terms, and attribution are in
+[§25](#25-licence-security-and-provider-terms).
 
-### Letting another device in
+## 📖 The full technical handbook
 
-`make up` binds the API and the dashboard to `127.0.0.1`: nothing on the
-network can reach either. `make share` starts the same stack open to the local
-network and prints the address to hand over. It sets four things that have to
-agree — the published bind address, the CORS origin list, the API URL compiled
-into the browser bundle (which must name an address the *other* device can
-resolve), and the dev server's `allowedDevOrigins`, without which Next refuses
-to serve its own dev resources to any host but localhost — and it sets them for
-that run only. The next `make up` is
-closed again, with no file to remember to change back.
+> ### **[→ Open HANDBOOK.md](HANDBOOK.md)**
+>
+> **4,300 lines. 24 sections. Everything underneath this page.**
 
-Share mode adds no password. Anyone already on that network can use the console
-and spend model inference through `POST /brain/ask`, so it is for a network you
-trust, not a cafe. A shared secret would not help: the guest loads the
-dashboard, so `NEXT_PUBLIC_API_TOKEN` travels to them inside the bundle.
-`API_AUTH_TOKEN` (#824) still covers the different case of a stack deliberately
-published beyond one machine.
+|  | The handbook covers |
+| --- | --- |
+| **Operate it** | [Install and first run](HANDBOOK.md#1-start-here-download-install-run-and-stop) · [read the console](HANDBOOK.md#2-see-and-understand-the-console) · [configure](HANDBOOK.md#5-configure-it-safely) · [every control](HANDBOOK.md#7-use-the-console) · [troubleshooting](HANDBOOK.md#19-troubleshooting) |
+| **Every formula** | [Corroboration](HANDBOOK.md#142-corroboration--how-much-independent-telling-a-story-has) · [divergence](HANDBOOK.md#143-divergence--how-differently-two-country-blocs-word-the-same-story) · [the composite](HANDBOOK.md#144-the-composite-stress-index--and-why-the-live-one-reads-05) · [severity](HANDBOOK.md#145-severity--and-why-08-does-not-compare-across-families) · [lead-time gate](HANDBOOK.md#148-the-lead-time-gate--does-narrative-move-before-the-physical-signal) — each with a worked example and its failure modes |
+| **What was tested, and what failed** | [Every pre-registered refusal](HANDBOOK.md#15-evaluation--what-was-claimed-what-was-tested-what-failed), with baselines, bootstrap confidence intervals, and the held-out window |
+| **Whether to trust the data** | [Bias and provenance](HANDBOOK.md#16-bias-provenance-and-one-country-traced-end-to-end), including one country traced end to end with measured counts |
+| **Rebuild it yourself** | [Every command](HANDBOOK.md#17-reproduce-the-analysis) that regenerates every number quoted anywhere |
+| **Reference** | [Data sources](HANDBOOK.md#9-data-sources) · [pipeline](HANDBOOK.md#10-the-end-to-end-data-pipeline) · [storage](HANDBOOK.md#11-data-storage-and-retention) · [backend](HANDBOOK.md#12-backend-guide) · [frontend](HANDBOOK.md#13-frontend-guide) · [glossary](HANDBOOK.md#22-glossary) · [code walkthroughs](HANDBOOK.md#23-code-walkthroughs) |
 
-Local dev keeps raw API pulls deliberately capped so the same data is not held
-at full size by Postgres, FastAPI, Next dev, browser state, and the map at once.
-Tune `API_MAX_LIMIT` plus the `NEXT_PUBLIC_*_LIMIT` values in `.env` when moving
-between laptop and Pi-class hardware.
+[![the console, with every control numbered](images/console-guide.jpg)](HANDBOOK.md#21-real-interface-map)
 
-`make up` is self-healing: it opens Docker if needed, skips what already runs,
-and if the Docker daemon has corrupted the compose project (the "No such
-container" disease) it automatically switches to a fresh project name — your
-data never moves, it lives on bind mounts.
+*Every numbered control above is explained in
+**[§2.1 of the handbook](HANDBOOK.md#21-real-interface-map)**, each with a link
+to the code that produces it.*
 
-### The analytical commands
+## Contents
 
-Each one records itself in the **top-bar activity monitor** — a chip per job,
-green pulsing while working (with live progress), red while idle, red
-`failed` with the error in the tooltip if something breaks.
+- [0. What this system is for, and what it is not](#0-what-this-system-is-for-and-what-it-is-not)
+- [25. Licence, security, and provider terms](#25-licence-security-and-provider-terms)
+- [26. Repository map](#26-repository-map)
+- [27. Documentation index](#27-documentation-index)
+- [28. SWOT](#28-swot)
 
-| Command | What it does |
-|---------|--------------|
-| `make labels` | rebuild ground-truth labels from the ACLED xlsx drop-folder |
-| `make panel` | build the country-month panel (labels + composite) → `data/exports/panel.parquet` |
-| `make baselines` | score the composite against the no-skill baselines → the head-to-head report |
-| `make coverage` | measure who gets covered and who gets ignored → the attention-bias report |
-| `make journal` | run the forward-prediction journal once (emit + grade + scoreboard) |
-| `make briefing` | generate the weekly briefing — the newsletter-ready one-pager (#401) |
-| `make stories` | cluster the rolling news window into stories |
-| `make stories-audit` | emit the cluster hand-check sheet (threshold audit) |
-| `make sensor-checks` | check story claims against physical sensors → verdict board |
-| `make disagreement` | score cross-country telling divergence → most contested stories |
-| `make indicator-ranking` | rank every dashboard indicator by measured predictive value |
-| `make onset-eval` | run the pre-registered onset evaluation (calm-window months only) |
-| `make within-eval` | run the pre-registered within-country evaluation — a country's own onset months vs its own calm months (#582) |
-| `make validator` | local-LLM claim extraction over window stories (needs Ollama) |
-| `make validator-audit` | emit the human-check sheet that gates validator use |
-| `make validator-agreement` | publish the model-vs-human agreement rate from the filled sheet |
-| `make severity-grade` | grade stored news severity with the local model — reports; `--apply` writes (#591) |
-| `make severity-audit` | emit the human-check sheet that gates LLM severity use (#593) |
-| `make severity-agreement` | publish the model-vs-human severity agreement from the filled sheet (#593) |
-| `make brain-qa-eval` | compare Q&A candidate models locally and write the Phase C report |
-| `make backfill-signals` | rebuild 2015-2024 composite history (market + GDELT + hazard); resumes via checkpoints |
-| `python scripts/data_audit.py` | audit every source against its declared expectation — does severity parse, vary, and reach anything downstream (#580) |
-
-### The data folder
-
-```bash
-make data-size    # what is using disk
-make data-prune   # run retention now
-make data-reset   # ⚠️ delete ALL local data
-
-uv run python scripts/db_snapshot.py   # exact row counts, for docs
-```
-
-Retention keeps the events table small — **~30 days** for news, hazard and
-GDELT raw events (`RETENTION_NEWS_DAYS`, `RETENTION_HAZARD_DAYS`,
-`RETENTION_GDELT_DAYS` in `.env`). Market and macro history is never deleted
-because it cannot be re-fetched, and everything analytical — scores, labels,
-stories, gists, journal, the GDELT daily-volume aggregate — is derived and
-kept long-term.
-
-<details><summary>Manual mode — one process per terminal</summary>
-
-```bash
-docker compose up -d
-.venv/bin/celery -A app.celery_app worker -l info
-.venv/bin/celery -A app.celery_app beat   -l info
-.venv/bin/uvicorn app.api:app --host 0.0.0.0 --port 8000
-cd osint-frontend && pnpm dev
-```
-</details>
+> Section numbers are shared across both files and never reused: **1–24 are in
+> [HANDBOOK.md](HANDBOOK.md)**, so a reference to §15 means the same thing
+> wherever you read it.
 
 ---
 
-# Chapter 2 — Can we trust the data?
+# 0. What this system is for, and what it is not
 
-*This is the project's main scientific problem, explained from zero.*
+Read this page first. It states the claim the project makes, the claim it does
+**not** make, and what is actually being offered — so nothing later in the
+handbook has to be inferred.
 
-The dashboard eats the world's open data all day: news feeds, earthquake
-sensors, satellites, market prices, conflict databases. The obvious question —
-the one an analyst or a customer asks first — is:
+## 0.1 In one paragraph
 
-> **"How do you know any of this is true, complete, and not just one loud
-> country's version of events?"**
+This is a self-hosted system that collects public data about world events —
+news, machine-coded event records, disasters, markets, cyber indicators,
+satellite fire detections, aircraft presence — normalises it into one row shape,
+stores it locally, and puts it on a map with the evidence attached. It runs on
+one machine. Nothing leaves it. Every number it shows can be traced back to the
+row that produced it.
 
-Honest answer: **you can never fully know.** Anyone who says their data is
-"unbiased" is selling something. What you *can* do is measure three things and
-publish all of them. That is this chapter.
+## 0.2 The claim it was built to test
 
-### 2.1 How data gets in (and how nothing sneaks in twice)
+> A composite of several open-data signal domains discriminates later instability
+> better than the best single-domain baseline.
 
-```text
-   sensors (don't lie)             text (can lie)
- ┌──────────────────────┐      ┌──────────────────────┐
- │ USGS quakes          │      │ 44 news feeds (RSS)  │
- │ NASA FIRMS fires     │      │ GDELT world events   │
- │ GDACS disasters      │      └──────────┬───────────┘
- │ market prices        │                 │
- └──────────┬───────────┘                 │
-            └────────────┬────────────────┘
-                         ▼
-              ┌─────────────────────┐
-              │  events table       │  ← every row has a fingerprint
-              │  (Postgres)         │    (source, source_event_id):
-              └─────────┬───────────┘    the SAME quake fetched 100×
-                        │                is still ONE row. The DB
-                        ▼                enforces it, not good manners.
-        scores · labels · stories · journal
-        (all versioned, all append-only or
-         overwrite-in-place — never duplicated)
-```
+That claim was pre-registered, evaluated, and **refused**. Not once — under every
+protocol built for it, including on a held-out window reserved specifically for
+the question:
 
-Corruption guards, in one breath: files are written atomically (a crash leaves
-no half-file), a failed download **raises** instead of silently writing a
-partial month, and every methodology change gets a new version stamp instead
-of editing history.
+| Evaluation | Result |
+| --- | --- |
+| Incidence, pooled | Composite AUROC ≈ 0.502 against a 0.929 base rate |
+| Head-to-head vs single domains | `beaten: []` — dominates none of them, in either window |
+| Held-out test 2023–24 | Same verdict on data reserved for this question |
+| Onset | 0.496 / 0.520 / 0.526 — a coin flip |
+| Within-country concordance | 0.531 best, CI [0.474, 0.582], below the declared 0.55 |
 
-### 2.2 The trust triangle
+**The predictive claim failed.** This document does not soften that anywhere, and
+§15 gives every table.
 
-We can't compute "truth", so we compute three honest proxies **per story**:
+## 0.3 What is actually being offered
 
-```text
-                 CORROBORATION  (WS-C)
-                "how many INDEPENDENT
-                 tellers + does machine
-                 data confirm it?"
-                    ▲
-                   ╱ ╲        10 copies of one Reuters wire = 1 source.
-                  ╱   ╲       Story says "earthquake" → is there a
-                 ╱     ╲      matching USGS row? Machines don't spin.
-                ╱ trust ╲
-               ╱─────────╲
-   DISAGREEMENT           COVERAGE BIAS  (WS-D ✅ live)
-   (WS-B)                 "who gets talked about
-   "how differently do     at all?" — top-5 countries
-    countries tell the     eat ~30% of all event
-    same story?"           volume. Measured monthly,
-                           shown on /coverage.
-```
+The composite failed. The machinery that caught it did not.
 
-- **Corroboration (WS-C, done)** — every story cluster shows how many
-  *independent owners* tell it, not just feeds: wire copies and co-owned
-  outlets collapse into one teller (BBC's two feeds are one owner; RT + TASS
-  are one state controller — #356). Claims are checked against sensors
-  (#361): an earthquake story either has a matching USGS row or it doesn't —
-  wildfire→FIRMS, disaster→GDACS, market crash→drawdown; verdicts keep their
-  evidence snapshot after retention deletes the sensor row. Both fold into
-  one fixed, versioned number (`corroboration-v1.0`, #363): each extra owner
-  halves the remaining doubt, a sensor confirmation halves it once more —
-  shown with its full evidence trail on the /stories card (#365). The
-  clustering threshold under all of this was hand-audited first —
-  `docs/audits/stories-threshold-audit.md`.
-- **Disagreement (WS-B, done)** — same story, different countries' outlets:
-  how far apart are the tellings? Every cross-country story carries a
-  `disagreement-v1.0` divergence (#370), rolled up per (country-pair, month)
-  (#372) — first live board: RU|US at 0.832 mean over 11 co-told stories.
-  Whether divergence *predicts* instability is under a pre-registered forward
-  evaluation (#374): divergence exposures enter the prediction journal daily and
-  get graded like every other forecast — protocol frozen in
-  `docs/disagreement-exam.md` before the first prediction was issued.
-- **Coverage bias (WS-D, done)** — the dashboard publishes its own blind
-  spots instead of hiding them.
-- **Local AI checker (WS-G, running)** — a local Ollama model
-  (`qwen3.5:4b-q4_K_M`, 3.4 GB, nothing leaves the machine) extracts
-  structured claims per story nightly — countries, event type, casualty
-  count (#378). Treated as *another fallible annotator*, never a judge:
-  nothing consumes its output until its agreement with a human-checked
-  sample (`make validator-audit`) is measured and published.
+What this project delivers is an **apparatus for not fooling yourself**, built
+around data that makes fooling yourself easy. Concretely:
 
-### 2.3 The referee system (why our numbers can't cheat)
+- **Protocols are frozen before results exist.** Eligibility, target, horizons,
+  contenders, metrics and the decision rule are written down and dated first. The
+  run happens once. Corrections are amendments, never edits (§15.1).
+- **Verdicts are computed, not narrated.** A threshold decides, in code. The
+  within-country evaluation prints `NEGATIVE` because `_verdict()` said so, not because
+  someone read the table and agreed (§15.7).
+- **A trend that fails the rule is reported as a failure.** The composite rises
+  monotonically with horizon. The protocol declared in advance that 0.50–0.55 is
+  a negative rather than a promising trend, so it is recorded as a negative
+  (§15.7).
+- **Forecasts of a constant are refused entry.** 1,101 forecasts of the number
+  0.5 were once recorded as forecasts. The check is now concentration, not exact
+  flatness (§14.4).
+- **A hindcast cannot enter the journal.** A "prediction" whose window overlaps
+  the known past is skipped, because grading it would fake a track record (§15.10).
+- **Independence must be positively established.** A source with no ownership
+  record contributes nothing to a confidence score, because ten anonymous blogs
+  are one claim told ten times, not ten confirmations (§14.6).
+- **Absence is not imputed as average.** A missing domain is excluded and the
+  weights renormalised, rather than entered as "exactly average" (§14.4).
+- **The bias is measured and published**, including the finding that 54 of 55
+  news feeds are English and that a country the system reports on can have no
+  domestic feed at all (§16).
 
-```text
-  pre-registered rules ──► evaluation runs ──► number published
-  (methodology.md,          (baselines vs        (win OR lose —
-   written BEFORE           composite on          the scoreboard
-   any result exists)       2015-2022 only)       shows it in red)
+The evidence that this apparatus works is that **it caught its own author's
+claim and refused it, repeatedly, on the record.** A system that only ever
+confirms the hypothesis of the person who built it has not been tested. This one
+has.
 
-  2023-2024 = TEST WINDOW — locked, untouched, for the final held-out evaluation.
-```
+## 0.4 What it does not claim
 
-- **Ground truth** comes from ACLED (human-validated conflict data),
-  versioned like code: labels-v1.0 → v1.1, never edited in place.
-- **Forecasts are server-stamped before outcomes are known**, graded once,
-  and can never be back-filled. The track record is earned or it is nothing.
-- The current headline: with all three domains live, the composite scores
-  **AUROC 0.502** against a per-country base rate of **0.929**. A coin flip —
-  published, not hidden. The generous reading was that our index measures
-  *"is this country behaving unusually vs its own past?"* while the evaluation asks
-  *"which countries have conflict at all?"* — so a second, pre-registered
-  test restricted scoring to **onset months** (calm-before-the-storm cases,
-  `docs/onset-eval.md`, #380). Verdict: **coin flip there too** (0.496–0.526
-  vs a 0.744 base rate) — even among countries calm for a full year, long-run
-  relapse history dominates and the composite adds nothing measurable yet.
-- **The objection that both exams were the wrong instrument — tested, and it
-  does not rescue the composite.** Both scored a *single pooled AUROC*, while
-  the composite z-scores within country and so carries no cross-country level
-  by construction. With 133 of 238 panel countries never labelled and 10
-  labelled in ≥90% of months, a pooled metric is largely rewarded for telling
-  Norway from Syria — which is where the ~0.93 base rate comes from. So a
-  third evaluation was pre-registered (`docs/within-country-eval.md`, #582) asking
-  whether the composite ranks a country's **own** onset months above its
-  **own** calm months. Verdict: **negative** — best 0.531 at k=6, below the
-  declared 0.55 threshold, 95% CI [0.474, 0.582] containing 0.5. The
-  stratification demonstrably worked: the base rate collapsed from 0.93 pooled
-  to 0.30 within country. The composite simply had nothing hidden underneath.
-  **This settles it for the composite as constructed.**
-- All negatives are published. What it does *not* settle is whether the
-  *inputs* carry anything: `scripts/data_audit.py` (#580) shows severity is a
-  two- or three-level categorical across nearly every source, and #579 that the
-  FIRMS value is detection confidence rather than fire intensity — and
-  non-monotonic against it. "Bad construction" and "bad inputs" remain
-  indistinguishable from these results alone. News severity in particular is no
-  longer a keyword substring match — every score now records *why* it was
-  assigned (#592), and the local-model regrade behind it is gated on a measured
-  model-vs-human agreement rate (`make severity-audit` / `severity-agreement`,
-  #593) before anything downstream trusts it.
+- **It does not forecast instability.** See above. Any future claim requires a
+  new pre-registered version and a new evaluation.
+- **It does not calculate truth.** It shows provenance, corroboration,
+  disagreement and sensor agreement. Six independent outlets can be
+  independently wrong.
+- **Its scores are not probabilities.** They are orderings. Nothing here is
+  calibrated, so 0.875 does not mean "correct 87.5% of the time".
+- **It does not see the whole world.** It sees what open, mostly English-language
+  feeds publish, and it says so with numbers rather than a disclaimer.
+- **It is not a safety-critical alerting service.** Upstream feeds fail, arrive
+  late, change format, and withdraw access.
 
-### 2.4 Status board
+## 0.5 What is genuinely unfinished
 
-| Workstream | What | State |
-|---|---|---|
-| WS-A story clustering | one row per real-world story | ✅ live, threshold audited |
-| WS-D coverage bias | attention-bias table | ✅ live on /coverage |
-| WS-E prediction journal | forward track record | ✅ live on /scoreboard |
-| GDELT backfill | third composite domain, 2014-2024 | ✅ done — fair test ran |
-| Onset evaluation | the composite's second pre-registered test | ✅ ran — coin flip again, honestly published (#380) |
-| Within-country evaluation | the composite's third, on the axis it was built for | ✅ ran — negative, 0.531 vs a declared 0.55 (#582) |
-| Source data audit | does each source's data mean what it claims | ✅ live — 50 findings across 47 sources (#580) |
-| WS-C corroboration | independent-owner counts + sensor cross-checks | ✅ live — corroboration-v1.0 on /stories (#365) |
-| WS-B disagreement index | cross-country telling divergence | ✅ live — index + pre-registered forward evaluation (#374) |
-| WS-F indicator ranking | which dashboard number predicts best | ✅ ranked — |hazard z| leads at 0.59 full-panel, but fades to ~0.53 on the fair onset evaluation and even beats the composite that contains it (#376, #573) |
-| WS-G local AI checker | Ollama claim extraction w/ measured error rate | 🔨 machinery done (#386) — awaiting The operator's filled audit sheet |
+Stated here rather than left to be discovered:
 
-The living log of all of this is pinned issue
-[#282](https://github.com/BasilSuhail/OSINT/issues/282).
+- **The running version has never been evaluated.** Everything in §15 grades
+  `v1.0`. The live system emits `v3.0`, which changed the domain structure and
+  the weights (§14.1).
+- **There is no forward evidence yet.** 1,695 predictions issued, **0 graded**
+  (§15.10).
+- **Five of six declared robustness tests have not been run** (§15.9).
+- **Two of the five label families were never built.** `P4` (market crisis) and
+  `P5` (hazard disruption) do not exist, so a multi-modal index is currently
+  graded only on whether it predicts conflict
+  ([§15.2](HANDBOOK.md#152-what-counts-as-a-positive--the-ground-truth)).
+- **The pre-specified case studies were never filled in.**
+- **Reporting delay has never been measured on this system's own data** (§16.4).
+
+## 0.6 Who this is useful to, and for what decision
+
+It is useful to someone who has to answer *"is this story actually being
+independently reported, or is it one wire item repeated?"*, *"does any physical
+sensor agree with this claim?"*, *"are two countries telling this differently?"*,
+and *"how much should I trust what I am looking at?"* — and who wants each answer
+to arrive with the evidence attached rather than as a verdict.
+
+It is not useful to someone who wants a risk number to act on. That number was
+built, tested, and found not to work.
+
+## 0.7 Where to go next
+
+| If you want to | Read |
+| --- | --- |
+| Run it | [§1](HANDBOOK.md#1-start-here-download-install-run-and-stop) |
+| Understand the screen | [§2](HANDBOOK.md#2-see-and-understand-the-console) |
+| See how a number is computed | [§14](HANDBOOK.md#14-methods--every-number-the-system-publishes) |
+| See what was tested and what failed | [§15](HANDBOOK.md#15-evaluation--what-was-claimed-what-was-tested-what-failed) |
+| Judge the data before trusting it | [§16](HANDBOOK.md#16-bias-provenance-and-one-country-traced-end-to-end) |
+| Rebuild every number yourself | [§17](HANDBOOK.md#17-reproduce-the-analysis) |
+| Find any file in the repository | [§26](#26-repository-map) |
+| Find the right document in `docs/` | [§27](#27-documentation-index) |
+| Know the licence, security policy, and data terms | [§25](#25-licence-security-and-provider-terms) |
+| See a candid read of where this stands | [§28](#28-swot) |
 
 ---
 
-# Chapter 3 — How the data gets collected
+# 25. Licence, security, and provider terms
 
-*Every source, how it is downloaded, and how the disk is managed. No scraping
-anywhere: official APIs, published bulk files and RSS only — if a future
-source needs real scraping, its terms of service get read first or it stays
-out.*
+## 25.1 Licence
 
-### 3.1 The live collectors (celery beat, around the clock)
+**PolyForm Noncommercial 1.0.0.** Full text in
+[`LICENSE`](https://github.com/BasilSuhail/OSINT/blob/main/LICENSE).
 
-Once `make up` runs, the scheduler fires these forever:
+**This is source-available, not open source.** The distinction is not pedantry:
+every OSI-approved licence permits commercial use, so calling this open source
+would tell you that you have a right you do not have.
 
-| Source | What | How it is pulled | Cadence |
-|---|---|---|---|
-| yfinance | country-ETF prices → market severity | Yahoo Finance API | 5 min |
-| GDELT v2 | world geopolitical events | `lastupdate.txt` pointer → newest 15-min export zip | 15 min |
-| USGS | earthquakes | FDSN query API (geojson) | 15 min |
-| GDACS | multi-hazard alerts | official geojson feed | 15 min |
-| NASA FIRMS | active fires | official CSV endpoint | hourly |
-| EONET | natural events | NASA API | 30 min |
-| 44 news feeds | world/regional news | RSS (published by the outlets) | hourly, staggered |
-| EM-DAT / FRED | disasters / macro series | official APIs | daily |
-| ACLED | conflict events | manual drop-folder + opt-in API (see 3.3) | hourly check |
-| OpenSky | aircraft states | REST API | 2 min |
-| abuse.ch / Polymarket / UK Police | cyber / prediction markets / crime | official APIs | 15 min – daily |
-| named-place enrichment | verified RSS buildings/streets/sites | Wikidata API + persistent cache | 30 min, bounded |
-
-Every fetched row gets a **fingerprint** `(source, source_event_id)` — the
-database rejects the same real-world record twice no matter how often it is
-re-fetched (Chapter 2.1). Per-source successes/failures land in
-`ingest_health`, which is what the dataset chips in the top bar read.
-
-**58 collectors in total**: 14 named fetchers plus 44 RSS feeds loaded from
-`app/sources/rss_feeds.json`.
-
-### 3.1b What is actually in there
-
-Snapshot of **2026-07-24** — 939,854 events across 53 active sources, 1,077 MB.
-Regenerate with `uv run python scripts/db_snapshot.py` rather than quoting
-these forever: retention prunes continuously, so every figure below moves.
-
-| source | rows | span held |
-|---|---:|---|
-| nasa-firms | 764,814 | rolling ~2 weeks |
-| gdelt | 71,474 | rolling ~30 days |
-| opensky-adsb | 61,313 | rolling, hourly country rollups |
-| abuse-ch-urlhaus | 15,391 | rolling ~30 days |
-| 44 RSS feeds | ~20,000 | rolling ~2 weeks |
-
-Derived on top: 19,140 stories · 26,985 story members · 10,949 embeddings ·
-6,742 gists · 3,791 claims · 17,004 corroboration rows · 1,444 disagreement
-rows · 61,306 scores · 582 journal predictions · 15,600 rows of GDELT daily
-volume across 93 ingested archive days.
-
-`scripts/data_audit.py` (#580) is the companion to this table: it reports not
-how *many* rows a source has but whether they mean anything — whether severity
-parses, varies, and reaches anything downstream, and whether country fields
-required by navigation remain populated. RSS country coverage is required
-because the map uses it to retrieve news by country (#717); unresolved rows are
-reported as findings rather than hidden behind an optional declaration. Its
-first run returned 50 findings across 47 sources.
-
-**"Span held" is not "span covered."** The events table is a rolling window,
-not an archive. GDELT's eleven years of history exists as monthly aggregate
-JSONs in `data/gdelt/` (§3.2) and the daily-volume table — never as raw rows,
-which retention would delete anyway. A source can vanish from this table
-entirely: `uk-police` published one month, and once that month aged past
-retention its rows went with it.
-
-> Every number here comes from `scripts/db_snapshot.py`, which counts rows.
-> An earlier version of this section was built from
-> `pg_stat_user_tables.n_live_tup` — an autovacuum estimate that reported
-> **18** rows in `predictions` against an actual **582**. Estimates are for
-> query planners, not documentation.
-
-The shape is lopsided on purpose. Fire pixels and aircraft states are cheap
-and high-volume; they are sensors. News is low-volume and expensive to reason
-about; it is narrative. The whole analytical question is whether the first
-moves before the second.
-
-### 3.2 GDELT — the three-path source
-
-GDELT publishes a whole family of data products (Event Database 1.0/2.0,
-Global Knowledge Graph, BigQuery mirrors, an Analysis Service, ngrams,
-quotation/entity/frontpage graphs...). We use exactly **two** of them, both
-plain static files off their CDN, and skip the rest deliberately:
-
-| GDELT product | Use it? | Why |
-|---|---|---|
-| **Event DB 2.0** (15-min zips) | ✅ live | freshest event stream; `lastupdate.txt` always points at the newest file — trivially pollable, no key |
-| **Event DB 1.0** (daily zips) | ✅ history | the only product covering our whole 2014-2024 window at daily grain with stable format |
-| Event DB 1.0 "reduced" | ❌ | ends Feb 2014 — misses the window; its one-event-per-day collapse also destroys volume information |
-| Global Knowledge Graph 1.0/2.0 | ❌ (for now) | themes/emotions/counts at ~2.5 TB per year — far beyond what the Goldstein signal needs; a *candidate* for the WS-B disagreement work later, as its own decision |
-| 2.0 "mentions" table | ❌ (for now) | per-article mention records — interesting for corroboration counts someday, unnecessary for a monthly country mean |
-| BigQuery mirror | ❌ | needs a Google Cloud account + billing; this project is local-first with zero cloud dependencies |
-| Analysis Service | ❌ | browser/email tool for humans, GDELT 1.0 only, not automatable |
-| Normalization files | ❌ | they correct for news-volume growth over time — our signal (mean Goldstein per country-month) is already volume-independent, and the rolling z-score handles drift |
-| Frontpage / quotation / entity graphs, ngrams, TV/visual datasets | ❌ | different research questions entirely |
-
-The two we use, side by side:
-
-```text
-LIVE (every 15 min)                 HISTORY (one-time, 2014-2024)
-GDELT v2                            GDELT v1 daily archives
-─────────────────                   ──────────────────────────
-lastupdate.txt  ── points to ──►    ~4,000 files, one per day:
-newest export.CSV.zip               YYYYMMDD.export.CSV.zip
-   │ unzip in memory                   │ download → unzip in memory
-   ▼                                   │ keep 3 columns only
-events table                           │ (date, GoldsteinScale, country)
-(retention ~30 days)                   ▼
-                                    per-country monthly sums
-                                    → one small JSON checkpoint per month
-                                      in data/gdelt/ — raw file DISCARDED
-```
-
-The history run downloads ~40 GB over its lifetime but **keeps under 1 MB**:
-only the monthly aggregates survive. Checkpoints are written atomically
-(temp file → rename), so a killed run resumes at the next month for free and
-a finished cache makes re-runs instant. Missing days (GDELT has known gaps)
-are recorded in the checkpoint, not papered over; transient download errors
-retry three times, then fail the whole month loudly rather than write a
-partial one.
-
-#### The third path — daily narrative volume (#555)
-
-The analysis side needs a different thing from the two paths above: **how much
-coverage a country got on a day**, as a time series. The DOC API answers that
-directly but reaches back only about three months and is aggressively rate
-limited, so `scripts/gdelt_archive.py` walks the same 15-minute export grid and
-aggregates it instead:
-
-```bash
-uv run python scripts/gdelt_archive.py --start 2026-04-20 --end 2026-07-19
-```
-
-Roughly 4 seconds per day of history — 91 days took under 5 minutes.
-
-Two rules make it work. **Counts, not rows**: raw GDELT events are pruned at 30
-days, so a multi-year raw backfill would delete itself; `gdelt_daily_volume`
-holds one row per country-day and sits outside retention. And rows are bucketed
-by **the file's timestamp, not their own `Day` column** — a single export from
-2026-04-15 carries rows dated 2025-04-15, because `Day` is when the event
-happened and the file stamp is when GDELT saw it reported. Coverage timing is
-the thing being measured, so the file stamp is the correct clock.
-
-A second table records which days were actually walked. Without it, a country
-with no coverage on a day is indistinguishable from a day nobody downloaded,
-and the analysis cannot tell a quiet narrative from a missing one.
-
-What this path is **not** good for: topic-scoped questions. GDELT's Events
-export codes political actions, so there is no earthquake event type to filter
-on — the series is whole-country volume. See `docs/backtest/` for where that
-limitation bites.
-
-#### The exact links (verify it yourself)
-
-There are precisely **two** GDELT URLs in the codebase:
-
-| Path | URL | In code |
-|---|---|---|
-| live pointer | `http://data.gdeltproject.org/gdeltv2/lastupdate.txt` | `app/sources/gdelt_fetcher.py` |
-| history pattern | `http://data.gdeltproject.org/events/YYYYMMDD.export.CSV.zip` | `app/composite/gdelt.py` |
-
-The pointer file, fetched every 15 minutes, returns three lines — size, MD5
-hash, URL — for the newest batch:
-
-```text
-54849   e2077439...  http://data.gdeltproject.org/gdeltv2/20260709103000.export.CSV.zip
-71626   33a5f6da...  http://data.gdeltproject.org/gdeltv2/20260709103000.mentions.CSV.zip
-4517072 d04d0311...  http://data.gdeltproject.org/gdeltv2/20260709103000.gkg.csv.zip
-```
-
-We take the `export` line only. (GDELT publishes those MD5 hashes; we do not
-verify them yet — a cheap integrity upgrade on the list.)
-
-"Pulling" is a plain HTTP GET via `httpx` with an honest User-Agent
-(`OSINT-project-project (academic)`), a 120 s timeout, and 3 retries with
-backoff on the history path — no browser, no scraping, no auth. The zip is
-unzipped **in memory**, rows are split on tabs, three columns are kept, the
-rest is discarded.
-
-**Check it yourself**: paste
-`http://data.gdeltproject.org/events/20220301.export.CSV.zip` into a browser.
-That downloads the exact file the backfill parsed for 1 March 2022 — open it
-and you are looking at the same raw rows we aggregated.
-
-### 3.3 ACLED — deliberately manual
-
-ACLED is registered-access and its data API rejects many valid academic
-accounts, so the ground-truth labels are built from **manually downloaded
-aggregate xlsx files** dropped into the data directory; `make labels`
-rebuilds from whatever is there. A helper (`scripts/acled_browser_sync.py`)
-can capture downloads from your own logged-in myACLED browser session — it
-automates *your* clicks and bypasses nothing.
-
-Manual is a feature, not a gap: **ground truth must never silently drift
-under a running evaluation.** Label changes only happen as versioned,
-pre-registered amendments (labels-v1.0 → v1.1 lives in `docs/methodology.md`).
-
-### 3.4 The history backfills
-
-`make backfill-signals` rebuilds the composite's 2015-2024 history from three
-sources in one run — market (full ETF price history via yfinance), hazard
-(all M≥4.5 quakes via USGS, yearly chunks under their 20k-row cap) and
-geopolitical (the GDELT v1 path above). Everything flows through the *same
-code path as live data*, rows carry `backfill: true` for provenance, and the
-whole thing is idempotent — run it twice, get the same database.
-
-### 3.5 How the disk is managed
-
-```text
-data/                        (one folder, bind-mounted, survives anything)
-├── postgres/      1.5 GB    the database — 940k events, 1077 MB of it
-├── private/       104 MB    ACLED drop-folder (gitignored)
-├── redis/          48 MB    queue state, ephemeral
-├── gdelt/         3.1 MB    monthly checkpoint JSONs (11 years of GDELT)
-├── exports/       2.9 MB    panel.parquet + all reports the dashboard serves
-└── backtest_cache/ 216 KB   cached GDELT DOC responses + rate-limit state
-```
-
-Retention (03:00 UTC daily + `make data-prune`): **~30 days** for news, hazard
-and GDELT raw events, overridable per source in `.env`. The events table stays
-small because **everything analytical is derived and kept forever** (scores,
-labels, stories, gists, journal, job runs, the GDELT daily-volume aggregate),
-and because market/macro history is exempt — it cannot be re-fetched. Backups: `make data-size` to inspect, snapshot script in
-`scripts/`, and the whole folder is portable — point `OSINT_DATA_DIR` at an
-external disk and move it.
-
-### 3.6 Real hazard footprints on the map
-
-Hazard rows arrive as a single point; the map wants the real shape. A few
-minutes after each USGS/GDACS fetch, `enrich_footprints` pulls the actual
-geometry — USGS ShakeMap contours, GDACS alert polygons, and EONET's reported
-extent for wildfires and sea ice (#205, #612/#614). Stored geometry is capped
-at **50 kB per event** so one sprawling polygon cannot bloat the row (#615),
-and footprints **survive a later refresh** of the same event instead of being
-overwritten back to a bare point (#604/#611/#618/#621). A watchdog alerts if
-footprint coverage suddenly collapses — a silent upstream format change should
-not quietly empty the map (#617/#620).
-
-### 3.7 Ground-level news coordinates
-
-RSS feeds rarely supply coordinates. The fast resolver uses bundled city and
-region data; `enrich_news_places` then checks explicit named buildings,
-streets, and sites against Wikidata and upgrades markers only after exact name
-and country matches (#745, #747, #748). For a single-place story, the entity
-must also match its city anchor and sit within 75 km. Several
-candidates use country-only gates because one row-level city cannot govern all
-of them. Accented Latin, Cyrillic, Arabic, and Devanagari kind words select a
-bounded local-language Wikidata search; an exact local label or alias is still
-required, so transliteration alone never proves identity (#749). Search rank
-never decides identity. Distinct verified places are
-stored on one story row and rendered as separate markers; aliases resolving to
-one Wikidata ID collapse. Partial proof draws only proven points. Positive and
-negative results are cached in Postgres, and each verified marker carries its
-place label, Wikidata ID, precision, source, check time, and resolver version.
-Every place-backed news/GDELT coordinate in the active client event window
-enters one MapLibre GeoJSON source; worker-side clustering controls visual
-density without sampling, moving, or discarding those points. Hazards retain
-their independent marker and footprint layer. A refreshed database row replaces
-the client-buffer copy even when its event ID is unchanged, so later exact-place
-enrichment reaches an already-open map (#762).
-
----
-
-# Chapter 4 — The brain
-
-The system has a small local brain: a light model (`llama3.2:3b`, ~3.4 GB
-resident at the 8k context this code sends) that runs **only when the box has
-headroom** and narrates what is going on —
-both the world signal and the pipeline itself.
-
-### 4.1 Why it isn't always resident
-
-Production is an 8 GB Raspberry Pi. A model pinned in RAM 24/7 would fight scraping
-and the analytical batch and OOM the Pi. So the brain uses **adaptive keep-alive**:
-warm during idle windows, **evicted the instant a heavy job starts**, reloaded when
-the box goes quiet again. The eviction is wired into `job_run()` — every heavy job
-passes through it, so the model always steps aside *before* the pandas parse grabs
-memory. A resource gate (`app/brain/gate.py`) also refuses to load unless there is
-enough free RAM and no heavy job is already running.
-
-### 4.2 What it produces
-
-Every ~15 minutes, when the gate allows, the brain reads a compact snapshot (top
-stories, job outcomes, ingest freshness) and writes a short JSON narrative:
-
-- **headline** — the single most important thing right now
-- **world** — 2-4 sentences on the story signal
-- **system** — 1-2 sentences on pipeline health
-- **watch** — a few things to keep an eye on
-
-It describes **only the numbers it is given** — same no-fabrication discipline as the
-validator. It never invents facts.
-
-### 4.3 Expected vs actual output
-
-Expected shape (`GET /brain/narrative/latest`):
-
-```json
-{
-  "present": true,
-  "model": "llama3.2:3b",
-  "created_at": "2026-07-12T12:00:00+00:00",
-  "payload": {
-    "headline": "Border-clash coverage is the loudest signal; pipeline healthy.",
-    "world": "Seven outlets are carrying a border-clashes story across twelve members. No other cluster is close in reach.",
-    "system": "All six analytical jobs completed in the last hour; ingest last checked two minutes ago.",
-    "watch": ["Whether the border story keeps gaining outlets", "The failed composite job from earlier"]
-  }
-}
-```
-
-When the box is busy, the brain steps aside; `GET /brain/narrative/latest` simply
-returns the last narrative and the **Situation card renders "brain resting"** so the
-backoff is visible.
-
-### 4.4 Running it
-
-`make up` starts Ollama for you: if it's installed and not already running, the
-start-up brings up `ollama serve`, waits for it, and pulls the light brain model on a
-fresh box — so one command runs the whole app *with* its brain, and `make down`/`make
-off` stops the Ollama it started (a hand-started `ollama serve` is left alone). It's
-best-effort: if Ollama isn't installed the app still comes up and the brain stays
-dormant. Skip the autostart with `OLLAMA_AUTOSTART=0`.
-
-Run one pass by hand:
-
-```bash
-make brain                                 # run one narration now
-```
-
-The nightly validator keeps its own 4b model; the brain is separate and lighter.
-Turn the brain off entirely with `BRAIN_ENABLED=false` in `.env`.
-
-### 4.5 Ask the app
-
-Beyond narrating on its own schedule, the brain answers questions on demand.
-`POST /brain/ask` with `{"question": "..."}` returns `{"answer": "...",
-"context_digest": "...", "sources": [...]}`. The answer is grounded in the same live
-snapshot the narrative uses, plus question-retrieved recent stories carrying source
-outlets, corroboration, contested flags, sensor verdicts, and gists. It answers only
-from that context and says "I don't have data on that" otherwise — it never invents.
-
-Because a question is user-initiated (you're waiting for the answer), Q&A does not
-back off on every running job the way the scheduled narrative does — it refuses only
-when free RAM is below the floor, returning a short "brain busy" answer so the Pi
-never OOMs. If Ollama is down it answers "The brain is offline right now." Nothing is
-persisted; the ask box lives at the bottom of the Situation card and clears on
-reload.
-
-Answers reflow into short readable paragraphs rather than one wall of text
-(#599), and an **elaborate** chip under the latest answer re-runs it in an
-ELI10 mode that spells out each inference step with its own label (#601/#603) —
-for when the terse answer moved too fast.
-
-**Model policy** (#413/#433/#926): the 3b `brain_model` stays warm for the scheduled
-narrative and story enrichment above; every user ask (`/brain/ask` and
-`/brain/ask/stream`) runs the heavier 4b model per-call with `keep_alive=0`, so
-the 4b never lingers after an ask. The nightly validator reuses the same 4b
-model but keeps it warm (`keep_alive=5m`) across its own batch. Q&A refuses
-politely below `qa_min_free_mb` (3800 MB free RAM).
-
-Example:
-
-```
-POST /brain/ask  {"question": "what is the most contested story?"}
-→ {"answer": "The most contested story is the border-clashes report, with a
-   divergence of 0.83 across the outlets telling it [1].",
-   "context_digest": "sha256:…",
-   "sources": [{"n": 1, "outlets": ["Reuters", "BBC"], "contested": true, ...}]}
-```
-
-Phase C evaluated whether the validator's heavier 4b model was worth using for Q&A;
-the answer was yes — Q&A has run the 4b in production since #433. `make brain-qa-eval`
-remains the before/after measurement tool, comparing it with `brain_model` on identical
-retrieved contexts and writing `data/exports/brain-qa-model-eval.md` and `.json`.
-
-### 4.6 Enriching new stories
-
-The nightly validator gives stories full claims once a night with the heavy 4b model.
-The brain adds a faster, lighter first-look: every ~20 minutes, on idle windows, the
-3b model gives each new story a one-line **gist** plus two tags — a **category**
-(`conflict`, `economy`, `disaster`, `politics`, `other`) and an **escalating** flag
-(`yes`, `no`, `unclear`). It reads only the story's own headlines and invents nothing;
-anything a small model returns off-vocabulary is coerced to `other` / `unclear`, so the
-tags stay clean and filterable.
-
-The pass is idle-gated (same RAM + no-heavy-job gate as the narrative) and batch-capped
-(~20 stories per run), so a burst of new stories clears within an hour or two without
-straining the Pi. Gists land on `/stories/top` and show as a line under each story on
-the Stories card, with a small category chip (↑ marks an escalating story). Run one pass
-by hand with `make enrich`. Stored 30 days, then pruned.
-
-# Chapter 5 — How to read the dashboard
-
-*Every number on the analytical cards, in plain language: what it is, what
-good and bad look like, and what to actually do with it. No statistics
-degree required.*
-
-The right pane is a deck of five cards (swipe, or click for fullscreen):
-**situation**, **briefing** (the landing card, explained below), **console**
-(the raw event feed as it arrives), and the three analytical cards — stories,
-coverage, scoreboard. Geography lives in the map on the left; the 3D globe was
-removed in #494 because its WebGL context was the tab's largest memory holder.
-
-### 5.1 Briefing — "just tell me what matters today"
-
-The deck opens with the answer instead of a hunt (a pattern carried over
-from the news-intelligence-platform, this project's predecessor):
-
-- **World stress level** in one plain word — *calm / elevated / high
-  stress* — computed from the average of every country's latest composite
-  score. Hover it for the honest caveat: the word describes *measured
-  stress today*, not a validated forecast.
-- **Most trustworthy story right now** — the highest-confidence story of
-  the last 24 hours, with its owners badge and sensor ✓.
-- **Most contested telling** — the story whose country blocs word it most
-  differently, with who disagrees with whom.
-- **Biggest stress movers** — countries whose index moved most since last
-  month, ▲ rising / ▼ easing.
-
-Everything on it is a doorway: the detail always lives on one of the three
-cards below. The same idea as a weekly artifact: `make briefing` writes a
-newsletter-ready one-pager (also generated automatically every Monday
-morning) — the first step on the productization path tracked in issue #400.
-
-### 5.2 Stories — "what is the world talking about, and should I believe it?"
-
-Every row is **one real-world story**, no matter how many outlets wrote it
-up. The machine groups similar headlines every 30 minutes, so "Earthquake
-strikes Tokyo" and "Dozens injured as quake hits Tokyo" are one row, not two.
-
-**The badge on the left — `7 src`** — is the number that matters. It counts
-**independent tellers**, not feeds: ten copies of one Reuters wire story
-count as *one*, the BBC's two feeds count as *one*, RT and TASS (both
-controlled by the Russian state) count as *one*. So `7 src` means seven
-genuinely separate organisations chose to tell this story.
-
-**The badge's colour is a confidence score** (0 to 1, shown in the tooltip):
-
-| colour | score | plain meaning |
-|---|---|---|
-| dim grey | 0 | one unverified teller — this is a rumour until proven otherwise |
-| grey | up to 0.5 | a second independent teller exists — worth a look |
-| green | 0.5–0.75 | several independent tellers — probably real |
-| cyan | 0.75+ | many independent tellers, often machine-confirmed — take seriously |
-
-The formula behind the colour is one sentence: *each additional independent
-teller halves the remaining doubt; a physical-sensor confirmation halves it
-once more.*
-
-**The `✓ earthquake` / `✓ disaster` chips** are the machine check: the story
-*claimed* a physical event, and a sensor that cannot spin a narrative (USGS
-seismometers, NASA fire satellites, GDACS disaster feeds, market data)
-**confirmed something physical actually happened there, then**. A story with
-a ✓ chip is corroborated by hardware, not just by other journalists. No chip
-on a physical claim means no matching sensor row was found — often because
-the story is about a past event, sometimes because it's inflated.
-
-**What to do with it:** scanning for what's real, sort by instinct — cyan
-badges with ✓ chips first, dim single-teller rows last. The
-`min owners` filter (set it to 2+) hides everything only one organisation
-has said. The header line — *"X stories · Y told by 2+ independent owners ·
-Z sensor-confirmed"* — is the day's honesty summary: how much of the news
-flow is corroborated versus single-sourced.
-
-**Framing and the deep read.** Each story carries a deterministic **framing**
-breakdown — which angle each bloc leads with — replacing the old raw keyword
-dump (#606). For a contested story you can pull an on-demand **deep read**
-(#608): the 4b model explains, in plain prose, *why* the tellings diverge,
-returned as readable text rather than truncated JSON (#610). Both are opt-in
-per story, so the Pi only spends the tokens when you ask.
-
-### 5.3 Coverage — "whose stories never get told?"
-
-This card is the dashboard admitting its own blind spots. Media attention is
-wildly uneven: the top five countries absorb roughly **30 % of all recorded
-event volume**. If you don't measure that, every other number quietly
-inherits the bias.
-
-| column | plain meaning |
-|---|---|
-| **months** | how long we've had data for this country — short history = shaky baselines |
-| **events** / **events/mo** | raw attention: how much gets recorded about this country at all |
-| **share** | this country's slice of *global* recorded events — the loudness ranking |
-| **fatal/event** | fatalities per recorded event — the quiet-country warning: a high number means events only get recorded there when people die |
-
-**The one comparison worth internalising:** the US logs ~0.01 fatalities per
-event (everything gets reported, however minor), Afghanistan ~3 (only
-catastrophe makes the record). Same planet, hundred-fold difference in what
-"an event" means.
-
-**What to do with it:** before believing any cross-country comparison on
-this dashboard — including ours — check both countries here. A spike in a
-high-share country is probably just loudness; a *small* spike in a country
-with high fatal/event may be a big deal that barely made the record. Loud
-countries are judged against their own past for exactly this reason.
-
-### 5.4 Scoreboard — "is any of this actually predictive?"
-
-The honesty engine. Two sections:
-
-**Forward track record.** Every month the system writes down its forecasts
-— *"country X will/won't see instability in the next 1 / 3 / 6 months"* —
-**server-stamped before the outcome is knowable**, impossible to edit
-afterwards, graded automatically once reality catches up. The columns:
-
-| column | plain meaning |
-|---|---|
-| **source** | which instrument made the forecast — `composite` (the stress index) or `disagreement` (do countries telling the same story differently predict trouble?) |
-| **k** | horizon: predicting 1, 3 or 6 months ahead |
-| **issued / graded / pending** | how many forecasts made, how many reality has already marked, how many still waiting |
-| **pos rate** | how often the bad outcome actually happened in the graded set |
-| **mean score** | how worried the instrument claimed to be, on average |
-| **Brier** | the grade: **0 = clairvoyant, 0.25 = coin flip, 1 = perfectly wrong.** Lower is better. This one number is the difference between a forecasting system and a mood ring |
-
-**Baselines.** The composite index versus deliberately dumb rivals —
-"predict randomly", "predict yesterday's weather", "predict each country's
-long-run average". The published result, stated plainly: **the composite has
-not yet beaten the dumb rivals** (AUROC ≈ 0.5 = coin flip, on both the
-ordinary evaluation and the pre-registered onset evaluation). That negative is published
-on purpose — it is what makes every other number here credible, and the
-per-indicator decomposition (`make indicator-ranking`) shows where the
-recoverable signal lives for the next version.
-
-**The lead-time gate.** A second published negative, and a sharper one. The
-premise underneath this whole project is that physical sensors move before the
-news does. That was tested directly: for M6.0+ earthquakes, sensor spikes do
-**not** precede narrative spikes at a rate distinguishable from chance
-(p ≥ 0.50), and the result holds across every threshold from 1.0 to 2.5 — so it
-is not an artefact of where the line was drawn. Full working:
-`docs/backtest/f74fb156-report.md` and `docs/backtest/threshold-sensitivity.md`.
-
-Earthquakes may simply be the wrong anchor — a major quake is reported within
-minutes, so there may be no lead to find. Slow-onset hazards (drought, flood,
-sustained unrest) are where a sensor could plausibly lead coverage by days, and
-that is the open question rather than a settled failure.
-
-**What to do with it:** treat the dashboard as **monitoring, not prophecy**.
-The stories card tells you what's happening and how corroborated it is —
-that part works today. The predictive claim is *on trial in public*: watch
-the Brier column accumulate; if the instruments are worth anything, it sinks
-below 0.25 and stays there. Until then, nobody here will pretend otherwise.
-
-### 5.5 The one-paragraph version
-
-Stories = what happened, weighted by independent confirmation, machine-checked
-against sensors. Coverage = which countries this whole apparatus is blind to.
-Scoreboard = whether the forecasting ambition is earning its keep, graded in
-public, currently honest about not winning yet. Read them in that order.
-
----
-
-# Reference shelf
-
-*The deep material — architecture, domains, pipeline, evaluation protocol.*
-
-> **The diagrams below describe the _target_ production shape, not what runs
-> today.** The live system is a single box, Postgres-only: the Raspberry Pi 5 +
-> RAID1, the Parquet cold-archive tier, Pushover alerting, Caddy/Tailscale are
-> all planned, not yet wired. Retention prunes raw events at ~30 days and every
-> derivation stays in Postgres — there is no hot/cold split yet.
-
-## Project map — where everything lives
-
-Essentials only — the files you actually open. Two apps (Python backend +
-Next.js frontend) over local Postgres/Redis; all data sits in one folder.
-
-```text
-OSINT/
-├── app/                      ← PYTHON BACKEND (ingest · score · serve)
-│   ├── api.py                  FastAPI read-API: /events /scores /ingest-health /stream(SSE)
-│   ├── celery_app.py           Celery app instance (broker = Redis)
-│   ├── tasks.py                Celery tasks + beat schedule (cadence + 03:00 prune)
-│   ├── fetcher_registry.py     maps source name → fetcher
-│   ├── persistence.py          upsert events into Postgres (+ Redis "new rows" tick)
-│   ├── events_bus.py           Redis pub/sub channel powering the live SSE stream
-│   ├── housekeeping.py         retention policy (GDELT/news/hazard 30d, per RETENTION_* in .env)
-│   ├── db.py / db_models.py    SQLAlchemy engine/session  +  table definitions
-│   ├── settings.py             ALL config (reads .env): POSTGRES_*, OSINT_DATA_DIR, RETENTION_*
-│   ├── models.py               canonical Event/Score pydantic shapes
-│   ├── watchdog.py             ingest health monitor
-│   ├── sources/                one fetcher per feed (gdelt, gdacs, nasa_firms, fred, abuse_ch…)
-│   ├── cii/                    Country Instability Index scoring
-│   ├── composite/              composite-score aggregation/normalisation
-│   └── enrichment/             country/city geocode · NER · sentiment (+ enrichment/data/ polygons)
-│
-├── osint-frontend/           ← NEXT.JS DASHBOARD (reads app/api.py)
-│   ├── app/                    routes: page.tsx (dashboard), layout.tsx, providers.tsx, api/
-│   ├── lib/
-│   │   ├── apiClient.ts          ★ all backend calls (fetchEvents/Scores/IngestHealth, SSE url)
-│   │   ├── queries.ts            data hooks (windowing, filters, latest scores)
-│   │   ├── realtime.ts           EventSource SSE buffer + reconnect/poll fallback
-│   │   └── types.ts              EventRow / ScoreRow / IngestHealthRow types
-│   ├── components/             panes: MapPane, DashboardSection, FilterRail, ui/
-│   ├── stores/                 zustand filter store
-│   └── public/                 static assets
-│
-├── data/        ← ALL LOCAL STORAGE (= $OSINT_DATA_DIR, gitignored)
-│   ├── postgres/                Postgres data files (the actual DB)
-│   └── redis/                   Redis append-only file
-├── backups/     ← snapshot.py dumps (gzipped CSV per table, gitignored)
-│
-├── migrations/  ← Alembic schema migrations (versions/ = each change)
-├── scripts/     ← one-off tools: snapshot.py (backup) · prune_now.py · backfill_*.py · enrich_*.py
-├── tests/       ← pytest suite (backend);  frontend tests live in osint-frontend/__tests__ + lib/*.test.mts
-│
-├── docs/        ← architecture-spec.md · methodology.md · data-coverage.md · severity-grading.md · frontend/ · superpowers/(specs+plans)
-│
-├── docker-compose.yml   ← Postgres + Redis services (bind-mount → $OSINT_DATA_DIR)
-├── Makefile             ← make data-size / data-prune / data-reset
-├── alembic.ini          ← migration config
-├── pyproject.toml       ← Python deps + build  (requirements.txt mirrors runtime deps)
-├── env.example          ← copy → .env, then fill secrets
-└── .env                 ← YOUR live config + secrets (gitignored — never commit)
-```
-
-**Quick "where is…?"**
-- **My config / secrets** → `.env` (template: `env.example`); read in code via `app/settings.py`.
-- **The database itself** → `data/postgres/` (change location with `OSINT_DATA_DIR`).
-- **What the dashboard fetches** → `osint-frontend/lib/apiClient.ts` ↔ served by `app/api.py`.
-- **Add/adjust a data source** → `app/sources/` + register in `app/fetcher_registry.py`.
-- **How long data is kept** → `app/housekeeping.py` (+ `RETENTION_*` in `.env`).
-- **A backup of old data** → `backups/<timestamp>/`.
-
----
-
-## Trace it yourself — clickable file + data map
-
-The ASCII tree above shows the *shape*; this shows the *route data takes*. Every
-path is a link — click to open the file on GitHub.
-
-**Follow one row, source → screen** (a GDELT event's whole life):
-
-| # | Stage | File | What happens |
-|---|---|---|---|
-| 1 | fetch | [`app/sources/gdelt_fetcher.py`](app/sources/gdelt_fetcher.py) | HTTP GET the newest 15-min export |
-| 2 | register | [`app/fetcher_registry.py`](app/fetcher_registry.py) | name → fetcher lookup |
-| 3 | schedule | [`app/tasks.py`](app/tasks.py) | Celery beat fires it every 15 min |
-| 4 | dedup + store | [`app/persistence.py`](app/persistence.py) | upsert on `(source, source_event_id)` → `events` |
-| 5 | normalise | [`app/composite/normalization.py`](app/composite/normalization.py) | rolling within-country z-score |
-| 6 | score | [`app/composite/scoring.py`](app/composite/scoring.py) | weighted-z → sigmoid → `scores` |
-| 7 | serve | [`app/api.py`](app/api.py) | `/scores`, `/events`, SSE stream |
-| 8 | fetch (UI) | [`osint-frontend/lib/apiClient.ts`](osint-frontend/lib/apiClient.ts) | all backend calls in one file |
-| 9 | render | [`osint-frontend/components/`](osint-frontend/components/) | map + cards |
-
-**Where each source lands:**
-
-| Source | Fetcher | Table / output |
-|---|---|---|
-| GDELT live | [`app/sources/gdelt_fetcher.py`](app/sources/gdelt_fetcher.py) | `events` (rolling ~30d) |
-| GDELT history | [`app/composite/gdelt.py`](app/composite/gdelt.py) | `data/gdelt/` monthly JSON + `gdelt_daily_volume` |
-| USGS / GDACS / FIRMS / EONET | [`app/sources/`](app/sources/) | `events` → footprint enrich in [`app/tasks.py`](app/tasks.py) |
-| yfinance / FRED | [`app/sources/`](app/sources/) | `events` (market/macro, never pruned) |
-| ACLED (labels) | [`scripts/`](scripts/) drop-folder | `labels` table (ground truth, kept separate) |
-| RSS ×44 | [`app/sources/rss_feeds.json`](app/sources/rss_feeds.json) | `events` → stories |
-
-**Analytical subsystems — one folder each, formula inside:**
-
-| Concern | Folder | Formula file |
-|---|---|---|
-| Composite index | [`app/composite/`](app/composite/) | [`normalization.py`](app/composite/normalization.py) · [`scoring.py`](app/composite/scoring.py) |
-| Corroboration | [`app/corroboration/`](app/corroboration/) | [`score.py`](app/corroboration/score.py) |
-| Divergence / disagreement | [`app/divergence/`](app/divergence/) | [`config.py`](app/divergence/config.py) |
-| CII | [`app/cii/`](app/cii/) | [`scoring.py`](app/cii/scoring.py) |
-| The brain (LLM) | [`app/brain/`](app/brain/) | `gate.py` · `client.py` |
-| Prediction journal | [`app/journal/`](app/journal/) | [`emit.py`](app/journal/emit.py) |
-| Retention | [`app/housekeeping.py`](app/housekeeping.py) | — |
-
----
-
-## The thing in one diagram
-
-```mermaid
-flowchart LR
-    subgraph SRC["Open data sources (free)"]
-        S1[yfinance + FRED]
-        S2[GDELT events]
-        S3[USGS + GDACS + FIRMS]
-    end
-
-    subgraph PI["Raspberry Pi 5 + 2x4TB btrfs RAID1"]
-        W[Celery workers<br/>fetch · dedup · normalise]
-        DB[(Postgres<br/>events + scores)]
-        AR[(Parquet archive<br/>cold storage)]
-        COMP[Composite worker<br/>JRC handbook<br/>method_version v1.0]
-    end
-
-    subgraph OUT["Outputs"]
-        DASH[Next.js dashboard<br/>MapLibre GL]
-        PHONE[Pushover<br/>phone alert]
-        EVAL[Evaluation report<br/>AUROC / AUPR / Brier]
-    end
-
-    S1 & S2 & S3 --> W
-    W --> DB
-    W --> AR
-    DB --> COMP
-    COMP --> DB
-    DB --> DASH
-    COMP --> PHONE
-    AR --> EVAL
-```
-
-Three sources in. One pipeline. Three outputs: a live dashboard you can pull up on your phone, an alert when a country crosses a threshold, and an evaluation report at the end.
-
----
-
-## What we are building, in plain words
-
-| Question | Answer |
-|---|---|
-| **What is it?** | A small early-warning dashboard. It watches four kinds of open data — markets, geopolitical news events, natural hazards, and satellite-detected fire load — and combines them into a single number per country that goes up when things look stressed. |
-| **Why these three?** | The design brief: "must not depend on a single data source." Three independent domains keep the score honest: if only one domain spikes, the composite stays calm. If multiple domains spike together, the composite goes red. |
-| **What is it for?** | (a) **The claim** — test whether this multi-modal composite is better at flagging real instability events than watching one domain alone. (b) **Personal** — a self-hosted situational-awareness tool that keeps running indefinitely. |
-| **What is NOT it?** | Not a prediction system. Not an enterprise intelligence platform. Not a live sensor wall. Not finance-only. Does not claim to predict specific events. Does not use private intelligence feeds. |
-
----
-
-## Three input domains
-
-The system tests a composite over **three domains**, not finance alone, not GDELT alone.
-
-```mermaid
-flowchart LR
-    subgraph A["Module A — Market signals"]
-        A1[yfinance<br/>equities, FX, vol]
-        A2[FRED<br/>CPI, unemployment, yields]
-        A3[FinBERT-on-news<br/>auxiliary signal]
-    end
-
-    subgraph B["Module B — Geopolitical events"]
-        B1[GDELT events + GKG<br/>deduplicated<br/>CAMEO-filtered<br/>Goldstein-weighted]
-    end
-
-    subgraph C["Module C — Hazards / disaster"]
-        C1[USGS Quake]
-        C2[GDACS multi-hazard alerts]
-        C3[NASA FIRMS fires]
-    end
-
-    subgraph D["Module D — Composite stress index"]
-        D1[JRC 10-step methodology<br/>normalise · weight · aggregate<br/>method_version v1.0]
-    end
-
-    A --> D
-    B --> D
-    C --> D
-    D --> E[Score per country, per month]
-```
-
-| Module | Domain | What goes in | Where it lives |
-|---|---|---|---|
-| **A** | Market / macro | yfinance, FRED, optional FinBERT-on-news | [`docs/architecture/01-overview.md`](docs/architecture/01-overview.md#module-map) |
-| **B** | Geopolitical | GDELT v2 events + GKG | same |
-| **C** | Hazard / earth | USGS Quake, GDACS, NASA FIRMS | same |
-| **D** | Composite | JRC handbook 10-step methodology | [`docs/methodology.md`](docs/methodology.md#part-b--literature-baseline) |
-| **E** | Evaluation | Pre-registered AUROC / AUPR / Brier vs ground truth | [`docs/methodology.md`](docs/methodology.md#part-a--evaluation-protocol-pre-registered) |
-
-Layer 3 feeds (satellites, news RSS, aviation, maritime, weather, mesh) sit on the dashboard for situational awareness only. They **do not enter the composite or the evaluation**. See the [feed taxonomy](docs/architecture/01-overview.md#feed-taxonomy) for the full list.
-
----
-
-## Pipeline end to end
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant API as Source APIs<br/>(GDELT, yfinance, USGS, ...)
-    participant W as Celery worker<br/>(fast or slow queue)
-    participant R as Redis<br/>(queue + rate-limit bucket)
-    participant PG as Postgres<br/>events / scores / labels
-    participant PQ as Parquet archive<br/>cold storage
-    participant COMP as Composite worker
-    participant API2 as FastAPI read API
-    participant UI as Next.js + MapLibre dashboard
-    participant PUSH as Pushover
-
-    Note over W,R: Beat scheduler triggers fetcher
-    W->>R: take rate-limit token
-    W->>API: HTTP fetch
-    API-->>W: raw response
-    W->>PQ: write raw + parsed Parquet
-    W->>PG: INSERT INTO events ON CONFLICT DO NOTHING
-    Note over COMP: Every 1 hour
-    COMP->>PG: SELECT recent events per country
-    COMP->>COMP: normalise (z-score, rolling window)
-    COMP->>COMP: weight + aggregate (JRC handbook)
-    COMP->>PG: INSERT INTO scores (method_version='v1.0')
-    COMP->>PUSH: if score > threshold, alert (dedup'd)
-    UI->>API2: GET /api/scores?country=...
-    API2->>PG: SELECT FROM scores
-    API2-->>UI: JSON
-    UI->>UI: render MapLibre layer + time series
-```
-
-Plain version:
-
-1. A scheduler wakes up a worker (every 5 minutes for fast feeds, every 15 minutes for slow ones).
-2. Worker takes a rate-limit token from Redis so we never burn the daily allowance.
-3. Worker fetches from the source and writes the parsed events to Postgres. Duplicates are filtered by `(source, source_event_id)`.
-4. Once an hour, the composite worker reads the last 90 days of events per country, normalises and weights them per the JRC handbook, and writes a score row with a `method_version` tag.
-5. If the score crosses a threshold, Pushover gets called and your phone lights up.
-6. The dashboard pulls from Postgres via FastAPI and renders the country map plus per-country time series.
-
-Retention prunes raw events at ~30 days overnight so the database stays small; every derivation (scores, stories, journal) is kept. The Parquet hot/cold split drawn above is planned, not yet built — today it is Postgres only.
-
----
-
-## Ground truth — how the system gets graded
-
-The system is multi-modal, so the answer key is too. Five label codes, three domains:
-
-| Code | Domain | What it means | Source |
-|---|---|---|---|
-| **P1** | Geopolitical | Armed conflict onset | ACLED battle events with ≥10 fatalities |
-| **P2** | Geopolitical | Mass protest escalation | ACLED protest events with violent escalation in 7-day window |
-| **P3** | Geopolitical | State-based violence intensification | Month-over-month doubling of ACLED state-based fatalities |
-| **P4** | Market | Country-level market crisis | NBER recession; IMF currency-crisis entry; sovereign yield spike > 200bps; equity drawdown > 20%; VIX > 30 sustained |
-| **P5** | Hazard | Hazard-induced societal disruption | EM-DAT disaster with ≥100 deaths or ≥100k affected, or GDACS red-alert, with sustained composite stress in following 30 days |
-
-The primary classification target is **any-positive across P1-P5**. Per-domain subtasks are reported as secondary. Full ground-truth definition: [`docs/methodology.md`](docs/methodology.md#step-2--ground-truth-hybrid-multi-modal).
-
-The labels live in their own database table, kept strictly separate from input events so the answer key is never accidentally treated as a feature.
-
----
-
-## Evaluation loop — how the claim gets tested
-
-```mermaid
-flowchart TD
-    A[Pi runs ingestion<br/>2025-2026 live] -.demo only.-> Z[Dashboard]
-    B[Cloud backfill<br/>2015-2024 historical] --> C[Parquet archive]
-    L[Label backfill<br/>ACLED + NBER + IMF + EM-DAT] --> C
-    C --> SPLIT{Train / Val / Test split}
-    SPLIT -->|2015-2021| TRAIN[Train composite weights]
-    SPLIT -->|2022| VAL[Tune hyperparameters]
-    SPLIT -->|2023-2024| TEST[Held-out final evaluation]
-    TRAIN --> LOCK[Lock methodology v1.0]
-    LOCK --> RUN[Run 9 baselines<br/>B0..B8]
-    VAL --> RUN
-    RUN --> METRICS[AUROC · AUPR · Brier · lead-time]
-    TEST --> METRICS
-    METRICS --> REPORT[Evaluation report]
-```
-
-Nine baselines compete:
-
-| ID | Baseline | What it is |
-|---|---|---|
-| B0 | Random | Sanity check, AUROC ≈ 0.5 |
-| B1 | Persistence | "Same as last month" |
-| B2 | Base rate | Country's historical positive rate |
-| B3 | Geo only | Module B score alone |
-| B4 | Market only | Module A score alone |
-| B5 | Hazard only | Module C score alone |
-| B6 | Composite (equal weights) | The headline claim |
-| B7 | Composite (PCA weights) | Alternative weighting |
-| B8 | Composite (geometric mean) | Less-compensatory aggregation |
-
-For the composite to land its primary claim, **B6 (or B7, or B8) must beat each of B3, B4, B5** on both AUROC and AUPR on the held-out test set. If it doesn't, the system says so honestly — pre-registered protocols make negative results respectable.
-
----
-
-## Stack
-
-| Layer | Choice | Why |
-|---|---|---|
-| **Hardware** | Raspberry Pi 5 (8 GB) + 2x4TB USB3 HDDs in btrfs RAID1 | Low power, runs 24/7, RAID1 survives single-disk fail |
-| **OS** | Raspberry Pi OS Lite 64-bit | Standard, well-supported |
-| **Reverse proxy / TLS** | Caddy | Auto-TLS, simple config |
-| **VPN access** | Tailscale | Reach the Pi from anywhere with no port-forwarding |
-| **Queue** | Celery + Redis | Worker isolation, retry, rate limiting per source |
-| **Hot store** | Postgres 16 | Indexed queries for dashboard + composite |
-| **Cold archive** | *(planned)* Parquet on btrfs (Hive-partitioned) | Not built yet — today raw events are pruned by retention and all derivations stay in Postgres |
-| **Backup** | restic → Backblaze B2 or Cloudflare R2 | Encrypted off-site |
-| **API** | FastAPI | Async Python, fits the worker stack |
-| **Frontend** | Next.js + MapLibre GL | Vector map tiles, off-Pi build |
-| **Alerting** | Pushover REST | Cheap, reliable, phone-native |
-| **Schema migrations** | Alembic | Standard for SQLAlchemy / Postgres |
-
-Full reasoning: [`docs/architecture/`](docs/architecture/) sections 01-07.
-
----
-
-## Layer 3 — dashboard breadth (not in the evaluation)
-
-Sits on the dashboard for situational awareness only — **not** in the composite, **not** in the evaluation.
-
-Live as of the latest source-expansion batch — **58 collectors** (14 named
-fetchers + 44 RSS feeds; see §3.1 for the authoritative cadence table):
-
-- **News (RSS, 44 feeds)** — BBC World, BBC UK, Reuters/Yahoo, Dawn, Guardian, Geo English, Al Jazeera, CNN, NYT, France 24, DW, NHK, RT, TASS, Times of India, The Hindu, Tribune PK, CBC, ABC AU, RNZ, Straits Times, Jerusalem Post, Haaretz, Arab News, Kyiv Independent. JSON-registry driven (#158).
-- **Aviation** — OpenSky public ADS-B (#161). 2 min cadence, every aircraft broadcasting ADS-B in the last 10 s.
-- **Cyber-threat** — abuse.ch URLhaus malware URLs + Feodo Tracker botnet C2 IPs (#163). 15 min cadence each.
-- **Prediction markets** — Polymarket public Gamma API (#165). 30 min cadence. Severity reads as "tail-event awareness" (peaks at p = 0.5).
-- **Crime** — UK Police data.police.uk monthly snapshots.
-- **Hazard / geo / market (Layer 1+2)** — yfinance, FRED, GDELT, USGS, GDACS, FIRMS, EONET.
-
-## Enrichment + analytics on the rows
-
-Every news row gets the following stamped on `payload` at fetch time. See [`docs/architecture/ENRICHMENT-METHODOLOGY.md`](docs/architecture/ENRICHMENT-METHODOLOGY.md):
-
-- VADER sentiment v1.0 (`compound ∈ [-1, 1]` + label).
-- spaCy NER v1.0 (optional dep) — `entities = [{text, label}, …]`.
-- News-scope classifier (`local | world | unknown`) — distinguishes a Dawn-published US story from a Karachi street-level event.
-- Offline city pinpoint (Natural Earth 10m, 7,484 cities) — drives map lat/lon.
-- Bounded named-place verification — exact Wikidata point for one unambiguous
-  building, street, or site; persistent positive and negative cache.
-- Image URL (media:thumbnail / media:content / enclosure / first `<img>` fallback).
-- News-scope-aware impact ranking (NIP §3 formula) — `0.30 |sentiment| + 0.25 cluster + 0.25 sourceWeight + 0.20 recency`.
-
-CII v1.1 country-instability scoring runs hourly across the 31 Tier-1 countries. Methodology in [`docs/architecture/CII-METHODOLOGY.md`](docs/architecture/CII-METHODOLOGY.md).
-
----
-
-## Documentation index
-
-- **[`docs/storage.md`](docs/storage.md)** — local storage & data: `OSINT_DATA_DIR`, where the live DB lives vs backups vs the config pointer, retention, move/back-up/restore/wipe
-- **[`docs/methodology.md`](docs/methodology.md)**
-  - Part A — pre-registered evaluation protocol (ground truth, splits, baselines, metrics, sensitivity, reporting checklist)
-  - Part B — literature baseline (citations, reading priority, BibTeX snippets)
-- **[`docs/project-direction.md`](docs/project-direction.md)** — what the project is, who it serves, why it matters, and the long-term product / research path
-- **[`docs/analytical-agenda.md`](docs/analytical-agenda.md)** — the WS-A…G workstreams: what we actually do with the data (quantify, validate, predict)
-- **The three pre-registered evaluations** — [`docs/onset-eval.md`](docs/onset-eval.md), [`docs/within-country-eval.md`](docs/within-country-eval.md), [`docs/disagreement-exam.md`](docs/disagreement-exam.md), each frozen before its first result
-- **[`docs/data-coverage.md`](docs/data-coverage.md)** · **[`docs/acled-non-api-collection.md`](docs/acled-non-api-collection.md)** · **[`docs/security.md`](docs/security.md)**
-- **[`docs/backtest/`](docs/backtest/)** — lead-time gate reports · **[`docs/audits/`](docs/audits/)** — clustering-threshold hand-check · **[`docs/frontend/`](docs/frontend/)** — dashboard design notes
-- **[`docs/architecture/`](docs/architecture/)** — seven-section build spec, all sections drafted:
-  - [01 overview](docs/architecture/01-overview.md) · [02 storage](docs/architecture/02-storage.md) · [03 ingestion](docs/architecture/03-ingestion.md) · [04 schema](docs/architecture/04-schema.md) · [05 originality](docs/architecture/05-originality.md) · [06 validation](docs/architecture/06-validation.md) · [07 risks](docs/architecture/07-risks.md)
-  - [CII methodology](docs/architecture/CII-METHODOLOGY.md) — per-country baseline + 4-component event blend (cii.v1.1, 31 Tier-1 countries)
-  - [Enrichment methodology](docs/architecture/ENRICHMENT-METHODOLOGY.md) — VADER sentiment + spaCy NER + city + news-scope classifier + impact formula
-
----
-
-## Inspirations and lineage
-
-- **Architecture**: built from nothing, no external source code used. Publicly visible open-source intelligence dashboards showed that this was possible on commodity hardware; the design itself answers this project's own constraints. See [`docs/architecture/05-originality.md`](docs/architecture/05-originality.md).
-- **Methodology lineage (cited)**: OECD/JRC Composite Indicator Handbook (Nardo et al., 2008), ViEWS (Hegre et al., 2019), CEWS field review (Davies et al., 2023), FSI methodology (Fund for Peace), GDELT validity critiques (Wang 2025, Wallace 2014, Öberg & Yilmaz 2025), FinBERT honesty (Yang et al., 2024). Full list with reading priority in [`docs/methodology.md`](docs/methodology.md#part-b--literature-baseline).
-
----
-
-## Core equations
-
-Every formula below is the one actually in the code, with its file. The first
-six are the ones that matter; the rest are standard definitions.
-
-### 1. Within-country rolling z-score — [`app/composite/normalization.py`](app/composite/normalization.py)
-
-Each domain's raw severity is standardised against *that country's own* trailing history:
-
-$$z_t = \frac{x_t - \mu_{[t-w,\,t)}}{\sigma_{[t-w,\,t)}}$$
-
-A minimum history (≥3 monthly points) is required; cold starts and zero-variance windows emit $z=0$. **This is the crux of the whole approach:** the score carries no cross-country level, only "unusual vs its own past" — which is why a pooled AUROC (0.93 base rate) was the wrong ruler and the within-country evaluation (base rate 0.30) was the right one.
-
-### 2. Composite aggregation — [`app/composite/scoring.py`](app/composite/scoring.py)
-
-Weighted sum of domain z-scores, squashed to [0,1] by a logistic:
-
-$$C = \sigma\!\left(\sum_d w_d\, z_d\right), \qquad \sigma(x)=\frac{1}{1+e^{-x}}, \qquad \sum_d w_d = 1$$
-
-Missing domains contribute $z=0$. **This is exactly why every live score is 0.5 right now (#586):** retention holds 30 days but the z-score needs ≥3 monthly points, so every $z_d=0$, the weighted sum is 0, and $\sigma(0)=0.5$.
-
-### 3. Goldstein → severity — [`app/composite/gdelt.py`](app/composite/gdelt.py)
-
-GDELT's conflict–cooperation scale [−10, +10] inverted to a [0,1] severity (1 = maximal conflict), zero tuning knobs:
-
-$$s = \mathrm{clip}\!\left(\frac{10 - G}{20},\; 0,\; 1\right)$$
-
-### 4. Corroboration confidence — [`app/corroboration/score.py`](app/corroboration/score.py)
-
-Each additional *independent owner* halves the remaining doubt; a sensor confirmation halves it once more:
-
-$$\text{doubt} = 2^{-\left(\max(n,1)-1+\,f_{\text{sensor}}\right)}, \qquad \text{score} = 1 - \text{doubt}$$
-
-$n$ = independent owners (RT + TASS = 1), $f_{\text{sensor}}\in\{0,1\}$. One unverified teller → doubt 1 → score 0. Two owners → 0.5. Three → 0.75. A sensor ✓ adds one more halving.
-
-### 5. Divergence spike + lead — [`app/divergence/config.py`](app/divergence/config.py) (`div.v4`)
-
-A physical and a narrative daily series are each z-scored over a 28-day rolling window; a side "spikes" when it crosses $\tau = 1.5$. Values are compressed with $\log(1+x)$ against per-side ceilings (physical 10, narrative 300). Lead detection searches ±21 days on *both* sides of a narrative spike (the v4 fix), so a positive lead is not the only outcome the detector can return.
-
-### 6. CII v1.1 — [`app/cii/scoring.py`](app/cii/scoring.py)
-
-$$\text{CII} = 0.40\,b + 0.60\,e, \qquad e = 0.25\,u + 0.30\,c + 0.20\,s + 0.25\,i$$
-
-$b$ = per-country baseline, $e$ = event aggregate over unrest $u$, conflict $c$, security $s$, information $i$ (each log-scaled to 0–100). 31 Tier-1 countries, hourly.
-
-### The grading metrics (standard — know the definitions)
-
-- **Brier** $=\frac{1}{N}\sum_i (p_i - o_i)^2$ — 0 clairvoyant, 0.25 coin flip, 1 perfectly wrong. The journal's headline grade.
-- **AUROC** — P(model ranks a random positive above a random negative); 0.5 = chance. A *pooled* AUROC is rewarded for separating high- from low-base-rate countries, which is where the illusory 0.93 came from.
-- **AUPR** — area under precision–recall; the honest metric under class imbalance (few positive months).
-- **Base rate** — share of positive months; the score a "predict the mean" baseline earns.
-- **Impact ranking (NIP §3)** — $0.30\,|\text{sentiment}| + 0.25\,\text{cluster} + 0.25\,\text{sourceWeight} + 0.20\,\text{recency}$.
-
----
-
-## SWOT
-
-A candid read of where the project stands — logged here so it stays with the code.
-
-| | Helpful | Harmful |
-|---|---|---|
-| **Internal** | **Strengths** (below) | **Weaknesses** (below) |
-| **External** | **Opportunities** (below) | **Threats** (below) |
-
-**Strengths**
-- A pre-registration + server-stamp **honesty machine** that structurally cannot lie to itself — five negatives published, none buried.
-- Reproducible, local-first, zero-cloud; idempotent backfills; every method version-stamped and never edited in place.
-- Genuine multi-modal ingestion (58 collectors) with *structural* dedup and published coverage bias.
-
-**Weaknesses**
-- The headline claim **failed**: the composite does not beat the dumb baselines on any of the three pre-registered exams.
-- Single developer, heavily AI-assisted → depth-of-understanding of the internals is the real risk (this document and §Core equations are the mitigation).
-- The live composite is currently degenerate (0.5) from the retention-vs-z-score mismatch (#586); ACLED ground-truth labels are manually maintained.
-
-**Opportunities**
-- **Slow-onset hazards** (drought, flood, sustained unrest) are the untested anchor where a sensor could plausibly lead coverage — the open question, not a settled failure.
-- Productization path (newsletter → API → app, #400); the corroboration + coverage engine works *today* and has standalone value independent of the composite claim.
-- If any signal is recoverable it is in the hazard domain — the strongest single indicator (|hazard z| ≈ 0.59 full-panel), which even beats the composite that contains it (#573). The open task is making it survive the fair onset evaluation, where it currently fades to ~0.53.
-
-**Threats**
-- The sharpest challenges to answer: the within-country construction, the 0.5 degeneracy, and "how much was built by hand vs the AI."
-- Upstream drift: GDELT gaps, ACLED API rejection, RSS format changes, FIRMS confidence ≠ intensity.
-- The retention window vs evaluation needs (the #586 class of bug) can silently flatten a signal before it is measured.
-
----
-
-## Figures — printable supplementary
-
-Rendered assets live in [`docs/supplementary/`](docs/supplementary/) as **SVG** (scalable, editable text) and **PNG** (2× print resolution). Regenerate the PNGs with `rsvg-convert -z 2 <file>.svg -o <file>.png`.
-
-**The result in one picture** — the composite is a coin flip in all three exams; the impressive 0.93 was only the base rate.
-
-![Composite AUROC across the three pre-registered exams](docs/supplementary/auroc-vs-exams.png)
-
-**Why "signal before narrative" is the whole bet** — sensors are cheap and high-volume, narrative is scarce and expensive; the question is whether the first moves before the second.
-
-![Rows held per source, sensors vs narrative, log scale](docs/supplementary/sensor-vs-narrative-volume.png)
-
-**Why it runs on a Raspberry Pi** — raw events are pruned at ~30 days, the small permanent derivations are kept forever.
-
-![Retention vs derived lifecycle](docs/supplementary/retention-lifecycle.png)
-
----
-
-## Licence
-
-PolyForm Noncommercial 1.0.0 — the full text is in [`LICENSE`](LICENSE).
-
-**This is source-available, not open source.** The distinction is not
-pedantry: every OSI-approved licence permits commercial use, so calling this
-open source would tell you that you have a right you do not have.
-
-You may use it, run it, study it, fork it, modify it and share your changes,
-for any noncommercial purpose — personal projects, study and research, and use
-by charities, educational institutions, public research bodies and government.
-You may not sell it or use it commercially.
+You may use it, run it, study it, fork it, modify it and share your changes, for
+any **noncommercial** purpose — personal projects, study and research, and use by
+charities, educational institutions, public research bodies and government. You
+may not sell it or use it commercially.
 
 Two reasons, and the second is the real one:
 
-- It is under development. Its outputs have been wrong before. The composite
-  is a coin flip in all three pre-registered exams, and that is written down a
-  few sections above rather than hidden. Nothing here is fit to sell.
-- It ingests third-party feeds. Several are free for noncommercial or research
-  use and require a separate agreement for anything else. Those terms are not
-  the maintainer's to hand on, so they are not handed on.
+- **It is under development and its outputs have been wrong before.** The
+  composite is a coin flip in every pre-registered evaluation, and that is written
+  down in [§15](HANDBOOK.md#15-evaluation--what-was-claimed-what-was-tested-what-failed)
+  rather than hidden. Nothing here is fit to sell.
+- **It ingests third-party feeds.** Several are free for noncommercial or
+  research use and require a separate agreement for anything else. Those terms
+  are not the maintainer's to hand on, so they are not handed on.
 
-[`NOTICE.md`](NOTICE.md) lists every feed and where its terms live. If you
-deploy this, you fetch that data under your own credentials and your own
-agreements with those providers. Read them.
+## 25.2 The data is not covered by that licence
 
-The bundled gazetteer files under `app/enrichment/data/` are Natural Earth,
-which is public domain.
+The licence covers the code in this repository and nothing else. It does not
+cover, and cannot cover, the data this software fetches. Those feeds belong to
+the organisations that publish them, each on its own terms. Nobody here has the
+right to sub-licence them, so nobody here has granted you anything over them.
+
+> **Running this software makes you the one fetching the data.** Whatever the
+> provider requires — registration, an API key, attribution, a commercial
+> licence, a limit on redistribution — it requires of *you*, directly, under the
+> agreement you accept when you take the key.
+
+[`NOTICE.md`](https://github.com/BasilSuhail/OSINT/blob/main/NOTICE.md) is the
+maintained index of every feed and where its terms live. It is a pointer, not a
+legal summary and not legal advice. Terms change. Read the current ones for any
+feed you actually enable. Operational guidance on this is in
+[§9.5](HANDBOOK.md#95-source-terms-and-attribution).
+
+## 25.3 Third-party attribution
+
+The bundled gazetteer files under
+[`app/enrichment/data/`](https://github.com/BasilSuhail/OSINT/tree/main/app/enrichment/data)
+are **Natural Earth**, which is public domain.
+
+Base map tiles, imagery overlays and aircraft presence are fetched by the
+browser directly from their publishers and are never stored; their attribution
+is rendered on the map itself.
+
+## 25.4 Reporting a security problem
+
+Report privately — **do not open a public issue**. The channels, the information
+to include, and the automated tooling in place are in
+[`SECURITY.md`](https://github.com/BasilSuhail/OSINT/blob/main/SECURITY.md).
+
+What runs continuously on this repository:
+
+| Control | What it covers |
+| --- | --- |
+| Dependabot | `pip` and `pnpm` dependencies, weekly, opens update PRs |
+| CodeQL | push, pull request, and a weekly scheduled scan |
+| `pip-audit` | backend dependencies, in the `backend` workflow |
+| `pnpm audit --audit-level high` | frontend dependencies, in the `frontend` workflow |
+| Dependency review | blocks high-severity dependency regressions on PRs |
+| Secret scanning + push protection | enabled at repository level |
+
+The repository-level security baseline, what is enabled and what hardening is
+still recommended, is logged in
+[`docs/security.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/security.md).
+
+**Operational security when you run it** is a separate matter and is covered in
+this handbook: the API token in [§5.4](HANDBOOK.md#54-protect-the-api-outside-one-laptop),
+and network exposure — including the fact that `make share` adds **no password**
+— in [§5.7](HANDBOOK.md#57-make-share--opening-the-console-to-the-local-network).
+
+## 25.5 Working agreements
+
+This repository is public and has been forked; forks copy the full history.
+Anything committed is beyond recall the moment it is pushed. The rules for what
+may and may not go into a commit, an issue or a pull request are in
+[`AGENTS.md`](https://github.com/BasilSuhail/OSINT/blob/main/AGENTS.md), which is
+read by both people and coding agents.
+
+The short version: no personal names, no contact details, no credentials, and
+one issue → one branch → one pull request → one commit. A pre-commit hook screens
+staged files and blocks on a hit; a block is a prompt to rephrase, not an
+obstacle to route around.
+
+## 25.6 Contributing, and reporting things that are not security issues
+
+**Issues are welcome.** A good one names what you ran, what you expected, and
+what happened, with the relevant lines from `bash scripts/dev-logs.sh`. If the
+console is involved, say which browser. [§19](HANDBOOK.md#19-troubleshooting)
+covers the failures that already have known causes — worth a look first, because
+several of them look like bugs and are configuration.
+
+**Security problems do not go in issues.** Use the private channel in
+[§25.4](#254-reporting-a-security-problem).
+
+**Pull requests**: one issue, one branch, one pull request, one commit. Read
+[`AGENTS.md`](https://github.com/BasilSuhail/OSINT/blob/main/AGENTS.md) first —
+it is short, and it is binding on what may appear in a commit message, an issue
+or a PR description, because this repository is public and has been forked.
+
+Before opening one:
+
+```bash
+make verify        # or: ruff check . && ruff format --check . && pytest
+cd osint-frontend && pnpm exec tsc --noEmit && pnpm exec vitest run
+```
+
+A pre-commit hook screens staged files and blocks on a hit. A block is a prompt
+to rephrase, not an obstacle to route around.
+
+**What is most useful right now**, in order: an evaluation of the running
+`v3.0` composite ([§14.1](HANDBOOK.md#141-what-fixed-before-running-means-in-this-repository)),
+any of the five unrun robustness tests
+([§15.9](HANDBOOK.md#159-sensitivity-and-robustness--declared-and-honestly-incomplete)),
+a chance-corrected agreement statistic for the severity grader
+([§14.5](HANDBOOK.md#145-severity--and-why-08-does-not-compare-across-families)),
+and non-English or non-Anglophone-origin feeds
+([§16.2](HANDBOOK.md#162-the-news-feed-registry-measured)).
+
+---
+
+# 26. Repository map
+
+The shape first, then the route data takes through it.
+
+```text
+OSINT/
+├── app/                      PYTHON BACKEND — ingest · score · serve
+│   ├── api.py                  FastAPI read-API: /events /scores /ingest-health /stream
+│   ├── celery_app.py           Celery app instance (broker = Redis)
+│   ├── tasks.py                Celery tasks + beat schedule (cadence + nightly prune)
+│   ├── fetcher_registry.py     maps source name → fetcher
+│   ├── persistence.py          upsert events into Postgres (+ Redis "new rows" tick)
+│   ├── events_bus.py           Redis pub/sub channel powering the live SSE stream
+│   ├── housekeeping.py         retention policy (see RETENTION_* in .env)
+│   ├── db.py / db_models.py    SQLAlchemy engine/session + table definitions
+│   ├── settings.py             ALL config, read from .env
+│   ├── models.py               canonical Event/Score shapes
+│   ├── watchdog.py             ingest health monitor
+│   ├── sources/                one fetcher per feed + rss_feeds.json registry
+│   ├── composite/              aggregation · normalisation · scoring · backfill
+│   ├── corroboration/          per-story confidence + sensor cross-checks
+│   ├── disagreement/           cross-country telling divergence
+│   ├── divergence/             physical-vs-narrative spike and lead-time gate
+│   ├── cii/                    Country Instability Index
+│   ├── journal/                immutable prediction journal
+│   ├── onset/ within/ baselines/  the pre-registered evaluations
+│   ├── audit/                  nightly source-data audit + expectations
+│   ├── brain/                  local-model narrate · enrich · ask
+│   ├── severity/               grading and measured agreement
+│   ├── devx/                   lan_share — who on the network may reach this
+│   └── enrichment/             geocode · NER · sentiment (+ data/ gazetteers)
+│
+├── osint-frontend/           NEXT.JS CONSOLE — reads app/api.py
+│   ├── app/                    routes: page.tsx, layout.tsx, providers.tsx, news/
+│   ├── lib/                    apiClient.ts · queries.ts · realtime.ts · types.ts
+│   ├── components/             MapPane · CardDeck · FilterRail · panels/
+│   ├── stores/                 zustand filter + selection stores
+│   └── __tests__/              frontend suite
+│
+├── data/        ALL LOCAL STORAGE ($OSINT_DATA_DIR, gitignored)
+│   ├── postgres/                the actual database files
+│   ├── redis/                   Redis append-only file
+│   ├── private/                 licensed/manual inputs — never commit
+│   └── exports/                 generated reports (evaluations, audits)
+├── backups/     snapshot dumps (gitignored)
+├── migrations/  Alembic schema migrations
+├── scripts/     dev-up.sh · dev-down.sh · snapshot.py · one-off tools
+├── tests/       pytest suite (backend)
+├── docs/        specifications, protocols, and evaluation records — see §27
+│
+├── docker-compose.yml   Postgres + Redis services
+├── Makefile             every command in this handbook
+├── env.example          copy → .env, then fill in
+└── .env                 YOUR config and secrets (gitignored — never commit)
+```
+
+## 26.1 Where is…?
+
+| I want | Open |
+| --- | --- |
+| My config and secrets | `.env`, from [`env.example`](https://github.com/BasilSuhail/OSINT/blob/main/env.example); read via [`app/settings.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/settings.py). Every setting explained in [§5](HANDBOOK.md#5-configure-it-safely) |
+| The database itself | `data/postgres/` — relocate with `OSINT_DATA_DIR` ([§5.5](HANDBOOK.md#55-move-persistent-data-to-another-disk)) |
+| What the console fetches | [`osint-frontend/lib/apiClient.ts`](https://github.com/BasilSuhail/OSINT/blob/main/osint-frontend/lib/apiClient.ts) ↔ served by [`app/api.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/api.py) |
+| To add or adjust a source | [`app/sources/`](https://github.com/BasilSuhail/OSINT/tree/main/app/sources) + [`app/fetcher_registry.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/fetcher_registry.py) — full steps in [§12.5](HANDBOOK.md#125-add-or-change-a-source) |
+| How long data is kept | [`app/housekeeping.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/housekeeping.py) and `RETENTION_*` ([§11.3](HANDBOOK.md#113-retention-rule)) |
+
+## 26.2 Trace one row, source to screen
+
+A GDELT event's whole life. Every path is a link.
+
+| # | Stage | File | What happens |
+| ---: | --- | --- | --- |
+| 1 | fetch | [`app/sources/gdelt_fetcher.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/sources/gdelt_fetcher.py) | request the newest export |
+| 2 | register | [`app/fetcher_registry.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/fetcher_registry.py) | name → fetcher lookup |
+| 3 | schedule | [`app/tasks.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/tasks.py) | Celery Beat fires it on cadence |
+| 4 | dedup + store | [`app/persistence.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/persistence.py) | upsert on stable identity → `events` |
+| 5 | normalise | [`app/composite/normalization.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/composite/normalization.py) | rolling within-country z-score ([§14.4](HANDBOOK.md#144-the-composite-stress-index--and-why-the-live-one-reads-05)) |
+| 6 | score | [`app/composite/scoring.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/composite/scoring.py) | weighted z → sigmoid → `scores` |
+| 7 | serve | [`app/api.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/api.py) | `/events`, `/scores`, SSE stream |
+| 8 | fetch in browser | [`osint-frontend/lib/apiClient.ts`](https://github.com/BasilSuhail/OSINT/blob/main/osint-frontend/lib/apiClient.ts) | every backend call in one file |
+| 9 | render | [`osint-frontend/components/`](https://github.com/BasilSuhail/OSINT/tree/main/osint-frontend/components) | map, cards, panels |
+
+## 26.3 Where each source lands
+
+| Source | Fetcher | Output |
+| --- | --- | --- |
+| GDELT live | [`app/sources/gdelt_fetcher.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/sources/gdelt_fetcher.py) | `events`, rolling window |
+| GDELT history | [`app/composite/gdelt.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/composite/gdelt.py) | monthly checkpoints + daily volume |
+| USGS · GDACS · FIRMS · EONET | [`app/sources/`](https://github.com/BasilSuhail/OSINT/tree/main/app/sources) | `events` → footprint enrichment |
+| yfinance · FRED | [`app/sources/`](https://github.com/BasilSuhail/OSINT/tree/main/app/sources) | `events`, market and macro |
+| ACLED (labels) | local drop folder ([§5.3](HANDBOOK.md#53-add-optional-source-access)) | `labels` — ground truth, kept separate |
+| RSS, 55 feeds | [`app/sources/rss_feeds.json`](https://github.com/BasilSuhail/OSINT/blob/main/app/sources/rss_feeds.json) | `events` → stories |
+
+## 26.4 Analytical subsystems — one folder each, formula inside
+
+| Concern | Folder | Formula | Method in |
+| --- | --- | --- | --- |
+| Composite index | [`app/composite/`](https://github.com/BasilSuhail/OSINT/tree/main/app/composite) | `normalization.py` · `scoring.py` | [§14.4](HANDBOOK.md#144-the-composite-stress-index--and-why-the-live-one-reads-05) |
+| Corroboration | [`app/corroboration/`](https://github.com/BasilSuhail/OSINT/tree/main/app/corroboration) | `score.py` | [§14.2](HANDBOOK.md#142-corroboration--how-much-independent-telling-a-story-has) |
+| Telling divergence | [`app/disagreement/`](https://github.com/BasilSuhail/OSINT/tree/main/app/disagreement) | `tellings.py` | [§14.3](HANDBOOK.md#143-divergence--how-differently-two-country-blocs-word-the-same-story) |
+| Lead-time gate | [`app/divergence/`](https://github.com/BasilSuhail/OSINT/tree/main/app/divergence) | `config.py` | [§14.8](HANDBOOK.md#148-the-lead-time-gate--does-narrative-move-before-the-physical-signal) |
+| Country Instability Index | [`app/cii/`](https://github.com/BasilSuhail/OSINT/tree/main/app/cii) | `scoring.py` | [§14.9](HANDBOOK.md#149-the-country-instability-index-cii) |
+| Prediction journal | [`app/journal/`](https://github.com/BasilSuhail/OSINT/tree/main/app/journal) | `emit.py` | [§15.10](HANDBOOK.md#1510-the-prediction-journal-the-hindcast-guard-and-the-degeneracy-check) |
+| Evaluations | [`app/onset/`](https://github.com/BasilSuhail/OSINT/tree/main/app/onset) · [`app/within/`](https://github.com/BasilSuhail/OSINT/tree/main/app/within) · [`app/baselines/`](https://github.com/BasilSuhail/OSINT/tree/main/app/baselines) | — | [§15](HANDBOOK.md#15-evaluation--what-was-claimed-what-was-tested-what-failed) |
+| Retention | [`app/housekeeping.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/housekeeping.py) | — | [§11.3](HANDBOOK.md#113-retention-rule) |
+
+---
+
+# 27. Documentation index
+
+This handbook is the entry point. The files below are the primary records it
+draws on — read the protocol before the result, which is the order they were
+written in.
+
+| Document | What it is |
+| --- | --- |
+| [`docs/methodology.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/methodology.md) | Part A: the pre-registered evaluation protocol — ground truth, splits, baselines, metrics, sensitivity programme, reporting checklist. Part B: the literature baseline with citations and reading priority. |
+| [`docs/onset-eval.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/onset-eval.md) | The onset evaluation, frozen 2026-07-10, with its single run and amendment log ([§15.6](HANDBOOK.md#156-result-2--the-onset-evaluation-2026-07-10)). |
+| [`docs/within-country-eval.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/within-country-eval.md) | The within-country evaluation, frozen 2026-07-22, and its NEGATIVE verdict ([§15.7](HANDBOOK.md#157-result-3--the-within-country-evaluation-2026-07-22)). |
+| [`docs/disagreement-exam.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/disagreement-exam.md) | A forward evaluation — not gradable until enough predictions mature. |
+| [`docs/backtest/`](https://github.com/BasilSuhail/OSINT/tree/main/docs/backtest) | Lead-time gate reports, including threshold sensitivity ([§15.8](HANDBOOK.md#158-lead-time-and-its-sensitivity-to-the-threshold)). |
+| [`docs/severity-grading.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/severity-grading.md) | How headline severity is decided, which model, and the measured agreement ([§14.5](HANDBOOK.md#145-severity--and-why-08-does-not-compare-across-families)). |
+| [`docs/analytical-agenda.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/analytical-agenda.md) | The workstreams: what is actually done with the data — quantify, validate, predict. |
+| [`docs/project-direction.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/project-direction.md) | What the project is, who it serves, and the long-term path. |
+| [`docs/data-coverage.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/data-coverage.md) | The operational record of what actually landed in storage ([§16.3](HANDBOOK.md#163-event-data-concentration-measured)). |
+| [`docs/storage.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/storage.md) | Storage layout, retention, move, back up, restore, wipe ([§11](HANDBOOK.md#11-data-storage-and-retention)). |
+| [`docs/acled-non-api-collection.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/acled-non-api-collection.md) | How the label data is obtained without an API. |
+| [`docs/security.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/security.md) | Repository security baseline: what is enabled, what hardening remains ([§25.4](#254-reporting-a-security-problem)). |
+| [`docs/architecture/`](https://github.com/BasilSuhail/OSINT/tree/main/docs/architecture) | The build specification: [01 overview](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/01-overview.md) · [02 storage](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/02-storage.md) · [03 ingestion](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/03-ingestion.md) · [04 schema](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/04-schema.md) · [05 originality](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/05-originality.md) · [06 validation](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/06-validation.md) · [07 risks](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/07-risks.md) |
+| [`docs/architecture/CII-METHODOLOGY.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/CII-METHODOLOGY.md) | Per-country baseline and the four-component event blend ([§14.9](HANDBOOK.md#149-the-country-instability-index-cii)). |
+| [`docs/architecture/ENRICHMENT-METHODOLOGY.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/architecture/ENRICHMENT-METHODOLOGY.md) | Sentiment, NER, city resolution, news-scope classification. |
+| [`docs/audits/`](https://github.com/BasilSuhail/OSINT/tree/main/docs/audits) · [`docs/frontend/`](https://github.com/BasilSuhail/OSINT/tree/main/docs/frontend) | Hand-checked audits; console design notes. |
+
+---
+
+# 28. SWOT
+
+A candid read of where the project stands, kept with the code so it stays
+current rather than becoming a pitch.
+
+|  | Helpful | Harmful |
+| --- | --- | --- |
+| **Internal** | Strengths | Weaknesses |
+| **External** | Opportunities | Threats |
+
+## 28.1 Strengths
+
+- A pre-registration and verdict machine that **structurally cannot flatter
+  itself**: protocols frozen first, verdicts computed in code, negatives
+  published in full, none buried ([§0.3](#03-what-is-actually-being-offered)).
+- Reproducible, local-first, no cloud. Idempotent backfills, every method
+  version-stamped and never edited in place.
+- Genuine multi-modal ingestion with structural deduplication and **published**
+  coverage bias rather than a disclaimer ([§16](HANDBOOK.md#16-bias-provenance-and-one-country-traced-end-to-end)).
+- The corroboration and divergence engine works today and is independent of the
+  composite claim that failed.
+
+## 28.2 Weaknesses
+
+- **The headline claim failed.** The composite beats none of the single-domain
+  baselines, on either window ([§15.5](HANDBOOK.md#155-result-1--the-incidence-evaluation-2026-07-09)).
+- **The running version has never been evaluated.** Every published result
+  grades `v1.0`; the live system emits `v3.0` ([§14.1](HANDBOOK.md#141-what-fixed-before-running-means-in-this-repository)).
+- **No forward evidence yet** — 1,695 predictions issued, none graded
+  ([§15.10](HANDBOOK.md#1510-the-prediction-journal-the-hindcast-guard-and-the-degeneracy-check)).
+- The live composite is degenerate at 0.5 from the retention-versus-z-score
+  mismatch, and the label panel is maintained by hand.
+- Five of six declared robustness tests have not been run
+  ([§15.9](HANDBOOK.md#159-sensitivity-and-robustness--declared-and-honestly-incomplete)).
+- Built by one maintainer with heavy assistance from language models; depth of
+  understanding of the internals is the standing risk, and this handbook plus
+  [§14](HANDBOOK.md#14-methods--every-number-the-system-publishes) is the mitigation.
+
+## 28.3 Opportunities
+
+- **Slow-onset hazards** — drought, flood, sustained unrest — are the untested
+  anchor where a sensor could plausibly lead coverage. An open question, not a
+  settled failure.
+- The hazard domain is the strongest single indicator measured so far and beats
+  the composite that contains it. Making it survive a fair onset evaluation is a
+  well-defined next task.
+- The corroboration and coverage engine has standalone value: it answers "is
+  this independently reported" without needing the composite to work.
+
+## 28.4 Threats
+
+- **Upstream drift**: GDELT gaps, label-source access changes, RSS format
+  changes, and sensor values that turn out to measure something other than what
+  they appear to.
+- **Retention versus evaluation needs** can silently flatten a signal before it
+  is ever measured — the class of defect that produced 1,101 forecasts of a
+  constant.
+- The hardest questions to answer are the within-country construction, the 0.5
+  degeneracy, and how much was written by hand versus generated.
+
+---
+
+---
+
+**Start here:** [§0](#0-what-this-system-is-for-and-what-it-is-not) for what this
+claims and refuses to claim, [Quick start](#quick-start) to run it, and
+[HANDBOOK.md](HANDBOOK.md) for everything else.
