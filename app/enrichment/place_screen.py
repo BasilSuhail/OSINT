@@ -4,12 +4,18 @@ Named for the screen it fills, not for its subject: ``place.py`` beside it is
 the named-place resolver that decides where a story happened, and two modules
 called the same thing in one package is a trap.
 
-Three services answer three different questions about a place, and none of
-them is ours. Wikidata knows the vitals and who holds the offices, Wikipedia
-knows the background, and the Planetary Computer knows what the spot looked
-like the last time a satellite passed over with the sky clear enough to see
-it. All three are free, none needs a key, and every one of them is somebody
-else's uptime.
+Several services answer different questions about a place, and none of them is
+ours. Wikidata knows the vitals and who holds the offices, Wikipedia knows the
+background, the Planetary Computer knows what the spot looked like the last
+time a satellite passed over with the sky clear enough to see it, OpenStreetMap
+knows which settlement is standing there, and MET Norway knows what the weather
+is doing over it. All are free, none needs a key, and every one of them is
+somebody else's uptime.
+
+The order they appear in on the screen is the point of #932. A reader who
+right-clicked one spot is somewhere smaller than a country, so the answer opens
+with the settlement and the conditions at that coordinate, and the national
+facts follow underneath.
 
 The vitals were meant to come from a fourth service, a country-facts API that
 needed no key. Checking it against the live endpoint rather than against a
@@ -44,7 +50,9 @@ import httpx
 from app.enrichment import satellite_pass
 from app.enrichment.boundary import NEAR_BORDER_KM, border_distance_km, precise_country
 from app.enrichment.country import country_name
+from app.enrichment.nearest_place import nearest_place
 from app.enrichment.satellite_pass import next_overpass
+from app.enrichment.weather import conditions
 
 #: Per-upstream budget. Four of these run at once, so the whole call lands in
 #: about this plus the point lookup.
@@ -59,6 +67,19 @@ _IMAGE_TTL_S = 12 * 3600
 #: An orbit does not change during an afternoon, and the answer is only ever
 #: displayed to the nearest day or hour.
 _PASS_TTL_S = 6 * 3600
+
+#: Weather is the one block here that is genuinely about now (#932). Fifteen
+#: minutes is shorter than MET updates the forecast and long enough that
+#: clicking around a city does not re-ask.
+_WEATHER_TTL_S = 15 * 60
+
+#: Forecast grid, ~1 km. Finer than this asks the same question twice; MET
+#: itself serves a model whose cells are wider.
+_WEATHER_GRID = 0.01
+
+#: Settlement grid, ~5 km. Two right-clicks across a city are asking which city
+#: they are in, and that is one answer.
+_CITY_GRID = 0.05
 
 #: Imagery is keyed on a rounded point — two right-clicks a hundred metres
 #: apart are asking about the same place and should not cost two searches.
@@ -128,6 +149,16 @@ WHERE {
 }
 GROUP BY ?country
 LIMIT 1
+"""
+
+#: One entity, one number. Asked separately from the country query because it
+#: is keyed on a settlement rather than a code, and because a city's population
+#: is worth holding for a week while the country's is worth holding for a week
+#: for entirely different reasons (#932).
+_CITY_SPARQL = """
+SELECT (MAX(?pop) AS ?population) WHERE {
+  wd:%s wdt:P1082 ?pop.
+}
 """
 
 _cache: dict[str, tuple[float, Any]] = {}
@@ -261,6 +292,54 @@ def _imagery(client: httpx.Client, lat: float, lon: float) -> dict:
     }
 
 
+def _city_population(client: httpx.Client, qid: str) -> int | float | None:
+    """One number for a settlement OSM already identified.
+
+    Only reached when the reverse geocode carried a Wikidata id, and cached on
+    that id rather than on the point, so every right-click anywhere in a city
+    shares one answer.
+    """
+    response = client.get(
+        "https://query.wikidata.org/sparql",
+        params={"query": _CITY_SPARQL % qid, "format": "json"},
+    )
+    response.raise_for_status()
+    bindings = (response.json().get("results") or {}).get("bindings") or []
+    if not bindings:
+        return None
+    return _number((bindings[0].get("population") or {}).get("value"))
+
+
+def _city(client: httpx.Client, lat: float, lon: float) -> dict | None:
+    """The settlement at this point, with its population when one is known.
+
+    A place with no population figure is still a place. The number is looked up
+    only when OSM handed over an id to look it up by, and a failure there costs
+    the number rather than the block — the reader would rather see the name of
+    the town than an "unavailable" line because a second service was slow.
+    """
+    found = nearest_place(client, lat, lon)
+    if found is None:
+        return None
+
+    population = None
+    qid = found.get("qid")
+    if qid:
+        try:
+            population = _cached(
+                f"city-pop:{qid}", _TEXT_TTL_S, lambda: _city_population(client, qid)
+            )
+        except Exception:
+            population = None
+
+    return {
+        "name": found["name"],
+        "region": found["region"],
+        "distance_km": found["distance_km"],
+        "population": population,
+    }
+
+
 def _country_block(lat: float, lon: float, iso: str) -> dict:
     distance = border_distance_km(lat, lon, iso)
     return {
@@ -317,6 +396,15 @@ def _assemble(
             jobs["next_pass"] = lambda: _cached(
                 pass_key, _PASS_TTL_S, lambda: next_overpass(lat, lon, client=http)
             )
+            #: Where the reader is standing, and what it is like there (#932).
+            #: Separate jobs on purpose: weather is about the coordinate and
+            #: renders over open desert where there is no settlement to name.
+            city_key = f"city:{round(lat / _CITY_GRID)}:{round(lon / _CITY_GRID)}"
+            jobs["city"] = lambda: _cached(city_key, _TEXT_TTL_S, lambda: _city(http, lat, lon))
+            weather_key = f"weather:{round(lat / _WEATHER_GRID)}:{round(lon / _WEATHER_GRID)}"
+            jobs["weather"] = lambda: _cached(
+                weather_key, _WEATHER_TTL_S, lambda: conditions(http, lat, lon)
+            )
 
         blocks, degraded = _gather(jobs)
 
@@ -334,6 +422,8 @@ def _assemble(
             degraded.extend(["profile", "government", "summary"])
         return {
             "point": point,
+            "city": blocks.get("city"),
+            "weather": blocks.get("weather"),
             "country": country,
             "profile": (facts or {}).get("profile"),
             "government": (facts or {}).get("government"),

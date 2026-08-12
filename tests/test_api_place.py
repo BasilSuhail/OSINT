@@ -41,12 +41,17 @@ def test_a_point_returns_its_country_even_with_every_service_down(offline):
     body = response.json()
     assert body["country"]["iso2"] == "FR"
     assert body["point"] == {"lat": 48.8566, "lon": 2.3522}
+    # Every block a point can have, named as missing. The list grew with the
+    # city and the weather (#932): a screen that knows which of its sections
+    # have nothing behind them can say so, section by section.
     assert sorted(body["degraded"]) == [
+        "city",
         "government",
         "imagery",
         "next_pass",
         "profile",
         "summary",
+        "weather",
     ]
 
 

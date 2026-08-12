@@ -543,8 +543,42 @@ export interface PlaceNextPass {
   hours_away: number
 }
 
+/** The settlement standing at the point, and how far it is from it (#932).
+ *
+ *  Null is an answer, not a gap: past 100 km there is nothing near enough to
+ *  call context, and the panel says so rather than naming a city in the next
+ *  country. `population` may be null for a place Wikidata has no figure for —
+ *  a village is still a village.
+ */
+export interface PlaceCity {
+  name: string
+  region: string | null
+  distance_km: number
+  population: number | null
+}
+
+/** Conditions over the coordinate, not over the town (#932).
+ *
+ *  `range_hours` is what the high and low actually cover. It is normally 24 and
+ *  is smaller at the end of a forecast, and printing it is what keeps the
+ *  numbers honest.
+ */
+export interface PlaceWeather {
+  temperature_c: number | null
+  wind_ms: number | null
+  wind_from_deg: number | null
+  humidity_pct: number | null
+  conditions: string | null
+  high_c: number | null
+  low_c: number | null
+  range_hours: number
+  observed_at: string | null
+}
+
 export interface PlaceAnswer {
   point: { lat: number; lon: number } | null
+  city: PlaceCity | null
+  weather: PlaceWeather | null
   country: PlaceCountry | null
   profile: PlaceProfile | null
   government: PlaceGovernment | null

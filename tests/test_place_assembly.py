@@ -17,6 +17,31 @@ ELEMENTS = """SENTINEL-2A
 PARIS = (48.8566, 2.3522)
 OCEAN = (0.0, -140.0)
 
+_FORECAST = {
+    "properties": {
+        "timeseries": [
+            {
+                "time": "2026-08-12T09:00:00Z",
+                "data": {
+                    "instant": {
+                        "details": {
+                            "air_temperature": 21.4,
+                            "wind_speed": 2.6,
+                            "wind_from_direction": 190.0,
+                            "relative_humidity": 58.0,
+                        }
+                    },
+                    "next_1_hours": {"summary": {"symbol_code": "fair_day"}},
+                },
+            },
+            {
+                "time": "2026-08-12T10:00:00Z",
+                "data": {"instant": {"details": {"air_temperature": 24.9}}},
+            },
+        ]
+    }
+}
+
 _STAC_ITEM = {
     "features": [
         {
@@ -33,6 +58,32 @@ def _handler(*, fail: set[str] | None = None):
 
     def handle(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
+        if "wikidata" in url and "wd%3AQ" in url:
+            # The settlement's population (#932): a different query against the
+            # same service, and it fails on its own.
+            if "city-pop" in failed:
+                raise httpx.ConnectError("refused")
+            return httpx.Response(
+                200, json={"results": {"bindings": [{"population": {"value": "2102650"}}]}}
+            )
+        if "nominatim" in url:
+            if "city" in failed:
+                raise httpx.ConnectError("refused")
+            if "nocity" in failed:
+                return httpx.Response(200, json={"error": "Unable to geocode"})
+            return httpx.Response(
+                200,
+                json={
+                    "lat": "48.8566",
+                    "lon": "2.3522",
+                    "address": {"city": "Paris", "state": "Île-de-France"},
+                    "extratags": {"wikidata": "Q90"},
+                },
+            )
+        if "api.met.no" in url:
+            if "weather" in failed:
+                raise httpx.ConnectError("refused")
+            return httpx.Response(200, json=_FORECAST)
         if "wikidata" in url:
             if "facts" in failed:
                 raise httpx.ConnectError("refused")
@@ -143,6 +194,68 @@ def test_open_ocean_has_no_country_but_still_asks_for_a_photograph():
     assert answer["country"] is None
     assert answer["imagery"] is not None
     assert "profile" in answer["degraded"]
+
+
+def test_the_point_is_named_before_the_country_is():
+    answer = place.describe_place(*PARIS, client=_client())
+    assert answer["city"]["name"] == "Paris"
+    assert answer["city"]["region"] == "Île-de-France"
+    assert answer["city"]["population"] == 2_102_650
+    assert answer["city"]["distance_km"] == 0.0
+    assert answer["weather"]["temperature_c"] == 21.4
+    assert answer["weather"]["conditions"] == "Fair"
+    assert answer["degraded"] == []
+
+
+def test_weather_is_about_the_coordinate_so_it_survives_having_no_city():
+    """Open desert and open ocean have conditions. The screen says what they
+    are, and says nothing about a town, because there is not one."""
+    answer = place.describe_place(*OCEAN, client=_client(fail={"nocity"}))
+    assert answer["city"] is None
+    assert answer["weather"]["temperature_c"] == 21.4
+    assert "city" not in answer["degraded"]
+
+
+def test_a_place_with_nobody_near_it_is_not_a_degraded_block():
+    """ "No settlement within a hundred kilometres" is an answer. An
+    "unavailable" line would tell the reader to try again, for nothing."""
+    answer = place.describe_place(*PARIS, client=_client(fail={"nocity"}))
+    assert answer["city"] is None
+    assert "city" not in answer["degraded"]
+
+
+def test_a_failed_lookup_is_degraded_rather_than_silently_empty():
+    answer = place.describe_place(*PARIS, client=_client(fail={"city"}))
+    assert answer["city"] is None
+    assert "city" in answer["degraded"]
+    assert answer["weather"] is not None
+
+
+def test_weather_failing_costs_the_weather_and_nothing_else():
+    answer = place.describe_place(*PARIS, client=_client(fail={"weather"}))
+    assert answer["weather"] is None
+    assert answer["degraded"] == ["weather"]
+    assert answer["city"]["name"] == "Paris"
+
+
+def test_the_city_survives_its_population_being_unavailable():
+    """The name of the town is the block. A second service being slow must not
+    take it off the screen."""
+    answer = place.describe_place(*PARIS, client=_client(fail={"city-pop"}))
+    assert answer["city"]["name"] == "Paris"
+    assert answer["city"]["population"] is None
+    assert "city" not in answer["degraded"]
+
+
+def test_a_country_asked_for_by_code_has_no_city_and_no_weather():
+    """There is no point behind the country chip, so there is nowhere to ask
+    about. Inventing a centroid would put a capital's weather on a screen about
+    a whole country."""
+    answer = place.describe_place_by_country("FR", client=_client())
+    assert answer["city"] is None
+    assert answer["weather"] is None
+    assert "city" not in answer["degraded"]
+    assert "weather" not in answer["degraded"]
 
 
 def test_a_point_beside_a_border_says_so():
