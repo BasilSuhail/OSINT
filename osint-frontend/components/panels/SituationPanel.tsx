@@ -8,7 +8,7 @@
  * below it; sending a question pins the scroll to the transcript end.
  */
 
-import { useEffect, useReducer, useRef, useState } from "react"
+import { useEffect, useReducer, useState } from "react"
 import useSWR from "swr"
 import { fetchBrainNarrative, streamBrainAsk, type BrainSource } from "@/lib/apiClient"
 import {
@@ -47,8 +47,6 @@ const DEVELOPING_COLLAPSED = 3
 //: 422'd every request and the block silently rendered nothing (#713).
 const DEVELOPING_FETCH = 10
 const CHAT_STORAGE_KEY = "brain-chat-v1"
-//: Within this many px of the bottom still counts as "pinned" for auto-scroll.
-const PIN_THRESHOLD_PX = 40
 
 /**
  * The pinned slot (#449): multi-day international stories still gathering
@@ -454,39 +452,6 @@ export function SituationPanel() {
   })
   const openStory = useStoryDetailStore((s) => s.openStory)
   const [showOlder, setShowOlder] = useState(false)
-  const [question, setQuestion] = useState("")
-  const { messages, pending, ask, clear } = useBrainChat()
-  const scrollRef = useRef<HTMLDivElement>(null)
-  //: Only auto-scroll while the user sits at the bottom, so streaming never
-  //: hijacks a scroll back up to the story list.
-  const pinnedRef = useRef(false)
-
-  const onScroll = () => {
-    const el = scrollRef.current
-    if (!el) return
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD_PX
-  }
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight
-  }, [messages])
-
-  const submit = () => {
-    const q = question.trim()
-    if (!q || pending) return
-    setQuestion("")
-    pinnedRef.current = true
-    void ask(q)
-  }
-
-  //: The chip's shortcut (#602): the "elaborate" trigger word is what the
-  //: backend detects to switch into long-answer mode — no special API needed.
-  const elaborate = () => {
-    if (pending) return
-    pinnedRef.current = true
-    void ask("elaborate on that")
-  }
 
   const narrative = data?.payload ?? null
   const developing = pinned ?? []
@@ -508,7 +473,7 @@ export function SituationPanel() {
           are system health — they belong in the monitor, with the sources and
           the jobs, not on top of the story list they say nothing about. What
           is left is the feed, starting at the top of the card. */}
-      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <DevelopingBlock
           stories={developing}
           failed={Boolean(pinnedError)}
@@ -552,57 +517,15 @@ export function SituationPanel() {
           <p className="text-sm text-neutral-500">No stories in the window yet.</p>
         ) : null}
 
-        {messages.length > 0 ? (
-          <section>
-            <div className="sticky top-0 z-10 -mx-3 mt-3 flex items-center justify-between border-y border-neutral-800 bg-neutral-950/95 px-3 py-1 backdrop-blur">
-              <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-                ask — transcript
-              </p>
-              <button
-                onClick={clear}
-                className="font-mono text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-300"
-              >
-                clear
-              </button>
-            </div>
-            <div className="divide-y divide-neutral-800/60">
-              {messages.map((m, i) => (
-                <ChatEntry
-                  key={i}
-                  m={m}
-                  onOpenStory={openStory}
-                  //: Only the latest, finalized answer gets the chip — retrieval
-                  //: anchors on the most recent exchange, so elaborating an older
-                  //: one would drift topic (#602).
-                  onElaborate={i === messages.length - 1 && !m.draft && !pending ? elaborate : undefined}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
       </div>
 
+      {/*: The composer and the transcript moved to the omnibox (#938) — one
+          box at the top asks both the index and the brain, so this card no
+          longer holds half of that. What stays is the line that says how far
+          the stories above it can be trusted, which is about them and not
+          about asking. */}
       <footer className="shrink-0 border-t border-neutral-800 p-3">
         <DataQualityLine audit={audit} />
-        <div className="flex gap-2">
-          <input
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submit()
-            }}
-            placeholder="ask the brain…"
-            disabled={pending}
-            className="flex-1 rounded-lg border border-neutral-800 bg-neutral-900/50 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:outline-none disabled:opacity-50"
-          />
-          <button
-            onClick={submit}
-            disabled={pending || !question.trim()}
-            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 disabled:opacity-40"
-          >
-            {pending ? "…" : "ask"}
-          </button>
-        </div>
       </footer>
     </div>
   )

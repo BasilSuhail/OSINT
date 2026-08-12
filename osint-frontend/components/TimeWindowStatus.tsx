@@ -24,6 +24,13 @@ const DOT_CLASS: Record<TimeWindowState, string> = {
 
 interface TimeWindowStatusProps {
   useStore: FilterStore
+  /** Inside the system box rather than beside it (#938), where the words have
+   *  to share a line with the source counts. Compact drops the window length
+   *  while the map is live, because "live" already says the map ends at now
+   *  and the length is the part nobody was reading. The two states where the
+   *  view is *not* the current situation keep their detail: that is the whole
+   *  reason this readout is on screen without being opened. */
+  compact?: boolean
 }
 
 /** Says, in the always-visible status bar, whether the map is showing now (#501).
@@ -34,7 +41,7 @@ interface TimeWindowStatusProps {
  * are the same question asked of two different layers — a connected socket
  * feeding a map scrubbed three hours back is still not the current situation.
  */
-export function TimeWindowStatus({ useStore }: TimeWindowStatusProps) {
+export function TimeWindowStatus({ useStore, compact = false }: TimeWindowStatusProps) {
   const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
   const windowLengthMs = useStore((s) => s.windowLengthMs)
   const setWindowEndOffset = useStore((s) => s.setWindowEndOffset)
@@ -67,7 +74,9 @@ export function TimeWindowStatus({ useStore }: TimeWindowStatusProps) {
     >
       <span className={cn("h-1.5 w-1.5 rounded-full", DOT_CLASS[view.state])} aria-hidden />
       <span className={STATE_CLASS[view.state]}>{view.label}</span>
-      <span className="text-neutral-500">{view.detail}</span>
+      {(!compact || view.state !== "live") && (
+        <span className="text-neutral-500">{view.detail}</span>
+      )}
       {view.canReturnToNow && (
         <button
           type="button"

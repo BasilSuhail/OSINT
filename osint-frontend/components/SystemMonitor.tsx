@@ -101,29 +101,53 @@ export function SystemMonitor({ leading }: { leading?: ReactNode }) {
       ref={rootRef}
       className="pointer-events-auto absolute right-3 top-3 z-50 flex flex-col items-end gap-2"
     >
-      <div className="flex items-center gap-2">
-        {leading}
+      {/*: One box, not two (#938). "Is the view live" and "are the sources
+          live" are the same question asked of two layers, and two bordered
+          pills side by side made them look like two unrelated readouts. The
+          border lives on this shell so the time readout can keep its own
+          `go live` button — a button inside a button is invalid, which is what
+          kept these apart. */}
+      <div
+        className={
+          "flex items-center gap-2 rounded-xl border bg-neutral-950/90 px-2.5 py-1.5 shadow-lg shadow-black/40 backdrop-blur-xl transition-colors " +
+          (open ? "border-neutral-600" : "border-neutral-800")
+        }
+      >
+        {/*: The word, then whether the view is live, then how many sources are
+            in trouble — read left to right it is one sentence about one
+            system. Two toggles rather than one wrapping the lot: the readout
+            between them carries `go live`, and a button cannot contain one. */}
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
           aria-label="System monitor"
           className={
-            "flex items-center gap-2.5 rounded-xl border bg-neutral-950/90 px-3 py-2 shadow-lg shadow-black/40 backdrop-blur-xl transition-colors " +
-            (open
-              ? "border-neutral-600 text-neutral-200"
-              : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200")
+            "rounded-md px-1 py-0.5 font-mono text-[8px] uppercase tracking-[0.24em] transition-colors " +
+            (open ? "text-neutral-200" : "text-neutral-400 hover:text-neutral-200")
           }
         >
-          <span className="font-mono text-[9px] uppercase tracking-[0.24em]">system</span>
+          system
+        </button>
+        {leading}
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-label="Source health"
+          className={
+            "flex items-center gap-2 rounded-md px-1 py-0.5 transition-colors " +
+            (open ? "text-neutral-200" : "text-neutral-400 hover:text-neutral-200")
+          }
+        >
           {counts.length === 0 ? (
-            <span className="font-mono text-[11px] leading-none text-emerald-400">✓</span>
+            <span className="font-mono text-[10px] leading-none text-emerald-400">✓</span>
           ) : (
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5">
               {counts.map(({ band, count }) => (
                 <span
                   key={band}
-                  className="flex items-center gap-1 font-mono text-[10px] leading-none"
+                  className="flex items-center gap-0.5 font-mono text-[9px] leading-none"
                 >
                   <span className={BAND_DOT[band]}>●</span>
                   <span className="text-neutral-300">{count}</span>

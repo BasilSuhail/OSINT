@@ -19,8 +19,9 @@ import { fetchScoreboard } from "@/lib/analytics"
 import { scoreboardIsReady } from "@/lib/deckReadiness"
 import { CardDeck, type DeckCard } from "./CardDeck"
 import { FloatingPanel } from "./FloatingPanel"
-import { SearchPanel } from "./SearchPanel"
 import { deckPageKeys } from "@/lib/deckPages"
+import { COLUMN_TOP, PANEL_WIDTH } from "@/lib/layout"
+import { cn } from "@/lib/utils"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
 import { EventDetailCard } from "./EventDetailCard"
@@ -35,6 +36,9 @@ import { SituationPanel } from "./panels/SituationPanel"
 import { StoriesPanel } from "./panels/StoriesPanel"
 import { SystemMonitor } from "./SystemMonitor"
 import { TimeWindowStatus } from "./TimeWindowStatus"
+import { Omnibox } from "./Omnibox"
+import { panelForKey } from "@/lib/panelKeys"
+import { usePanelLayoutStore } from "@/stores/panelLayout"
 
 const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
   ssr: false,
@@ -45,9 +49,6 @@ const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
 //: stays on disk; removing panels is a separate decision from what the deck
 //: shows.
 
-/** Deck and detail share one width so the pop-out lines up with the deck
- *  without measuring anything at runtime (#503). */
-const PANEL_WIDTH = "clamp(320px, 28vw, 460px)"
 
 function PaneSkeleton({ label }: { label: string }) {
   return (
@@ -66,11 +67,31 @@ export function SplitLayout() {
   //: Open on arrival. The filter panel is the map's legend as much as its
   //: controls — what each colour is, and how many of it there are — and it is
   //: the only place those live now that the icon strip is gone.
-  const [leftRailOpen, setLeftRailOpen] = useState(true)
+  //: All four edges answer to one store now (#938), so WASD has one place to
+  //: ask and the omnibox can send the deck away when it moves the map.
+  //: Transient "let me see the map" gestures, not stored preferences (#503).
+  const leftRailOpen = usePanelLayoutStore((s) => s.right)
+  const deckCollapsed = !usePanelLayoutStore((s) => s.left)
+  const togglePanel = usePanelLayoutStore((s) => s.toggle)
+  //: Search and the deck share the left column and cannot both be in it. The
+  //: bar above them is not part of this: it never hides, so hiding "the left
+  //: panel" always means the deck (#938).
+  const searchActive = usePanelLayoutStore((s) => s.searchActive)
+  const resultsOpen = usePanelLayoutStore((s) => s.top)
+  const deckShowing = !deckCollapsed && !searchActive
+  //: The column holds one thing at a time, and the handle on its edge means
+  //: "put away what is in the column" — so while search is in it, the handle
+  //: is search's. Computed from the deck alone it pointed at a deck that was
+  //: not there: the arrow sat mid-screen still offering to hide something
+  //: already hidden (#938).
+  const columnOccupied = searchActive ? resultsOpen : !deckCollapsed
+  const setPanel = usePanelLayoutStore((s) => s.setPanel)
+  const setLeftRailOpen = useCallback(
+    (open: boolean) => setPanel("right", open),
+    [setPanel],
+  )
   const [activePane, setActivePane] = useState<"left" | "right">("left")
   const [, setLeftCount] = useState(0)
-  //: Transient "let me see the map" gesture, not a stored preference (#503).
-  const [deckCollapsed, setDeckCollapsed] = useState(false)
 
   // Selections drive the right pane's entity-lock mode (#252). The clicked
   // event id also expands its hazard footprint on the map.
@@ -88,8 +109,6 @@ export function SplitLayout() {
   const openEvent = useRightPaneModeStore((s) => s.openEvent)
   const openCountry = usePlaceStore((s) => s.openCountry)
   const placeOpen = usePlaceStore((s) => s.target !== null)
-  const openEventDetail = useEventDetailStore((s) => s.openEventDetail)
-  const [searchOpen, setSearchOpen] = useState(false)
   const selectedEventId = entity?.kind === "event" ? entity.event.id : null
 
   // Keyboard shortcuts.
@@ -117,11 +136,17 @@ export function SplitLayout() {
       }
       const target = e.target as HTMLElement
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return
-      if (e.key === "[") {
-        setLeftRailOpen((o) => !o)
-      } else if (e.key === "]") {
-        //: `]` used to toggle the right rail, which left with the globe (#494).
-        setDeckCollapsed((c) => !c)
+      //: WASD puts away the panel on the edge the key points at (#938). The
+      //: guard above is what makes plain letters safe as shortcuts: inside the
+      //: omnibox they are the query, and never reach here.
+      const side = panelForKey(e.key, {
+        ctrl: e.ctrlKey,
+        meta: e.metaKey,
+        alt: e.altKey,
+      })
+      if (side) {
+        e.preventDefault()
+        usePanelLayoutStore.getState().toggle(side)
       } else if (e.key === " ") {
         e.preventDefault()
         //: The map is the only scrubbable surface now that the globe is gone.
@@ -174,34 +199,22 @@ export function SplitLayout() {
     {
       key: "world",
       title: "world",
+      //: Search left this card for the omnibox (#938). It was here because it
+      //: is the way into the system rather than a filter over one panel (#779)
+      //: — which is the same reason it should never have needed a card opened
+      //: first. The card is what it always was underneath: the headline, then
+      //: the stories.
       collapsedContent: (
         <div className="flex h-full w-full flex-col">
-          {/* Search sits above everything on this card, because it is the way
-              into the system rather than a filter over one panel (#779).
-              Focused, it takes the whole card: results need the room, and a
-              list squeezed under a dashboard is not a list. */}
-          <div className={searchOpen ? "flex min-h-0 flex-1 flex-col" : "shrink-0"}>
-            <SearchPanel
-              open={searchOpen}
-              onOpenChange={setSearchOpen}
-              //: Search is screen two, so a result opens the pop-up like any
-              //: other list — it must not build or replace screen three (#850).
-              onSelectEvent={(ev) => openEventDetail(ev)}
-            />
+          {/* Sizes to its content (#711). A fixed half left the title, three
+              numbers and a sparkline floating in the middle of a tall box with
+              a gap above and below. */}
+          <div className="shrink-0 border-b border-neutral-800">
+            <WorldHeadline />
           </div>
-          {!searchOpen && (
-            <>
-              {/* Sizes to its content (#711). A fixed half left the title, three
-                  numbers and a sparkline floating in the middle of a tall box with
-                  a gap above and below. */}
-              <div className="shrink-0 border-b border-neutral-800">
-                <WorldHeadline />
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                <StoriesPanel tuckRows />
-              </div>
-            </>
-          )}
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <StoriesPanel tuckRows />
+          </div>
         </div>
       ),
       fill: true,
@@ -282,13 +295,12 @@ export function SplitLayout() {
             sources are. Two detached controls rather than one bar — the time
             readout has to stay legible without opening anything (#501), and
             the monitor is a door, not a readout. */}
-        <SystemMonitor
-          leading={
-            <span className="rounded-xl border border-neutral-800 bg-neutral-950/90 px-2.5 py-2 shadow-lg shadow-black/40 backdrop-blur-xl">
-              <TimeWindowStatus useStore={useLeftPaneStore} />
-            </span>
-          }
-        />
+        <SystemMonitor leading={<TimeWindowStatus useStore={useLeftPaneStore} compact />} />
+        {/*: Wide only. The narrow layout already owns the top centre with its
+            pane switcher, and a dropdown the height of a phone screen is the
+            whole phone screen — that layout needs its own answer, not this one
+            squeezed. */}
+        {!isNarrow && <Omnibox />}
         {!configured && (
           <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
             Local API unreachable - start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)
@@ -354,7 +366,11 @@ export function SplitLayout() {
                 //: inside the deck, so nothing beside it needs reserving — and
                 //: the special case that put the collapse handle in open map
                 //: is deleted rather than corrected.
-                "--panel-width": deckCollapsed
+                //: Occupied by whichever of the two is in the column. Search
+                //: takes the same width as the deck, so the scrubber and the
+                //: pop-up stop in the same place either way and nothing jumps
+                //: sideways when one replaces the other (#938).
+                "--panel-width": !columnOccupied
                   ? "0px"
                   : popupOpen
                     ? `calc(${PANEL_WIDTH} * 2 + 1.25rem)`
@@ -380,10 +396,14 @@ export function SplitLayout() {
             {/* Screen 4: the pop-up. A second column beside the panel you
              *  clicked from — never a page in that panel, and never replacing
              *  it. Position is arithmetic off the fixed deck width. */}
-            {popupOpen && !deckCollapsed ? (
+            {popupOpen && (deckShowing || searchActive) ? (
               <FloatingPanel
-                className="absolute bottom-3 top-3 z-30"
-                style={{ width: PANEL_WIDTH, left: `calc(${PANEL_WIDTH} + 1.25rem)` }}
+                className="absolute bottom-3 z-30"
+                style={{
+                  width: PANEL_WIDTH,
+                  left: `calc(${PANEL_WIDTH} + 1.25rem)`,
+                  top: COLUMN_TOP,
+                }}
               >
                 {storyDetailOpen ? (
                   <StoryDetailCard />
@@ -407,27 +427,45 @@ export function SplitLayout() {
              *  control on the right. */}
             <button
               type="button"
-              onClick={() => setDeckCollapsed((c) => !c)}
-              title={deckCollapsed ? "Show panel (])" : "Hide panel (])"}
+              onClick={() => togglePanel(searchActive ? "top" : "left")}
+              title={
+                searchActive
+                  ? columnOccupied
+                    ? "Hide results (W)"
+                    : "Show results (W)"
+                  : columnOccupied
+                    ? "Hide panel (A)"
+                    : "Show panel (A)"
+              }
               style={{ left: `calc(var(--panel-width) + 1rem)` }}
-              className="absolute top-1/2 z-30 -translate-y-1/2 rounded-l-md rounded-r-xl border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100"
+              className="absolute top-1/2 z-30 -translate-y-1/2 rounded-l-md rounded-r-xl border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-[left,color] duration-300 ease-out hover:text-neutral-100"
             >
-              {deckCollapsed ? (
-                <ChevronRight size={16} aria-hidden />
-              ) : (
+              {columnOccupied ? (
                 <ChevronLeft size={16} aria-hidden />
+              ) : (
+                <ChevronRight size={16} aria-hidden />
               )}
-              <span className="sr-only">{deckCollapsed ? "Show panel" : "Hide panel"}</span>
+              <span className="sr-only">{columnOccupied ? "Hide panel" : "Show panel"}</span>
             </button>
 
-            {deckCollapsed ? null : (
-              <FloatingPanel
-                className="absolute bottom-3 left-3 top-3 z-30"
-                style={{ width: PANEL_WIDTH }}
-              >
-                <CardDeck cards={deckCards} />
-              </FloatingPanel>
-            )}
+            {/*: Always mounted, moved rather than removed (#938). Going away
+                is a thing the reader watches happen — search taking the column
+                has to look like the collapse handle being pressed, and an
+                unmount cannot be animated. It costs keeping the deck's polling
+                alive while it is off screen, which is the price of the column
+                changing hands without a flicker. */}
+            <FloatingPanel
+              aria-hidden={!deckShowing}
+              className={cn(
+                "absolute bottom-3 left-3 z-30 transition-[transform,opacity] duration-300 ease-out",
+                deckShowing
+                  ? "translate-x-0 opacity-100"
+                  : "pointer-events-none -translate-x-[calc(100%+1.5rem)] opacity-0",
+              )}
+              style={{ width: PANEL_WIDTH, top: COLUMN_TOP }}
+            >
+              <CardDeck cards={deckCards} />
+            </FloatingPanel>
           </div>
         )}
       </div>

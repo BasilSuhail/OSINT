@@ -1,12 +1,12 @@
 "use client"
 
 import { ChevronDown, ChevronUp, Pause, Play } from "lucide-react"
-import { useState } from "react"
 import { format } from "date-fns"
 import { WINDOW_SPAN_MS, type FilterStore } from "@/stores/createFilterStore"
 import { LIVE_TOLERANCE_MS } from "@/lib/timeWindow"
 import { cn } from "@/lib/utils"
 import { Slider } from "@/components/ui/slider"
+import { usePanelLayoutStore } from "@/stores/panelLayout"
 
 const SPEEDS: { label: string; value: number }[] = [
   { label: "1×", value: 1 },
@@ -46,7 +46,11 @@ export function TimeScrubber({ useStore, windowEnd, panelOpen }: TimeScrubberPro
   //: rail use — one shape for "put this away", turned to face the edge it sits
   //: on. Playback state is untouched by hiding it: this is what is on screen,
   //: not what the console is doing.
-  const [hidden, setHidden] = useState(false)
+  //: In the shared panel store rather than local state (#938), because `S`
+  //: has to reach it from the keyboard and a component's own useState is the
+  //: one place nothing else can.
+  const hidden = !usePanelLayoutStore((s) => s.bottom)
+  const setHidden = (next: boolean) => usePanelLayoutStore.getState().setPanel("bottom", !next)
 
   //: The deck's handle, turned to face the bottom edge: it floats on the map
   //: *outside* the bar, never inside it, centred on the span the bar occupies

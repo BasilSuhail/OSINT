@@ -25,6 +25,7 @@ from app.article_collapse import ARTICLE_KEY_SQL, SURVIVOR_ORDER_SQL
 from app.enrichment.country import country_name
 from app.enrichment.name_collision import is_collision
 from app.readable_claim import READABLE_CLAIM_SQL
+from app.search_terms import Topic, topic_for
 
 _DATA = Path(__file__).parent / "enrichment" / "data"
 
@@ -38,12 +39,28 @@ MIN_QUERY_LEN = 2
 #: size, so it is not worth tuning further.
 OVERFETCH = 3
 
-#: Must match `migrations/versions/0027_event_search_index.py` exactly, or
+#: Must match `migrations/versions/0029_event_search_topics.py` exactly, or
 #: Postgres will not use the GIN index — an expression index is only chosen
 #: when the query's expression is character-identical to the indexed one.
+#:
+#: Title and summary are the RSS fields, and for a long time they were the
+#: whole vector — which meant search saw only the sources that ship prose.
+#: The rest of these are where the other feeds put the words a reader would
+#: recognise: `place` is USGS' "10 km SW of…", `eventname` and `country_name`
+#: are GDACS', `geo_name` and `action_label` are GDELT's, `threat` is the
+#: malware classification. Rows with none of them produce an empty tsvector,
+#: and GIN stores no entries for one, so the fire detections that make up most
+#: of the table cost this index nothing. They are found by keyword instead.
 SEARCH_VECTOR_SQL = (
     "to_tsvector('english', "
-    "coalesce(payload->>'title', '') || ' ' || coalesce(payload->>'summary', ''))"
+    "coalesce(payload->>'title', '') || ' ' || "
+    "coalesce(payload->>'summary', '') || ' ' || "
+    "coalesce(payload->>'place', '') || ' ' || "
+    "coalesce(payload->>'eventname', '') || ' ' || "
+    "coalesce(payload->>'country_name', '') || ' ' || "
+    "coalesce(payload->>'geo_name', '') || ' ' || "
+    "coalesce(payload->>'action_label', '') || ' ' || "
+    "coalesce(payload->>'threat', ''))"
 )
 
 
@@ -296,6 +313,77 @@ def search_events(
     return [{k: v for k, v in row.items() if k != "relation_rank"} for row in rows]
 
 
+def topic_events(
+    session: Session,
+    topic: Topic,
+    *,
+    limit: int = 40,
+    days: int = 30,
+) -> list[dict[str, Any]]:
+    """The most recent events of a kind, newest first.
+
+    A separate query rather than an `OR` bolted onto the full-text one. The
+    two ask different questions: full-text ranks how well a row matches words,
+    and a topic has no words to match — every fire detection is equally a fire
+    detection, so the only sane order is by time. Bolting them together also
+    means ranking a million rows whose rank is zero by construction, where two
+    bounded queries each stop at the page they were asked for.
+    """
+    where = []
+    params: dict[str, Any] = {"days": days, "limit": limit}
+    if topic.category:
+        where.append("category = :category")
+        params["category"] = topic.category
+    if topic.keywords:
+        where.append("keywords && :keywords")
+        #: Sorted so the parameter is stable between calls; the set's own
+        #: iteration order is not.
+        params["keywords"] = sorted(topic.keywords)
+    if not where:
+        return []
+
+    #: Take the page first, collapse it second. A window function is evaluated
+    #: over every row the WHERE admits, before any LIMIT applies — so running
+    #: the collapse in the same SELECT partitioned 1.95M fire detections to
+    #: return forty of them, and "disasters" took 8.5 seconds. Bounding the set
+    #: in a CTE first brought it to single-digit milliseconds.
+    #:
+    #: The cost is that duplicates are now collapsed within the fetched slice
+    #: rather than across the whole window. That is the right trade here: the
+    #: collapse exists for GDELT's repeated wire copy, and a topic query is
+    #: answering "what kind", where near-identical neighbours are the honest
+    #: answer rather than noise.
+    params["fetch"] = limit * OVERFETCH
+    sql = text(
+        f"""
+        WITH page AS (
+            SELECT id, source, source_event_id, category, severity, country,
+                   lat, lon, occurred_at, fetched_at, keywords, payload
+            FROM events
+            WHERE occurred_at > now() - make_interval(days => :days)
+              AND ({" OR ".join(where)})
+              AND {READABLE_CLAIM_SQL}
+            ORDER BY occurred_at DESC
+            LIMIT :fetch
+        )
+        SELECT * FROM (
+            SELECT *, 0::float4 AS rank,
+                   row_number() OVER (
+                       PARTITION BY {ARTICLE_KEY_SQL}
+                       ORDER BY {SURVIVOR_ORDER_SQL}
+                   ) AS relation_rank,
+                   count(*) OVER (PARTITION BY {ARTICLE_KEY_SQL}) AS relation_count
+            FROM page
+        ) matches
+        WHERE relation_rank = 1
+        ORDER BY occurred_at DESC
+        LIMIT :limit
+        """
+    )
+    rows = session.execute(sql, params).mappings().all()
+    return [{k: v for k, v in row.items() if k != "relation_rank"} for row in rows]
+
+
 def _row_text(row: dict[str, Any]) -> str:
     """The text a reader would see on this row, for collision checking."""
     payload = row.get("payload") or {}
@@ -313,6 +401,18 @@ def search(session: Session, query: str, *, limit: int = 40) -> SearchResult:
     if len(_norm(query)) < MIN_QUERY_LEN:
         return SearchResult()
     places = find_places(query)
+
+    #: A word for a kind of event answers with that kind. Checked before
+    #: full-text because the words do not overlap: "disasters" and "wildfire"
+    #: match no headline in the corpus, so running both would spend a query to
+    #: return nothing and then hand back the topic anyway.
+    topic = topic_for(query)
+    if topic is not None:
+        return SearchResult(
+            places=places,
+            events=topic_events(session, topic, limit=limit),
+            ambiguous=len(places) > 1,
+        )
 
     #: A place name is also a title, and full-text cannot tell them apart:
     #: half of "edinburgh" came back as the Duke and Duchess of Edinburgh
