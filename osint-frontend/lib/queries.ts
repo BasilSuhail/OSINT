@@ -10,8 +10,10 @@ import {
   fetchEventStats,
   fetchPlace,
   fetchScores as apiFetchScores,
+  fetchUpcoming,
   type EventStats,
   type PlaceAnswer,
+  type UpcomingAnswer,
 } from "./apiClient"
 import { placeUrl } from "./placeUrl"
 import type { PlaceTarget } from "@/stores/placeStore"
@@ -226,4 +228,23 @@ export function usePlace(target: PlaceTarget | null): {
     { revalidateOnFocus: false },
   )
   return { place: data ?? null, isLoading }
+}
+
+/** What is scheduled in a country (#934).
+ *
+ * Its own request, deliberately: the calendar's upstream is slower than the
+ * place screen's per-source budget, and a slow calendar must not delay the
+ * facts above it. The panel therefore renders in two stages, which is the
+ * honest shape — one answer is ready before the other.
+ */
+export function useUpcoming(iso: string | null): {
+  upcoming: UpcomingAnswer | null
+  isLoading: boolean
+} {
+  const { data, isLoading } = useSWR(
+    iso ? `${API_BASE}/presence/upcoming?iso=${iso}` : null,
+    async () => (iso ? fetchUpcoming(iso) : null),
+    { revalidateOnFocus: false },
+  )
+  return { upcoming: data ?? null, isLoading }
 }
