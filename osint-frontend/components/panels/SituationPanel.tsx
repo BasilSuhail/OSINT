@@ -46,8 +46,6 @@ const DEVELOPING_COLLAPSED = 3
 //: ceiling /stories/developing enforces (api.py: `le=10`); asking for twelve
 //: 422'd every request and the block silently rendered nothing (#713).
 const DEVELOPING_FETCH = 10
-//: Older than this and the card says the brain is resting.
-const STALE_MS = 40 * 60_000
 const CHAT_STORAGE_KEY = "brain-chat-v1"
 //: Within this many px of the bottom still counts as "pinned" for auto-scroll.
 const PIN_THRESHOLD_PX = 40
@@ -491,8 +489,6 @@ export function SituationPanel() {
   }
 
   const narrative = data?.payload ?? null
-  const createdAt = data?.created_at ? new Date(data.created_at).getTime() : 0
-  const stale = !data?.present || Date.now() - createdAt > STALE_MS
   const developing = pinned ?? []
   const sorted = excludePinned(
     sortByActivity(stories ?? []),
@@ -506,23 +502,13 @@ export function SituationPanel() {
 
   return (
     <div className="flex h-full flex-col text-neutral-100">
-      <header className="flex items-center justify-between p-3 pb-2">
-        <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-          situation — the brain
-        </p>
-        {data?.model ? (
-          <span className="font-mono text-[9px] text-neutral-600">{data.model}</span>
-        ) : null}
-      </header>
-
-      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        {stale ? (
-          <p className="mb-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-3 text-sm text-neutral-400">
-            Brain resting — the box is busy or no read is ready yet.
-            {data?.created_at ? ` Last read ${new Date(data.created_at).toLocaleTimeString()}.` : ""}
-          </p>
-        ) : null}
-
+      {/*: No header of its own, and no brain-health notice (#936). The card
+          sits under a deck header that already reads "situation", and whether
+          the brain is resting, which model it is running and when it last read
+          are system health — they belong in the monitor, with the sources and
+          the jobs, not on top of the story list they say nothing about. What
+          is left is the feed, starting at the top of the card. */}
+      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
         <DevelopingBlock
           stories={developing}
           failed={Boolean(pinnedError)}

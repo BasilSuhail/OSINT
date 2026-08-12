@@ -237,10 +237,16 @@ export function CardDeck({ cards }: { cards: DeckCard[] }) {
               target="_blank"
               rel="noreferrer"
               title="open the reading page in a new tab"
-              aria-label="Open the reading page in a new tab"
-              className="flex items-center gap-1.5 rounded-md border border-neutral-800 px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest text-neutral-400 transition-colors hover:border-cyan-500/60 hover:text-cyan-300"
+              aria-label="Open the news feed in a new tab"
+              //: Named, not an icon (#936). A bare arrow in the corner reads as
+              //: "make this card bigger", which is what the other branch does;
+              //: this one leaves the console for a separate page, and the two
+              //: were indistinguishable while both were the same glyph. Big
+              //: enough to be the thing you reach for, since it is.
+              className="flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900/60 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-neutral-300 transition-colors hover:border-cyan-500/60 hover:bg-neutral-900 hover:text-cyan-300"
             >
               <Maximize2 className="h-3 w-3" />
+              news feed
             </a>
           ) : (
             <button
