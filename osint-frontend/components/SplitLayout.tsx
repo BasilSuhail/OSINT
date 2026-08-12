@@ -33,7 +33,8 @@ import { SelectionPanel } from "./panels/SelectionPanel"
 import { ScoreboardPanel } from "./panels/ScoreboardPanel"
 import { SituationPanel } from "./panels/SituationPanel"
 import { StoriesPanel } from "./panels/StoriesPanel"
-import { SystemStatusBar } from "./SystemStatusBar"
+import { SystemMonitor } from "./SystemMonitor"
+import { TimeWindowStatus } from "./TimeWindowStatus"
 
 const MapPane = dynamic(() => import("./MapPane").then((m) => m.MapPane), {
   ssr: false,
@@ -273,8 +274,21 @@ export function SplitLayout() {
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-100">
-      <SystemStatusBar useStore={useLeftPaneStore} />
-      <div className="relative h-[calc(100dvh-2rem)] w-full overflow-hidden">
+      {/*: No status bar (#936). Eleven always-on chips cost the map the full
+          width of the screen to say what three numbers in the corner say, and
+          were read once and then ignored. The map gets the whole viewport. */}
+      <div className="relative h-dvh w-full overflow-hidden">
+        {/*: The corner cluster: whether the view is live, and whether the
+            sources are. Two detached controls rather than one bar — the time
+            readout has to stay legible without opening anything (#501), and
+            the monitor is a door, not a readout. */}
+        <SystemMonitor
+          leading={
+            <span className="rounded-xl border border-neutral-800 bg-neutral-950/90 px-2.5 py-2 shadow-lg shadow-black/40 backdrop-blur-xl">
+              <TimeWindowStatus useStore={useLeftPaneStore} />
+            </span>
+          }
+        />
         {!configured && (
           <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
             Local API unreachable - start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)
@@ -283,7 +297,7 @@ export function SplitLayout() {
 
         {isNarrow ? (
           <div className="relative h-full w-full">
-            <div className="pointer-events-auto absolute left-1/2 top-12 z-40 -translate-x-1/2 flex gap-1 rounded-full border border-neutral-800 bg-neutral-950/80 p-1 backdrop-blur-sm">
+            <div className="pointer-events-auto absolute left-1/2 top-3 z-40 -translate-x-1/2 flex gap-1 rounded-full border border-neutral-800 bg-neutral-950/80 p-1 backdrop-blur-sm">
               {(["left", "right"] as const).map((p) => (
                 <button
                   key={p}
@@ -313,7 +327,7 @@ export function SplitLayout() {
               />
             </div>
             <div
-              className="absolute inset-x-2 bottom-2 top-20 z-30"
+              className="absolute inset-x-2 bottom-2 top-14 z-30"
               style={{ display: activePane === "right" ? "block" : "none" }}
             >
               <FloatingPanel className="h-full w-full">

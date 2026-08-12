@@ -340,8 +340,11 @@ export function FilterRail({
   return (
     <div
       className={cn(
-        "pointer-events-none absolute bottom-3 top-3 z-20 flex items-stretch gap-2",
-        isLeft ? "left-3" : "right-3",
+        "pointer-events-none absolute bottom-3 z-20 flex items-stretch gap-2",
+        //: Docked right, the top corner belongs to the system monitor's button
+        //: (#936) — it is a separate control with its own border, so the rail
+        //: starts below it rather than sharing an edge and reading as one panel.
+        isLeft ? "left-3 top-3" : "right-3 top-14",
       )}
     >
       {/*: The deck's handle, exactly: it floats on the map *outside* the thing
