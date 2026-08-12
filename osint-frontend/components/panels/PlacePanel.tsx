@@ -1,9 +1,10 @@
 "use client"
 
 import { X } from "lucide-react"
-import { usePlace } from "@/lib/queries"
+import { usePlace, useUpcoming } from "@/lib/queries"
 import type { PlaceAnswer, PlaceWeather } from "@/lib/apiClient"
 import { distanceLabel, rangeLabel, temperature, windLabel } from "@/lib/placeFormat"
+import { whenLabel } from "@/lib/upcomingFormat"
 import { usePlaceStore } from "@/stores/placeStore"
 import { cn } from "@/lib/utils"
 import { CountrySidePanel } from "../CountrySidePanel"
@@ -131,6 +132,53 @@ function Weather({ weather }: { weather: PlaceWeather }) {
         value={high && low ? `${high} · ${low}` : null}
       />
     </>
+  )
+}
+
+/** What is scheduled in this country (#934).
+ *
+ * The only forward-looking block on a screen that is otherwise entirely past
+ * tense. Its own request, so a slow calendar cannot delay the facts above it —
+ * which is why it has its own skeleton rather than sharing the panel's.
+ *
+ * A day with several contests arrives already collapsed by the server and
+ * carries its count. Naming it after one member put "2026 Iowa elections" at
+ * the head of fifty-seven American races.
+ */
+function Upcoming({ iso }: { iso: string }) {
+  const { upcoming, isLoading } = useUpcoming(iso)
+
+  if (isLoading) return <Skeleton rows={2} />
+  if (!upcoming || upcoming.degraded) return <Unavailable what="Schedule" />
+  if (upcoming.entries.length === 0) {
+    return (
+      <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-600">
+        Nothing scheduled in the next {upcoming.days} days
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {upcoming.entries.map((entry) => (
+        <div
+          key={`${entry.starts_on}-${entry.headline}`}
+          className="flex items-baseline justify-between gap-3"
+        >
+          <span className="min-w-0 text-xs text-neutral-300">
+            {entry.headline}
+            {entry.count > 1 && (
+              <span className="ml-1.5 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
+                one day
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 text-right font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+            {whenLabel(entry.starts_on)}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -291,6 +339,16 @@ export function PlacePanel() {
                 </>
               )}
             </div>
+
+            {/* Between what the place is and what it looked like from orbit:
+                what is coming. Only for a country — an election belongs to a
+                state, not to a point on open water. */}
+            {iso && (
+              <div className="flex flex-col gap-1.5 border-t border-neutral-800 pt-3">
+                <SectionLabel>Coming up</SectionLabel>
+                <Upcoming iso={iso} />
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5 border-t border-neutral-800 pt-3">
               <SectionLabel>Latest clear pass</SectionLabel>

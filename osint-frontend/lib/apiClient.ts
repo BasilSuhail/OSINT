@@ -588,6 +588,46 @@ export interface PlaceAnswer {
   degraded: string[]
 }
 
+/** One line of the calendar (#934).
+ *
+ *  A day in a country, not an item: `count` above one means several contests
+ *  were collapsed, and `headline` then names the number rather than picking one
+ *  of them. `kind` is only set for a single scheduled thing, because a mixed
+ *  day has no single kind to report.
+ */
+export interface UpcomingEntry {
+  starts_on: string
+  iso: string | null
+  country: string | null
+  headline: string
+  kind: string | null
+  count: number
+}
+
+export interface UpcomingAnswer {
+  fetched_at: string
+  days: number
+  count: number
+  entries: UpcomingEntry[]
+  degraded: boolean
+}
+
+/** Elections, referendums and summits still to come.
+ *
+ *  Its own request rather than part of the place answer: the upstream is slower
+ *  than the place screen's per-source budget, and a cold calendar must not take
+ *  the country facts down with it.
+ */
+export async function fetchUpcoming(
+  iso: string | null,
+  options: { signal?: AbortSignal } = {},
+): Promise<UpcomingAnswer> {
+  const qs = iso ? `?iso=${encodeURIComponent(iso)}` : ""
+  const res = await apiFetch(`${API_BASE}/presence/upcoming${qs}`, { signal: options.signal })
+  if (!res.ok) throw new Error(`GET /presence/upcoming ${res.status}`)
+  return (await res.json()) as UpcomingAnswer
+}
+
 export async function fetchPlace(
   target: PlaceTarget,
   options: { signal?: AbortSignal } = {},

@@ -48,6 +48,8 @@ from app.journal.scoreboard import build_scoreboard
 from app.location_precision import precision_of, radius_m
 from app.paths import exports_dir
 from app.presence.aircraft import live_aircraft
+from app.presence.upcoming import HORIZON_DAYS as UPCOMING_HORIZON_DAYS
+from app.presence.upcoming import scheduled
 from app.publisher import publisher_for
 from app.readable_claim import has_readable_claim
 from app.settings import settings
@@ -369,6 +371,23 @@ def presence_aircraft() -> dict:
     positions on screen would present minutes-old locations as current.
     """
     return live_aircraft()
+
+
+@app.get("/presence/upcoming")
+def presence_upcoming(
+    days: int = Query(default=UPCOMING_HORIZON_DAYS, ge=1, le=365),
+    iso: str | None = Query(default=None, min_length=2, max_length=2),
+) -> dict:
+    """Elections, referendums and summits still to come (#934).
+
+    The only forward-looking thing the console shows, and presence rather than
+    evidence: a schedule read today is not evidence that anything happened, and
+    must never become a row that later looks like one.
+
+    Its own endpoint rather than a block inside `/geo/place`, which budgets four
+    seconds per upstream and would time this out on a cold cache.
+    """
+    return scheduled(days=days, iso=iso)
 
 
 @app.get("/geo/place")
