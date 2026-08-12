@@ -2,7 +2,8 @@
 
 import { X } from "lucide-react"
 import { usePlace } from "@/lib/queries"
-import type { PlaceAnswer } from "@/lib/apiClient"
+import type { PlaceAnswer, PlaceWeather } from "@/lib/apiClient"
+import { distanceLabel, rangeLabel, temperature, windLabel } from "@/lib/placeFormat"
 import { usePlaceStore } from "@/stores/placeStore"
 import { cn } from "@/lib/utils"
 import { CountrySidePanel } from "../CountrySidePanel"
@@ -100,9 +101,54 @@ function twoSentences(extract: string): string {
   return parts.slice(0, 2).join(" ")
 }
 
+/** Conditions over the coordinate (#932).
+ *
+ * The temperature is the headline because it is the thing being asked. The
+ * high and low carry the window they cover — normally a day, shorter at the
+ * end of a forecast — because a range with no window is a claim rather than a
+ * measurement.
+ */
+function Weather({ weather }: { weather: PlaceWeather }) {
+  const now = temperature(weather.temperature_c)
+  const high = temperature(weather.high_c)
+  const low = temperature(weather.low_c)
+  const window = rangeLabel(weather.range_hours)
+  return (
+    <>
+      <div className="flex items-baseline gap-2.5">
+        <span className="text-lg font-medium text-neutral-100">{now ?? "—"}</span>
+        {weather.conditions && (
+          <span className="text-xs text-neutral-400">{weather.conditions}</span>
+        )}
+      </div>
+      <Row label="Wind" value={windLabel(weather.wind_ms, weather.wind_from_deg)} />
+      <Row
+        label="Humidity"
+        value={weather.humidity_pct == null ? null : `${weather.humidity_pct}%`}
+      />
+      <Row
+        label={window ? `High · low (${window})` : "High · low"}
+        value={high && low ? `${high} · ${low}` : null}
+      />
+    </>
+  )
+}
+
 function Identity({ answer, onClose }: { answer: PlaceAnswer; onClose: () => void }) {
   const country = answer.country
   const point = answer.point
+  const city = answer.city
+  //: The headline is the smallest true thing (#932). Somebody who right-clicked
+  //: one spot is standing in a town, not in a country, and the country they are
+  //: standing in is the second sentence rather than the first.
+  const headline = city?.name ?? (country ? country.name : "Open water")
+  const beneath = city
+    ? [country?.name, distanceLabel(city.distance_km)].filter(Boolean).join(" · ")
+    : country
+      ? country.iso2
+      : point
+        ? `${point.lat.toFixed(4)}, ${point.lon.toFixed(4)}`
+        : "no location"
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="flex items-center gap-2.5">
@@ -117,15 +163,9 @@ function Identity({ answer, onClose }: { answer: PlaceAnswer; onClose: () => voi
           />
         )}
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-neutral-100">
-            {country ? country.name : "Open water"}
-          </span>
+          <span className="truncate text-sm font-medium text-neutral-100">{headline}</span>
           <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-            {country
-              ? country.iso2
-              : point
-                ? `${point.lat.toFixed(4)}, ${point.lon.toFixed(4)}`
-                : "no location"}
+            {beneath}
           </span>
           {answer.government?.type && (
             <span className="mt-0.5 text-xs text-neutral-400">{answer.government.type}</span>
@@ -170,6 +210,40 @@ export function PlacePanel() {
         ) : (
           <>
             <Identity answer={place} onClose={close} />
+
+            {/* Where you are, before which country you are in (#932). Both
+                blocks are about the point rather than the nation, which is the
+                order the gesture asks for. */}
+            {place.point && (
+              <div className="flex flex-col border-t border-neutral-800 pt-3">
+                {degraded.has("city") ? (
+                  <Unavailable what="Nearest settlement" />
+                ) : place.city ? (
+                  <>
+                    <Row label="Region" value={place.city.region} />
+                    <Row label="Population" value={formatCount(place.city.population)} />
+                    <Row label="Distance" value={distanceLabel(place.city.distance_km)} />
+                  </>
+                ) : (
+                  // Not a failure. Ocean, desert and tundra are places, and
+                  // "unavailable" would send the reader back to try again.
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-600">
+                    No settlement within 100 km
+                  </p>
+                )}
+              </div>
+            )}
+
+            {place.point && (
+              <div className="flex flex-col gap-1.5 border-t border-neutral-800 pt-3">
+                <SectionLabel>Weather here</SectionLabel>
+                {degraded.has("weather") || !place.weather ? (
+                  <Unavailable what="Weather" />
+                ) : (
+                  <Weather weather={place.weather} />
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col border-t border-neutral-800 pt-3">
               {degraded.has("profile") && degraded.has("government") ? (
@@ -269,7 +343,7 @@ export function PlacePanel() {
             {/* Attribution is a licence condition on two of these sources, not
                 a courtesy, and it belongs beside what it covers. */}
             <p className="border-t border-neutral-800 pt-3 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
-              Copernicus · Wikipedia · Wikidata · Natural Earth
+              Copernicus · Wikipedia · Wikidata · Natural Earth · OpenStreetMap · MET Norway
             </p>
           </>
         )}
