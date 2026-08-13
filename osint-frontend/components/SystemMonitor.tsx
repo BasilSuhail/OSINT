@@ -110,7 +110,12 @@ export function SystemMonitor({ leading, narrow = false }: SystemMonitorProps) {
       ref={rootRef}
       className={
         "pointer-events-auto absolute right-3 z-50 flex flex-col items-end gap-2 " +
-        (narrow ? "top-[calc(env(safe-area-inset-top)+3.75rem)]" : "top-3")
+        //: On the search bar's own row on a phone, not under it (#944). Under
+        //: it, the corner was a second strip across the top and the bar had to
+        //: give up the width its own controls needed — the clear button went
+        //: off the end of it. Beside it, the corner is a dot and the bar keeps
+        //: everything except the forty pixels this occupies.
+        (narrow ? "top-[calc(env(safe-area-inset-top)+1.5rem)]" : "top-3")
       }
     >
       {/*: One box, not two (#938). "Is the view live" and "are the sources
@@ -121,7 +126,8 @@ export function SystemMonitor({ leading, narrow = false }: SystemMonitorProps) {
           kept these apart. */}
       <div
         className={
-          "flex items-center gap-2 rounded-xl border bg-neutral-950/90 px-2.5 py-1.5 shadow-lg shadow-black/40 backdrop-blur-xl transition-colors " +
+          "flex items-center rounded-xl border bg-neutral-950/90 shadow-lg shadow-black/40 backdrop-blur-xl transition-colors " +
+          (narrow ? "gap-1 px-1.5 py-1 " : "gap-2 px-2.5 py-1.5 ") +
           (open ? "border-neutral-600" : "border-neutral-800")
         }
       >
@@ -129,18 +135,24 @@ export function SystemMonitor({ leading, narrow = false }: SystemMonitorProps) {
             in trouble — read left to right it is one sentence about one
             system. Two toggles rather than one wrapping the lot: the readout
             between them carries `go live`, and a button cannot contain one. */}
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          aria-label="System monitor"
-          className={
-            "rounded-md px-1 py-0.5 font-mono text-[8px] uppercase tracking-[0.24em] transition-colors " +
-            (open ? "text-neutral-200" : "text-neutral-400 hover:text-neutral-200")
-          }
-        >
-          system
-        </button>
+        {/*: The word goes on a phone (#944). Seven letters at a quarter-em of
+            tracking is most of what the corner costs, and it names the panel
+            rather than saying anything about it — the dots beside it are the
+            reading, and they are their own button into the same panel. */}
+        {!narrow && (
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+            aria-label="System monitor"
+            className={
+              "rounded-md px-1 py-0.5 font-mono text-[8px] uppercase tracking-[0.24em] transition-colors " +
+              (open ? "text-neutral-200" : "text-neutral-400 hover:text-neutral-200")
+            }
+          >
+            system
+          </button>
+        )}
         {leading}
         <button
           type="button"
@@ -148,7 +160,8 @@ export function SystemMonitor({ leading, narrow = false }: SystemMonitorProps) {
           aria-expanded={open}
           aria-label="Source health"
           className={
-            "flex items-center gap-2 rounded-md px-1 py-0.5 transition-colors " +
+            "flex items-center rounded-md transition-colors " +
+            (narrow ? "gap-1 px-0.5 " : "gap-2 px-1 py-0.5 ") +
             (open ? "text-neutral-200" : "text-neutral-400 hover:text-neutral-200")
           }
         >

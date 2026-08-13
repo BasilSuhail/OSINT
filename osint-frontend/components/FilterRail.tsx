@@ -47,6 +47,7 @@ import type { FilterStore } from "@/stores/createFilterStore"
 import { cn } from "@/lib/utils"
 import { IMAGERY_LAYERS, imageryDate } from "@/lib/imageryLayers"
 import { useImageryStore } from "@/stores/imageryStore"
+import { usePanelLayoutStore } from "@/stores/panelLayout"
 import { usePresenceStore } from "@/stores/presenceStore"
 import { windowIsNow } from "@/lib/presence"
 import { Slider } from "@/components/ui/slider"
@@ -246,6 +247,13 @@ export function FilterRail({
   onOpenChange,
   supplementalEvents = NO_SUPPLEMENTAL_EVENTS,
 }: FilterRailProps) {
+  //: Whether the deck is over this edge. Read from the store rather than
+  //: threaded down through the map, which has no opinion about the column.
+  //: The deck alone, not search: on a phone the results hang from the bar and
+  //: never enter the column, so a focused search box is no reason for the
+  //: rail to leave (#944).
+  const deckOpen = usePanelLayoutStore((s) => s.left)
+
   const baseEvents = useEvents()
   const allEvents = useMemo(
     () => mergeEventRows(baseEvents, supplementalEvents),
@@ -342,6 +350,13 @@ export function FilterRail({
 
   const isLeft = side === "left"
 
+  //: On a phone the deck's column is the width of the screen, so when it is
+  //: open the rail is behind it and the rail's handle is under the deck's own
+  //: handle, which clamps to this edge to stay on screen. Two buttons in one
+  //: place is one button pressed by accident (#944). The rail goes away while
+  //: the column is over it and comes back when the column does.
+  if (narrow && deckOpen) return null
+
   return (
     <div
       className={cn(
@@ -350,10 +365,12 @@ export function FilterRail({
         //: (#936) — it is a separate control with its own border, so the rail
         //: starts below it rather than sharing an edge and reading as one panel.
         isLeft ? "left-3 top-3" : "right-3 top-14",
-        //: On a phone the search bar and the monitor take the top strip
-        //: between them, and the sheet is standing on the bottom edge, so the
-        //: rail lives in what is left rather than reaching either.
-        narrow ? "bottom-[calc(var(--sheet-peek,0px)+0.75rem)] top-28" : "bottom-3",
+        //: Full height on a phone so the handle, which centres itself inside
+        //: this box, centres on the screen — the same height as the deck's
+        //: handle on the opposite edge. The panel keeps its own margins to
+        //: clear the search bar above and the scrubber's handle below; that is
+        //: the panel's problem, not the handle's.
+        narrow ? "top-3 bottom-3" : "bottom-3",
       )}
     >
       {/*: The deck's handle, exactly: it floats on the map *outside* the thing
@@ -369,10 +386,15 @@ export function FilterRail({
         title={open ? "Hide filters" : "Show filters"}
         onClick={() => onOpenChange(!open)}
         className={cn(
-          "pointer-events-auto relative my-auto shrink-0 border border-white/10 bg-neutral-950/85 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
+          "pointer-events-auto relative my-auto grid shrink-0 place-items-center border border-white/10 bg-neutral-950/85 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
           isLeft ? "order-last rounded-l-md rounded-r-xl" : "order-first rounded-l-xl rounded-r-md",
-          //: 12px of width is a target for a cursor, not a thumb.
-          narrow ? "px-3" : "px-1.5",
+          //: A tall thin tab beside a panel reads as that panel's edge, which
+          //: is what it is on a wide screen. Widened for a thumb and kept
+          //: tall it stopped reading as an edge and started reading as a
+          //: small panel of its own, floating against nothing (#944). On a
+          //: phone it is a square button instead: same size in both
+          //: directions, so it is a control rather than a border.
+          narrow ? "h-11 w-11" : "px-1.5 py-6",
         )}
       >
         {isLeft === !open ? (
@@ -399,8 +421,10 @@ export function FilterRail({
             "pointer-events-auto flex flex-col gap-3 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/85 p-3 shadow-2xl shadow-black/60 backdrop-blur-xl",
             //: Its own width where there is room for it; whatever is left over
             //: on a phone, so the handle that opened it stays reachable and
-            //: the panel never runs off the edge it is docked to.
-            narrow ? "w-[min(264px,calc(100vw-4.5rem))]" : "w-[264px]",
+            //: the panel never runs off the edge it is docked to. The margins
+            //: are what the handle no longer carries: the search bar is above
+            //: and the scrubber's handle is below.
+            narrow ? "mt-16 mb-14 w-[min(264px,calc(100vw-4.5rem))]" : "w-[264px]",
           )}
         >
           <div className="flex flex-col gap-0.5 px-1">

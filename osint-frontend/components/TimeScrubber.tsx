@@ -72,20 +72,15 @@ export function TimeScrubber({
       className={cn(
         "pointer-events-none absolute z-20",
         //: With the bar gone the strip has no height, so the handle hanging off
-        //: its top edge lands flush on the bottom edge it is measured from.
-        //: On a phone that edge is the top of the sheet, not the screen — a
-        //: handle behind the sheet is a handle that cannot be pressed.
-        narrow
-          ? hidden
-            ? "bottom-[var(--sheet-peek,0px)] h-0"
-            : "bottom-[calc(var(--sheet-peek,0px)+0.75rem)] h-11"
-          : hidden
-            ? "bottom-0 h-0"
-            : "bottom-3 h-11",
+        //: its top edge lands flush on the bottom of the screen.
+        hidden ? "bottom-0 h-0" : "bottom-3 h-11",
         //: The rail is docked to the right edge on a wide screen and opens as
         //: a drawer over the map on a phone, so only the wide layout has to
         //: leave room for it.
-        narrow ? "left-3 right-16" : "left-[calc(var(--panel-width,0px)+1.5rem)]",
+        //: Edge to edge on a phone, so the handle that centres itself in this
+        //: box centres on the screen rather than on whatever the box stopped
+        //: short of (#944).
+        narrow ? "left-3 right-3" : "left-[calc(var(--panel-width,0px)+1.5rem)]",
         narrow ? "" : panelOpen ? "right-[21.25rem]" : "right-20",
       )}
     >
@@ -95,7 +90,11 @@ export function TimeScrubber({
         title={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
         aria-label={hidden ? "Show the time scrubber" : "Hide the time scrubber"}
         aria-expanded={!hidden}
-        className="pointer-events-auto absolute bottom-full left-1/2 grid -translate-x-1/2 place-items-center rounded-t-xl rounded-b-md border border-white/10 bg-neutral-950/85 px-6 py-1.5 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100"
+        className={cn(
+          "pointer-events-auto absolute bottom-full left-1/2 grid -translate-x-1/2 place-items-center rounded-t-xl rounded-b-md border border-white/10 bg-neutral-950/85 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
+          //: Centred on both layouts. Same place, thumb's height on a phone.
+          narrow ? "h-11 px-6" : "px-6 py-1.5",
+        )}
       >
         {hidden ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
       </button>
