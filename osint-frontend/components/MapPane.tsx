@@ -96,6 +96,10 @@ const NON_MAP_VIEWPORT_SOURCES = ["opensky-adsb", "nasa-firms"]
 
 interface MapPaneProps {
   useStore: FilterStore
+  /** Phone layout (#942): the two controls docked to the map's own edges —
+   *  the filter rail and the time scrubber — stop short of the sheet along
+   *  the bottom and grow thumb-sized handles. */
+  narrow?: boolean
   railOpen: boolean
   onRailOpenChange: (open: boolean) => void
   onCount: (n: number) => void
@@ -238,6 +242,7 @@ function EventMarker({
 
 export function MapPane({
   useStore,
+  narrow = false,
   railOpen,
   onRailOpenChange,
   onCount,
@@ -1447,11 +1452,17 @@ export function MapPane({
       <FilterRail
         side="right"
         useStore={useStore}
+        narrow={narrow}
         open={railOpen}
         onOpenChange={onRailOpenChange}
         supplementalEvents={supplementalEvents}
       />
-      <TimeScrubber useStore={useStore} windowEnd={windowEnd} panelOpen={railOpen} />
+      <TimeScrubber
+        useStore={useStore}
+        narrow={narrow}
+        windowEnd={windowEnd}
+        panelOpen={railOpen}
+      />
     </div>
   )
 }
