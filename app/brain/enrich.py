@@ -28,7 +28,16 @@ from app.stories.task import WINDOW_HOURS
 CATEGORIES: frozenset[str] = frozenset({"conflict", "economy", "disaster", "politics", "other"})
 ESCALATING: frozenset[str] = frozenset({"yes", "no", "unclear"})
 
-METHOD_VERSION: str = "enrich-v1.0"
+#: v1.1 is the model swap in #926. The row is keyed on this and inserted with
+#: on_conflict_do_nothing, so a story that already carries a gist is skipped on
+#: every later pass — which meant the new model reached only stories that had
+#: never been tagged, and the 15,725 rows the retired 1.5b had already written
+#: would have stood forever. The eclipse that prompted #926 was still filed as
+#: a disaster. Bumping the version is what the field is for: the read path
+#: filters on it, so the old rows stop being read and the pass refills them.
+METHOD_VERSION: str = "enrich-v1.1"
+#: Unchanged: #926 deliberately left the prompt and the enum alone, so what is
+#: asked is the same question — only the model answering it is different.
 PROMPT_VERSION: str = "enrich-prompt-v1.0"
 GIST_MAX_CHARS: int = 240
 

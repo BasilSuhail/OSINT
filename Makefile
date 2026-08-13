@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: severity-grade severity-audit severity-agreement severity-bench within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 # ── The three commands ──────────────────────────────────────────────────────
 # Everything else below is either an alias kept for muscle memory or a
@@ -117,6 +117,12 @@ validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
 
 brain:  ## Run the brain narrate once — needs Ollama + llama3.2:3b (#409)
 	.venv/bin/python -m app.brain.run
+
+category-audit:  ## Emit the blank sheet that gates a categoriser change (#951)
+	.venv/bin/python -m app.brain.category_audit
+
+category-agreement:  ## Score models against the filled category sheet (#951)
+	.venv/bin/python -m app.brain.category_agreement
 
 enrich:  ## Run one brain enrichment pass — gist + tags for new stories (#413)
 	.venv/bin/python -m app.brain.enrich_run

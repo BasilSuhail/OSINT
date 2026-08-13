@@ -186,3 +186,39 @@ def test_the_budget_goes_to_the_widely_told_story_first(monkeypatch):
         story_id = s.execute(select(StoryGistRow.story_id)).scalar_one()
         title = s.execute(select(StoryRow.title).where(StoryRow.id == story_id)).scalar_one()
     assert title == "Told by twenty owners"
+
+
+def test_a_gist_from_a_retired_method_version_does_not_block_a_fresh_one(monkeypatch):
+    # The row is keyed on (story_id, method_version) and inserted with
+    # on_conflict_do_nothing, so before #948 a story tagged once was skipped on
+    # every later pass — and the model swap in #926 reached only stories that
+    # had never been tagged at all (#948).
+    now = datetime.now(UTC)
+    factory = _factory_with_story(now)
+    with factory() as s:
+        story_id = s.execute(select(StoryRow.id)).scalar_one()
+        s.add(
+            StoryGistRow(
+                story_id=story_id,
+                gist="Written by the retired model.",
+                category="disaster",
+                escalating="yes",
+                model="a-retired-model",
+                method_version="enrich-v1.0",
+            )
+        )
+        s.commit()
+    monkeypatch.setattr(enrich, "_session_factory", lambda: factory)
+    monkeypatch.setattr(enrich.gate, "should_run", lambda session, now=None: (True, "ok"))
+    monkeypatch.setattr(
+        enrich.client,
+        "generate_json",
+        lambda prompt: {"gist": "Written afresh.", "category": "conflict", "escalating": "no"},
+    )
+    result = enrich._enrich_body(now=now)
+    assert result["enriched"] == 1
+    with factory() as s:
+        current = s.execute(
+            select(StoryGistRow.gist).where(StoryGistRow.method_version == enrich.METHOD_VERSION)
+        ).scalar_one()
+    assert current == "Written afresh."
