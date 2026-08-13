@@ -44,6 +44,14 @@ import {
   type PresenceAircraft,
 } from "@/lib/presence"
 import { fetchPresenceAircraft } from "@/lib/apiClient"
+import { AircraftGlyph } from "@/components/AircraftGlyph"
+import { aircraftSilhouette } from "@/lib/aircraftSilhouette"
+import {
+  quantizeBounds,
+  shouldAnnounceViewportLoading,
+  snapshotMatchesWindow as snapshotWindowStillHolds,
+  type ViewportBounds,
+} from "@/lib/viewportScope"
 import { imageryDate, imageryLayer, imageryTiles } from "@/lib/imageryLayers"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import {
@@ -92,6 +100,10 @@ const MAP_STYLE_RETRY_MS = 1500
 const INITIAL_ZOOM = 1.4
 const MIN_SCROLL_ZOOM = INITIAL_ZOOM
 const COMPLETE_VIEWPORT_ZOOM = 8
+/** How still the map has to be before its bounds count as a question. Long
+ *  enough to swallow a drag or a spun wheel, short enough that letting go and
+ *  looking is answered straight away. */
+const VIEWPORT_SETTLE_MS = 400
 const PLAYBACK_VIEWPORT_SYNC_MS = 2_000
 const IDLE_VIEWPORT_SYNC_MS = 30_000
 const EVENT_SOURCE_ID = "place-backed-events"
@@ -115,13 +127,6 @@ interface MapPaneProps {
   onSelectEvent: (ev: VisibleEvent, location?: MarkerLocationContext) => void
   /** Id of the currently-selected event (drives the expanded cyclone footprint). */
   selectedEventId: VisibleEvent["id"] | null
-}
-
-interface ViewportBounds {
-  west: number
-  south: number
-  east: number
-  north: number
 }
 
 interface ViewportSnapshot {
@@ -301,6 +306,7 @@ export function MapPane({
   const [areaSyncTick, setAreaSyncTick] = useState(0)
   const windowEndOffsetRef = useRef(windowEndOffsetMs)
   const viewportRequestRef = useRef<AbortController | null>(null)
+  const viewportSettleRef = useRef<number | null>(null)
   const areaRequestRef = useRef<AbortController | null>(null)
   const selectedArea = useRightPaneModeStore((s) =>
     s.entity?.kind === "area" ? s.entity : null,
@@ -331,16 +337,23 @@ export function MapPane({
     viewportScopeKey
       ? JSON.stringify([viewportScopeKey, settledWindowOffsetMs, viewportSyncTick])
       : null
-  const snapshotMatchesWindow =
+  //: A snapshot is current when it is for this box and this time. Both are
+  //: needed before the map stops asking, but only the time is needed before
+  //: the map may keep drawing it: events from the box either side of a drag
+  //: are the same events, still inside the window, and blanking them mid-pan
+  //: is the flicker — the marks vanished and the banner replaced them.
+  const snapshotWindowHolds =
+    viewportSnapshot != null &&
+    snapshotWindowStillHolds(viewportSnapshot.windowOffsetMs, settledWindowOffsetMs, {
+      playing,
+      windowLengthMs,
+    })
+  const snapshotIsCurrent =
+    snapshotWindowHolds &&
     viewportScopeKey !== null &&
-    viewportSnapshot?.scopeKey === viewportScopeKey &&
-    (viewportSnapshot.windowOffsetMs === settledWindowOffsetMs ||
-      (playing &&
-        Math.abs(viewportSnapshot.windowOffsetMs - settledWindowOffsetMs) < windowLengthMs))
+    viewportSnapshot?.scopeKey === viewportScopeKey
   const activeViewportEvents =
-    snapshotMatchesWindow
-      ? viewportSnapshot.events
-      : EMPTY_VIEWPORT_EVENTS
+    snapshotWindowHolds && viewportSnapshot ? viewportSnapshot.events : EMPTY_VIEWPORT_EVENTS
   const areaSnapshotReady =
     areaScopeKey !== null &&
     areaSnapshot?.scopeKey === areaScopeKey &&
@@ -357,7 +370,7 @@ export function MapPane({
   )
   const viewportLoading =
     viewportScopeKey !== null &&
-    !snapshotMatchesWindow &&
+    !snapshotIsCurrent &&
     viewportErrorKey !== viewportQueryKey
   const viewportFailed = viewportQueryKey !== null && viewportErrorKey === viewportQueryKey
   const { events, windowEnd, total } = useEventsInWindow(useStore, supplementalEvents)
@@ -592,18 +605,47 @@ export function MapPane({
     windowLengthMs,
   ])
 
+  //: Bounds are read the moment the map stops, but the question is only asked
+  //: once it has stopped for good. A hard drag or a spun wheel ends a move on
+  //: every frame it settles, and each one used to abort the request in flight
+  //: and start another, so a long gesture cancelled a dozen requests and
+  //: finished none of them.
   const captureViewport = useCallback((map: MapLibreMap) => {
     const bounds = map.getBounds()
-    const rounded = (value: number) => Number(value.toFixed(5))
     const normalizedLongitude = (value: number) =>
       ((value + 180) % 360 + 360) % 360 - 180
-    setViewport({
-      west: rounded(normalizedLongitude(bounds.getWest())),
-      south: rounded(Math.max(-90, bounds.getSouth())),
-      east: rounded(normalizedLongitude(bounds.getEast())),
-      north: rounded(Math.min(90, bounds.getNorth())),
+    const next = quantizeBounds({
+      west: normalizedLongitude(bounds.getWest()),
+      south: Math.max(-90, bounds.getSouth()),
+      east: normalizedLongitude(bounds.getEast()),
+      north: Math.min(90, bounds.getNorth()),
     })
+    if (viewportSettleRef.current !== null) {
+      window.clearTimeout(viewportSettleRef.current)
+    }
+    viewportSettleRef.current = window.setTimeout(() => {
+      viewportSettleRef.current = null
+      //: Identical bounds are dropped here rather than in the fetch effect:
+      //: a new object with the same numbers is a new dependency, and the
+      //: request would restart for a map that never moved.
+      setViewport((previous) =>
+        previous &&
+        previous.west === next.west &&
+        previous.south === next.south &&
+        previous.east === next.east &&
+        previous.north === next.north
+          ? previous
+          : next,
+      )
+    }, VIEWPORT_SETTLE_MS)
   }, [])
+
+  useEffect(
+    () => () => {
+      if (viewportSettleRef.current !== null) window.clearTimeout(viewportSettleRef.current)
+    },
+    [],
+  )
 
   useEffect(() => onCount(total), [total, onCount])
 
@@ -1497,23 +1539,25 @@ export function MapPane({
                 .join(" · ")}
               className="pointer-events-auto grid h-7 w-7 cursor-pointer place-items-center"
             >
-              <span
-                aria-hidden
-                className={
-                  a.kind === "distress"
-                    ? "block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-red-400/50"
-                    : "block text-[10px] leading-none text-sky-300/80"
-                }
-                //: No track means no rotation. Pointing north would be a claim
-                //: the transponder never made.
-                style={
-                  a.kind === "distress"
-                    ? undefined
-                    : { transform: a.track != null ? `rotate(${a.track}deg)` : undefined }
-                }
-              >
-                {a.kind === "distress" ? "" : "\u27A4"}
-              </span>
+              {/*: The airframe gets its own shape (#952): a rotor for a
+                  rotorcraft, a wing for everything else that sent a type
+                  designator, and a plain delta for one that sent none. The
+                  distress mark stays a dot, because that mark is about the
+                  emergency and not about what is flying. */}
+              {a.kind === "distress" ? (
+                <span
+                  aria-hidden
+                  className="block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-red-400/50"
+                />
+              ) : (
+                <AircraftGlyph
+                  silhouette={aircraftSilhouette(a.type)}
+                  track={a.track}
+                  //: 14px in a 28px target. The mark is meant to be read as
+                  //: one of a hundred on a continent, not as an illustration.
+                  className="block h-3.5 w-3.5 text-sky-300/80"
+                />
+              )}
             </div>
           </Marker>
         ))}
@@ -1531,7 +1575,7 @@ export function MapPane({
           many, and the corner they sat in belongs to the map. */}
 
       {configured && allEvents.length === 0 && <PaneStatus mode="loading" />}
-      {configured && viewportLoading && (
+      {configured && shouldAnnounceViewportLoading(viewportLoading, positioned.length > 0) && (
         <PaneStatus mode="loading" message="Loading complete viewport…" />
       )}
       {configured && viewportFailed && (
