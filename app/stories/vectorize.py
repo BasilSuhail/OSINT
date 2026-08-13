@@ -8,6 +8,11 @@ demoting boilerplate: a stock phrase used a few times a week is rare enough to
 score as highly distinctive, and smoothing floors every weight at 1.0 besides.
 Formula words are therefore removed by name in the stopword list below rather
 than left for idf to handle, because idf measurably does not (#913).
+
+Calendar words go the same way and for the same reason (#950). A date says
+when a piece was filed, never what happened in it, and a recurring column is a
+fixed phrase whose only moving part is the date — so a month and a year are
+precisely the tokens that let one column's daily editions find each other.
 """
 
 from __future__ import annotations
@@ -95,18 +100,98 @@ _STOPWORDS: frozenset[str] = frozenset(
         "what",
         "know",
         "about",
+        #: The publication slot (#950). `recap` and `briefing` above name the
+        #: shape of a piece; these name the hour it went out in, which is the
+        #: same kind of nothing. An outlet files a bulletin headed with the
+        #: date and the slot three times a day, and with `latest` already
+        #: boilerplate the headline still carried `news`, `bulletin` and
+        #: `evening` — enough to clear the two-token bar and enough to match
+        #: every other edition, so one column became a 94-filing "story"
+        #: spanning thirty days.
+        "bulletin",
+        "edition",
+        "headlines",
+        "morning",
+        "midday",
+        "afternoon",
+        "evening",
+        "tonight",
+        "today",
+        "yesterday",
+        "tomorrow",
+        "weekend",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
     ]
+)
+
+#: Month names, long and short. A date says when a piece was filed, never what
+#: happened in it, and a recurring column is a fixed phrase whose only moving
+#: part is the date (#950).
+_MONTHS: frozenset[str] = frozenset(
+    [
+        "january",
+        "february",
+        "april",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+        "jan",
+        "feb",
+        "apr",
+        "jun",
+        "jul",
+        "aug",
+        "sept",
+        "oct",
+        "nov",
+        "dec",
+        #: `may`, `march` and `mar` are deliberately absent. Each is an
+        #: ordinary English word before it is a date — people may act, crowds
+        #: march — and dropping them would take meaning out of headlines that
+        #: carry no date at all. No recurring column needs them to be caught:
+        #: the ones measured here are named by month and year together, and
+        #: every other month still goes.
+    ]
+)
+
+#: Ordinal day-of-month forms: 1st … 31st. Written out rather than matched by
+#: pattern so that `21st` goes and a name like `21st Century Fox` keeps the
+#: rest of its words to stand on.
+_ORDINAL_DAYS: frozenset[str] = frozenset(
+    f"{day}{suffix}" for day in range(1, 32) for suffix in ("st", "nd", "rd", "th")
 )
 
 _MIN_TOKEN_LEN = 3
 
 
+def _is_year(token: str) -> bool:
+    """A plausible four-digit calendar year, which dates a piece rather than
+    describing it. Bounded so a casualty figure like `1500` is not mistaken
+    for one — and it is bounded low enough that `2026` is caught."""
+    return len(token) == 4 and token.isdigit() and "1900" <= token <= "2099"
+
+
+def _is_calendar(token: str) -> bool:
+    return token in _MONTHS or token in _ORDINAL_DAYS or _is_year(token)
+
+
 def tokenize(title: str) -> list[str]:
-    """Lowercase alphanumeric tokens, stopwords and short tokens dropped."""
+    """Lowercase alphanumeric tokens; stopwords, calendar words and short
+    tokens dropped."""
     return [
         token
         for token in _TOKEN_RE.findall(title.lower())
-        if token not in _STOPWORDS and len(token) >= _MIN_TOKEN_LEN
+        if token not in _STOPWORDS and len(token) >= _MIN_TOKEN_LEN and not _is_calendar(token)
     ]
 
 
