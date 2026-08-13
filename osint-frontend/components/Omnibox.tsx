@@ -84,7 +84,17 @@ function asVisible(ev: EventRow): VisibleEvent {
   }
 }
 
-export function Omnibox() {
+interface OmniboxProps {
+  /** Phone layout (#942): the bar spans the screen instead of a column, and
+   *  its results stop short of the bottom rather than reaching it, because
+   *  the sheet is down there. Passed rather than read from a store — which
+   *  layout the box is in is a fact about where it was rendered, and a
+   *  component that asks a store where it is can be rendered somewhere that
+   *  disagrees. */
+  narrow?: boolean
+}
+
+export function Omnibox({ narrow = false }: OmniboxProps) {
   const [query, setQuery] = useState("")
   const [result, setResult] = useState<SearchResponse | null>(null)
   const [busy, setBusy] = useState(false)
@@ -252,10 +262,27 @@ export function Omnibox() {
     //: constant, because a column whose two halves are different widths reads
     //: as two things that happen to be stacked.
     <div
-      className="pointer-events-none absolute bottom-3 left-3 top-3 z-40 flex flex-col gap-2"
-      style={{ width: PANEL_WIDTH }}
+      className={cn(
+        "pointer-events-none absolute z-40 flex flex-col gap-2",
+        narrow
+          ? //: Across the top of the phone, under whatever the hardware takes
+            //: for its own status row. Not full height: the results hang from
+            //: the bar and stop, because the bottom of the screen belongs to
+            //: the sheet and a list that reaches it reads as part of it.
+            "inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] max-h-[calc(60dvh)]"
+          : "bottom-3 left-3 top-3",
+      )}
+      style={narrow ? undefined : { width: PANEL_WIDTH }}
     >
-      <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-white/10 bg-neutral-950/85 px-3 py-2 shadow-2xl shadow-black/60 backdrop-blur-xl">
+      <div
+        className={cn(
+          "pointer-events-auto flex items-center gap-2 rounded-2xl border border-white/10 bg-neutral-950/85 px-3 py-2 shadow-2xl shadow-black/60 backdrop-blur-xl",
+          //: Every control in the bar becomes a thumb-sized target. Written
+          //: once here rather than on each button: they are small for the
+          //: same reason and stop being small at the same moment.
+          narrow && "gap-1 [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:justify-center",
+        )}
+      >
         <Search className="h-3.5 w-3.5 shrink-0 text-neutral-500" aria-hidden />
         <input
           ref={inputRef}
@@ -276,9 +303,15 @@ export function Omnibox() {
             //: is the expensive question.
             if (e.key === "Enter") submitAsk()
           }}
-          placeholder="ask anything, find anything…"
+          placeholder={narrow ? "ask or find…" : "ask anything, find anything…"}
           aria-label="Search the console or ask the brain"
-          className="min-w-0 flex-1 bg-transparent text-[0.875rem] text-neutral-200 placeholder:text-neutral-600 focus:outline-none"
+          //: 16px on a phone, and not for legibility: below it mobile Safari
+          //: zooms the page to the focused field on its own, and the console
+          //: never zooms back out.
+          className={cn(
+            "min-w-0 flex-1 bg-transparent text-neutral-200 placeholder:text-neutral-600 focus:outline-none",
+            narrow ? "text-base" : "text-[0.875rem]",
+          )}
         />
         {busy && (
           <span className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-neutral-600">

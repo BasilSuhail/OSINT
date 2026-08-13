@@ -89,6 +89,10 @@ function sourceGroup(f: SourceFilterDef): "reporting" | "markets" {
 interface FilterRailProps {
   side: "left" | "right"
   useStore: FilterStore
+  /** Phone layout (#942): the handle becomes thumb-sized, the panel stops
+   *  short of both the search bar above and the sheet below, and it never
+   *  grows wider than the screen it is on. */
+  narrow?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   supplementalEvents?: EventRow[]
@@ -237,6 +241,7 @@ function AllNone({ onAll, onNone }: { onAll: () => void; onNone: () => void }) {
 export function FilterRail({
   side,
   useStore,
+  narrow = false,
   open,
   onOpenChange,
   supplementalEvents = NO_SUPPLEMENTAL_EVENTS,
@@ -340,11 +345,15 @@ export function FilterRail({
   return (
     <div
       className={cn(
-        "pointer-events-none absolute bottom-3 z-20 flex items-stretch gap-2",
+        "pointer-events-none absolute z-20 flex items-stretch gap-2",
         //: Docked right, the top corner belongs to the system monitor's button
         //: (#936) — it is a separate control with its own border, so the rail
         //: starts below it rather than sharing an edge and reading as one panel.
         isLeft ? "left-3 top-3" : "right-3 top-14",
+        //: On a phone the search bar and the monitor take the top strip
+        //: between them, and the sheet is standing on the bottom edge, so the
+        //: rail lives in what is left rather than reaching either.
+        narrow ? "bottom-[calc(var(--sheet-peek,0px)+0.75rem)] top-28" : "bottom-3",
       )}
     >
       {/*: The deck's handle, exactly: it floats on the map *outside* the thing
@@ -360,8 +369,10 @@ export function FilterRail({
         title={open ? "Hide filters" : "Show filters"}
         onClick={() => onOpenChange(!open)}
         className={cn(
-          "pointer-events-auto relative my-auto shrink-0 border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
+          "pointer-events-auto relative my-auto shrink-0 border border-white/10 bg-neutral-950/85 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-colors hover:text-neutral-100",
           isLeft ? "order-last rounded-l-md rounded-r-xl" : "order-first rounded-l-xl rounded-r-md",
+          //: 12px of width is a target for a cursor, not a thumb.
+          narrow ? "px-3" : "px-1.5",
         )}
       >
         {isLeft === !open ? (
@@ -383,7 +394,15 @@ export function FilterRail({
           reporting, what is moving in markets, what is a disaster, and what is
           painted over the map itself. */}
       {open && (
-        <div className="pointer-events-auto flex w-[264px] flex-col gap-3 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/85 p-3 shadow-2xl shadow-black/60 backdrop-blur-xl">
+        <div
+          className={cn(
+            "pointer-events-auto flex flex-col gap-3 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/85 p-3 shadow-2xl shadow-black/60 backdrop-blur-xl",
+            //: Its own width where there is room for it; whatever is left over
+            //: on a phone, so the handle that opened it stays reachable and
+            //: the panel never runs off the edge it is docked to.
+            narrow ? "w-[min(264px,calc(100vw-4.5rem))]" : "w-[264px]",
+          )}
+        >
           <div className="flex flex-col gap-0.5 px-1">
             <div className="flex items-baseline justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-400">

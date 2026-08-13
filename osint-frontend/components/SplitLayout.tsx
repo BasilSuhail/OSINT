@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import dynamic from "next/dynamic"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useConfigured } from "@/app/providers"
 import type { VisibleEvent } from "@/lib/queries"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
@@ -17,10 +17,12 @@ import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import useSWR from "swr"
 import { fetchScoreboard } from "@/lib/analytics"
 import { scoreboardIsReady } from "@/lib/deckReadiness"
+import { BottomSheet } from "./BottomSheet"
 import { CardDeck, type DeckCard } from "./CardDeck"
 import { FloatingPanel } from "./FloatingPanel"
 import { deckPageKeys } from "@/lib/deckPages"
 import { COLUMN_TOP, PANEL_WIDTH } from "@/lib/layout"
+import { NARROW_QUERY, PEEK_PX, narrowInitialPanels, type Detent } from "@/lib/narrowLayout"
 import { cn } from "@/lib/utils"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
@@ -62,7 +64,7 @@ function PaneSkeleton({ label }: { label: string }) {
 
 export function SplitLayout() {
   const configured = useConfigured()
-  const isNarrow = useMediaQuery("(max-width: 900px)")
+  const isNarrow = useMediaQuery(NARROW_QUERY)
 
   //: Open on arrival. The filter panel is the map's legend as much as its
   //: controls — what each colour is, and how many of it there are — and it is
@@ -90,8 +92,24 @@ export function SplitLayout() {
     (open: boolean) => setPanel("right", open),
     [setPanel],
   )
-  const [activePane, setActivePane] = useState<"left" | "right">("left")
+  //: How far the phone's sheet is open (#942). Local, because nothing outside
+  //: the narrow branch has an opinion about it — the four edges in the panel
+  //: store are the wide layout's, and the sheet is not one of them.
+  const [detent, setDetent] = useState<Detent>("peek")
   const [, setLeftCount] = useState(0)
+
+  //: The rail and the scrubber default to showing, which is right beside a
+  //: large map and wrong on a phone where they take two of four short edges.
+  //: Once, on the first narrow paint: this is where the console arrives, not
+  //: a rule about where it has to stay, so putting either back keeps it back.
+  const appliedNarrowDefaults = useRef(false)
+  useEffect(() => {
+    if (!isNarrow || appliedNarrowDefaults.current) return
+    appliedNarrowDefaults.current = true
+    const initial = narrowInitialPanels()
+    usePanelLayoutStore.getState().setPanel("bottom", initial.bottom)
+    usePanelLayoutStore.getState().setPanel("right", initial.right)
+  }, [isNarrow])
 
   // Selections drive the right pane's entity-lock mode (#252). The clicked
   // event id also expands its hazard footprint on the map.
@@ -157,18 +175,25 @@ export function SplitLayout() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  // Selecting anything locks the right pane to that entity; on the narrow
-  // single-column layout, reveal the right pane so the detail is visible.
+  // Selecting anything locks the right pane to that entity; on a phone the
+  // card that opens is inside the sheet, so the sheet has to come up to show
+  //: it. Half rather than full: the marker that was tapped stays on screen,
+  //: and a card that hides what it is about is exactly what the full-bleed
+  //: panel got wrong (#942). Never downwards — a selection made with the
+  //: sheet already open should not shrink it.
+  const raiseSheet = useCallback(() => {
+    setDetent((current) => (current === "peek" ? "half" : current))
+  }, [])
   const onSelectEvent = useCallback(
     (ev: VisibleEvent, location?: MarkerLocationContext) => {
       openEvent(ev, location)
-      if (isNarrow) setActivePane("right")
+      if (isNarrow) raiseSheet()
     },
-    [openEvent, isNarrow],
+    [openEvent, isNarrow, raiseSheet],
   )
   const onOpenMapSelection = useCallback(() => {
-    if (isNarrow) setActivePane("right")
-  }, [isNarrow])
+    if (isNarrow) raiseSheet()
+  }, [isNarrow, raiseSheet])
 
   // The right pane as a card deck (#328): console keeps its world-status /
   // entity surface and the analytical pages fill the rest. The globe card was
@@ -295,12 +320,17 @@ export function SplitLayout() {
             sources are. Two detached controls rather than one bar — the time
             readout has to stay legible without opening anything (#501), and
             the monitor is a door, not a readout. */}
-        <SystemMonitor leading={<TimeWindowStatus useStore={useLeftPaneStore} compact />} />
-        {/*: Wide only. The narrow layout already owns the top centre with its
-            pane switcher, and a dropdown the height of a phone screen is the
-            whole phone screen — that layout needs its own answer, not this one
-            squeezed. */}
-        {!isNarrow && <Omnibox />}
+        {/*: Below the search bar on a phone, which owns the top strip there.
+            The corner is 40px of a 390px-wide row and the bar has the rest. */}
+        <SystemMonitor
+          narrow={isNarrow}
+          leading={<TimeWindowStatus useStore={useLeftPaneStore} compact />}
+        />
+        {/*: The way into the system, in both layouts (#942). It used to be
+            wide-only, which left the phone with a console it could look at and
+            not ask anything of. On narrow it spans the screen instead of the
+            column and its results hang from it rather than filling the height. */}
+        <Omnibox narrow={isNarrow} />
         {!configured && (
           <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
             Local API unreachable - start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)
@@ -308,28 +338,23 @@ export function SplitLayout() {
         )}
 
         {isNarrow ? (
-          <div className="relative h-full w-full">
-            <div className="pointer-events-auto absolute left-1/2 top-3 z-40 -translate-x-1/2 flex gap-1 rounded-full border border-neutral-800 bg-neutral-950/80 p-1 backdrop-blur-sm">
-              {(["left", "right"] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setActivePane(p)}
-                  className={
-                    "rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors " +
-                    (activePane === p
-                      ? "bg-neutral-800 text-neutral-100"
-                      : "text-neutral-500 hover:text-neutral-300")
-                  }
-                >
-                  {p === "left" ? "map" : "panel"}
-                </button>
-              ))}
-            </div>
-
+          //: Map first, one bar across the top, everything else put away until
+          //: it is asked for (#942). The `map | panel` switcher this replaces
+          //: is gone: the sheet's grip is the control it was, and two controls
+          //: for one thing is how the top strip got crowded in the first place.
+          <div
+            className="relative h-full w-full"
+            //: How much of the bottom edge the sheet always occupies, published
+            //: to the map's own overlays so the scrubber and the filter rail
+            //: stop above it. A constant rather than a measurement: the peek
+            //: height is a decision, and a layout effect that measures it would
+            //: make two things that must agree depend on render order.
+            style={{ "--sheet-peek": `calc(${PEEK_PX}px + env(safe-area-inset-bottom))` } as React.CSSProperties}
+          >
             <div className="absolute inset-0 z-0">
               <MapPane
                 useStore={useLeftPaneStore}
+                narrow
                 railOpen={leftRailOpen}
                 onRailOpenChange={setLeftRailOpen}
                 onCount={setLeftCount}
@@ -338,17 +363,15 @@ export function SplitLayout() {
                 selectedEventId={selectedEventId}
               />
             </div>
-            <div
-              className="absolute inset-x-2 bottom-2 top-14 z-30"
-              style={{ display: activePane === "right" ? "block" : "none" }}
-            >
-              <FloatingPanel className="h-full w-full">
-                {/* The deck is always the surface (#846). Every pop-up is page
-                    four inside it, so nothing replaces it — replacing the deck
-                    was what stole the reader's place to begin with. */}
-                <CardDeck cards={deckCards} />
-              </FloatingPanel>
-            </div>
+            {/* The deck is always the surface (#846). Every pop-up is page
+                four inside it, so nothing replaces it — replacing the deck
+                was what stole the reader's place to begin with. */}
+            {/*: Named for the surface, not for the card showing on it — which
+                page the deck is on is the deck's business, and a grip whose
+                label changes under the reader is a grip they cannot learn. */}
+            <BottomSheet detent={detent} onDetentChange={setDetent} label="Panels">
+              <CardDeck cards={deckCards} />
+            </BottomSheet>
           </div>
         ) : (
           //: Layered stage (#503): the map is the base layer and fills the

@@ -39,7 +39,16 @@ export const BAND_DOT: Record<HealthBand, string> = {
  * and the brain all live one click away, where there is room to lay them out
  * rather than abbreviate them into chips.
  */
-export function SystemMonitor({ leading }: { leading?: ReactNode }) {
+interface SystemMonitorProps {
+  leading?: ReactNode
+  /** Phone layout (#942): the cluster drops under the search bar, which owns
+   *  the top strip there, and shows the worst band as a single dot rather
+   *  than a count per band. The counts are the first thing the panel behind
+   *  it says, and it is one tap away. */
+  narrow?: boolean
+}
+
+export function SystemMonitor({ leading, narrow = false }: SystemMonitorProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -99,7 +108,10 @@ export function SystemMonitor({ leading }: { leading?: ReactNode }) {
   return (
     <div
       ref={rootRef}
-      className="pointer-events-auto absolute right-3 top-3 z-50 flex flex-col items-end gap-2"
+      className={
+        "pointer-events-auto absolute right-3 z-50 flex flex-col items-end gap-2 " +
+        (narrow ? "top-[calc(env(safe-area-inset-top)+3.75rem)]" : "top-3")
+      }
     >
       {/*: One box, not two (#938). "Is the view live" and "are the sources
           live" are the same question asked of two layers, and two bordered
@@ -144,7 +156,11 @@ export function SystemMonitor({ leading }: { leading?: ReactNode }) {
             <span className="font-mono text-[10px] leading-none text-emerald-400">✓</span>
           ) : (
             <span className="flex items-center gap-1.5">
-              {counts.map(({ band, count }) => (
+              {/*: Worst band only on a phone (#942). `attentionCounts` is
+                  ordered worst first, and the corner there is competing with
+                  a search bar for a strip 390px wide — the other bands are
+                  the first thing the panel behind this says. */}
+              {(narrow ? counts.slice(0, 1) : counts).map(({ band, count }) => (
                 <span
                   key={band}
                   className="flex items-center gap-0.5 font-mono text-[9px] leading-none"

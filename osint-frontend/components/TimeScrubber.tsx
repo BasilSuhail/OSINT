@@ -17,6 +17,9 @@ const SPEEDS: { label: string; value: number }[] = [
 
 interface TimeScrubberProps {
   useStore: FilterStore
+  /** Phone layout (#942): the strip and its handle sit above the sheet rather
+   *  than on the bottom edge, which the sheet now owns. */
+  narrow?: boolean
   windowEnd: number
   /** Whether the filter panel is showing. It is docked to the right edge and
    *  runs the full height of the map, so the bar stops short of it rather
@@ -24,7 +27,12 @@ interface TimeScrubberProps {
   panelOpen: boolean
 }
 
-export function TimeScrubber({ useStore, windowEnd, panelOpen }: TimeScrubberProps) {
+export function TimeScrubber({
+  useStore,
+  narrow = false,
+  windowEnd,
+  panelOpen,
+}: TimeScrubberProps) {
   const playing = useStore((s) => s.playing)
   const speed = useStore((s) => s.speed)
   const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
@@ -62,11 +70,23 @@ export function TimeScrubber({ useStore, windowEnd, panelOpen }: TimeScrubberPro
   return (
     <div
       className={cn(
-        "pointer-events-none absolute left-[calc(var(--panel-width,0px)+1.5rem)] z-20",
+        "pointer-events-none absolute z-20",
         //: With the bar gone the strip has no height, so the handle hanging off
-        //: its top edge lands flush on the bottom of the screen.
-        hidden ? "bottom-0 h-0" : "bottom-3 h-11",
-        panelOpen ? "right-[21.25rem]" : "right-20",
+        //: its top edge lands flush on the bottom edge it is measured from.
+        //: On a phone that edge is the top of the sheet, not the screen — a
+        //: handle behind the sheet is a handle that cannot be pressed.
+        narrow
+          ? hidden
+            ? "bottom-[var(--sheet-peek,0px)] h-0"
+            : "bottom-[calc(var(--sheet-peek,0px)+0.75rem)] h-11"
+          : hidden
+            ? "bottom-0 h-0"
+            : "bottom-3 h-11",
+        //: The rail is docked to the right edge on a wide screen and opens as
+        //: a drawer over the map on a phone, so only the wide layout has to
+        //: leave room for it.
+        narrow ? "left-3 right-16" : "left-[calc(var(--panel-width,0px)+1.5rem)]",
+        narrow ? "" : panelOpen ? "right-[21.25rem]" : "right-20",
       )}
     >
       <button
@@ -91,7 +111,11 @@ export function TimeScrubber({ useStore, windowEnd, panelOpen }: TimeScrubberPro
             {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
 
-          <div className="flex shrink-0 items-center gap-1">
+          {/*: Four playback speeds, a slider and two timestamps do not fit
+              across a phone. The slider is the control the bar exists for, so
+              the speeds go — playback keeps whatever speed it had, and the
+              wide layout is where it gets changed. */}
+          <div className={cn("shrink-0 items-center gap-1", narrow ? "hidden" : "flex")}>
             {SPEEDS.map((s) => (
               <button
                 key={s.value}
@@ -122,8 +146,13 @@ export function TimeScrubber({ useStore, windowEnd, panelOpen }: TimeScrubberPro
           </div>
 
           <div className="flex shrink-0 flex-col items-end font-mono leading-tight">
+            {/*: One end of the window on a phone rather than both. Where the
+                window ends is what the slider moves and what "live" is about;
+                its length is fixed and does not need restating every frame. */}
             <span className="text-[11px] text-neutral-200">
-              {format(windowStart, "MMM d HH:mm")} → {format(windowEnd, "MMM d HH:mm")}
+              {narrow
+                ? format(windowEnd, "d MMM HH:mm")
+                : `${format(windowStart, "MMM d HH:mm")} → ${format(windowEnd, "MMM d HH:mm")}`}
             </span>
             <span
               className={cn(
