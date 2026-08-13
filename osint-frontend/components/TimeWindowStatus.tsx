@@ -31,6 +31,12 @@ interface TimeWindowStatusProps {
    *  view is *not* the current situation keep their detail: that is the whole
    *  reason this readout is on screen without being opened. */
   compact?: boolean
+  /** Phone layout (#944): the dot and nothing else while the map is live.
+   *  The corner shares its row with the search bar there, and the word "live"
+   *  beside a green dot is the dot said twice. Scrubbed away from now it
+   *  keeps the label and the way back — that state is the one the readout is
+   *  on screen for, and it is not the one that has to be small. */
+  dotOnly?: boolean
 }
 
 /** Says, in the always-visible status bar, whether the map is showing now (#501).
@@ -41,7 +47,11 @@ interface TimeWindowStatusProps {
  * are the same question asked of two different layers — a connected socket
  * feeding a map scrubbed three hours back is still not the current situation.
  */
-export function TimeWindowStatus({ useStore, compact = false }: TimeWindowStatusProps) {
+export function TimeWindowStatus({
+  useStore,
+  compact = false,
+  dotOnly = false,
+}: TimeWindowStatusProps) {
   const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
   const windowLengthMs = useStore((s) => s.windowLengthMs)
   const setWindowEndOffset = useStore((s) => s.setWindowEndOffset)
@@ -73,8 +83,10 @@ export function TimeWindowStatus({ useStore, compact = false }: TimeWindowStatus
       className="flex shrink-0 items-center gap-1 font-mono text-[8px] uppercase tracking-wide"
     >
       <span className={cn("h-1.5 w-1.5 rounded-full", DOT_CLASS[view.state])} aria-hidden />
-      <span className={STATE_CLASS[view.state]}>{view.label}</span>
-      {(!compact || view.state !== "live") && (
+      {(!dotOnly || view.state !== "live") && (
+        <span className={STATE_CLASS[view.state]}>{view.label}</span>
+      )}
+      {(!compact || view.state !== "live") && !dotOnly && (
         <span className="text-neutral-500">{view.detail}</span>
       )}
       {view.canReturnToNow && (

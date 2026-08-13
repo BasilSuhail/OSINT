@@ -29,7 +29,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ChevronDown, ChevronLeft, Search, X } from "lucide-react"
+import { ChevronDown, ChevronLeft, Search, Sparkles, X } from "lucide-react"
 
 import { EventDetailCard } from "@/components/EventDetailCard"
 import { ChatEntry, useBrainChat } from "@/components/panels/SituationPanel"
@@ -269,23 +269,41 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
             //: for its own status row. Not full height: the results hang from
             //: the bar and stop, because the bottom of the screen belongs to
             //: the sheet and a list that reaches it reads as part of it.
-            "inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] max-h-[calc(60dvh)]"
+            //: The same 12px margin the column below it uses, so the bar and
+            //: the deck line up on both edges rather than being two widths
+            //: that happen to be near each other.
+            "inset-x-3 top-[calc(env(safe-area-inset-top)+0.75rem)] max-h-[calc(60dvh)]"
           : "bottom-3 left-3 top-3",
       )}
       style={narrow ? undefined : { width: PANEL_WIDTH }}
     >
       <div
         className={cn(
-          "pointer-events-auto flex items-center gap-2 rounded-2xl border border-white/10 bg-neutral-950/85 px-3 py-2 shadow-2xl shadow-black/60 backdrop-blur-xl",
-          //: Every control in the bar becomes a thumb-sized target. Written
-          //: once here rather than on each button: they are small for the
-          //: same reason and stop being small at the same moment.
-          narrow && "gap-1 [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:justify-center",
+          "pointer-events-auto flex items-center rounded-2xl border border-white/10 bg-neutral-950/85 shadow-2xl shadow-black/60 backdrop-blur-xl",
+          //: A fixed height on a phone, and the controls sized to fit inside
+          //: it (#944). Setting a minimum on each button instead pushed the
+          //: bar to sixty pixels of the map's top edge — the targets grew and
+          //: the bar grew with them, which on a screen this size is the bar
+          //: eating the view it sits on. Forty is a thumb; the row is the
+          //: smallest thing that holds one.
+          //: The right margin is the corner cluster, which shares this row
+          //: (#944). Only the bar gives up the width — the results below it
+          //: keep the full column, because a list has no reason to stop short
+          //: of something that is not over it.
+          narrow ? "mr-14 h-12 gap-1 px-2" : "gap-2 px-3 py-2",
         )}
       >
         <Search className="h-3.5 w-3.5 shrink-0 text-neutral-500" aria-hidden />
         <input
           ref={inputRef}
+          //: Named so the browser can tell this field from any other (#944).
+          //: Without either attribute it warns that autofill cannot work —
+          //: and autofill is exactly what this must not do: a saved address
+          //: or email offered over a box that searches a gazetteer is a
+          //: suggestion from the wrong list entirely.
+          id="omnibox-query"
+          name="omnibox-query"
+          autoComplete="off"
           value={query}
           onFocus={() => {
             setFocused(true)
@@ -318,13 +336,29 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
             …
           </span>
         )}
+        {/*: Two words of label on a phone cost more width than the box has to
+            spare, and the icon says the same thing beside a box already
+            labelled "ask or find". On a wide screen the words stay — there is
+            room, and a named button is a better button. */}
         <button
           type="button"
           onClick={submitAsk}
           disabled={!canAsk}
-          className="shrink-0 rounded-lg border border-neutral-700/60 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-100 disabled:opacity-40"
+          aria-label="Ask the brain"
+          className={cn(
+            "shrink-0 rounded-lg border border-neutral-700/60 text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-100 disabled:opacity-40",
+            narrow
+              ? "grid h-10 w-10 place-items-center"
+              : "px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+          )}
         >
-          {pending ? "…" : "ask AI"}
+          {narrow ? (
+            <Sparkles className="h-4 w-4" aria-hidden />
+          ) : pending ? (
+            "…"
+          ) : (
+            "ask AI"
+          )}
         </button>
         {/*: Only while there is a search to leave. A permanent cross on an
             empty box is a control for undoing nothing. */}
@@ -334,11 +368,17 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
             onClick={clearSearch}
             aria-label="Clear search"
             title="Clear search (Esc)"
-            className="shrink-0 text-neutral-500 transition-colors hover:text-neutral-200"
+            className={cn(
+              "shrink-0 text-neutral-500 transition-colors hover:text-neutral-200",
+              narrow && "grid h-10 w-10 place-items-center",
+            )}
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
         )}
+        {/*: Absent rather than disabled on a phone. A greyed control still
+            takes its width, and on this bar that width is the difference
+            between a box you can type a place into and one you cannot. */}
         <button
           type="button"
           onClick={() => setPanel("top", !open)}
@@ -347,7 +387,11 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
           //: Disabled with nothing behind it: a control that opens an empty
           //: panel teaches the reader that the control does nothing.
           disabled={!searching}
-          className="shrink-0 text-neutral-500 transition-transform hover:text-neutral-200 disabled:opacity-30"
+          className={cn(
+            "shrink-0 text-neutral-500 transition-transform hover:text-neutral-200 disabled:opacity-30",
+            narrow && "grid h-10 w-10 place-items-center",
+            narrow && !searching && "hidden",
+          )}
         >
           <ChevronDown
             className={cn("h-4 w-4 transition-transform", open ? "" : "-rotate-90")}
