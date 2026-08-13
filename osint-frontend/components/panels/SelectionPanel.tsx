@@ -4,6 +4,7 @@ import { useEventDetailStore } from "@/stores/eventDetailStore"
 import { usePlaceStore } from "@/stores/placeStore"
 import { useRightPaneModeStore } from "@/stores/rightPaneModeStore"
 import { AircraftDetailCard } from "./AircraftDetailCard"
+import { VesselDetailCard } from "./VesselDetailCard"
 import { ClusterListPanel } from "../ClusterListPanel"
 import { EventDetailCard } from "../EventDetailCard"
 
@@ -42,6 +43,12 @@ export function SelectionPanel() {
       {entity.kind === "aircraft" ? (
         <AircraftDetailCard
           aircraft={entity.aircraft}
+          fetchedAt={entity.fetchedAt}
+          onClose={closeEntity}
+        />
+      ) : entity.kind === "vessel" ? (
+        <VesselDetailCard
+          vessel={entity.vessel}
           fetchedAt={entity.fetchedAt}
           onClose={closeEntity}
         />

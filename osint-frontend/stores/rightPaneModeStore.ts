@@ -2,6 +2,7 @@ import { create } from "zustand"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import type { LocalAreaKind } from "@/lib/localMapSelection"
 import type { PresenceAircraft } from "@/lib/presence"
+import type { PresenceVessel } from "@/lib/vessels"
 import type { VisibleEvent } from "@/lib/queries"
 
 export interface EventSelection {
@@ -28,6 +29,10 @@ export type RightPaneEntity =
    *  and a map click's answer belongs on the selection screen with every other
    *  answer — not in the pop-up, which is where a *row in a list* goes. */
   | { kind: "aircraft"; aircraft: PresenceAircraft; fetchedAt: string | null }
+  /** A live vessel. Same rule as an aircraft: picked off the map, never
+   *  stored, and worth a card because a mark a reader cannot question is
+   *  worse than no mark at all. */
+  | { kind: "vessel"; vessel: PresenceVessel; fetchedAt: string | null }
   /** A clicked map cluster / country news pile — a drillable list of events. */
   | { kind: "cluster"; label: string; selections: EventSelection[] }
   | {
@@ -48,6 +53,9 @@ interface RightPaneModeState {
   /** Close only if an aircraft is what is showing: the live layer going away
    *  must take its own card with it and leave every other selection alone. */
   closeAircraft: () => void
+  openVessel: (vessel: PresenceVessel, fetchedAt: string | null) => void
+  /** Close only if a vessel is what is showing. */
+  closeVessel: () => void
   openCluster: (label: string, selections: EventSelection[]) => void
   openArea: (
     label: string,
@@ -71,6 +79,9 @@ export const useRightPaneModeStore = create<RightPaneModeState>((set) => ({
   openAircraft: (aircraft, fetchedAt) => set({ entity: { kind: "aircraft", aircraft, fetchedAt } }),
   closeAircraft: () =>
     set((state) => (state.entity?.kind === "aircraft" ? { entity: null } : state)),
+  openVessel: (vessel, fetchedAt) => set({ entity: { kind: "vessel", vessel, fetchedAt } }),
+  closeVessel: () =>
+    set((state) => (state.entity?.kind === "vessel" ? { entity: null } : state)),
   openCluster: (label, selections) => set({ entity: { kind: "cluster", label, selections } }),
   openArea: (label, labelKind, lat, lon, radiusKm, selections) =>
     set({

@@ -7,8 +7,15 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Anchor,
   Droplets,
+  Fish,
   Flame,
+  Fuel,
+  LifeBuoy,
+  Package,
+  Sailboat,
+  Ship,
   Landmark,
   Layers,
   type LucideIcon,
@@ -50,6 +57,7 @@ import { useImageryStore } from "@/stores/imageryStore"
 import { usePanelLayoutStore } from "@/stores/panelLayout"
 import { usePresenceStore } from "@/stores/presenceStore"
 import { windowIsNow } from "@/lib/presence"
+import { VESSEL_CATEGORIES, vesselAttribution, type VesselCategory } from "@/lib/vessels"
 import { Slider } from "@/components/ui/slider"
 
 /** Per-source mark. Monochrome on purpose: eleven saturated chips competing
@@ -68,6 +76,20 @@ const SOURCE_ICONS: Record<SourceKey, LucideIcon> = {
   FRED: Landmark,
   CYBER: ShieldAlert,
   POLYMARKET: TrendingUp,
+}
+
+/** Vessel-category icons (#954). Monochrome like the source rows: the marks
+ *  on the water are one colour, because seven more colours on a map that
+ *  already spends colour on disasters would be a second legend arguing with
+ *  the first. What a vessel is, its card says. */
+const VESSEL_ICONS: Record<VesselCategory, LucideIcon> = {
+  cargo: Package,
+  tanker: Fuel,
+  passenger: Ship,
+  fishing: Fish,
+  pleasure: Sailboat,
+  service: LifeBuoy,
+  other: Anchor,
 }
 
 /** Disaster-type icons — match the map pins (quake waveform, fire flame, …). */
@@ -281,7 +303,12 @@ export function FilterRail({
   //: show, and a live layer over an old map would read as history.
   const presenceOn = usePresenceStore((st) => st.aircraft)
   const togglePresence = usePresenceStore((st) => st.toggleAircraft)
+  const vesselsOn = usePresenceStore((st) => st.vessels)
+  const toggleVessel = usePresenceStore((st) => st.toggleVessel)
+  const setAllVessels = usePresenceStore((st) => st.setAllVessels)
+  const vesselSources = usePresenceStore((st) => st.vesselSources)
   const presenceAtNow = windowIsNow(windowEndOffsetMs)
+  const anyVesselOn = VESSEL_CATEGORIES.some((c) => vesselsOn[c.key])
 
   /** Windowed count for the panel header — the same pipeline the map markers
    *  use, so the header and the dots always agree. */
@@ -580,6 +607,53 @@ export function FilterRail({
                   .filter(Boolean)
                   .join(" · ")}
               </span>
+            )}
+          </div>
+
+          {/*: Vessels (#954). Their own group, one row per category the ships
+              themselves broadcast, so a reader can watch the fishing fleet
+              without the container traffic or the whole harbour at once. */}
+          <div className="flex flex-col">
+            <GroupLabel
+              right={
+                <AllNone
+                  onAll={() => setAllVessels(true)}
+                  onNone={() => setAllVessels(false)}
+                />
+              }
+            >
+              At sea
+            </GroupLabel>
+            <GroupCard>
+              {VESSEL_CATEGORIES.map((c) => (
+                <ToggleRow
+                  key={c.key}
+                  icon={VESSEL_ICONS[c.key]}
+                  label={c.label}
+                  hint={presenceAtNow ? c.hint : "live only — scrub to now"}
+                  on={vesselsOn[c.key] && presenceAtNow}
+                  disabled={!presenceAtNow}
+                  onClick={() => toggleVessel(c.key)}
+                />
+              ))}
+            </GroupCard>
+            {/*: The coverage, said out loud wherever the layer is switched on.
+                These are one authority's own shore receivers: the layer draws a
+                sea area densely and everywhere else not at all, and without
+                this line an empty ocean reads as a claim about the ocean. */}
+            {anyVesselOn && presenceAtNow && (
+              <>
+                <span className="px-1 pt-1 text-[10px] leading-snug text-neutral-500">
+                  Shore receivers only — dense where they reach, blank where
+                  they do not. More sea areas do not make this a picture of the
+                  whole sea.
+                </span>
+                {vesselAttribution(vesselSources) && (
+                  <span className="px-1 pt-1 font-mono text-[9px] uppercase tracking-wider text-neutral-700">
+                    {vesselAttribution(vesselSources)}
+                  </span>
+                )}
+              </>
             )}
           </div>
 
