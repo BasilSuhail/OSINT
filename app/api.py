@@ -50,6 +50,7 @@ from app.paths import exports_dir
 from app.presence.aircraft import live_aircraft
 from app.presence.upcoming import HORIZON_DAYS as UPCOMING_HORIZON_DAYS
 from app.presence.upcoming import scheduled
+from app.presence.vessels import live_vessels
 from app.publisher import publisher_for
 from app.readable_claim import has_readable_claim
 from app.settings import settings
@@ -371,6 +372,21 @@ def presence_aircraft() -> dict:
     positions on screen would present minutes-old locations as current.
     """
     return live_aircraft()
+
+
+@app.get("/presence/vessels")
+def presence_vessels() -> dict:
+    """Vessels broadcasting AIS, live and unstored (#954).
+
+    The same rule as the aircraft layer: nothing here is written, graded,
+    retained or citable, and a refusal returns an empty picture marked
+    `degraded` rather than an error.
+
+    Coverage is one authority's terrestrial receivers, so this is a sea area
+    and not an ocean. The console says so where the layer is drawn — an empty
+    Atlantic here is an empty receiver map.
+    """
+    return live_vessels()
 
 
 @app.get("/presence/upcoming")

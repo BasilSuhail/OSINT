@@ -40,6 +40,33 @@ SOURCES: dict[str, PresenceSource] = {
         ttl_s=30.0,
         attribution="adsb.lol · ODbL",
     ),
+    #: Vessels broadcasting AIS (#954). A national authority's own terrestrial
+    #: receivers, published openly under CC BY 4.0 — the terms were read, and
+    #: they require the notice and a link, which the layer renders.
+    #:
+    #: One source, one sea area. Every other open feed found either wanted an
+    #: account, wanted a receiver contributed, or published files rather than a
+    #: live picture, and satellite AIS — the only thing that would cover the
+    #: open ocean — is a paid product. So this layer is honest about being
+    #: coastal rather than pretending to be global.
+    "vessels": PresenceSource(
+        id="vessels",
+        label="Vessels",
+        endpoints=("https://meri.digitraffic.fi",),
+        ttl_s=45.0,
+        attribution="Fintraffic / digitraffic.fi · CC BY 4.0",
+    ),
+    #: A second sea area (#954). Open data, but behind an account and an OAuth
+    #: client, so it only contributes when credentials are configured — see
+    #: `app/presence/vessels_no.py`. Two sea areas is still a coastline: the
+    #: limit moves, it does not go away, and the copy on the layer says so.
+    "vessels_no": PresenceSource(
+        id="vessels_no",
+        label="Vessels (Norwegian waters)",
+        endpoints=("https://live.ais.barentswatch.no",),
+        ttl_s=45.0,
+        attribution="BarentsWatch · NLOD",
+    ),
 }
 
 

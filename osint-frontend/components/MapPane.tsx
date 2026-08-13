@@ -43,7 +43,7 @@ import {
   shouldPoll,
   type PresenceAircraft,
 } from "@/lib/presence"
-import { fetchPresenceAircraft } from "@/lib/apiClient"
+import { fetchPresenceAircraft, fetchPresenceVessels } from "@/lib/apiClient"
 import { AircraftGlyph } from "@/components/AircraftGlyph"
 import { aircraftSilhouette } from "@/lib/aircraftSilhouette"
 import {
@@ -52,6 +52,16 @@ import {
   snapshotMatchesWindow as snapshotWindowStillHolds,
   type ViewportBounds,
 } from "@/lib/viewportScope"
+import { VesselGlyph } from "@/components/VesselGlyph"
+import {
+  VESSEL_CATEGORIES,
+  VESSEL_POLL_MS,
+  vesselBearing,
+  suspectReason,
+  vesselIsUnderWay,
+  vesselTitle,
+  type PresenceVessel,
+} from "@/lib/vessels"
 import { imageryDate, imageryLayer, imageryTiles } from "@/lib/imageryLayers"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
 import {
@@ -967,6 +977,67 @@ export function MapPane({
     }
   }, [presencePolling, closeAircraft])
 
+  //: Vessels (#954). The same live-only rule as the air layer, and the same
+  //: reasons: nothing is stored, so there is no past to draw, and a tab nobody
+  //: is looking at must not spend a public authority's bandwidth.
+  const vesselSwitches = usePresenceStore((st) => st.vessels)
+  const anyVesselOn = useMemo(
+    () => VESSEL_CATEGORIES.some((c) => vesselSwitches[c.key]),
+    [vesselSwitches],
+  )
+  const [vessels, setVessels] = useState<PresenceVessel[]>([])
+  const [vesselsFetchedAt, setVesselsFetchedAt] = useState<string | null>(null)
+  const vesselPolling = shouldPoll(anyVesselOn, windowEndOffsetMs, presenceVisible)
+  const setVesselSources = usePresenceStore((st) => st.setVesselSources)
+  const openVessel = useRightPaneModeStore((st) => st.openVessel)
+  const closeVessel = useRightPaneModeStore((st) => st.closeVessel)
+
+  useEffect(() => {
+    if (!vesselPolling) {
+      setVessels([])
+      setVesselsFetchedAt(null)
+      setVesselSources([])
+      closeVessel()
+      return
+    }
+    let cancelled = false
+    const controller = new AbortController()
+    const load = async () => {
+      try {
+        const answer = await fetchPresenceVessels({ signal: controller.signal })
+        if (!cancelled) {
+          setVessels(answer.vessels)
+          setVesselsFetchedAt(answer.fetched_at)
+          //: The notice follows the data: the answer names the feeds that
+          //: actually replied, and the rail prints those and no others.
+          setVesselSources(answer.sources ?? [])
+        }
+      } catch {
+        //: A refused fetch draws nothing. Ships an hour old on a live layer
+        //: would be the most convincing wrong answer this console could give.
+        if (!cancelled) {
+          setVessels([])
+          setVesselsFetchedAt(null)
+          setVesselSources([])
+        }
+      }
+    }
+    void load()
+    const timer = setInterval(() => void load(), VESSEL_POLL_MS)
+    return () => {
+      cancelled = true
+      controller.abort()
+      clearInterval(timer)
+    }
+  }, [vesselPolling, closeVessel, setVesselSources])
+
+  //: Only the categories that are switched on. One request answers every row,
+  //: so the switches filter what is drawn rather than what is asked for.
+  const drawnVessels = useMemo(
+    () => vessels.filter((v) => vesselSwitches[v.category]),
+    [vessels, vesselSwitches],
+  )
+
   const hillshadeBeforeId = "waterway"
 
   const handleSelectMarker = useCallback(
@@ -1558,6 +1629,51 @@ export function MapPane({
                   className="block h-3.5 w-3.5 text-sky-300/80"
                 />
               )}
+            </div>
+          </Marker>
+        ))}
+        {/*: Vessels (#954). One colour for all of them: the water is a layer,
+            not a legend, and the categories are answered by the card and by
+            the rail rather than by seven more hues on a map that already
+            spends colour on disasters. */}
+        {drawnVessels.map((v) => (
+          <Marker
+            key={v.mmsi ?? `${v.lat},${v.lon}`}
+            longitude={v.lon}
+            latitude={v.lat}
+            anchor="center"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation()
+              openVessel(v, vesselsFetchedAt)
+            }}
+          >
+            <div
+              title={[
+                vesselTitle(v),
+                v.nav_status,
+                v.destination ? `says bound for ${v.destination}` : null,
+                suspectReason(v) ? `position not believed \u2014 ${suspectReason(v)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" \u00B7 ")}
+              className="pointer-events-auto grid h-6 w-6 cursor-pointer place-items-center"
+            >
+              {/*: A position the console does not believe is drawn hollow and
+                  in amber (#954). Not hidden: a transmitter claiming to be a
+                  ship in the middle of a forest is a finding, and the traffic
+                  around it is the ordinary part. Not solid either \u2014 the
+                  outline is the difference between reporting a claim and
+                  endorsing it. */}
+              <VesselGlyph
+                underWay={vesselIsUnderWay(v)}
+                bearing={vesselBearing(v)}
+                suspect={v.position_suspect != null}
+                className={
+                  v.position_suspect != null
+                    ? "block h-3.5 w-3.5 text-amber-300/90"
+                    : "block h-3 w-3 text-teal-300/85"
+                }
+              />
             </div>
           </Marker>
         ))}

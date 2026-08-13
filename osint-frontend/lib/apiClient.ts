@@ -1,6 +1,7 @@
 import type { PlaceTarget } from "@/stores/placeStore"
 import { placeUrl } from "./placeUrl"
 import type { PresenceAnswer } from "./presence"
+import type { VesselAnswer } from "./vessels"
 import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "./types"
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -640,6 +641,16 @@ export async function fetchPlace(
 }
 
 /** Live aircraft (#873). Never stored, never citable — see `app/presence/`. */
+/** Vessels broadcasting AIS (#954). Never stored, never citable, and covering
+ *  one authority's receiver range rather than an ocean. */
+export async function fetchPresenceVessels(
+  options: { signal?: AbortSignal } = {},
+): Promise<VesselAnswer> {
+  const res = await apiFetch(`${API_BASE}/presence/vessels`, { signal: options.signal })
+  if (!res.ok) throw new Error(`presence vessels failed: ${res.status}`)
+  return (await res.json()) as VesselAnswer
+}
+
 export async function fetchPresenceAircraft(
   options: { signal?: AbortSignal } = {},
 ): Promise<PresenceAnswer> {
