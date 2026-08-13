@@ -111,6 +111,12 @@ export function AskDock({ onOpenStory }: { onOpenStory: (id: string) => void }) 
         <div className="p-2">
           <div className="flex gap-2">
             <input
+              //: Named for the same reason the omnibox is (#944): a field
+              //: with neither attribute cannot be told apart for autofill,
+              //: and this one wants none of it.
+              id="ask-dock-question"
+              name="ask-dock-question"
+              autoComplete="off"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {

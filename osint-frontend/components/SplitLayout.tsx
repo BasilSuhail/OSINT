@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import dynamic from "next/dynamic"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { useConfigured } from "@/app/providers"
 import type { VisibleEvent } from "@/lib/queries"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
@@ -17,12 +17,17 @@ import { useWorldDetailStore } from "@/stores/worldDetailStore"
 import useSWR from "swr"
 import { fetchScoreboard } from "@/lib/analytics"
 import { scoreboardIsReady } from "@/lib/deckReadiness"
-import { BottomSheet } from "./BottomSheet"
 import { CardDeck, type DeckCard } from "./CardDeck"
 import { FloatingPanel } from "./FloatingPanel"
 import { deckPageKeys } from "@/lib/deckPages"
-import { COLUMN_TOP, PANEL_WIDTH } from "@/lib/layout"
-import { NARROW_QUERY, PEEK_PX, narrowInitialPanels, type Detent } from "@/lib/narrowLayout"
+import {
+  COLUMN_TOP,
+  NARROW_COLUMN_BOTTOM,
+  NARROW_COLUMN_TOP,
+  NARROW_PANEL_WIDTH,
+  PANEL_WIDTH,
+} from "@/lib/layout"
+import { NARROW_QUERY, narrowInitialPanels } from "@/lib/narrowLayout"
 import { cn } from "@/lib/utils"
 import { BriefingPanel } from "./panels/BriefingPanel"
 import { WorldHeadline, WorldStatusPanel } from "./WorldStatusPanel"
@@ -80,35 +85,69 @@ export function SplitLayout() {
   //: panel" always means the deck (#938).
   const searchActive = usePanelLayoutStore((s) => s.searchActive)
   const resultsOpen = usePanelLayoutStore((s) => s.top)
-  const deckShowing = !deckCollapsed && !searchActive
+  //: Only where search is actually in the column (#944). On a phone the
+  //: results hang from the bar itself and never enter it, so treating a
+  //: focused bar as "the column is search's" moved the deck's handle to the
+  //: far edge and took the rail with it — tapping the search box made the way
+  //: back to the panel disappear, which is the one thing it must never do.
+  const searchTakesColumn = searchActive && !isNarrow
+  const deckShowing = !deckCollapsed && !searchTakesColumn
   //: The column holds one thing at a time, and the handle on its edge means
   //: "put away what is in the column" — so while search is in it, the handle
   //: is search's. Computed from the deck alone it pointed at a deck that was
   //: not there: the arrow sat mid-screen still offering to hide something
   //: already hidden (#938).
-  const columnOccupied = searchActive ? resultsOpen : !deckCollapsed
+  const columnOccupied = searchTakesColumn ? resultsOpen : !deckCollapsed
   const setPanel = usePanelLayoutStore((s) => s.setPanel)
   const setLeftRailOpen = useCallback(
     (open: boolean) => setPanel("right", open),
     [setPanel],
   )
-  //: How far the phone's sheet is open (#942). Local, because nothing outside
-  //: the narrow branch has an opinion about it — the four edges in the panel
-  //: store are the wide layout's, and the sheet is not one of them.
-  const [detent, setDetent] = useState<Detent>("peek")
   const [, setLeftCount] = useState(0)
 
-  //: The rail and the scrubber default to showing, which is right beside a
-  //: large map and wrong on a phone where they take two of four short edges.
-  //: Once, on the first narrow paint: this is where the console arrives, not
-  //: a rule about where it has to stay, so putting either back keeps it back.
+  //: The same column and the same starting row, measured for the screen it is
+  //: on (#944). One constant each rather than a conditional at every use, so
+  //: the deck, the pop-up and the scrubber cannot disagree about where the
+  //: column is.
+  const columnWidth = isNarrow ? NARROW_PANEL_WIDTH : PANEL_WIDTH
+  const columnTop = isNarrow ? NARROW_COLUMN_TOP : COLUMN_TOP
+  //: The home indicator's strip on a phone. Nothing was reserving it once the
+  //: sheet — which padded itself — was removed, so the deck's last line sat
+  //: under it (#944).
+  const columnBottom = isNarrow ? NARROW_COLUMN_BOTTOM : "0.75rem"
+
+  //: Every panel defaults to showing, which is right beside a large map and
+  //: wrong on a phone, where any one of them is most of the screen. Once, on
+  //: the first narrow paint: this is where the console arrives, not a rule
+  //: about where it has to stay, so putting any of them back keeps it back.
+  //: Before the first paint, and off `matchMedia` directly rather than off
+  //: `isNarrow` (#944). `useMediaQuery` cannot answer during the server render
+  //: and so reports false until its own effect has run — a phone would paint
+  //: the wide console with all three panels open and then snap them shut, and
+  //: the reader's first sight of the map would be of it disappearing. Reading
+  //: the query here, in a layout effect, closes them before anything is drawn.
   const appliedNarrowDefaults = useRef(false)
+  useLayoutEffect(() => {
+    if (appliedNarrowDefaults.current) return
+    if (typeof window === "undefined") return
+    if (!window.matchMedia(NARROW_QUERY).matches) return
+    appliedNarrowDefaults.current = true
+    const initial = narrowInitialPanels()
+    const { setPanel } = usePanelLayoutStore.getState()
+    setPanel("left", initial.left)
+    setPanel("bottom", initial.bottom)
+    setPanel("right", initial.right)
+  }, [])
+
+  //: A window dragged narrow after load gets the same treatment, once.
   useEffect(() => {
     if (!isNarrow || appliedNarrowDefaults.current) return
     appliedNarrowDefaults.current = true
     const initial = narrowInitialPanels()
-    usePanelLayoutStore.getState().setPanel("bottom", initial.bottom)
-    usePanelLayoutStore.getState().setPanel("right", initial.right)
+    const { setPanel } = usePanelLayoutStore.getState()
+    setPanel("left", initial.left)
+    setPanel("bottom", initial.bottom)
+    setPanel("right", initial.right)
   }, [isNarrow])
 
   // Selections drive the right pane's entity-lock mode (#252). The clicked
@@ -175,25 +214,23 @@ export function SplitLayout() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  // Selecting anything locks the right pane to that entity; on a phone the
-  // card that opens is inside the sheet, so the sheet has to come up to show
-  //: it. Half rather than full: the marker that was tapped stays on screen,
-  //: and a card that hides what it is about is exactly what the full-bleed
-  //: panel got wrong (#942). Never downwards — a selection made with the
-  //: sheet already open should not shrink it.
-  const raiseSheet = useCallback(() => {
-    setDetent((current) => (current === "peek" ? "half" : current))
+  // Selecting anything locks the right pane to that entity. On a phone the
+  //: column arrives put away, so a tap on a marker has to bring it back —
+  //: otherwise the selection lands in a panel that is not on screen and the
+  //: tap reads as having done nothing (#944).
+  const showColumn = useCallback(() => {
+    usePanelLayoutStore.getState().setPanel("left", true)
   }, [])
   const onSelectEvent = useCallback(
     (ev: VisibleEvent, location?: MarkerLocationContext) => {
       openEvent(ev, location)
-      if (isNarrow) raiseSheet()
+      if (isNarrow) showColumn()
     },
-    [openEvent, isNarrow, raiseSheet],
+    [openEvent, isNarrow, showColumn],
   )
   const onOpenMapSelection = useCallback(() => {
-    if (isNarrow) raiseSheet()
-  }, [isNarrow, raiseSheet])
+    if (isNarrow) showColumn()
+  }, [isNarrow, showColumn])
 
   // The right pane as a card deck (#328): console keeps its world-status /
   // entity surface and the analytical pages fill the rest. The globe card was
@@ -320,11 +357,13 @@ export function SplitLayout() {
             sources are. Two detached controls rather than one bar — the time
             readout has to stay legible without opening anything (#501), and
             the monitor is a door, not a readout. */}
-        {/*: Below the search bar on a phone, which owns the top strip there.
-            The corner is 40px of a 390px-wide row and the bar has the rest. */}
+        {/*: Beside the search bar on a phone, on the same row and as small as
+            it can be said: two dots, forty pixels. The bar has the rest. */}
         <SystemMonitor
           narrow={isNarrow}
-          leading={<TimeWindowStatus useStore={useLeftPaneStore} compact />}
+          leading={
+            <TimeWindowStatus useStore={useLeftPaneStore} compact dotOnly={isNarrow} />
+          }
         />
         {/*: The way into the system, in both layouts (#942). It used to be
             wide-only, which left the phone with a console it could look at and
@@ -337,46 +376,16 @@ export function SplitLayout() {
           </div>
         )}
 
-        {isNarrow ? (
-          //: Map first, one bar across the top, everything else put away until
-          //: it is asked for (#942). The `map | panel` switcher this replaces
-          //: is gone: the sheet's grip is the control it was, and two controls
-          //: for one thing is how the top strip got crowded in the first place.
-          <div
-            className="relative h-full w-full"
-            //: How much of the bottom edge the sheet always occupies, published
-            //: to the map's own overlays so the scrubber and the filter rail
-            //: stop above it. A constant rather than a measurement: the peek
-            //: height is a decision, and a layout effect that measures it would
-            //: make two things that must agree depend on render order.
-            style={{ "--sheet-peek": `calc(${PEEK_PX}px + env(safe-area-inset-bottom))` } as React.CSSProperties}
-          >
-            <div className="absolute inset-0 z-0">
-              <MapPane
-                useStore={useLeftPaneStore}
-                narrow
-                railOpen={leftRailOpen}
-                onRailOpenChange={setLeftRailOpen}
-                onCount={setLeftCount}
-                onOpenSelection={onOpenMapSelection}
-                onSelectEvent={onSelectEvent}
-                selectedEventId={selectedEventId}
-              />
-            </div>
-            {/* The deck is always the surface (#846). Every pop-up is page
-                four inside it, so nothing replaces it — replacing the deck
-                was what stole the reader's place to begin with. */}
-            {/*: Named for the surface, not for the card showing on it — which
-                page the deck is on is the deck's business, and a grip whose
-                label changes under the reader is a grip they cannot learn. */}
-            <BottomSheet detent={detent} onDetentChange={setDetent} label="Panels">
-              <CardDeck cards={deckCards} />
-            </BottomSheet>
-          </div>
-        ) : (
+        {
           //: Layered stage (#503): the map is the base layer and fills the
           //: viewport; everything else floats above it. No panel group, no
           //: resize handle — those are what made the console read as boxed.
+          //: One stage on both screens (#944). A phone gets the same deck in
+          //: the same left column, the same rail docked right and the same
+          //: scrubber along the bottom — narrower, and all three put away on
+          //: arrival. The bottom sheet that stood here briefly was a second
+          //: console to learn, and the reader who knows this one on a laptop
+          //: had to learn it twice.
           <div
             className="relative h-full w-full"
             //: Total width occupied by floating panels on the left edge,
@@ -393,17 +402,21 @@ export function SplitLayout() {
                 //: takes the same width as the deck, so the scrubber and the
                 //: pop-up stop in the same place either way and nothing jumps
                 //: sideways when one replaces the other (#938).
+                //: On a phone the pop-up stacks on the column rather than
+                //: beside it, so the width never doubles — twice the screen is
+                //: not a column, it is a column and a guess.
                 "--panel-width": !columnOccupied
                   ? "0px"
-                  : popupOpen
+                  : popupOpen && !isNarrow
                     ? `calc(${PANEL_WIDTH} * 2 + 1.25rem)`
-                    : PANEL_WIDTH,
+                    : columnWidth,
               } as React.CSSProperties
             }
           >
             <div className="absolute inset-0 z-0">
               <MapPane
                 useStore={useLeftPaneStore}
+                narrow={isNarrow}
                 railOpen={leftRailOpen}
                 onRailOpenChange={setLeftRailOpen}
                 onCount={setLeftCount}
@@ -419,13 +432,18 @@ export function SplitLayout() {
             {/* Screen 4: the pop-up. A second column beside the panel you
              *  clicked from — never a page in that panel, and never replacing
              *  it. Position is arithmetic off the fixed deck width. */}
-            {popupOpen && (deckShowing || searchActive) ? (
+            {/*: There is no beside on a phone, so it stacks on the column
+                instead, one z-layer up (#944). Still not a page of the deck —
+                the deck is underneath it, unchanged, and closing the pop-up
+                puts the reader back exactly where they were. */}
+            {popupOpen && (deckShowing || searchTakesColumn) ? (
               <FloatingPanel
-                className="absolute bottom-3 z-30"
+                className={cn("absolute", isNarrow ? "z-40" : "z-30")}
                 style={{
-                  width: PANEL_WIDTH,
-                  left: `calc(${PANEL_WIDTH} + 1.25rem)`,
-                  top: COLUMN_TOP,
+                  bottom: columnBottom,
+                  width: columnWidth,
+                  left: isNarrow ? "0.75rem" : `calc(${PANEL_WIDTH} + 1.25rem)`,
+                  top: columnTop,
                 }}
               >
                 {storyDetailOpen ? (
@@ -450,9 +468,9 @@ export function SplitLayout() {
              *  control on the right. */}
             <button
               type="button"
-              onClick={() => togglePanel(searchActive ? "top" : "left")}
+              onClick={() => togglePanel(searchTakesColumn ? "top" : "left")}
               title={
-                searchActive
+                searchTakesColumn
                   ? columnOccupied
                     ? "Hide results (W)"
                     : "Show results (W)"
@@ -460,8 +478,26 @@ export function SplitLayout() {
                     ? "Hide panel (A)"
                     : "Show panel (A)"
               }
-              style={{ left: `calc(var(--panel-width) + 1rem)` }}
-              className="absolute top-1/2 z-30 -translate-y-1/2 rounded-l-md rounded-r-xl border border-white/10 bg-neutral-950/85 px-1.5 py-6 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-[left,color] duration-300 ease-out hover:text-neutral-100"
+              style={{
+                //: The column is the width of a phone, so the outer edge it
+                //: rides is off the screen (#944). Clamped to stay on it: the
+                //: control that brings the panel back is the one thing that
+                //: can never be the thing that went away.
+                left: isNarrow
+                  ? `min(calc(var(--panel-width) + 1rem), calc(100vw - 3rem))`
+                  : `calc(var(--panel-width) + 1rem)`,
+              }}
+              className={cn(
+                "absolute z-40 -translate-y-1/2 rounded-l-md rounded-r-xl border border-white/10 bg-neutral-950/85 text-neutral-400 shadow-2xl shadow-black/60 backdrop-blur-xl transition-[left,color] duration-300 ease-out hover:text-neutral-100",
+                //: Centred, on both screens and on either edge. When the
+                //: column is away this handle sits on the left edge and the
+                //: rail's sits on the right, at the same height — a pair. The
+                //: collision that used to make when the column opens and this
+                //: one clamps rightwards is solved where it happens: the rail
+                //: is not on screen then (#944).
+                "top-1/2",
+                isNarrow ? "grid h-11 w-11 place-items-center" : "px-1.5 py-6",
+              )}
             >
               {columnOccupied ? (
                 <ChevronLeft size={16} aria-hidden />
@@ -480,17 +516,17 @@ export function SplitLayout() {
             <FloatingPanel
               aria-hidden={!deckShowing}
               className={cn(
-                "absolute bottom-3 left-3 z-30 transition-[transform,opacity] duration-300 ease-out",
+                "absolute left-3 z-30 transition-[transform,opacity] duration-300 ease-out",
                 deckShowing
                   ? "translate-x-0 opacity-100"
                   : "pointer-events-none -translate-x-[calc(100%+1.5rem)] opacity-0",
               )}
-              style={{ width: PANEL_WIDTH, top: COLUMN_TOP }}
+              style={{ width: columnWidth, top: columnTop, bottom: columnBottom }}
             >
               <CardDeck cards={deckCards} />
             </FloatingPanel>
           </div>
-        )}
+        }
       </div>
     </main>
   )

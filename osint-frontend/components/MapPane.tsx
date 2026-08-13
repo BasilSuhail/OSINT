@@ -28,6 +28,13 @@ import {
 import { useEventsInWindow, useLatestScores, type VisibleEvent } from "@/lib/queries"
 import { useCountriesGeo, useScoredGeo } from "@/lib/geo"
 import { markerStyle } from "@/lib/markers"
+import {
+  LONG_PRESS_MS,
+  movedTooFar,
+  pressSurvives,
+  suppressesContextMenu,
+  type Point,
+} from "@/lib/longPress"
 import { usePlaceStore } from "@/stores/placeStore"
 import { useImageryStore } from "@/stores/imageryStore"
 import { usePresenceStore } from "@/stores/presenceStore"
@@ -1016,13 +1023,107 @@ export function MapPane({
   //: MapMouseEvent it blocks map behaviours only — drag-pan, drag-rotate,
   //: box-zoom, double-click zoom — none of which a right-click raises.
   const openPlace = usePlaceStore((s) => s.openPoint)
+  //: When the long press below last opened a place. Android raises its own
+  //: `contextmenu` for the same gesture, and the panel opening twice for one
+  //: press is a bug that shows up on one platform and not the other (#946).
+  const lastLongPressMsRef = useRef<number | null>(null)
   const handleContextMenu = useCallback(
     (e: MapLayerMouseEvent) => {
+      if (suppressesContextMenu(lastLongPressMsRef.current, Date.now())) return
       openPlace(e.lngLat.lat, e.lngLat.lng)
       onOpenSelection()
     },
     [onOpenSelection, openPlace],
   )
+
+  //: Long press is right-click, for a screen that has no right button (#946).
+  //: The same question and the same panel — a second way to reach one
+  //: behaviour, never a second behaviour.
+  //:
+  //: On the canvas container rather than through MapLibre's own events: the
+  //: map has no long-press event to subscribe to, and every way out of this
+  //: gesture is one the map already owns. A second finger is its pinch, travel
+  //: is its pan, and an early lift is the tap that opens a selection — so the
+  //: rule is only ever *stop*, and the map never has to be told anything.
+  useEffect(() => {
+    if (!mapRef) return
+    const map = mapRef.getMap()
+    const el = map.getCanvasContainer()
+    //: Mobile Safari's own long press over a canvas raises a callout and a
+    //: text magnifier. Nothing else turns those off, and a magnifier over the
+    //: map is the reader's answer arriving under a lens.
+    el.style.setProperty("-webkit-touch-callout", "none")
+
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let from: Point | null = null
+    let latest: Point | null = null
+
+    const stop = () => {
+      if (timer !== null) clearTimeout(timer)
+      timer = null
+      from = null
+      latest = null
+    }
+
+    const pointOf = (touch: Touch): Point => {
+      const rect = el.getBoundingClientRect()
+      return { x: touch.clientX - rect.left, y: touch.clientY - rect.top }
+    }
+
+    const onTouchStart = (e: TouchEvent) => {
+      stop()
+      if (e.touches.length !== 1) return
+      from = pointOf(e.touches[0])
+      latest = from
+      timer = setTimeout(() => {
+        if (!from || !latest) return
+        if (
+          !pressSurvives({
+            touches: e.touches.length,
+            elapsedMs: LONG_PRESS_MS,
+            from,
+            to: latest,
+          })
+        ) {
+          return stop()
+        }
+        //: Where the finger is, not where it started: within the tolerance
+        //: those differ by a few pixels, and the one under the fingertip is
+        //: the place the reader means.
+        const { lat, lng } = map.unproject([latest.x, latest.y])
+        lastLongPressMsRef.current = Date.now()
+        //: The only signal that the hold worked. A press that opens a panel
+        //: with no acknowledgement reads as a tap that was slow.
+        if (typeof navigator.vibrate === "function") navigator.vibrate(10)
+        openPlace(lat, lng)
+        onOpenSelection()
+        stop()
+      }, LONG_PRESS_MS)
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (timer === null || !from) return
+      if (e.touches.length !== 1) return stop()
+      latest = pointOf(e.touches[0])
+      if (movedTooFar(from, latest)) stop()
+    }
+
+    //: Passive, because none of this prevents anything. The map's own
+    //: handlers are on the same element and have to keep seeing every touch:
+    //: a press that cancels is a pan, and it has to pan.
+    const options: AddEventListenerOptions = { passive: true }
+    el.addEventListener("touchstart", onTouchStart, options)
+    el.addEventListener("touchmove", onTouchMove, options)
+    el.addEventListener("touchend", stop, options)
+    el.addEventListener("touchcancel", stop, options)
+    return () => {
+      stop()
+      el.removeEventListener("touchstart", onTouchStart, options)
+      el.removeEventListener("touchmove", onTouchMove, options)
+      el.removeEventListener("touchend", stop, options)
+      el.removeEventListener("touchcancel", stop, options)
+    }
+  }, [mapRef, openPlace, onOpenSelection])
 
   const handleClick = useCallback(
     (e: MapLayerMouseEvent) => {
