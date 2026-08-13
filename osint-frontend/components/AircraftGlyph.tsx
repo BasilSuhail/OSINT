@@ -40,6 +40,7 @@ const UNKNOWN_PATH = "M12 2.6 L19 20.4 L12 16.4 L5 20.4 Z"
 export function AircraftGlyph({
   silhouette,
   track,
+  color,
   className,
 }: {
   silhouette: Silhouette
@@ -47,6 +48,11 @@ export function AircraftGlyph({
    *  unrotated: pointing north because nothing was reported would be a
    *  direction the aircraft never claimed. */
   track: number | null
+  /** The mark's colour, as a value rather than a class: the rail prints the
+   *  same constant beside the switch, and a legend that keeps its own copy of
+   *  a colour is a legend that will eventually be wrong. The element owns its
+   *  `style` for the rotation, so this cannot be passed in as one. */
+  color?: string
   className?: string
 }) {
   return (
@@ -54,7 +60,10 @@ export function AircraftGlyph({
       aria-hidden
       viewBox="0 0 24 24"
       className={className}
-      style={{ transform: track != null ? `rotate(${track}deg)` : undefined }}
+      style={{
+        color,
+        transform: track != null ? `rotate(${track}deg)` : undefined,
+      }}
     >
       {silhouette === "rotorcraft" ? (
         <>

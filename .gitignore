@@ -75,3 +75,9 @@ POSITIONING-SCRATCH.md
 
 # Local .env backups may contain live credentials — never committable.
 .env.backup-*
+
+# The aircraft watchlist is operational data, never committed (#954). Only
+# the .example file belongs in the repository.
+watchlist.json
+*.watchlist.json
+data/watchlist.json

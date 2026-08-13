@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Anchor,
+  Crosshair,
   Droplets,
   Fish,
   Flame,
@@ -56,7 +57,7 @@ import { IMAGERY_LAYERS, imageryDate } from "@/lib/imageryLayers"
 import { useImageryStore } from "@/stores/imageryStore"
 import { usePanelLayoutStore } from "@/stores/panelLayout"
 import { usePresenceStore } from "@/stores/presenceStore"
-import { windowIsNow } from "@/lib/presence"
+import { AIRCRAFT_COLORS, watchlistHint, windowIsNow } from "@/lib/presence"
 import { VESSEL_CATEGORIES, vesselAttribution, type VesselCategory } from "@/lib/vessels"
 import { Slider } from "@/components/ui/slider"
 
@@ -155,6 +156,7 @@ function GroupCard({ children }: { children: React.ReactNode }) {
 function ToggleRow({
   icon: Icon,
   swatch,
+  tint,
   label,
   count,
   hint,
@@ -165,6 +167,10 @@ function ToggleRow({
   icon: LucideIcon
   /** Hex for the disaster rows, whose colour is the map's colour. */
   swatch?: string
+  /** Hex for the rows whose mark on the map is a coloured *shape* rather than
+   *  a filled chip — the aircraft layers. The icon is drawn in the colour the
+   *  map draws, so the row is the legend rather than merely a switch. */
+  tint?: string
   label: string
   count?: number
   hint?: string
@@ -190,6 +196,13 @@ function ToggleRow({
         >
           <Icon className="h-2.5 w-2.5 text-neutral-950" strokeWidth={2.5} aria-hidden />
         </span>
+      ) : tint ? (
+        <Icon
+          className="h-3.5 w-3.5 shrink-0 transition-opacity"
+          style={{ color: tint, opacity: disabled ? 0.25 : on ? 1 : 0.4 }}
+          strokeWidth={2}
+          aria-hidden
+        />
       ) : (
         <Icon
           className={cn(
@@ -307,6 +320,9 @@ export function FilterRail({
   const toggleVessel = usePresenceStore((st) => st.toggleVessel)
   const setAllVessels = usePresenceStore((st) => st.setAllVessels)
   const vesselSources = usePresenceStore((st) => st.vesselSources)
+  const watchlistOn = usePresenceStore((st) => st.watchlist)
+  const toggleWatchlist = usePresenceStore((st) => st.toggleWatchlist)
+  const watchState = usePresenceStore((st) => st.watchState)
   const presenceAtNow = windowIsNow(windowEndOffsetMs)
   const anyVesselOn = VESSEL_CATEGORIES.some((c) => vesselsOn[c.key])
 
@@ -583,13 +599,56 @@ export function FilterRail({
               ))}
               <ToggleRow
                 icon={Plane}
+                tint={AIRCRAFT_COLORS.military}
                 label="Military air"
-                hint={presenceAtNow ? "military and distress squawks" : "live only — scrub to now"}
+                hint={
+                  presenceAtNow
+                    ? "flagged military by the feed · distress squawks"
+                    : "live only — scrub to now"
+                }
                 on={presenceOn && presenceAtNow}
                 disabled={!presenceAtNow}
                 onClick={togglePresence}
               />
+              {/*: The watchlist is its own switch, not a filter on the row
+                  above (#954). The two answer different questions, and a
+                  reader following one airframe wants it on screen whether or
+                  not four hundred others are. */}
+              {/*: The hint carries the explanation, not just the label
+                  (#954). A switch that is on and draws nothing reads as
+                  broken, and it is usually either unconfigured or watching
+                  aircraft that are on the ground — different situations, and
+                  the reader has to be told which. */}
+              <ToggleRow
+                icon={Crosshair}
+                tint={AIRCRAFT_COLORS.watched}
+                label="Watchlist"
+                count={watchlistOn && presenceAtNow ? watchState.drawn : undefined}
+                hint={
+                  !presenceAtNow
+                    ? "live only — scrub to now"
+                    : (watchlistOn &&
+                        watchlistHint(watchState.watching, watchState.drawn)) ||
+                      "airframes on the operator's list"
+                }
+                on={watchlistOn && presenceAtNow}
+                disabled={!presenceAtNow}
+                onClick={toggleWatchlist}
+              />
             </GroupCard>
+            {/*: The third aircraft mark has no switch, because an emergency
+                is not a layer a reader turns off. It still needs naming, or
+                the one red dot on the map is the only mark with no key. */}
+            {presenceOn && presenceAtNow && (
+              <span className="flex items-center gap-1.5 px-1 pt-1 font-mono text-[9px] uppercase tracking-wider text-neutral-600">
+                <span
+                  aria-hidden
+                  className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: AIRCRAFT_COLORS.distress }}
+                />
+                distress squawk
+              </span>
+            )}
             {/* A gap in the archive is normal — whole days are absent from a
              *  record that otherwise reaches back years. A blank backdrop with
              *  no explanation reads as a broken map, so it is named. */}
