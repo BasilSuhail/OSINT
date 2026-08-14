@@ -25,6 +25,11 @@ interface PresenceState {
    *  the data rather than be typed twice. */
   vesselSources: string[]
   setVesselSources: (sources: string[]) => void
+  /** How many vessels the last refresh carried, per category. Printed beside
+   *  each rail row, so a layer drawing few marks is visibly a quiet sea rather
+   *  than a broken layer. */
+  vesselCounts: Record<VesselCategory, number>
+  setVesselCounts: (counts: Record<VesselCategory, number>) => void
   /** Watched airframes (#954). Its own switch because the two answer different
    *  questions — what is in the air over there, and where is *that* aircraft —
    *  and a reader following one airframe should not have to wade through four
@@ -42,22 +47,30 @@ interface PresenceState {
   }) => void
 }
 
-//: Off by default, unlike the air layer. Nine hundred hulls in one sea area
-//: would be the loudest thing on a world map, and a reader who has not asked
-//: for shipping should not have to turn it off before they can see anything
-//: else. The rail names it, so it is findable rather than hidden.
-const VESSELS_OFF = Object.fromEntries(
-  VESSEL_CATEGORIES.map((c) => [c.key, false]),
+//: On, like every other layer. This shipped switched off, on the reasoning
+//: that a thousand hulls in one sea area would be the loudest thing on a world
+//: map — which was true and beside the point. A layer nobody switches on is a
+//: layer nobody knows exists: it looked broken rather than quiet, and the
+//: first question asked of it was where the ships had gone. Seven rows are
+//: right there to turn off, which is the reader's decision to make after they
+//: have seen what there is.
+const VESSELS_ON = Object.fromEntries(
+  VESSEL_CATEGORIES.map((c) => [c.key, true]),
 ) as Record<VesselCategory, boolean>
 
 export const usePresenceStore = create<PresenceState>((set) => ({
   aircraft: true,
   toggleAircraft: () => set((s) => ({ aircraft: !s.aircraft })),
-  vessels: VESSELS_OFF,
+  vessels: VESSELS_ON,
   toggleVessel: (key) =>
     set((s) => ({ vessels: { ...s.vessels, [key]: !s.vessels[key] } })),
   vesselSources: [],
   setVesselSources: (sources) => set(() => ({ vesselSources: sources })),
+  vesselCounts: Object.fromEntries(VESSEL_CATEGORIES.map((c) => [c.key, 0])) as Record<
+    VesselCategory,
+    number
+  >,
+  setVesselCounts: (counts) => set(() => ({ vesselCounts: counts })),
   setAllVessels: (on) =>
     set(() => ({
       vessels: Object.fromEntries(VESSEL_CATEGORIES.map((c) => [c.key, on])) as Record<

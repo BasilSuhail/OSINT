@@ -58,7 +58,11 @@ import { useImageryStore } from "@/stores/imageryStore"
 import { usePanelLayoutStore } from "@/stores/panelLayout"
 import { usePresenceStore } from "@/stores/presenceStore"
 import { AIRCRAFT_COLORS, watchlistHint, windowIsNow } from "@/lib/presence"
-import { VESSEL_CATEGORIES, vesselAttribution, type VesselCategory } from "@/lib/vessels"
+import {
+  VESSEL_CATEGORIES,
+  vesselAttribution,
+  type VesselCategory,
+} from "@/lib/vessels"
 import { Slider } from "@/components/ui/slider"
 
 /** Per-source mark. Monochrome on purpose: eleven saturated chips competing
@@ -320,6 +324,7 @@ export function FilterRail({
   const toggleVessel = usePresenceStore((st) => st.toggleVessel)
   const setAllVessels = usePresenceStore((st) => st.setAllVessels)
   const vesselSources = usePresenceStore((st) => st.vesselSources)
+  const vesselCounts = usePresenceStore((st) => st.vesselCounts)
   const watchlistOn = usePresenceStore((st) => st.watchlist)
   const toggleWatchlist = usePresenceStore((st) => st.toggleWatchlist)
   const watchState = usePresenceStore((st) => st.watchState)
@@ -693,6 +698,7 @@ export function FilterRail({
                   key={c.key}
                   icon={VESSEL_ICONS[c.key]}
                   label={c.label}
+                  count={presenceAtNow && vesselsOn[c.key] ? vesselCounts[c.key] : undefined}
                   hint={presenceAtNow ? c.hint : "live only — scrub to now"}
                   on={vesselsOn[c.key] && presenceAtNow}
                   disabled={!presenceAtNow}

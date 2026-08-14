@@ -139,3 +139,4 @@ describe("crediting whoever answered", () => {
     expect(vesselAttribution(["  "])).toBeNull()
   })
 })
+
