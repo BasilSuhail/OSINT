@@ -25,6 +25,17 @@ interface PresenceState {
    *  the data rather than be typed twice. */
   vesselSources: string[]
   setVesselSources: (sources: string[]) => void
+  /** Watched airframes (#954). Its own switch because the two answer different
+   *  questions — what is in the air over there, and where is *that* aircraft —
+   *  and a reader following one airframe should not have to wade through four
+   *  hundred marks to keep sight of it. */
+  watchlist: boolean
+  toggleWatchlist: () => void
+  /** What the last refresh knew about the watchlist: how many airframes are
+   *  listed, and how many of them are on the map. Held here because the map
+   *  does the asking and the rail does the explaining. */
+  watchState: { watching: number; drawn: number }
+  setWatchState: (state: { watching: number; drawn: number }) => void
 }
 
 //: Off by default, unlike the air layer. Nine hundred hulls in one sea area
@@ -50,4 +61,8 @@ export const usePresenceStore = create<PresenceState>((set) => ({
         boolean
       >,
     })),
+  watchlist: true,
+  toggleWatchlist: () => set((s) => ({ watchlist: !s.watchlist })),
+  watchState: { watching: 0, drawn: 0 },
+  setWatchState: (state) => set(() => ({ watchState: state })),
 }))

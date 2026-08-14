@@ -70,6 +70,15 @@ data-size:  ## Show disk used by each data subfolder
 data-prune:  ## Run retention housekeeping now
 	.venv/bin/python scripts/prune_now.py
 
+watchlist:  ## Start watching aircraft: copy the example list to data/watchlist.json
+	@if [ -f data/watchlist.json ]; then \
+		echo "data/watchlist.json already exists — leaving it alone"; \
+	else \
+		mkdir -p data && cp app/presence/watchlist.example.json data/watchlist.json && \
+		echo "wrote data/watchlist.json — edit it, then restart the backend"; \
+	fi
+	@echo "the layer reads it on every refresh; it is git-ignored and never committed"
+
 labels:  ## Compute P1-P3 ground-truth labels from ACLED aggregates (idempotent)
 	.venv/bin/python -m app.labels.run
 

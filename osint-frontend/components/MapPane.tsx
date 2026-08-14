@@ -39,6 +39,7 @@ import { usePlaceStore } from "@/stores/placeStore"
 import { useImageryStore } from "@/stores/imageryStore"
 import { usePresenceStore } from "@/stores/presenceStore"
 import {
+  AIRCRAFT_COLORS,
   PRESENCE_POLL_MS,
   shouldPoll,
   type PresenceAircraft,
@@ -920,6 +921,12 @@ export function MapPane({
   //: Nothing here enters the event counts, the filters, the clustering or the
   //: situation list, because none of it is a claim that anything happened.
   const presenceOn = usePresenceStore((st) => st.aircraft)
+  //: The watchlist is a second switch over the same request (#954). One poll
+  //: answers both — the aircraft come back in one payload either way — so
+  //: turning routine traffic off and keeping the watchlist on costs nothing
+  //: extra and takes four hundred marks off the map.
+  const watchlistOn = usePresenceStore((st) => st.watchlist)
+  const setWatchState = usePresenceStore((st) => st.setWatchState)
   const [presenceAircraft, setPresenceAircraft] = useState<PresenceAircraft[]>([])
   //: When the poll last heard anything, carried into the card so an open card
   //: can go visibly stale instead of quietly.
@@ -938,12 +945,28 @@ export function MapPane({
   //: Off, scrubbed into the past, or in a background tab — all three mean stop
   //: asking. The last one matters because this is a free community service and
   //: a tab nobody is looking at should not be spending its bandwidth.
-  const presencePolling = shouldPoll(presenceOn, windowEndOffsetMs, presenceVisible)
+  const presencePolling = shouldPoll(
+    presenceOn || watchlistOn,
+    windowEndOffsetMs,
+    presenceVisible,
+  )
+
+  //: What is actually drawn. A watched aircraft is drawn whenever the
+  //: watchlist is on, whether or not it is also military — it is on the list
+  //: because someone wants to see it, and the other switch is about traffic.
+  const drawnAircraft = useMemo(
+    () =>
+      presenceAircraft.filter((a) =>
+        a.watch != null || a.kind === "watched" ? watchlistOn : presenceOn,
+      ),
+    [presenceAircraft, presenceOn, watchlistOn],
+  )
 
   useEffect(() => {
     if (!presencePolling) {
       setPresenceAircraft([])
       setPresenceFetchedAt(null)
+      setWatchState({ watching: 0, drawn: 0 })
       //: The layer going away takes its card with it. A card describing a
       //: position that is no longer drawn is the one thing this layer must
       //: never leave behind.
@@ -958,6 +981,12 @@ export function MapPane({
         if (!cancelled) {
           setPresenceAircraft(answer.aircraft)
           setPresenceFetchedAt(answer.fetched_at)
+          //: What the rail needs to explain an empty layer: how many airframes
+          //: are listed, and how many of those are in the air.
+          setWatchState({
+            watching: answer.watching ?? 0,
+            drawn: answer.aircraft.filter((a) => a.watch != null).length,
+          })
         }
       } catch {
         //: A refused fetch draws nothing rather than leaving the last known
@@ -965,6 +994,7 @@ export function MapPane({
         if (!cancelled) {
           setPresenceAircraft([])
           setPresenceFetchedAt(null)
+          setWatchState({ watching: 0, drawn: 0 })
         }
       }
     }
@@ -975,7 +1005,7 @@ export function MapPane({
       controller.abort()
       clearInterval(timer)
     }
-  }, [presencePolling, closeAircraft])
+  }, [presencePolling, closeAircraft, setWatchState])
 
   //: Vessels (#954). The same live-only rule as the air layer, and the same
   //: reasons: nothing is stored, so there is no past to draw, and a tab nobody
@@ -1593,7 +1623,7 @@ export function MapPane({
             cannot question is worse than no mark, so clicking one says what it
             is and who said so. The 16px glyph sits in a 28px target: the arrow
             is small on purpose and a cursor cannot be asked to hit it. */}
-        {presenceAircraft.map((a) => (
+        {drawnAircraft.map((a) => (
           <Marker
             key={a.hex ?? `${a.lat},${a.lon}`}
             longitude={a.lon}
@@ -1605,20 +1635,42 @@ export function MapPane({
             }}
           >
             <div
-              title={[a.callsign, a.type, a.alt_ft ? `${Math.round(a.alt_ft)} ft` : null]
+              title={[a.watch?.label, a.callsign, a.type, a.alt_ft ? `${Math.round(a.alt_ft)} ft` : null]
                 .filter(Boolean)
                 .join(" · ")}
-              className="pointer-events-auto grid h-7 w-7 cursor-pointer place-items-center"
+              className="pointer-events-auto relative grid h-7 w-7 cursor-pointer place-items-center"
             >
+              {/*: A watched airframe wears a ring and its callsign (#954). Amber
+                  rather than red: this is the aircraft someone came to find, not
+                  an emergency, and the map already spends red on those. The
+                  label is what makes it findable while it is still a speck. */}
+              {a.watch != null && (
+                <>
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 rounded-full border shadow-[0_0_6px_rgba(252,211,77,0.45)]"
+                    style={{ borderColor: `${AIRCRAFT_COLORS.watched}b3` }}
+                  />
+                  <span
+                    className="pointer-events-none absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap rounded bg-neutral-950/70 px-1 font-mono text-[9px] leading-tight"
+                    style={{ color: AIRCRAFT_COLORS.watched }}
+                  >
+                    {a.callsign?.trim() || a.registration?.trim() || a.watch.label}
+                  </span>
+                </>
+              )}
               {/*: The airframe gets its own shape (#952): a rotor for a
                   rotorcraft, a wing for everything else that sent a type
                   designator, and a plain delta for one that sent none. The
                   distress mark stays a dot, because that mark is about the
-                  emergency and not about what is flying. */}
+                  emergency and not about what is flying. A watched airframe
+                  keeps its own shape too \u2014 the ring says it is watched, and
+                  what it is stays readable underneath. */}
               {a.kind === "distress" ? (
                 <span
                   aria-hidden
-                  className="block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-red-400/50"
+                  className="block h-2.5 w-2.5 rounded-full ring-2 ring-red-400/50"
+                  style={{ backgroundColor: AIRCRAFT_COLORS.distress }}
                 />
               ) : (
                 <AircraftGlyph
@@ -1626,7 +1678,10 @@ export function MapPane({
                   track={a.track}
                   //: 14px in a 28px target. The mark is meant to be read as
                   //: one of a hundred on a continent, not as an illustration.
-                  className="block h-3.5 w-3.5 text-sky-300/80"
+                  className="block h-3.5 w-3.5"
+                  //: The one colour the rail also prints. A watched airframe
+                  //: is louder than the traffic and quieter than an emergency.
+                  color={a.watch != null ? AIRCRAFT_COLORS.watched : AIRCRAFT_COLORS.military}
                 />
               )}
             </div>
