@@ -33,7 +33,7 @@ map with the provenance attached. It runs on one machine. Nothing leaves it.
 
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
-cp env.example .env       # then set POSTGRES_PASSWORD — compose will not start without it
+make env                  # makes your settings file (.env) — then set POSTGRES_PASSWORD in it
 make up                   # postgres · redis · migrations · api · workers · console · ollama if present
 make down                 # stop everything, keep all data
 ```
@@ -49,6 +49,18 @@ stay dormant.
 its template. `POSTGRES_PASSWORD` is the one required value — everything else
 has a working default. Optional source keys, the API token, and moving the data
 directory are all in [§5](HANDBOOK.md#5-configure-it-safely).
+
+Two commands look after that file, and you can run either as often as you like:
+
+| Command | What it does |
+|---|---|
+| `make env` | Makes `.env` if you have not got one. If you have, it adds the settings you are missing and leaves everything you already filled in exactly as it is. |
+| `make env-check` | Tells you what is missing, what still needs a value, and what you have spelled wrong. It never prints a value, so it is safe to run while someone is watching your screen. |
+
+Run `make env` again after every `git pull`. New settings get added to the
+template over time, and this is how they reach your file — otherwise the
+feature they switch on stays quietly off. `make up` runs the check for you and
+tells you what it found, then starts anyway.
 
 Full prerequisites: [§3](HANDBOOK.md#3-what-you-need-before-starting). The
 walkthrough: [§1](HANDBOOK.md#1-start-here-download-install-run-and-stop).

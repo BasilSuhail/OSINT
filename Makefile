@@ -9,6 +9,12 @@ OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 # Everything else below is either an alias kept for muscle memory or a
 # single-purpose analysis task.
 
+env:  ## Create .env from env.example, or add the keys it is missing
+	@python3 scripts/env_setup.py sync
+
+env-check:  ## Say what .env is missing, empty or has typed wrong
+	@python3 scripts/env_setup.py check
+
 up:  ## Start everything: Docker stores, backend, frontend, Ollama
 	@bash scripts/dev-up.sh
 

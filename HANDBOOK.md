@@ -117,7 +117,7 @@ corepack enable && corepack prepare pnpm@latest --activate
 On the repository page, choose **Code**, copy the HTTPS address, replace `<repository-url>` below with that address, and run the whole line once:
 
 ```bash
-git clone <repository-url> OSINT && cd OSINT && cp -n env.example .env && (cd osint-frontend && pnpm install)
+git clone <repository-url> OSINT && cd OSINT && make env && (cd osint-frontend && pnpm install)
 ```
 
 Every segment is joined with `&&`, so the next segment runs only if the previous one succeeds:
@@ -126,7 +126,7 @@ Every segment is joined with `&&`, so the next segment runs only if the previous
 | --- | --- |
 | `git clone <repository-url> OSINT` | Downloads a fresh copy into a folder named `OSINT`. |
 | `cd OSINT` | Enters the repository root. Every later command runs here. |
-| `cp -n env.example .env` | Creates the private local settings file without overwriting one that already exists. |
+| `make env` | Creates your private settings file, `.env`. If one already exists it is left alone, apart from adding any settings it is missing. |
 | `(cd osint-frontend && pnpm install)` | Installs browser packages in the frontend folder, then automatically returns to the repository root. |
 
 If the code already exists, do not clone it again. Open a terminal in the existing repository root and continue with §1.5.
@@ -142,6 +142,37 @@ POSTGRES_PASSWORD=
 Put a long, unique local password after the equals sign, save the file, and close the editor. Do not add spaces around `=`. Do not share, print, screenshot, or commit `.env`.
 
 Optional source keys can stay empty on the first run. Their sources will show an honest `misconfigured` or empty state instead of preventing the core system from starting. Section 5 explains every setting.
+
+## 1.5.1 The two commands that look after that file
+
+`.env` is the only file you edit by hand, and two commands keep it in order. Both are safe to run as many times as you like.
+
+```bash
+make env          # make the file, or add the settings it is missing
+make env-check    # say what is missing, empty, or spelled wrong
+```
+
+**`make env`** does one of two things:
+
+- **No `.env` yet** — it writes one from the template, with every setting and the notes that explain them.
+- **You already have one** — it adds only the settings your file does not have, and **never changes a value you have already filled in**. Your password stays your password.
+
+**`make env-check`** reads your file and tells you four things:
+
+| It says | What it means | What to do |
+| --- | --- | --- |
+| *missing from .env* | The template has a setting your file does not | Run `make env` |
+| *the container stack needs* | Something required is still blank | Open `.env` and fill it in |
+| *still holds a placeholder* | A value like `changeme` was never replaced | Open `.env` and put a real value in |
+| *not in env.example* | A setting name your file has and the template does not | Usually a spelling mistake — fix the name |
+
+That last one is the one worth understanding. Every setting has a working default, so a name spelled wrong does not cause an error — the system starts perfectly happily and quietly ignores the line you wrote. `PRESENCE_WATCHLST_PATH` will never do anything and will never complain. `make env-check` is how you see it.
+
+Neither command ever prints a value from your file, only the names of settings. It is safe to run one while somebody is looking at your screen, or while you are recording it.
+
+**Run `make env` again after every `git pull`.** New settings get added to the template as the project grows. That is how they reach your file. Skip it, and the feature a new setting switches on simply stays off, with nothing to tell you why.
+
+`make up` runs the check for you before it starts anything. If something is wrong it says so and then starts anyway — a warning about a setting you do not use is not a reason to refuse to run.
 
 ## 1.6 Start the complete system
 
@@ -890,10 +921,18 @@ OSINT/
 ## 5.1 Create the local settings file
 
 ```bash
-cp env.example .env
+make env
 ```
 
-Open `.env` in a text editor. Never commit it, paste it into a chat, or include it in screenshots. The repository ignores it by design.
+That writes `.env` if you have not got one, and if you have, it adds any settings your file is missing without touching a single value you already filled in. Run it again whenever you pull new code — that is how settings added later reach your file.
+
+```bash
+make env-check
+```
+
+That reads your file and says what is missing, what is still blank and needed, what still says `changeme`, and what you have spelled wrong. It prints setting names only, never values, so it is safe to run in front of someone. §1.5.1 explains each line it can print.
+
+Open `.env` in a text editor to fill things in. Never commit it, paste it into a chat, or include it in screenshots. The repository ignores it by design.
 
 ## 5.2 Minimum working settings
 
