@@ -26,7 +26,7 @@ dependencies = [
     "numpy>=2.2",
     "python-dateutil>=2.9",
     "shapely>=2.0",
-    "feedparser>=6.0",
+    "feedparser>=6.0.12",
     "vadersentiment>=3.3",
     # Orbital propagation for the place screen's next-pass line (#876).
     # One job, no transitive dependencies, runs fine on the small machine.
