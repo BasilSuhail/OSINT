@@ -10,6 +10,21 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 mkdir -p logs
 
+# Settings first (#957). A key missing from .env is a feature silently off and
+# a typed key name loads as nothing, so both are worth a sentence before
+# anything starts. Never fatal: a warning about a key nobody uses must not stop
+# a console from running, and this script has to work on a box where python3 is
+# missing entirely.
+if command -v python3 >/dev/null 2>&1 && [ -f scripts/env_setup.py ]; then
+  if [ ! -f .env ]; then
+    echo "  no .env yet — creating one from env.example"
+    python3 scripts/env_setup.py sync || true
+  else
+    python3 scripts/env_setup.py check || \
+      echo "  (run \`make env\` to add missing keys; starting anyway)"
+  fi
+fi
+
 DOCKER_WAIT_SECONDS="${DOCKER_WAIT_SECONDS:-30}"
 DOCKER_WAIT_STEP="${DOCKER_WAIT_STEP:-2}"
 API_WAIT_SECONDS="${API_WAIT_SECONDS:-20}"
