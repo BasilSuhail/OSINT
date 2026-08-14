@@ -143,7 +143,25 @@ Put a long, unique local password after the equals sign, save the file, and clos
 
 Optional source keys can stay empty on the first run. Their sources will show an honest `misconfigured` or empty state instead of preventing the core system from starting. Section 5 explains every setting.
 
-## 1.5.1 The two commands that look after that file
+## 1.5.1 Aircraft the console follows
+
+Nothing to set up. The live air layer already pulls two kinds of aircraft out of ordinary traffic and draws them in amber: **tankers** and **surveillance aircraft**. Both are worked out from the aircraft type the feed already broadcasts, so they work anywhere in the world, on the first run, with no file and no key.
+
+Tick **Watchlist** in the filter panel to see them. The row says *"tankers and surveillance — the default list"* so you always know the choice was the console's and not yours.
+
+To follow something else instead, put a file at `data/watchlist.json`. Each entry needs a `"label"` — a few words saying what the aircraft is for, which is what the map shows — and one thing to match on:
+
+| Write this | And it follows |
+| --- | --- |
+| `"role": "fighter"` | everything doing that job — also `tanker`, `isr`, `transport`, `rotorcraft`, `trainer` |
+| `"callsign_prefix": "RCH"` | every flight whose callsign starts that way |
+| `"type": "H47"` | every aircraft of that model |
+| `"hex": "ae0451"` | one airframe, by the address its transponder sends |
+| `"registration": "N000EX"` | one airframe, by its tail number |
+
+`app/presence/watchlist.example.json` shows the shape. The file is read again on every refresh, so edits appear without restarting anything, and it is git-ignored — it never leaves your machine.
+
+## 1.5.2 The two commands that look after that file
 
 `.env` is the only file you edit by hand, and two commands keep it in order. Both are safe to run as many times as you like.
 
@@ -151,6 +169,8 @@ Optional source keys can stay empty on the first run. Their sources will show an
 make env          # make the file, or add the settings it is missing
 make env-check    # say what is missing, empty, or spelled wrong
 ```
+
+Forgotten what a command is called? `make help` lists every one in the project with a line saying what it does.
 
 **`make env`** does one of two things:
 
@@ -165,6 +185,7 @@ make env-check    # say what is missing, empty, or spelled wrong
 | *the container stack needs* | Something required is still blank | Open `.env` and fill it in |
 | *still holds a placeholder* | A value like `changeme` was never replaced | Open `.env` and put a real value in |
 | *not in env.example* | A setting name your file has and the template does not | Usually a spelling mistake — fix the name |
+| *a path this machine can see but the containers cannot* | You gave a setting a path like `/Users/you/thing.json`. The part of the system that reads it runs inside a container, where that path does not exist | Put the file under `data/` and write the path as `/data/thing.json`, or leave the setting empty |
 
 That last one is the one worth understanding. Every setting has a working default, so a name spelled wrong does not cause an error — the system starts perfectly happily and quietly ignores the line you wrote. `PRESENCE_WATCHLST_PATH` will never do anything and will never complain. `make env-check` is how you see it.
 
@@ -930,7 +951,7 @@ That writes `.env` if you have not got one, and if you have, it adds any setting
 make env-check
 ```
 
-That reads your file and says what is missing, what is still blank and needed, what still says `changeme`, and what you have spelled wrong. It prints setting names only, never values, so it is safe to run in front of someone. §1.5.1 explains each line it can print.
+That reads your file and says what is missing, what is still blank and needed, what still says `changeme`, and what you have spelled wrong. It prints setting names only, never values, so it is safe to run in front of someone. §1.5.2 explains each line it can print.
 
 Open `.env` in a text editor to fill things in. Never commit it, paste it into a chat, or include it in screenshots. The repository ignores it by design.
 

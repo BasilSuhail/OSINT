@@ -104,3 +104,17 @@ describe("whose claim military is", () => {
     expect(militaryLabel()).toBe("flagged military by the feed")
   })
 })
+
+describe("whose list is being followed", () => {
+  //: A reader is owed the difference between "these are the aircraft you asked
+  //: for" and "these are the ones this console follows until told otherwise" —
+  //: said whether or not anything is on screen.
+  it("says so when the built-in list is in force", () => {
+    expect(watchlistHint(2, 0, "default")).toBe("tankers and surveillance — the default list")
+    expect(watchlistHint(2, 6, "default")).toBe("tankers and surveillance — the default list")
+  })
+
+  it("says nothing extra when somebody wrote the list", () => {
+    expect(watchlistHint(3, 2, "ok")).toBeNull()
+  })
+})

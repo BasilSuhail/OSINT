@@ -361,13 +361,14 @@ class TestTheLayer:
         answer = aircraft.live_aircraft(client=_watch_client())
         assert answer["watching"] == 1
 
-    def test_says_nobody_is_being_watched_when_no_list_is_configured(self, monkeypatch):
+    def test_watches_the_built_in_list_when_nobody_configured_one(self, monkeypatch):
         from app.presence import aircraft
 
         monkeypatch.delenv(watchlist.WATCHLIST_PATH_ENV, raising=False)
         aircraft.clear_cache()
         answer = aircraft.live_aircraft(client=_watch_client())
-        assert answer["watching"] == 0
+        assert answer["watching"] == len(watchlist.DEFAULT_WATCH_ENTRIES)
+        assert answer["watchlist_status"] == watchlist.WATCHLIST_DEFAULT
         aircraft.clear_cache()
 
 
@@ -403,17 +404,136 @@ class TestTheConventionalPath:
         target.write_text(json.dumps([{"role": "tanker", "label": "refuelling"}]))
         assert watchlist.watchlist_from_env().size == 1
 
-    def test_no_file_anywhere_is_still_an_empty_watchlist(self, tmp_path, monkeypatch):
+    def test_no_file_anywhere_leaves_the_built_in_list_in_force(self, tmp_path, monkeypatch):
         monkeypatch.delenv(watchlist.WATCHLIST_PATH_ENV, raising=False)
         monkeypatch.chdir(tmp_path)
-        assert not watchlist.watchlist_from_env()
+        assert watchlist.watchlist_from_env().size == len(watchlist.DEFAULT_WATCH_ENTRIES)
 
-    #: A named path is a decision. Falling back after a typo would silently
-    #: watch a different list than the one asked for.
-    def test_a_configured_path_wins_even_when_it_is_wrong(self, tmp_path, monkeypatch):
+    #: A named path that is there wins. One that is not falls through to the
+    #: conventional file rather than leaving the layer blank — a stale line in
+    #: a settings file is the likeliest thing here, and an empty layer reads as
+    #: broken.
+    def test_a_named_path_that_is_not_there_falls_through(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         conventional = tmp_path / watchlist.WATCHLIST_DEFAULT_PATH
         conventional.parent.mkdir(parents=True, exist_ok=True)
         conventional.write_text(json.dumps([{"role": "tanker", "label": "refuelling"}]))
+        monkeypatch.setattr(watchlist, "WATCHLIST_SEARCH_PATHS", (str(conventional),))
         monkeypatch.setenv(watchlist.WATCHLIST_PATH_ENV, str(tmp_path / "typo.json"))
-        assert not watchlist.watchlist_from_env()
+        assert watchlist.watchlist_from_env().size == 1
+
+
+class TestFindingTheFile:
+    """Where the watchlist is looked for, and what is said when it is not there.
+
+    The failure this class exists for: the API normally runs in a container,
+    where the working directory is `/app` and the repository's `data/` is
+    mounted at `/data`. A relative path alone could never find a file the
+    operator had just written, and a host path in the environment is invisible
+    from inside — both failed silently and reported the same "none watched" as
+    a console nobody had configured (#959).
+    """
+
+    def test_finds_the_file_where_the_container_mounts_it(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(watchlist.WATCHLIST_PATH_ENV, raising=False)
+        mounted = tmp_path / "data" / "watchlist.json"
+        mounted.parent.mkdir(parents=True)
+        mounted.write_text(json.dumps([{"role": "tanker", "label": "refuelling"}]))
+        monkeypatch.setattr(watchlist, "WATCHLIST_SEARCH_PATHS", (str(mounted),))
+        found, status = watchlist.resolve_watchlist()
+        assert found.size == 1
+        assert status == watchlist.WATCHLIST_OK
+
+    def test_falls_through_to_the_next_place_when_the_first_is_absent(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(watchlist.WATCHLIST_PATH_ENV, raising=False)
+        second = tmp_path / "watchlist.json"
+        second.write_text(json.dumps([{"role": "isr", "label": "watching"}]))
+        monkeypatch.setattr(
+            watchlist, "WATCHLIST_SEARCH_PATHS", ("/nowhere/watchlist.json", str(second))
+        )
+        found, status = watchlist.resolve_watchlist()
+        assert found.size == 1
+        assert status == watchlist.WATCHLIST_OK
+
+    #: Nobody configured anything and no file is lying about. Not a fault: the
+    #: built-in list takes over and the console says so.
+    def test_no_file_anywhere_falls_to_the_built_in_list(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(watchlist.WATCHLIST_PATH_ENV, raising=False)
+        monkeypatch.setattr(watchlist, "WATCHLIST_SEARCH_PATHS", ("/nowhere/watchlist.json",))
+        found, status = watchlist.resolve_watchlist()
+        assert found.size == len(watchlist.DEFAULT_WATCH_ENTRIES)
+        assert status == watchlist.WATCHLIST_DEFAULT
+
+    #: A stale line in a settings file must not leave the layer drawing
+    #: nothing, which is indistinguishable from broken.
+    def test_a_configured_path_that_is_not_there_does_not_stop_the_layer(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(watchlist, "WATCHLIST_SEARCH_PATHS", ("/nowhere/watchlist.json",))
+        monkeypatch.setenv(watchlist.WATCHLIST_PATH_ENV, str(tmp_path / "absent.json"))
+        found, status = watchlist.resolve_watchlist()
+        assert found.size == len(watchlist.DEFAULT_WATCH_ENTRIES)
+        assert status == watchlist.WATCHLIST_DEFAULT
+
+    #: A named path still wins when it is readable.
+    def test_a_configured_path_is_used_when_it_is_there(self, tmp_path, monkeypatch):
+        conventional = tmp_path / "watchlist.json"
+        conventional.write_text(json.dumps([{"role": "tanker", "label": "refuelling"}]))
+        named = tmp_path / "named.json"
+        named.write_text(json.dumps([{"role": "fighter", "label": "mine"}]))
+        monkeypatch.setattr(watchlist, "WATCHLIST_SEARCH_PATHS", (str(conventional),))
+        monkeypatch.setenv(watchlist.WATCHLIST_PATH_ENV, str(named))
+        found, status = watchlist.resolve_watchlist()
+        assert [r.value for r in found.rules] == ["FIGHTER"]
+        assert status == watchlist.WATCHLIST_OK
+
+
+class TestTheBuiltInList:
+    """The layer watches something before anybody configures anything (#959).
+
+    A feature that needs a setup command before it does anything is off by
+    default in the worst way: switched on in the rail, drawing nothing, with
+    no way to tell that from broken.
+    """
+
+    def test_watches_something_with_nothing_configured(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(watchlist.WATCHLIST_PATH_ENV, raising=False)
+        monkeypatch.setattr(watchlist, "WATCHLIST_SEARCH_PATHS", ("/nowhere/watchlist.json",))
+        found, status = watchlist.resolve_watchlist()
+        assert found.size == 2
+        assert status == watchlist.WATCHLIST_DEFAULT
+
+    #: Rules only. A shipped list of identifiers would be a curated claim about
+    #: particular aircraft, maintained by nobody and stale by the next sortie.
+    def test_the_built_in_list_names_no_airframe(self):
+        listed = watchlist.load_watchlist_from_entries(list(watchlist.DEFAULT_WATCH_ENTRIES))
+        assert listed.exact == {}
+        assert {rule.field for rule in listed.rules} == {"role"}
+
+    def test_the_built_in_list_carries_no_name_of_a_person(self):
+        for entry in watchlist.DEFAULT_WATCH_ENTRIES:
+            assert entry["label"]
+            assert entry["category"] in {"state", "vip", "other"}
+
+    #: Somebody's own list replaces it entirely — nobody has to accept this
+    #: console's idea of what is interesting.
+    def test_a_file_replaces_the_built_in_list(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(watchlist.WATCHLIST_PATH_ENV, raising=False)
+        path = tmp_path / "watchlist.json"
+        path.write_text(json.dumps([{"role": "fighter", "label": "mine"}]))
+        monkeypatch.setattr(watchlist, "WATCHLIST_SEARCH_PATHS", (str(path),))
+        found, status = watchlist.resolve_watchlist()
+        assert found.size == 1
+        assert status == watchlist.WATCHLIST_OK
+        assert [r.value for r in found.rules] == ["FIGHTER"]
+
+    #: A file somebody wrote and got wrong leaves the built-in list in force
+    #: rather than an empty layer, and the console says which is showing.
+    def test_a_broken_file_leaves_the_built_in_list_in_force(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(watchlist.WATCHLIST_PATH_ENV, raising=False)
+        path = tmp_path / "watchlist.json"
+        path.write_text("{[}")
+        monkeypatch.setattr(watchlist, "WATCHLIST_SEARCH_PATHS", (str(path),))
+        found, status = watchlist.resolve_watchlist()
+        assert found.size == len(watchlist.DEFAULT_WATCH_ENTRIES)
+        assert status == watchlist.WATCHLIST_DEFAULT

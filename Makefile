@@ -3,7 +3,19 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: help env env-check severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+
+#: Bare `make` starts the app, which is what it has always done. Stated rather
+#: than inherited from whichever target happens to be written first — adding a
+#: command at the top of this file should not change what `make` on its own
+#: means.
+.DEFAULT_GOAL := up
+
+help:  ## List every command in this file, with what it does
+	@grep -hE '^[a-z][a-z0-9_-]*:.*##' $(MAKEFILE_LIST) \
+		| sed -e 's/:.*##/\t/' \
+		| sort \
+		| awk -F'\t' '{printf "  %-16s %s\n", $$1, $$2}'
 
 # ── The three commands ──────────────────────────────────────────────────────
 # Everything else below is either an alias kept for muscle memory or a
@@ -13,7 +25,8 @@ env:  ## Create .env from env.example, or add the keys it is missing
 	@python3 scripts/env_setup.py sync
 
 env-check:  ## Say what .env is missing, empty or has typed wrong
-	@python3 scripts/env_setup.py check
+	@python3 scripts/env_setup.py check || \
+		echo "  (that is the report, not a crash — nothing above stops \`make up\`)"
 
 up:  ## Start everything: Docker stores, backend, frontend, Ollama
 	@bash scripts/dev-up.sh
@@ -69,15 +82,6 @@ data-size:  ## Show disk used by each data subfolder
 
 data-prune:  ## Run retention housekeeping now
 	.venv/bin/python scripts/prune_now.py
-
-watchlist:  ## Start watching aircraft: copy the example list to data/watchlist.json
-	@if [ -f data/watchlist.json ]; then \
-		echo "data/watchlist.json already exists — leaving it alone"; \
-	else \
-		mkdir -p data && cp app/presence/watchlist.example.json data/watchlist.json && \
-		echo "wrote data/watchlist.json — edit it, then restart the backend"; \
-	fi
-	@echo "the layer reads it on every refresh; it is git-ignored and never committed"
 
 labels:  ## Compute P1-P3 ground-truth labels from ACLED aggregates (idempotent)
 	.venv/bin/python -m app.labels.run

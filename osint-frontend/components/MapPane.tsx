@@ -966,7 +966,7 @@ export function MapPane({
     if (!presencePolling) {
       setPresenceAircraft([])
       setPresenceFetchedAt(null)
-      setWatchState({ watching: 0, drawn: 0 })
+      setWatchState({ watching: 0, drawn: 0, status: "ok" })
       //: The layer going away takes its card with it. A card describing a
       //: position that is no longer drawn is the one thing this layer must
       //: never leave behind.
@@ -986,6 +986,7 @@ export function MapPane({
           setWatchState({
             watching: answer.watching ?? 0,
             drawn: answer.aircraft.filter((a) => a.watch != null).length,
+            status: answer.watchlist_status ?? "ok",
           })
         }
       } catch {
@@ -994,7 +995,7 @@ export function MapPane({
         if (!cancelled) {
           setPresenceAircraft([])
           setPresenceFetchedAt(null)
-          setWatchState({ watching: 0, drawn: 0 })
+          setWatchState({ watching: 0, drawn: 0, status: "ok" })
         }
       }
     }

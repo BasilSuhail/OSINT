@@ -45,10 +45,25 @@ _ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 #: and the only definition of "required" this script is willing to make.
 _COMPOSE_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)")
 
+#: `KEY: /some/literal` inside a compose file. The container is *given* this
+#: value, so whatever `.env` says for that key never reaches the process and
+#: cannot be wrong. Lines whose value interpolates something are not literals
+#: and are matched by the pattern above instead.
+_COMPOSE_LITERAL = re.compile(r"^\s{2,}([A-Z_][A-Z0-9_]*):\s*(?!\$\{)(\S[^\n]*)$", re.M)
+
 #: Keys this project's own scripts write into `.env` at runtime. They are not
 #: in the example because nobody sets them by hand, and reporting them as
 #: unknown would train an operator to ignore the one report that catches typos.
 _RUNTIME_KEYS = frozenset({"COMPOSE_PROJECT_NAME"})
+
+#: Keys whose value is a path. Checked for the one mistake that is invisible
+#: from here: a path from this machine given to something that reads it from
+#: inside a container (#959).
+_PATH_SUFFIXES = ("_PATH", "_DIR")
+
+#: Where a containerised process can actually read. `/data` is the repository's
+#: data directory as mounted inside the containers; `/app` is the code.
+_CONTAINER_ROOTS = ("/data", "/app")
 
 #: Values that are obviously somebody's intention to come back later.
 _PLACEHOLDERS = frozenset({"changeme", "change-me", "your-key-here", "xxx", "todo", "tbd"})
@@ -147,6 +162,19 @@ def required_keys(compose_texts: list[str]) -> set[str]:
     return found
 
 
+def overridden_keys(compose_texts: list[str]) -> set[str]:
+    """Keys the compose files hand the containers directly.
+
+    `.env` may say anything about these; the process never sees it. Checking
+    such a value would be reporting a mistake that cannot have an effect, and a
+    report that cries wolf is one an operator learns to skip.
+    """
+    found: set[str] = set()
+    for text in compose_texts:
+        found.update(match.group(1) for match in _COMPOSE_LITERAL.finditer(text))
+    return found
+
+
 def is_placeholder(value: str) -> bool:
     stripped = value.strip().strip("\"'")
     return stripped.lower() in _PLACEHOLDERS
@@ -191,6 +219,38 @@ def sync(example_text: str, env_text: str | None) -> tuple[str, SyncReport]:
     return "".join(parts), SyncReport(added=[b.key for b in missing])
 
 
+def set_value(env_text: str, key: str, value: str) -> tuple[str, bool]:
+    """`.env` with one key set, and whether that changed anything.
+
+    The one exception to "never touch a value". `sync` is a general tool and
+    has no business overwriting an answer somebody gave; this is called by the
+    command that owns a particular setting, to point it at the file that
+    command has just written. It replaces every line for that key, because a
+    key written twice is read as the last one and leaving an earlier line
+    behind would be leaving a lie behind.
+    """
+    line = f"{key}={value}"
+    kept: list[str] = []
+    replaced = False
+    changed = False
+    for raw in env_text.splitlines():
+        match = _ASSIGNMENT.match(raw.strip())
+        if match is not None and match.group(1) == key:
+            if replaced:
+                changed = True
+                continue
+            replaced = True
+            if raw.strip() != line:
+                changed = True
+            kept.append(line)
+            continue
+        kept.append(raw)
+    if not replaced:
+        kept.append(line)
+        changed = True
+    return "\n".join(kept) + "\n", changed
+
+
 @dataclass
 class CheckReport:
     """What is wrong with a `.env`, named by key and never by value."""
@@ -202,6 +262,10 @@ class CheckReport:
     #: Keys `env.example` itself defines twice. Not the operator's problem to
     #: fix, but theirs to suffer: the second line wins and the first is a lie.
     duplicated: list[str] = field(default_factory=list)
+    #: Paths written as this machine sees them, for settings something reads
+    #: from inside a container. The file is right there in the terminal and
+    #: simply does not exist where it is needed (#959).
+    host_paths: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -211,10 +275,34 @@ class CheckReport:
             or self.placeholders
             or self.unknown
             or self.duplicated
+            or self.host_paths
         )
 
 
-def check(example_text: str, env_text: str | None, required: set[str]) -> CheckReport:
+def looks_like_a_host_path(key: str, value: str, host_side: set[str]) -> bool:
+    """Whether this setting names a path the container will not find.
+
+    ``host_side`` is every key the compose files either interpolate or set
+    outright. The first sort is read out here, where an absolute path from this
+    machine is exactly right; the second never reaches the process at all, so
+    whatever is written in `.env` cannot be wrong. What is left is read by the
+    application, which normally runs in a container — and in there
+    `/Users/somebody/file.json` is not a file, it is nothing at all.
+    """
+    if not key.endswith(_PATH_SUFFIXES) or key in host_side:
+        return False
+    path = value.strip().strip("\"'")
+    if not path.startswith("/"):
+        return False
+    return not path.startswith(_CONTAINER_ROOTS)
+
+
+def check(
+    example_text: str,
+    env_text: str | None,
+    required: set[str],
+    overridden: set[str] | None = None,
+) -> CheckReport:
     """Everything worth saying about a `.env`, in one pass.
 
     ``unknown`` is the one that catches a typo: a key in `.env` that the
@@ -241,6 +329,8 @@ def check(example_text: str, env_text: str | None, required: set[str]) -> CheckR
             report.required_empty.append(key)
         elif is_placeholder(value):
             report.placeholders.append(key)
+        elif looks_like_a_host_path(key, value, required | (overridden or set())):
+            report.host_paths.append(key)
     return report
 
 
@@ -252,6 +342,13 @@ def _read(path: pathlib.Path) -> str | None:
 
 
 def _print_check(report: CheckReport) -> None:
+    """The findings, in the order somebody would act on them.
+
+    Every one of these is a note rather than a fault. The app starts with any
+    of them outstanding, and the exit code is for a script that wants to know,
+    not a verdict on the console — the `make` target says so in as many words,
+    because a non-zero exit reads as a crash to somebody who did not write it.
+    """
     if report.ok:
         print("  .env looks complete")
         return
@@ -276,11 +373,19 @@ def _print_check(report: CheckReport) -> None:
         print(f"  {len(report.duplicated)} key(s) are defined twice in env.example:")
         for key in report.duplicated:
             print(f"    {key}")
+    if report.host_paths:
+        print(f"  {len(report.host_paths)} key(s) name a path this machine can see but the")
+        print("  containers cannot — they read it from inside, where that path does not exist:")
+        for key in report.host_paths:
+            print(f"    {key}")
+        print("  put the file under data/ and name it /data/<file>, or leave the key empty")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("sync", "check"))
+    parser.add_argument("action", choices=("sync", "check", "set"))
+    parser.add_argument("key", nargs="?", help="for `set`: the setting to point somewhere")
+    parser.add_argument("value", nargs="?", help="for `set`: what to point it at")
     parser.add_argument("--root", default=".", help="project root holding env.example")
     args = parser.parse_args(argv)
 
@@ -293,6 +398,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  no {example_path} to work from", file=sys.stderr)
         return 1
     env_text = _read(env_path)
+
+    if args.action == "set":
+        if not args.key or args.value is None:
+            print("  set needs a key and a value", file=sys.stderr)
+            return 1
+        rendered, changed = set_value(env_text or "", args.key, args.value)
+        if changed:
+            env_path.write_text(rendered)
+            print(f"  {env_path}: {args.key} now points at {args.value}")
+        else:
+            print(f"  {args.key} already points at {args.value}")
+        return 0
 
     if args.action == "sync":
         rendered, report = sync(example_text, env_text)
@@ -317,7 +434,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         if text is not None
     ]
-    report = check(example_text, env_text, required_keys(compose_texts))
+    report = check(
+        example_text,
+        env_text,
+        required_keys(compose_texts),
+        overridden_keys(compose_texts),
+    )
     _print_check(report)
     return 0 if report.ok else 1
 
