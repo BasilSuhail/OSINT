@@ -76,6 +76,9 @@ describe("what a clicked aircraft says", () => {
     speed_kt: 451.2,
     squawk: "6154",
     kind: "military",
+    role: "transport",
+    watch: null,
+    airborne_since: null,
     ...over,
   })
 
@@ -91,6 +94,7 @@ describe("what a clicked aircraft says", () => {
   it("reads the numbers the way a transponder means them", () => {
     expect(aircraftFacts(plane())).toEqual([
       { label: "type", value: "A400" },
+      { label: "role", value: "transport" },
       { label: "registration", value: "ZM413" },
       { label: "altitude", value: "24,000 ft" },
       { label: "speed", value: "451 kt" },
@@ -103,7 +107,9 @@ describe("what a clicked aircraft says", () => {
   //: A field the transponder never sent must not appear as a blank row: an
   //: empty value reads as a measurement of nothing rather than as silence.
   it("leaves out what was never transmitted", () => {
-    expect(aircraftFacts(plane({ type: null, alt_ft: null, squawk: null }))).toEqual([
+    expect(
+      aircraftFacts(plane({ type: null, role: "other", alt_ft: null, squawk: null })),
+    ).toEqual([
       { label: "registration", value: "ZM413" },
       { label: "speed", value: "451 kt" },
       { label: "track", value: "128°" },

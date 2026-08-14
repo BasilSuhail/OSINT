@@ -7,7 +7,14 @@ import {
   parseAircraftPhoto,
   type AircraftPhoto,
 } from "@/lib/aircraftPhoto"
-import { aircraftFacts, aircraftTitle, ageLabel, type PresenceAircraft } from "@/lib/presence"
+import {
+  aircraftFacts,
+  aircraftTitle,
+  ageLabel,
+  airborneLabel,
+  militaryLabel,
+  type PresenceAircraft,
+} from "@/lib/presence"
 
 /**
  * One live aircraft, opened by clicking its mark on the map.
@@ -72,6 +79,12 @@ export function AircraftDetailCard({
   const photo = found.hex === aircraft.hex ? found.photo : null
   const facts = aircraftFacts(aircraft)
   const distress = aircraft.kind === "distress"
+  const watched = aircraft.watch != null
+  //: What the console has seen, not what the aircraft did (#954). Wording
+  //: matters here: "airborne for 6h" would be a flight record, and this is a
+  //: note of when a poll first found it flying — which for a console started
+  //: ten minutes ago is ten minutes, however long it has really been up.
+  const seenFlying = airborneLabel(aircraft.airborne_since, now)
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -94,7 +107,9 @@ export function AircraftDetailCard({
           className={
             distress
               ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-red-500/15 text-red-300"
-              : "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-500/15 text-sky-300"
+              : watched
+                ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-400/15 text-amber-300"
+                : "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-500/15 text-sky-300"
           }
         >
           <Plane className="h-4 w-4" aria-hidden />
@@ -107,10 +122,12 @@ export function AircraftDetailCard({
             className={
               distress
                 ? "font-mono text-[10px] uppercase tracking-widest text-red-300/90"
-                : "font-mono text-[10px] uppercase tracking-widest text-neutral-500"
+                : watched
+                  ? "font-mono text-[10px] uppercase tracking-widest text-amber-300/90"
+                  : "font-mono text-[10px] uppercase tracking-widest text-neutral-500"
             }
           >
-            {distress ? "distress squawk" : "military"}
+            {distress ? "distress squawk" : watched ? aircraft.watch?.label : militaryLabel()}
           </p>
         </div>
       </div>
@@ -165,6 +182,16 @@ export function AircraftDetailCard({
         </div>
       </dl>
 
+      {/*: How long this console has had eyes on it, for a watched airframe
+          only (#954). Worded as an observation, never as a flight time: the
+          ledger starts when a poll first found it flying, so a console opened
+          ten minutes ago knows ten minutes and nothing before that. */}
+      {seenFlying && (
+        <p className="pt-2 font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
+          {seenFlying} · since this console started watching
+        </p>
+      )}
+
       {/*: Who said so, and how long ago. Both are the reason to believe the
           dot, and the age is the reason to stop believing it. */}
       <p className="pt-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
@@ -175,6 +202,17 @@ export function AircraftDetailCard({
         aircraft was seconds ago. Nothing here is stored, so there is no history
         to open and nothing to cite.
       </p>
+      {/*: Whose claim "military" is. The feed's list is a database flag that
+          covers government and head-of-state transports as well as air forces,
+          so an airliner appearing on it is the flag working rather than this
+          layer failing — and the reader is owed that distinction. */}
+      {!distress && !watched && (
+        <p className="pt-1.5 text-[11px] leading-snug text-neutral-500">
+          The military flag is the feed&rsquo;s, not this console&rsquo;s. It also
+          covers state and head-of-state transports, which is why an airliner can
+          appear here.
+        </p>
+      )}
     </div>
   )
 }

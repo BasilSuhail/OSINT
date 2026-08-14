@@ -25,6 +25,17 @@ from typing import Any
 import httpx
 
 from app.presence.registry import PresenceSource, source_for
+from app.presence.watchlist import (
+    EMPTY_WATCHLIST,
+    Watchlist,
+    forget_stale,
+    note_airborne,
+    role_for,
+    watchlist_from_env,
+)
+from app.presence.watchlist import (
+    match as watch_match,
+)
 
 #: Distress codes. 7500 hijack, 7600 lost radio, 7700 general emergency. All
 #: three read zero most of the time, which is what makes a non-zero one worth
@@ -60,6 +71,12 @@ def clear_cache() -> None:
     _rotation = 0
 
 
+def _int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
 def _number(value: Any) -> float | None:
     """A count that is not a number is absent, never zero.
 
@@ -86,16 +103,29 @@ def is_distressed(row: dict) -> bool:
     return emergency is not None and emergency.lower() not in {"none", "no"}
 
 
-def normalise(row: dict, *, kind: str) -> dict | None:
+def normalise(
+    row: dict,
+    *,
+    kind: str,
+    entries: Watchlist | None = None,
+) -> dict | None:
     """One aircraft, or None when there is nothing to draw.
 
     ``t`` is the aircraft type — C30J, AS65. ``type`` is the *message* type,
     "adsb_icao", and reading it here would label every mark identically.
+
+    The role is read from the designator for every aircraft (#954), because a
+    feed of four hundred identical marks tells a reader who already knows the
+    designators by heart exactly as much as one who does not. The watch label
+    and the airborne clock are only for aircraft on the operator's list: the
+    clock is this process's memory of what it has seen, and keeping it for
+    routine traffic would mean remembering four hundred aircraft to print a
+    number nobody asked for.
     """
     lat, lon = _number(row.get("lat")), _number(row.get("lon"))
     if lat is None or lon is None:
         return None
-    return {
+    item = {
         "hex": _text(row.get("hex")),
         "callsign": _text(row.get("flight")),
         "type": _text(row.get("t")),
@@ -107,25 +137,72 @@ def normalise(row: dict, *, kind: str) -> dict | None:
         "speed_kt": _number(row.get("gs")),
         "squawk": _text(row.get("squawk")),
         "kind": kind,
+        #: The aggregator's own database flag, carried rather than restated
+        #: (#954). Bit 1 is "military" in its scheme, and it is *its* claim
+        #: about an airframe, not a reading of anything the aircraft
+        #: transmitted. A government or head-of-state transport is flagged this
+        #: way too, so a wide-body airliner on the military list is the flag
+        #: working, not the layer failing — and the card has to say whose flag
+        #: it is or the console is asserting something it never checked.
+        "source_flags": _int(row.get("dbFlags")),
+        "role": role_for(_text(row.get("t"))),
+        "watch": None,
+        "airborne_since": None,
     }
+    entry = watch_match(item, entries or EMPTY_WATCHLIST)
+    if entry is None:
+        return item
+    item["watch"] = {"label": entry.label, "category": entry.category}
+    key = (item["hex"] or item["registration"] or "").upper()
+    first_seen = note_airborne(key, alt_ft=item["alt_ft"]) if key else None
+    if first_seen is not None:
+        item["airborne_since"] = (
+            datetime.fromtimestamp(first_seen, UTC).replace(microsecond=0).isoformat()
+        )
+    return item
 
 
-def merge(military: list[dict], distressed: list[dict]) -> list[dict]:
-    """Both lists, deduped by transponder address, distress winning.
+def merge(
+    military: list[dict],
+    distressed: list[dict],
+    watched: list[dict] | None = None,
+    entries: Watchlist | None = None,
+) -> list[dict]:
+    """Every list, deduped by transponder address, distress winning.
 
     A military aircraft squawking 7700 is one aircraft with two reasons to be
-    on the map, and the urgent reason is the one worth drawing.
+    on the map, and the urgent reason is the one worth drawing. A watched
+    aircraft that is also in the military list is likewise one aircraft: it
+    keeps ``military`` as its kind and carries the watch label as well, since
+    the label is what makes it findable and the kind is what it is.
+
+    ``watched`` is applied first so the two lists that describe an aircraft
+    more urgently can overwrite it.
     """
     by_hex: dict[str, dict] = {}
+    for row in watched or []:
+        item = normalise(row, kind="watched", entries=entries)
+        if item and item["hex"]:
+            by_hex[item["hex"]] = item
     for row in military:
-        item = normalise(row, kind="distress" if is_distressed(row) else "military")
+        item = normalise(
+            row,
+            kind="distress" if is_distressed(row) else "military",
+            entries=entries,
+        )
         if item and item["hex"]:
             by_hex[item["hex"]] = item
     for row in distressed:
-        item = normalise(row, kind="distress")
+        item = normalise(row, kind="distress", entries=entries)
         if item and item["hex"]:
             by_hex[item["hex"]] = item
-    return sorted(by_hex.values(), key=lambda a: (a["kind"] != "distress", a["hex"]))
+    #: Distress first, then anything being watched, then the rest. The order is
+    #: what a reader would ask for: the emergency, the aircraft they came to
+    #: find, and then the traffic.
+    return sorted(
+        by_hex.values(),
+        key=lambda a: (a["kind"] != "distress", a["watch"] is None, a["hex"]),
+    )
 
 
 def _get_json(client: httpx.Client, source: PresenceSource, path: str) -> dict:
@@ -148,13 +225,72 @@ def _get_json(client: httpx.Client, source: PresenceSource, path: str) -> dict:
     raise last or LookupError("no endpoint configured")
 
 
-def _fetch(client: httpx.Client, source: PresenceSource) -> dict:
-    """Two requests: the military list, and one distress code in rotation.
+#: How many identifiers go in one URL. The aggregator accepts a comma-joined
+#: list — verified live, three hexes in and three aircraft out — but a URL that
+#: grows with the watchlist would eventually be refused for its length rather
+#: than its content, and the failure would look like a data problem.
+_WATCH_BATCH = 40
+
+
+def _looks_like_hex(key: str) -> bool:
+    """Whether an identifier is a transponder address rather than a tail number.
+
+    Six hexadecimal digits is the ICAO address; anything else on the list is a
+    registration. Registrations that happen to be six hex digits do not exist —
+    they carry a dash or a letter outside A-F — so the two never collide.
+    """
+    return len(key) == 6 and all(c in "0123456789ABCDEF" for c in key)
+
+
+def _fetch_watched(
+    client: httpx.Client,
+    source: PresenceSource,
+    entries: Watchlist,
+) -> tuple[list[dict], bool]:
+    """The watchlist's own aircraft, asked for by identifier.
+
+    Asked for directly rather than filtered out of the military list, because
+    the interesting airframes are not all military: a civil-registered aircraft
+    never appears in that list at all and could not otherwise be drawn.
+
+    Returns what was found and whether anything was refused. A refusal here
+    must not cost the military list, which is the layer's whole picture.
+    """
+    if not entries:
+        return [], False
+
+    #: Only the named airframes are asked about upstream. A rule — a role, a
+    #: callsign prefix — cannot be turned into a query, and does not need to
+    #: be: it matches inside the military list this refresh already fetched.
+    hexes = sorted(k for k in entries.exact if _looks_like_hex(k))
+    regs = sorted(k for k in entries.exact if not _looks_like_hex(k))
+    found: list[dict] = []
+    degraded = False
+    for path, keys in (("hex", hexes), ("reg", regs)):
+        for start in range(0, len(keys), _WATCH_BATCH):
+            batch = keys[start : start + _WATCH_BATCH]
+            if not batch:
+                continue
+            try:
+                payload = _get_json(client, source, f"/v2/{path}/{','.join(batch)}")
+                found.extend(payload.get("ac") or [])
+            except Exception:
+                degraded = True
+    return found, degraded
+
+
+def _fetch(
+    client: httpx.Client,
+    source: PresenceSource,
+    entries: Watchlist | None = None,
+) -> dict:
+    """The military list, one distress code in rotation, and the watchlist.
 
     Partial failure is kept partial. A refused squawk check must not discard a
     military list that arrived intact — losing a hundred aircraft because one
     rare-by-design query was rate-limited is a worse answer than a slightly
-    incomplete one, and the response says which happened.
+    incomplete one, and the response says which happened. The watchlist query
+    is held to the same rule.
     """
     global _rotation
 
@@ -174,13 +310,29 @@ def _fetch(client: httpx.Client, source: PresenceSource) -> dict:
     except Exception:
         degraded = True
 
+    watched, watch_degraded = _fetch_watched(client, source, entries or EMPTY_WATCHLIST)
+    degraded = degraded or watch_degraded
+
+    #: Anything not heard from for a long time is dropped from the airborne
+    #: ledger here, once per refresh, so a gap of hours is never reported as
+    #: one continuous flight.
+    forget_stale()
+
     #: A distressed *military* aircraft needs no extra request: the military
     #: payload already carries squawk and emergency on every row, and `merge`
     #: reads them.
-    aircraft = merge(military, distressed)
+    aircraft = merge(military, distressed, watched, entries or EMPTY_WATCHLIST)
+    #: How many airframes are on the list, which is not how many are flying.
+    #: The console needs both to say anything useful when the layer draws
+    #: nothing: a watchlist nobody configured and a watchlist whose aircraft
+    #: are all on the ground look identical on a map, and they are not the
+    #: same situation. Entries are keyed by hex *and* registration, so the
+    #: distinct labels are counted rather than the keys.
+    watching = (entries or EMPTY_WATCHLIST).size
     return {
         "fetched_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "count": len(aircraft),
+        "watching": watching,
         "aircraft": aircraft,
         "degraded": degraded,
     }
@@ -199,10 +351,16 @@ def live_aircraft(*, client: httpx.Client | None = None) -> dict:
     if hit is not None and now - hit[0] < source.ttl_s:
         return hit[1]
 
+    #: Read every refresh rather than once at import, so an operator editing
+    #: the file does not have to restart the console to be watching something
+    #: new. The file is small and the read is local; the request that follows
+    #: costs orders of magnitude more.
+    entries = watchlist_from_env()
+
     owned = client is None
     http = client or _new_client()
     try:
-        answer = _fetch(http, source)
+        answer = _fetch(http, source, entries)
     finally:
         if owned:
             http.close()

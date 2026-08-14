@@ -1,0 +1,30 @@
+[
+  {
+    "_comment": "Copy this file somewhere outside the repository, edit it, and point PRESENCE_WATCHLIST_PATH at it. It also works unedited: the two identifiers below are placeholders and match nothing, but the rules under them match live traffic straight away.",
+    "hex": "000000",
+    "label": "head of state transport",
+    "category": "state"
+  },
+  {
+    "registration": "N000EX",
+    "label": "chartered executive transport",
+    "category": "vip"
+  },
+  {
+    "_comment": "A rule watches a kind of flying rather than one airframe, so nothing has to be looked up first. role is one of tanker, isr, fighter, transport, rotorcraft, trainer. callsign_prefix matches the start of a callsign, which is a fleet rather than a single sortie. type is an ICAO type designator.",
+    "role": "tanker",
+    "label": "air-to-air refuelling",
+    "category": "other"
+  },
+  {
+    "callsign_prefix": "RCH",
+    "label": "strategic airlift",
+    "category": "other"
+  },
+  {
+    "_comment": "label says what an airframe is for — an office, a fleet, a job. Never a person: who is aboard is not a question this console answers. category is one of state, vip, other.",
+    "type": "H47",
+    "label": "heavy-lift rotorcraft",
+    "category": "other"
+  }
+]
