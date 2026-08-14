@@ -628,7 +628,11 @@ export function FilterRail({
                   !presenceAtNow
                     ? "live only — scrub to now"
                     : (watchlistOn &&
-                        watchlistHint(watchState.watching, watchState.drawn)) ||
+                        watchlistHint(
+                          watchState.watching,
+                          watchState.drawn,
+                          watchState.status,
+                        )) ||
                       "airframes on the operator's list"
                 }
                 on={watchlistOn && presenceAtNow}

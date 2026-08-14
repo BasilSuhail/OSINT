@@ -26,10 +26,19 @@ from typing import Any
 #: exactly as it did before.
 WATCHLIST_PATH_ENV = "PRESENCE_WATCHLIST_PATH"
 
-#: Looked at when the environment says nothing. A file dropped here needs no
-#: variable set and no restart of anything but the process that reads it, which
-#: is the difference between a feature an operator can try and one they have to
-#: be told how to switch on. Git-ignored, like every real watchlist.
+#: Looked at when the environment says nothing, in this order. A file dropped
+#: in either place needs no variable set, which is the difference between a
+#: feature an operator can try and one they have to be told how to switch on.
+#:
+#: `/data` first, because the API normally runs in a container and that is
+#: where the repository's `data/` directory is mounted — the working directory
+#: in there is `/app`, so the relative path alone could never find a file the
+#: operator had just written (#959). The relative one stays for a host-run
+#: process, where `/data` does not exist. Both are git-ignored.
+WATCHLIST_SEARCH_PATHS = ("/data/watchlist.json", "data/watchlist.json")
+
+#: Kept as the name of the path an operator is told to write. It is the second
+#: entry above because it is the one that exists on a host run.
 WATCHLIST_DEFAULT_PATH = "data/watchlist.json"
 
 #: An aircraft the console has not heard from in this long is off the ledger.
@@ -382,18 +391,65 @@ def load_watchlist(path: str | None) -> Watchlist:
     return load_watchlist_from_entries(raw)
 
 
-def watchlist_from_env() -> Watchlist:
-    """The configured watchlist, or the conventional one, or none.
+#: What the layer watches when nobody has said otherwise.
+#:
+#: Rules only, and only ones that describe a job rather than an airframe: a
+#: shipped list of identifiers would be a curated claim about particular
+#: aircraft, maintained by nobody and stale by the next sortie. These two are
+#: derived from the type designator the feed already sends, they are true
+#: everywhere, and they are the two roles whose movement is worth noticing
+#: without knowing anything else — the tankers say where an air force intends
+#: to reach, and the surveillance aircraft say where it is looking.
+#:
+#: A file at either search path replaces this entirely. Nobody has to accept
+#: somebody else's idea of what is interesting, but nobody has to run a
+#: command before the layer does anything either.
+DEFAULT_WATCH_ENTRIES: tuple[dict[str, str], ...] = (
+    {"role": "tanker", "label": "air-to-air refuelling", "category": "other"},
+    {"role": "isr", "label": "surveillance", "category": "other"},
+)
 
-    The environment wins when it is set — an operator who names a path means
-    that path, and falling back after a typo would silently watch the wrong
-    list.
+#: What happened when the watchlist was last looked for. `ok` covers both a
+#: file that loaded and a console nobody has configured; `unreadable` is the
+#: one worth saying out loud, because it means somebody asked for a file and
+#: did not get it.
+#: A list somebody wrote is in force.
+WATCHLIST_OK = "ok"
+#: The built-in list is in force. Worth saying on screen: a reader is owed the
+#: difference between "these are the aircraft you asked for" and "these are the
+#: ones this console watches until told otherwise".
+WATCHLIST_DEFAULT = "default"
+
+
+def resolve_watchlist() -> tuple[Watchlist, str]:
+    """What is being watched, and whether anybody chose it.
+
+    The layer always watches something. A file wins when there is a readable
+    one — a named path first, then the two conventional places — and otherwise
+    the built-in list is in force.
+
+    An earlier version refused to fall back from a named path that could not be
+    read, on the grounds that a typo should not quietly load something else.
+    That is a defensible rule and it made the common case worse: a stale line
+    in a settings file left the layer drawing nothing at all, which is
+    indistinguishable from broken. Nothing here is evidence and nothing is
+    cited, so the console draws its own list and says on screen that the list
+    is its own.
     """
     configured = (os.environ.get(WATCHLIST_PATH_ENV) or "").strip()
-    if configured:
-        return load_watchlist(configured)
-    default = pathlib.Path(WATCHLIST_DEFAULT_PATH)
-    return load_watchlist(str(default)) if default.is_file() else EMPTY_WATCHLIST
+    candidates = ([configured] if configured else []) + list(WATCHLIST_SEARCH_PATHS)
+    for candidate in candidates:
+        if not pathlib.Path(candidate).is_file():
+            continue
+        loaded = load_watchlist(candidate)
+        if loaded:
+            return loaded, WATCHLIST_OK
+
+    return load_watchlist_from_entries(list(DEFAULT_WATCH_ENTRIES)), WATCHLIST_DEFAULT
+
+
+def watchlist_from_env() -> Watchlist:
+    return resolve_watchlist()[0]
 
 
 def example_entries() -> list[dict[str, str]]:

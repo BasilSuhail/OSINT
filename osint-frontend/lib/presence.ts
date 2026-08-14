@@ -47,6 +47,9 @@ export interface PresenceAnswer {
    *  Both numbers are needed to explain an empty layer: nobody watching and
    *  nothing airborne look identical on a map and are not the same thing. */
   watching?: number
+  /** `unreadable` when a path was configured and could not be read — usually a
+   *  the console's own list is in force rather than one somebody wrote. */
+  watchlist_status?: "ok" | "default"
   aircraft: PresenceAircraft[]
   degraded: boolean
 }
@@ -210,7 +213,18 @@ export function militaryLabel(): string {
   return "flagged military by the feed"
 }
 
-export function watchlistHint(watching: number, drawn: number): string | null {
+export function watchlistHint(
+  watching: number,
+  drawn: number,
+  status: "ok" | "default" = "ok",
+): string | null {
+  //: Said even when marks are on screen: a file that cannot be read is a
+  //: standing fault, not a passing quiet spell, and the aircraft being drawn
+  //: are not the ones somebody asked to watch.
+  //: Said whether or not anything is drawn. These are this console's idea of
+  //: what is worth watching, not the reader's, and they are owed that
+  //: distinction before they read a mark as somebody's decision.
+  if (status === "default") return "tankers and surveillance — the default list"
   if (drawn > 0) return null
   if (watching === 0) return "none watched — add data/watchlist.json"
   return watching === 1 ? "1 watched · none airborne" : `${watching} watched · none airborne`

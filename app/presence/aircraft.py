@@ -30,8 +30,8 @@ from app.presence.watchlist import (
     Watchlist,
     forget_stale,
     note_airborne,
+    resolve_watchlist,
     role_for,
-    watchlist_from_env,
 )
 from app.presence.watchlist import (
     match as watch_match,
@@ -355,12 +355,16 @@ def live_aircraft(*, client: httpx.Client | None = None) -> dict:
     #: the file does not have to restart the console to be watching something
     #: new. The file is small and the read is local; the request that follows
     #: costs orders of magnitude more.
-    entries = watchlist_from_env()
+    entries, watchlist_status = resolve_watchlist()
 
     owned = client is None
     http = client or _new_client()
     try:
         answer = _fetch(http, source, entries)
+        #: Said in the answer rather than only in a log, because the reader who
+        #: needs to know is looking at a rail row that says "none watched" and
+        #: has no way to tell that from "your file could not be read" (#959).
+        answer["watchlist_status"] = watchlist_status
     finally:
         if owned:
             http.close()

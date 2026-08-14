@@ -13,9 +13,11 @@ from scripts.env_setup import (
     check,
     is_placeholder,
     main,
+    overridden_keys,
     parse_env,
     parse_example,
     required_keys,
+    set_value,
     sync,
 )
 
@@ -97,7 +99,7 @@ class TestCheck:
     REQUIRED: ClassVar[set[str]] = {"POSTGRES_PASSWORD"}
 
     def test_a_complete_file_is_quiet(self):
-        env = "POSTGRES_HOST=localhost\nPOSTGRES_PASSWORD=hunter2\nFEATURE_PATH=/tmp/x\n"
+        env = "POSTGRES_HOST=localhost\nPOSTGRES_PASSWORD=hunter2\nFEATURE_PATH=/data/x\n"
         assert check(EXAMPLE, env, self.REQUIRED).ok
 
     def test_no_file_at_all_is_every_key_missing(self):
@@ -158,7 +160,7 @@ class TestTheCommand:
         #: check is expected to complain — that is the point of it.
         assert main(["check", "--root", str(tmp_path)]) == 1
         (tmp_path / ".env").write_text(
-            "POSTGRES_HOST=localhost\nPOSTGRES_PASSWORD=hunter2\nFEATURE_PATH=/tmp/x\n"
+            "POSTGRES_HOST=localhost\nPOSTGRES_PASSWORD=hunter2\nFEATURE_PATH=/data/x\n"
         )
         assert main(["check", "--root", str(tmp_path)]) == 0
 
@@ -203,3 +205,148 @@ class TestADuplicatedKey:
 
     def test_a_clean_example_reports_nothing_doubled(self):
         assert check(EXAMPLE, "POSTGRES_HOST=x\n", set()).duplicated == []
+
+
+class TestAPathTheContainerCannotSee:
+    """The mistake that cost a live debugging session (#959).
+
+    `PRESENCE_WATCHLIST_PATH=/Users/somebody/watch.json` is the obvious thing to
+    write. The file is right there. It is also nothing at all inside the
+    container that reads it, and everything downstream reported an empty
+    watchlist rather than a missing file.
+    """
+
+    EXAMPLE_WITH_PATHS: ClassVar[str] = (
+        "OSINT_DATA_DIR=./data\nPRESENCE_WATCHLIST_PATH=\nACLED_CSV_PATH=\n"
+    )
+    #: The compose files interpolate this one, so it is read out here on the
+    #: host, where an absolute path is exactly right.
+    REQUIRED: ClassVar[set[str]] = {"OSINT_DATA_DIR"}
+
+    def test_flags_a_path_from_this_machine(self):
+        env = "PRESENCE_WATCHLIST_PATH=/Users/somebody/watch.json\n"
+        report = check(self.EXAMPLE_WITH_PATHS, env, self.REQUIRED)
+        assert report.host_paths == ["PRESENCE_WATCHLIST_PATH"]
+        assert not report.ok
+
+    def test_accepts_a_path_inside_the_container(self):
+        env = "PRESENCE_WATCHLIST_PATH=/data/watchlist.json\n"
+        assert check(self.EXAMPLE_WITH_PATHS, env, self.REQUIRED).host_paths == []
+
+    #: A key the compose files interpolate is read on the host by definition,
+    #: so an absolute path there is not a mistake.
+    def test_leaves_a_host_side_key_alone(self):
+        env = "OSINT_DATA_DIR=/Volumes/External/osint\n"
+        assert check(self.EXAMPLE_WITH_PATHS, env, self.REQUIRED).host_paths == []
+
+    def test_says_nothing_about_an_empty_key(self):
+        env = "PRESENCE_WATCHLIST_PATH=\nACLED_CSV_PATH=\n"
+        assert check(self.EXAMPLE_WITH_PATHS, env, self.REQUIRED).host_paths == []
+
+    #: A relative path is resolved by whoever reads it, and this script has no
+    #: way to know where that is. Guessing would be noise.
+    def test_says_nothing_about_a_relative_path(self):
+        env = "PRESENCE_WATCHLIST_PATH=data/watchlist.json\n"
+        assert check(self.EXAMPLE_WITH_PATHS, env, self.REQUIRED).host_paths == []
+
+    def test_the_report_names_the_key_and_not_the_path(self, tmp_path, capsys):
+        (tmp_path / "env.example").write_text(self.EXAMPLE_WITH_PATHS)
+        (tmp_path / "docker-compose.yml").write_text("x: ${OSINT_DATA_DIR}\n")
+        (tmp_path / ".env").write_text(
+            "OSINT_DATA_DIR=./data\n"
+            "PRESENCE_WATCHLIST_PATH=/Users/somebody/secret-place/watch.json\n"
+            "ACLED_CSV_PATH=\n"
+        )
+        assert main(["check", "--root", str(tmp_path)]) == 1
+        printed = capsys.readouterr().out
+        assert "PRESENCE_WATCHLIST_PATH" in printed
+        assert "secret-place" not in printed
+
+    #: Compose hands some keys to the container outright — `EMDAT_CSV_PATH:
+    #: /data/private/emdat.csv`. Whatever `.env` says never reaches the
+    #: process, so a host path there cannot be wrong. The first version of
+    #: this check reported one, which is exactly the sort of false alarm that
+    #: teaches an operator to ignore the report.
+    def test_leaves_alone_a_key_the_compose_files_set_outright(self):
+        example = "EMDAT_CSV_PATH=\nPRESENCE_WATCHLIST_PATH=\n"
+        env = (
+            "EMDAT_CSV_PATH=/Users/somebody/emdat.csv\n"
+            "PRESENCE_WATCHLIST_PATH=/Users/somebody/watch.json\n"
+        )
+        report = check(example, env, set(), {"EMDAT_CSV_PATH"})
+        assert report.host_paths == ["PRESENCE_WATCHLIST_PATH"]
+
+
+class TestReadingCompose:
+    COMPOSE: ClassVar[str] = (
+        "services:\n"
+        "  api:\n"
+        "    environment:\n"
+        "      EMDAT_CSV_PATH: /data/private/emdat.csv\n"
+        "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n"
+        "    ports:\n"
+        '      - "${API_PORT:-8000}:8000"\n'
+    )
+
+    def test_finds_the_keys_given_a_literal_value(self):
+        assert overridden_keys([self.COMPOSE]) == {"EMDAT_CSV_PATH"}
+
+    #: A key whose compose value interpolates `.env` is not overridden — it is
+    #: passed through, and `.env` is exactly where it comes from.
+    def test_does_not_count_a_passed_through_key_as_overridden(self):
+        assert "POSTGRES_PASSWORD" not in overridden_keys([self.COMPOSE])
+        assert "POSTGRES_PASSWORD" in required_keys([self.COMPOSE])
+
+
+class TestSettingOneKey:
+    """The one exception to "never touch a value" (#959).
+
+    `sync` is a general tool with no business overwriting somebody's answer.
+    This is called by the command that owns a particular setting, to point it
+    at the file that command has just written — because a check that reports
+    the same broken path twice and fixes nothing is worth nothing.
+    """
+
+    def test_points_an_existing_key_somewhere_else(self):
+        env = "A=1\nPRESENCE_WATCHLIST_PATH=/Users/somebody/watch.json\nB=2\n"
+        rendered, changed = set_value(env, "PRESENCE_WATCHLIST_PATH", "/data/watchlist.json")
+        assert changed
+        assert parse_env(rendered)["PRESENCE_WATCHLIST_PATH"] == "/data/watchlist.json"
+        assert parse_env(rendered)["A"] == "1"
+        assert parse_env(rendered)["B"] == "2"
+
+    def test_adds_the_key_when_it_is_not_there(self):
+        rendered, changed = set_value("A=1\n", "PRESENCE_WATCHLIST_PATH", "/data/watchlist.json")
+        assert changed
+        assert parse_env(rendered)["PRESENCE_WATCHLIST_PATH"] == "/data/watchlist.json"
+
+    #: Running the command twice must not keep rewriting the file.
+    def test_says_nothing_changed_when_it_already_points_there(self):
+        env = "PRESENCE_WATCHLIST_PATH=/data/watchlist.json\n"
+        rendered, changed = set_value(env, "PRESENCE_WATCHLIST_PATH", "/data/watchlist.json")
+        assert not changed
+        assert rendered.strip() == env.strip()
+
+    #: A key written twice is read as the last one, so an earlier line left
+    #: behind is a line that lies about what is in force.
+    def test_leaves_no_earlier_line_for_the_same_key(self):
+        env = "K=/old/one\nA=1\nK=/older/still\n"
+        rendered, _ = set_value(env, "K", "/data/new")
+        assert rendered.count("K=") == 1
+        assert parse_env(rendered)["K"] == "/data/new"
+
+    def test_keeps_the_comments_around_it(self):
+        env = "# why this exists\nK=/old\n# and this\nA=1\n"
+        rendered, _ = set_value(env, "K", "/data/new")
+        assert "# why this exists" in rendered
+        assert "# and this" in rendered
+
+    def test_the_command_writes_it(self, tmp_path, capsys):
+        (tmp_path / "env.example").write_text("K=\n")
+        (tmp_path / ".env").write_text("K=/Users/somebody/thing.json\n")
+        assert main(["set", "K", "/data/thing.json", "--root", str(tmp_path)]) == 0
+        assert parse_env((tmp_path / ".env").read_text())["K"] == "/data/thing.json"
+
+    def test_the_command_needs_both_a_key_and_a_value(self, tmp_path):
+        (tmp_path / "env.example").write_text("K=\n")
+        assert main(["set", "K", "--root", str(tmp_path)]) == 1

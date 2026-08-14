@@ -34,8 +34,12 @@ interface PresenceState {
   /** What the last refresh knew about the watchlist: how many airframes are
    *  listed, and how many of them are on the map. Held here because the map
    *  does the asking and the rail does the explaining. */
-  watchState: { watching: number; drawn: number }
-  setWatchState: (state: { watching: number; drawn: number }) => void
+  watchState: { watching: number; drawn: number; status: "ok" | "default" }
+  setWatchState: (state: {
+    watching: number
+    drawn: number
+    status: "ok" | "default"
+  }) => void
 }
 
 //: Off by default, unlike the air layer. Nine hundred hulls in one sea area
@@ -63,6 +67,6 @@ export const usePresenceStore = create<PresenceState>((set) => ({
     })),
   watchlist: true,
   toggleWatchlist: () => set((s) => ({ watchlist: !s.watchlist })),
-  watchState: { watching: 0, drawn: 0 },
+  watchState: { watching: 0, drawn: 0, status: "ok" },
   setWatchState: (state) => set(() => ({ watchState: state })),
 }))

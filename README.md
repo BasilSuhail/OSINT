@@ -57,6 +57,9 @@ Two commands look after that file, and you can run either as often as you like:
 | `make env` | Makes `.env` if you have not got one. If you have, it adds the settings you are missing and leaves everything you already filled in exactly as it is. |
 | `make env-check` | Tells you what is missing, what still needs a value, and what you have spelled wrong. It never prints a value, so it is safe to run while someone is watching your screen. |
 
+`make help` lists every command in the Makefile with a line saying what it
+does.
+
 Run `make env` again after every `git pull`. New settings get added to the
 template over time, and this is how they reach your file — otherwise the
 feature they switch on stays quietly off. `make up` runs the check for you and
