@@ -62,6 +62,7 @@ import {
   vesselIsUnderWay,
   vesselTitle,
   type PresenceVessel,
+  type VesselCategory,
 } from "@/lib/vessels"
 import { imageryDate, imageryLayer, imageryTiles } from "@/lib/imageryLayers"
 import type { MarkerLocationContext } from "@/lib/locationProvenance"
@@ -1020,6 +1021,7 @@ export function MapPane({
   const [vesselsFetchedAt, setVesselsFetchedAt] = useState<string | null>(null)
   const vesselPolling = shouldPoll(anyVesselOn, windowEndOffsetMs, presenceVisible)
   const setVesselSources = usePresenceStore((st) => st.setVesselSources)
+  const setVesselCounts = usePresenceStore((st) => st.setVesselCounts)
   const openVessel = useRightPaneModeStore((st) => st.openVessel)
   const closeVessel = useRightPaneModeStore((st) => st.closeVessel)
 
@@ -1068,6 +1070,17 @@ export function MapPane({
     () => vessels.filter((v) => vesselSwitches[v.category]),
     [vessels, vesselSwitches],
   )
+
+  //: What the rail prints beside each row: how many of that kind the feed just
+  //: carried, whether or not the map is close enough to draw them.
+  useEffect(() => {
+    const counts = Object.fromEntries(VESSEL_CATEGORIES.map((c) => [c.key, 0])) as Record<
+      VesselCategory,
+      number
+    >
+    for (const vessel of vessels) counts[vessel.category] += 1
+    setVesselCounts(counts)
+  }, [vessels, setVesselCounts])
 
   const hillshadeBeforeId = "waterway"
 
