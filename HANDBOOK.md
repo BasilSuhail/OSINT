@@ -833,13 +833,60 @@ edge would suggest it had ended.
 | Git | Downloads and updates the code. | Any current release |
 | Docker Desktop or Docker Engine with Compose | Runs Postgres, Redis, migrations, API, scheduler, and workers. | Compose v2+ |
 | Node.js | Runs the local web console. | Current LTS or newer |
-| pnpm | Installs and runs frontend packages. | Current stable |
+| pnpm | Installs and runs frontend packages. | Whatever `packageManager` pins — fetched by Corepack, never chosen by hand |
 | Ollama | Runs local summaries and evidence-grounded question tools in full mode. | Current stable |
 | A modern browser | Opens `http://localhost:3000`. | Current Chrome, Firefox, Safari, or Edge |
 
 The backend image uses Python 3.12 inside Docker. Host Python 3.11 or newer is only needed for the optional analytical commands in §12.8.
 
 Install Ollama for full mode. Without it, map, ingestion, API, stories, audit, and non-model analytics still work, while model-backed summaries and questions remain dormant.
+
+### Getting to that baseline
+
+On Debian, Ubuntu, or Raspberry Pi OS:
+
+```bash
+sudo apt update && sudo apt install -y git curl ca-certificates && \
+curl -fsSL https://get.docker.com | sudo sh && \
+sudo usermod -aG docker "$USER" && \
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+sudo apt install -y nodejs && sudo corepack enable
+```
+
+Log out and back in afterwards. Group membership is read at login, so `docker` does not work in the shell that added you to the group — and it fails by reporting the daemon unreachable, which reads as "Docker is not installed" rather than "you are not in the group yet".
+
+On macOS, with [Homebrew](https://brew.sh):
+
+```bash
+brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
+```
+
+Ollama, optionally, on either:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh     # Linux
+brew install ollama && ollama serve               # macOS
+```
+
+Three of those lines fail somewhere else entirely when they are wrong, so they are worth a sentence each.
+
+**Docker comes from Docker's own installer.** Packaged versions are often too old for Compose v2, and say so as an unrecognised subcommand rather than as a version.
+
+**Node comes from NodeSource.** Distribution packages lag several majors behind current LTS.
+
+**pnpm is never named.** `corepack enable` reads `packageManager` in `osint-frontend/package.json` and fetches exactly that version. Installing one by hand — `npm install -g pnpm`, or `corepack prepare pnpm@latest --activate` — gets a different pnpm that treats the same lockfile differently, and that lands mid-build as a package problem with nothing pointing back at setup.
+
+On a single-board host, raise the swap before the first build. The frontend build is the memory peak of a first run, and exhausting it presents as a stall with no message:
+
+```bash
+sudo dphys-swapfile swapoff
+sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=4096/'   /etc/dphys-swapfile
+sudo sed -i 's/^#\?CONF_MAXSWAP=.*/CONF_MAXSWAP=4096/'  /etc/dphys-swapfile
+sudo dphys-swapfile setup && sudo dphys-swapfile swapon
+free -h
+```
+
+`CONF_MAXSWAP` is the one usually missed. It defaults to 2048 and silently truncates any larger `CONF_SWAPSIZE`, so the swap requested is not the swap obtained, and `free -h` is how that becomes visible.
 
 ## 3.2 Suggested machine capacity
 
