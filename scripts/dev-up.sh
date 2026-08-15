@@ -273,6 +273,11 @@ apply_network_mode() {
   export API_CORS_ORIGINS="${API_CORS_ORIGINS:-$(env_value API_CORS_ORIGINS)}"
   export API_PORT="${API_PORT:-$(env_value API_PORT)}"
   export FRONTEND_PORT="${FRONTEND_PORT:-$FRONTEND_PORT_DEFAULT}"
+  #: Which of this machine's names the console should be reached by, when it
+  #: should not be the detected one (#974). The same setting `make env` derives
+  #: NEXT_PUBLIC_API_URL from, so the two agree instead of overwriting one
+  #: another.
+  export OSINT_PUBLIC_HOST="${OSINT_PUBLIC_HOST:-$(env_value OSINT_PUBLIC_HOST)}"
 
   local exports
   if ! exports="$("$python" -m app.devx.lan_share "$mode" 2>logs/lan-share.err)"; then
