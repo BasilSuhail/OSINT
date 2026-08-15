@@ -411,6 +411,33 @@ spawn() { # label  cmd...
   echo "  $label started (pid $!) → logs/$label.log"
 }
 
+#: Corepack asks before fetching the pinned package manager. Every command
+#: below runs without a terminal attached, so there would be nobody to answer
+#: it (#968). The version it fetches is the one `packageManager` names, which is
+#: the point of pinning it.
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
+install_frontend_packages() {
+  # `make up` says it starts everything, and a first run is exactly when nobody
+  # has typed the install by hand. It was supplied by accident until recently —
+  # some pnpm versions install before `pnpm dev` — so pinning the package
+  # manager (#966) turned a hidden gap into `next: not found` (#968).
+  #
+  # From the lockfile, so a start never resolves a different dependency set than
+  # the one that was reviewed. Skipped once the packages are there, because this
+  # runs on every `make up` and the check has to cost nothing.
+  if [ -d osint-frontend/node_modules ]; then
+    return 0
+  fi
+  echo "  installing console packages (first run — several minutes)"
+  if ! (cd osint-frontend && pnpm install --frozen-lockfile) >logs/frontend-install.log 2>&1; then
+    echo "  install failed. Last lines of logs/frontend-install.log:" >&2
+    tail -n 15 logs/frontend-install.log >&2
+    return 1
+  fi
+  echo "  console packages installed"
+}
+
 spawn_frontend() {
   local pidfile="logs/frontend.pid"
   local pid
@@ -442,6 +469,12 @@ spawn_frontend() {
     # that child once the parent is gone. Stop both or the restart is a no-op.
     pkill -f "next-server" 2>/dev/null || true
     rm -f "$pidfile" "$FRONTEND_MODE_FILE"
+  fi
+
+  #: Before the start, not beside it: `pnpm dev` with no `node_modules` fails as
+  #: `next: not found`, which names the symptom and not the cause (#968).
+  if ! install_frontend_packages; then
+    return 1
   fi
 
   nohup bash -lc "cd osint-frontend && pnpm dev -H '$FRONTEND_BIND'" >"logs/frontend.log" 2>&1 &
