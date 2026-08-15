@@ -33,7 +33,7 @@ map with the provenance attached. It runs on one machine. Nothing leaves it.
 
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
-make env                  # makes your settings file (.env) — then set POSTGRES_PASSWORD in it
+make env                  # makes your settings file (.env), filled in and ready
 make up                   # postgres · redis · migrations · api · workers · console · ollama if present
 make down                 # stop everything, keep all data
 ```
@@ -46,16 +46,22 @@ stay dormant.
 
 `.env` is the only file you edit, it is git-ignored, and
 [`env.example`](https://github.com/BasilSuhail/OSINT/blob/main/env.example) is
-its template. `POSTGRES_PASSWORD` is the one required value — everything else
-has a working default. Optional source keys, the API token, and moving the data
-directory are all in [§5](HANDBOOK.md#5-configure-it-safely).
+its template. There is nothing you have to put in it to start: `make env`
+generates the database password and the API token, and points the console at
+this machine. Optional source keys and moving the data directory are in
+[§5](HANDBOOK.md#5-configure-it-safely).
 
-Two commands look after that file, and you can run either as often as you like:
+Three commands look after that file, and you can run any of them as often as
+you like:
 
 | Command | What it does |
 |---|---|
-| `make env` | Makes `.env` if you have not got one. If you have, it adds the settings you are missing and leaves everything you already filled in exactly as it is. |
+| `make env` | Makes `.env` if you have not got one. If you have, it adds the settings you are missing, fills in any that are empty and should not be, and leaves everything you already filled in exactly as it is. |
+| `make env-refresh` | Re-derives the addresses after this machine moves network or changes name. Addresses only — it cannot reach a credential. |
 | `make env-check` | Tells you what is missing, what still needs a value, and what you have spelled wrong. It never prints a value, so it is safe to run while someone is watching your screen. |
+
+To open the console from another device, put the name that device would use in
+`OSINT_PUBLIC_HOST`, run `make env-refresh`, then `make share`.
 
 `make help` lists every command in the Makefile with a line saying what it
 does.

@@ -10,14 +10,20 @@ from typing import ClassVar
 
 from scripts.env_setup import (
     CheckReport,
+    Machine,
     check,
+    detect_machine,
+    generate_secret,
     is_placeholder,
     main,
+    mismatched_mirrors,
+    originate,
     overridden_keys,
     parse_env,
     parse_example,
     required_keys,
     set_value,
+    stale_addresses,
     sync,
 )
 
@@ -156,12 +162,25 @@ class TestTheCommand:
         assert main(["sync", "--root", str(tmp_path)]) == 0
         assert (tmp_path / ".env").exists()
 
-        #: Fresh from the example, the required password is still blank, so the
-        #: check is expected to complain — that is the point of it.
-        assert main(["check", "--root", str(tmp_path)]) == 1
+        #: The required password is no longer blank after a sync — it is
+        #: generated (#964) — so a fresh file passes its own check with nothing
+        #: typed into it. That is the whole point of the change.
+        assert main(["check", "--root", str(tmp_path)]) == 0
+
         (tmp_path / ".env").write_text(
             "POSTGRES_HOST=localhost\nPOSTGRES_PASSWORD=hunter2\nFEATURE_PATH=/data/x\n"
         )
+        assert main(["check", "--root", str(tmp_path)]) == 0
+
+    #: Origination must stay inside what the example documents. Writing a key
+    #: the example has never heard of puts a value in somebody's file that
+    #: `check` then reports back to them as a typo.
+    def test_originates_no_key_the_example_does_not_document(self, tmp_path):
+        (tmp_path / "env.example").write_text(EXAMPLE)
+        (tmp_path / "docker-compose.yml").write_text("x: ${POSTGRES_PASSWORD}\n")
+        main(["sync", "--root", str(tmp_path)])
+        written = set(parse_env((tmp_path / ".env").read_text()))
+        assert written == {"POSTGRES_HOST", "POSTGRES_PASSWORD", "FEATURE_PATH"}
         assert main(["check", "--root", str(tmp_path)]) == 0
 
     #: The whole report is key names and counts. This file holds credentials
@@ -350,3 +369,208 @@ class TestSettingOneKey:
     def test_the_command_needs_both_a_key_and_a_value(self, tmp_path):
         (tmp_path / "env.example").write_text("K=\n")
         assert main(["set", "K", "--root", str(tmp_path)]) == 1
+
+
+#: A machine with two names besides loopback, so a test can tell "every origin
+#: this machine answers to" apart from "whatever was hard-coded".
+MACHINE = Machine(hosts=("localhost", "box.local", "192.0.2.7"), api_port=8000, frontend_port=3000)
+
+ORIGIN_EXAMPLE = """POSTGRES_PASSWORD=
+API_AUTH_TOKEN=
+NEXT_PUBLIC_API_TOKEN=
+NEXT_PUBLIC_API_URL=http://localhost:8000
+API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+OSINT_PUBLIC_HOST=
+"""
+
+
+def _fixed_secret() -> str:
+    return "generated-secret"
+
+
+class TestOriginatingSecrets:
+    #: The first-run tax this exists to remove: three values, one of which must
+    #: equal another, supplied by hand before anything starts (#964).
+    def test_fills_a_secret_that_is_empty(self):
+        written = originate(ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret)
+        assert written["POSTGRES_PASSWORD"] == "generated-secret"
+        assert written["API_AUTH_TOKEN"] == "generated-secret"
+
+    #: The promise the script already makes, and the one that matters most
+    #: here: a secret it wrote once is somebody's credential from then on.
+    def test_never_replaces_a_secret_that_has_a_value(self):
+        env = ORIGIN_EXAMPLE.replace("POSTGRES_PASSWORD=", "POSTGRES_PASSWORD=hunter2")
+        written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
+        assert "POSTGRES_PASSWORD" not in written
+
+    def test_a_second_run_originates_nothing(self):
+        once = originate(ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret)
+        settled = ORIGIN_EXAMPLE
+        for key, value in once.items():
+            settled, _ = set_value(settled, key, value)
+        assert originate(ORIGIN_EXAMPLE, settled, MACHINE, make_secret=_fixed_secret) == {}
+
+    def test_a_real_secret_is_long_and_not_the_same_twice(self):
+        first, second = generate_secret(), generate_secret()
+        assert first != second
+        assert len(first) >= 32
+
+
+class TestMirroring:
+    #: Two keys that must hold the same string, where a mismatch surfaces as a
+    #: blank console rather than as an error.
+    def test_the_mirror_takes_the_freshly_generated_source(self):
+        written = originate(ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret)
+        assert written["NEXT_PUBLIC_API_TOKEN"] == written["API_AUTH_TOKEN"]
+
+    def test_the_mirror_takes_a_source_the_operator_already_set(self):
+        env = ORIGIN_EXAMPLE.replace("API_AUTH_TOKEN=", "API_AUTH_TOKEN=theirs")
+        written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
+        assert written["NEXT_PUBLIC_API_TOKEN"] == "theirs"
+        assert "API_AUTH_TOKEN" not in written
+
+    #: Both answered and disagreeing is a decision, however unlikely to be one
+    #: that was meant. Reported by `check`, never overwritten here.
+    def test_leaves_a_mirror_that_disagrees_alone(self):
+        env = ORIGIN_EXAMPLE.replace("API_AUTH_TOKEN=", "API_AUTH_TOKEN=theirs").replace(
+            "NEXT_PUBLIC_API_TOKEN=", "NEXT_PUBLIC_API_TOKEN=different"
+        )
+        written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
+        assert "NEXT_PUBLIC_API_TOKEN" not in written
+        assert mismatched_mirrors(env) == ["NEXT_PUBLIC_API_TOKEN"]
+
+    def test_matching_mirrors_are_not_reported(self):
+        env = ORIGIN_EXAMPLE.replace("API_AUTH_TOKEN=", "API_AUTH_TOKEN=same").replace(
+            "NEXT_PUBLIC_API_TOKEN=", "NEXT_PUBLIC_API_TOKEN=same"
+        )
+        assert mismatched_mirrors(env) == []
+
+
+class TestDerivedAddresses:
+    #: The browser on the machine that ran `make up` is the case that must never
+    #: break, and `localhost` is the only name guaranteed to resolve for it.
+    def test_the_api_url_defaults_to_loopback(self):
+        written = originate(ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret)
+        assert (
+            written.get("NEXT_PUBLIC_API_URL", "http://localhost:8000") == "http://localhost:8000"
+        )
+
+    def test_a_pinned_host_wins_over_detection(self):
+        env = ORIGIN_EXAMPLE.replace("OSINT_PUBLIC_HOST=", "OSINT_PUBLIC_HOST=box.local")
+        written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
+        assert written["NEXT_PUBLIC_API_URL"] == "http://box.local:8000"
+
+    #: Sharing must never silently narrow what already worked, so the example's
+    #: own origins stay in the list rather than being replaced by detection.
+    def test_cors_keeps_the_example_origins_and_adds_the_detected_ones(self):
+        written = originate(ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret)
+        #: Stated as the whole list rather than as memberships: the order and
+        #: the absence of a second `localhost:3000` are both part of what this
+        #: function promises, and a membership check states neither.
+        assert written["API_CORS_ORIGINS"].split(",") == [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://box.local:3000",
+            "http://192.0.2.7:3000",
+        ]
+
+    #: A derived key still holding the example's default is the example's
+    #: answer, not the operator's, so deriving over it takes nothing from them.
+    def test_treats_the_example_default_as_unanswered(self):
+        written = originate(ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret)
+        assert "API_CORS_ORIGINS" in written
+
+    def test_leaves_an_origin_list_the_operator_changed(self):
+        env = ORIGIN_EXAMPLE.replace(
+            "API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001",
+            "API_CORS_ORIGINS=http://only.mine:3000",
+        )
+        written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
+        assert "API_CORS_ORIGINS" not in written
+
+    #: `env-refresh` fixes addresses. It must not be able to reach a credential.
+    def test_refresh_scope_cannot_touch_a_secret(self):
+        written = originate(
+            ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret, secrets_too=False
+        )
+        assert "POSTGRES_PASSWORD" not in written
+        assert "API_AUTH_TOKEN" not in written
+        assert "NEXT_PUBLIC_API_TOKEN" not in written
+        assert "API_CORS_ORIGINS" in written
+
+
+class TestStaleAddresses:
+    def test_an_address_this_machine_still_has_is_not_stale(self):
+        env = ORIGIN_EXAMPLE.replace(
+            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=http://box.local:8000",
+        )
+        assert stale_addresses(env, MACHINE) == []
+
+    #: The failure it replaces: a console that is blank, with nothing anywhere
+    #: saying the address compiled into it belongs to a different network.
+    def test_an_address_this_machine_no_longer_has_is_stale(self):
+        env = ORIGIN_EXAMPLE.replace(
+            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=http://198.51.100.4:8000",
+        )
+        assert stale_addresses(env, MACHINE) == ["NEXT_PUBLIC_API_URL"]
+
+    #: A pinned host is a decision. Detection does not get to call it wrong.
+    def test_a_pinned_host_is_never_stale(self):
+        env = ORIGIN_EXAMPLE.replace(
+            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=http://198.51.100.4:8000",
+        ).replace("OSINT_PUBLIC_HOST=", "OSINT_PUBLIC_HOST=198.51.100.4")
+        assert stale_addresses(env, MACHINE) == []
+
+
+class TestDetection:
+    #: Loopback is the fallback that always works, so it is always offered.
+    def test_always_offers_loopback(self):
+        assert "localhost" in detect_machine().hosts
+
+    def test_offers_each_host_once(self):
+        hosts = detect_machine().hosts
+        assert len(hosts) == len(set(hosts))
+
+
+class TestTheCommandOriginates:
+    def test_a_first_run_leaves_nothing_to_fill_in(self, tmp_path, capsys):
+        (tmp_path / "env.example").write_text(ORIGIN_EXAMPLE)
+        assert main(["sync", "--root", str(tmp_path)]) == 0
+        written = parse_env((tmp_path / ".env").read_text())
+        assert written["POSTGRES_PASSWORD"]
+        assert written["API_AUTH_TOKEN"] == written["NEXT_PUBLIC_API_TOKEN"]
+
+    #: The file holds credentials and this output goes to a terminal that may be
+    #: shared, logged or recorded. The report names keys and counts, nothing else.
+    def test_prints_no_value_it_generated(self, tmp_path, capsys):
+        (tmp_path / "env.example").write_text(ORIGIN_EXAMPLE)
+        main(["sync", "--root", str(tmp_path)])
+        printed = capsys.readouterr().out
+        written = parse_env((tmp_path / ".env").read_text())
+        assert written["API_AUTH_TOKEN"] not in printed
+        assert written["POSTGRES_PASSWORD"] not in printed
+        assert "API_AUTH_TOKEN" in printed
+
+    def test_a_second_run_leaves_the_file_byte_identical(self, tmp_path):
+        (tmp_path / "env.example").write_text(ORIGIN_EXAMPLE)
+        main(["sync", "--root", str(tmp_path)])
+        once = (tmp_path / ".env").read_text()
+        main(["sync", "--root", str(tmp_path)])
+        assert (tmp_path / ".env").read_text() == once
+
+    def test_refresh_updates_addresses_and_leaves_secrets_alone(self, tmp_path):
+        (tmp_path / "env.example").write_text(ORIGIN_EXAMPLE)
+        main(["sync", "--root", str(tmp_path)])
+        before = parse_env((tmp_path / ".env").read_text())
+        stale, _ = set_value(
+            (tmp_path / ".env").read_text(), "NEXT_PUBLIC_API_URL", "http://198.51.100.4:8000"
+        )
+        (tmp_path / ".env").write_text(stale)
+        assert main(["refresh", "--root", str(tmp_path)]) == 0
+        after = parse_env((tmp_path / ".env").read_text())
+        assert after["API_AUTH_TOKEN"] == before["API_AUTH_TOKEN"]
+        assert after["POSTGRES_PASSWORD"] == before["POSTGRES_PASSWORD"]
+        assert after["NEXT_PUBLIC_API_URL"] == "http://localhost:8000"
