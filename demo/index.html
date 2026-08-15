@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OSINT World Monitor — frozen demo</title>
+    <meta
+      name="description"
+      content="A frozen snapshot of the OSINT World Monitor console: hazards, military aircraft and AIS vessels on one map. Not live."
+    />
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Said first, in the loudest place on the page. A demo that lets a reader
+         believe they are watching live traffic is worse than no demo. -->
+    <header id="banner">
+      <strong>Frozen demo.</strong>
+      <span id="taken">Loading a snapshot…</span>
+      <a href="https://github.com/BasilSuhail/OSINT">The real thing runs on your own machine →</a>
+    </header>
+
+    <main>
+      <div id="map"></div>
+
+      <aside id="rail">
+        <section>
+          <h2>Disasters</h2>
+          <div class="rows" id="hazard-rows"></div>
+        </section>
+
+        <section>
+          <h2>In the air</h2>
+          <div class="rows" id="air-rows"></div>
+          <p class="note" id="air-note"></p>
+        </section>
+
+        <section>
+          <h2>At sea</h2>
+          <div class="rows" id="sea-rows"></div>
+          <p class="note">
+            Shore receivers only — dense where they reach, blank where they do
+            not. Not a picture of the whole sea.
+          </p>
+        </section>
+
+        <section>
+          <h2>What this is</h2>
+          <p class="note" id="about">
+            One moment from a running console, saved to a file and drawn here.
+            Nothing refreshes, nothing is live, and clicking a mark shows what
+            the feed said about it at that moment.
+          </p>
+        </section>
+      </aside>
+
+      <div id="card" hidden>
+        <button id="card-close" aria-label="Close">✕</button>
+        <div id="card-body"></div>
+      </div>
+    </main>
+
+    <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

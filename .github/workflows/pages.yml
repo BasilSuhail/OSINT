@@ -1,0 +1,55 @@
+name: demo page
+
+# The frozen demo (demo/) published to GitHub Pages.
+#
+# Only that folder is published. The repository holds working notes, audits and
+# plans, and a static host that serves the whole tree would put every one of
+# them on a public URL with no index and no context — which is a different
+# decision from publishing them in a repository somebody chose to open.
+#
+# One-time setup, and it cannot be done from here: Settings → Pages → Source →
+# GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "demo/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and a queued one is not worth cancelling: it is the
+# newer snapshot.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The page is plain HTML, CSS and JavaScript with a JSON file beside it.
+      # Nothing to build, which is the point: a demo that needs a toolchain is
+      # a demo that breaks the week the toolchain moves.
+      - name: Check the snapshot is there and is JSON
+        run: |
+          test -f demo/data/snapshot.json
+          python3 -c "import json,sys; json.load(open('demo/data/snapshot.json'))"
+          echo "snapshot: $(du -h demo/data/snapshot.json | cut -f1)"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo
+      - id: deployment
+        uses: actions/deploy-pages@v4

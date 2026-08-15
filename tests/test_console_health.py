@@ -31,12 +31,26 @@ def _clear():
     app.dependency_overrides.clear()
 
 
-def _event(source: str, *, minutes_ago: int = 5, payload: dict | None = None, positioned=True):
+def _event(
+    source: str,
+    *,
+    minutes_ago: int = 5,
+    payload: dict | None = None,
+    positioned=True,
+    at: datetime = NOW,
+):
+    """One row, dated relative to `at`.
+
+    Every test that calls `console_health.build` passes `NOW` in as well, so a
+    frozen clock keeps those deterministic. The one test that goes through the
+    API cannot: the endpoint reads the real clock, so its rows have to be dated
+    from the real clock too — see the note on that test.
+    """
     return EventRow(
         source=source,
         source_event_id=f"{source}-{minutes_ago}-{positioned}",
-        occurred_at=NOW - timedelta(minutes=minutes_ago),
-        fetched_at=NOW - timedelta(minutes=minutes_ago),
+        occurred_at=at - timedelta(minutes=minutes_ago),
+        fetched_at=at - timedelta(minutes=minutes_ago),
         category="geopolitical",
         keywords=[],
         lat=55.9 if positioned else None,
@@ -248,8 +262,18 @@ class TestAuditSummary:
 
 
 class TestThroughTheApi:
+    #: Dated from the real clock, not from `NOW`.
+    #:
+    #: The endpoint builds its answer with `datetime.now`, and composition
+    #: counts only rows fetched inside a seven-day window. A row stamped from
+    #: the frozen `NOW` therefore drifts out of that window seven days after
+    #: whatever date is written above — and this test duly began failing on
+    #: its own, on a branch that had touched none of this code, because the
+    #: calendar moved past it. A test that expires quietly is worse than no
+    #: test: it spends somebody's afternoon proving their own change is
+    #: innocent.
     def test_the_endpoint_serves_the_whole_answer(self, db_session) -> None:
-        db_session.add(_event("gdelt"))
+        db_session.add(_event("gdelt", at=datetime.now(UTC)))
         db_session.commit()
         app.dependency_overrides[get_session] = lambda: db_session
         body = TestClient(app).get("/console/health").json()

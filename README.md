@@ -26,6 +26,17 @@ map with the provenance attached. It runs on one machine. Nothing leaves it.
 
 ![The console: story feed, world map, and filter rail](images/console-screenshot-live.jpg)
 
+## See it without installing anything
+
+**[basilsuhail.github.io/OSINT](https://basilsuhail.github.io/OSINT/)** — the map,
+the filters and the cards, drawn from a frozen snapshot of a running console.
+Hazards, military aircraft and AIS vessels, all clickable. Nothing there is
+live: it is one moment saved to a file, and the page says so at the top and
+again beside anything it had to thin out.
+
+Everything below is how to run the real thing, which fetches, stores, scores
+and refreshes on your own machine.
+
 ## Quick start
 
 ```bash
