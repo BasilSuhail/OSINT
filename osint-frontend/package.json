@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "SEE LICENSE IN ../LICENSE",
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -51,6 +52,8 @@
     "vitest": "^4.1.9"
   },
   "pnpm": {
+    "buildComment": "Packages allowed to run their install scripts. esbuild and sharp ship native binaries and do not work without them; msw writes its service worker. pnpm does not run these unless they are named here, and a recent pnpm exits non-zero rather than warning — so a clone on a machine that has never seen this project failed at install, after the image build, with an error that read as a pnpm problem rather than a repository one (#966). The suggested fix, `pnpm approve-builds`, is interactive and cannot be part of an unattended setup. Naming them here is that decision, made once, in the repository. Add to this list only for a package whose scripts are genuinely needed.",
+    "onlyBuiltDependencies": ["esbuild", "msw", "sharp"],
     "comment": "Overrides exist because these are transitive: next pins postcss 8.4.31 and sharp ^0.34.5 itself, so bumping our own dependency cannot reach them. Each override stays inside the package's own major version — the point is to clear the advisory, not to take a breaking upgrade. Drop an entry once the parent ships a version that no longer needs it. brace-expansion is deliberately overridden only on its 5.x line: GHSA-mh99-v99m-4gvg patches at 5.0.8 and has no fix in 1.x, and forcing 1.x consumers to 5.x breaks them — v1 exports the function directly while v5 exports { expand }, so minimatch@3's `require('brace-expansion')(...)` would throw at runtime. The remaining 1.1.15 is reachable only through eslint's devDependencies; it leaves when eslint 9 does.",
     "overrides": {
       "hono": "^4.12.27",
