@@ -36,9 +36,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No version pinned here on purpose: it is read from `packageManager` in
+      # osint-frontend/package.json, so CI and a fresh clone install with the
+      # same pnpm. Two pins drift, and the drift shows up as an install that
+      # works on one machine and not another (#966).
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          package_json_file: osint-frontend/package.json
           run_install: false
 
       - name: Set up Node 22
