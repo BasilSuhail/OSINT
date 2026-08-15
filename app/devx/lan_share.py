@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import shlex
 import socket
 import subprocess
@@ -86,19 +87,52 @@ def locked_env() -> dict[str, str]:
     return {"API_BIND": LOOPBACK, "FRONTEND_BIND": LOOPBACK}
 
 
+#: One hostname label: letters, digits and inner hyphens, up to 63 characters.
+_LABEL = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+#: Names that mean "this machine". On a guest device each of them names the
+#: guest, so sharing on one publishes a console nobody else can load.
+_MEANS_THIS_MACHINE = frozenset({"localhost", "localhost.localdomain"})
+
+
 def _validated(address: str) -> str:
+    """An address or name a guest could actually put in a browser.
+
+    A name is accepted as well as an address (#974). The detected address is
+    private, so reaching the console from anywhere else means naming the host
+    some other way — which is the entire purpose of pinning one.
+    """
     candidate = address.strip()
     if not candidate:
         raise ShareAddressError("no address to share on (is this machine on a network?)")
-    try:
-        parsed = ipaddress.IPv4Address(candidate)
-    except ipaddress.AddressValueError as exc:
+    if any(character.isspace() for character in candidate):
+        raise ShareAddressError(f"{candidate!r} contains whitespace")
+    if "/" in candidate:
+        raise ShareAddressError(f"{candidate!r} looks like a URL; give a bare host")
+    if ":" in candidate:
         # IPv6 is refused rather than half-supported: the compose port mapping
         # and the bundle URL both need bracket syntax, and neither has been
-        # tried that way.
-        raise ShareAddressError(f"{candidate!r} is not an IPv4 address") from exc
-    if parsed.is_loopback or parsed.is_unspecified:
+        # tried that way. A trailing `:port` lands here too, and the port is
+        # supplied separately.
+        raise ShareAddressError(f"{candidate!r} must carry no port and no colon")
+
+    labels = candidate.split(".")
+    if all(label.isdigit() for label in labels if label):
+        # Somebody meant an address and mistyped it. No hostname is spelled this
+        # way, so reading it as one would turn a typo into a name that never
+        # resolves and an empty console with no explanation.
+        try:
+            parsed = ipaddress.IPv4Address(candidate)
+        except ipaddress.AddressValueError as exc:
+            raise ShareAddressError(f"{candidate!r} is not an IPv4 address") from exc
+        if parsed.is_loopback or parsed.is_unspecified:
+            raise ShareAddressError(f"{candidate} is not reachable from another device")
+        return candidate
+
+    if candidate.lower() in _MEANS_THIS_MACHINE:
         raise ShareAddressError(f"{candidate} is not reachable from another device")
+    if not all(_LABEL.match(label) for label in labels):
+        raise ShareAddressError(f"{candidate!r} is not a usable host name")
     return candidate
 
 
@@ -108,13 +142,32 @@ def share_env(
     api_port: int = DEFAULT_API_PORT,
     frontend_port: int = DEFAULT_FRONTEND_PORT,
     cors_origins: str = "",
+    also_reachable_at: tuple[str, ...] = (),
 ) -> dict[str, str]:
-    """Every setting that has to change together, derived from one address."""
+    """Every setting that has to change together, derived from one address.
+
+    ``also_reachable_at`` names the other ways in which this machine can be
+    reached — in practice the detected local address, when the host was pinned
+    to something else (#974). They reach the origin allow-list and nothing else,
+    so pinning never takes away the network that already worked. One that is
+    unusable is dropped rather than fatal: a pin given by hand must not fail
+    because detection did.
+    """
     ip = _validated(address)
     guest_origin = f"http://{ip}:{frontend_port}"
 
+    extra: list[str] = []
+    for other in also_reachable_at:
+        try:
+            extra.append(f"http://{_validated(other)}:{frontend_port}")
+        except ShareAddressError:
+            continue
+
     configured = [o.strip() for o in (cors_origins or DEFAULT_CORS_ORIGINS).split(",") if o.strip()]
-    origins = [*configured, guest_origin] if guest_origin not in configured else configured
+    origins: list[str] = []
+    for origin in [*configured, guest_origin, *extra]:
+        if origin not in origins:
+            origins.append(origin)
 
     return {
         "API_BIND": ALL_INTERFACES,
@@ -186,12 +239,26 @@ def main(argv: list[str] | None = None) -> int:
         print(f"usage: python -m app.devx.lan_share [locked|share] (got {mode!r})", file=sys.stderr)
         return 2
 
+    #: The same setting `make env` derives NEXT_PUBLIC_API_URL from (#964).
+    #: Share mode used to ignore it and overwrite that value with the detected
+    #: address, so pinning a host and then sharing silently discarded the
+    #: choice — two commands in one project reading one setting differently
+    #: (#974). Detection is now the fallback, not the rule.
+    pinned = _env("OSINT_PUBLIC_HOST").strip()
+    detected = ""
+    try:
+        detected = detect_lan_ip()
+    except ShareAddressError:
+        # Only fatal when there is no pin to fall back on, handled below.
+        detected = ""
+
     try:
         env = share_env(
-            detect_lan_ip(),
+            pinned or detected,
             api_port=int(_env_port("API_PORT", DEFAULT_API_PORT)),
             frontend_port=int(_env_port("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)),
             cors_origins=_env("API_CORS_ORIGINS"),
+            also_reachable_at=(detected,) if pinned else (),
         )
     except ShareAddressError as exc:
         # The caller evals this output, so a failure must not print exports.

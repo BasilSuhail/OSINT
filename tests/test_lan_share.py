@@ -122,21 +122,92 @@ def test_share_reports_the_url_to_hand_over() -> None:
     assert env["LAN_SHARE_URL"] == "http://203.0.113.42:3000"
 
 
-@pytest.mark.parametrize("address", ["", "   ", "not-an-ip", "999.1.1.1", "::1"])
-def test_share_refuses_an_address_that_is_not_a_usable_ipv4(address: str) -> None:
-    """A wrong address fails now, with a name, rather than as an empty console.
+@pytest.mark.parametrize(
+    "address",
+    [
+        "",
+        "   ",
+        # Every label numeric means somebody meant an address and mistyped it.
+        # No hostname looks like this, so reading it as one would turn a typo
+        # into a name that never resolves.
+        "999.1.1.1",
+        # Colons: IPv6, or a port appended by hand. The bundle URL and the
+        # compose mapping would both need bracket syntax for the first, and the
+        # port is already supplied separately.
+        "::1",
+        "example.invalid:3000",
+        # A scheme or a path makes it a URL. This wants a bare host.
+        "http://example.invalid",
+        "example.invalid/console",
+        "two words",
+        "-leading.dash",
+    ],
+)
+def test_share_refuses_an_address_a_guest_could_not_use(address: str) -> None:
+    """A wrong address fails now, with a name, rather than as an empty console."""
+    with pytest.raises(ShareAddressError):
+        share_env(address)
 
-    IPv6 is refused too: the compose port mapping and the bundle URL would both
-    need bracket syntax, and nothing in the stack has been tried that way.
+
+@pytest.mark.parametrize("address", ["127.0.0.1", "0.0.0.0", "localhost", "LocalHost"])
+def test_share_refuses_an_address_that_means_this_machine(address: str) -> None:
+    """On a guest device every one of these names the guest, not the host."""
+    with pytest.raises(ShareAddressError):
+        share_env(address)
+
+
+class TestPinnedHost:
+    """A pinned host, for reaching the console from off the local network (#974).
+
+    The detected address is private. It is not only the link — it is compiled
+    into the bundle the guest downloads, so a guest arriving by any other route
+    loads a console whose every API call goes somewhere they cannot reach.
     """
-    with pytest.raises(ShareAddressError):
-        share_env(address)
 
+    def test_a_name_is_accepted_where_only_an_address_was(self) -> None:
+        env = share_env("console.invalid", frontend_port=3000, api_port=8000)
+        assert env["NEXT_PUBLIC_API_URL"] == "http://console.invalid:8000"
+        assert env["LAN_SHARE_URL"] == "http://console.invalid:3000"
+        assert env["LAN_SHARE_HOST"] == "console.invalid"
 
-@pytest.mark.parametrize("address", ["127.0.0.1", "0.0.0.0"])
-def test_share_refuses_an_address_no_guest_could_use(address: str) -> None:
-    with pytest.raises(ShareAddressError):
-        share_env(address)
+    def test_the_bind_is_unchanged_by_pinning(self) -> None:
+        env = share_env("console.invalid")
+        assert env["API_BIND"] == ALL_INTERFACES
+        assert env["FRONTEND_BIND"] == ALL_INTERFACES
+
+    #: Pinning must not take away the network that already worked.
+    #:
+    #: Stated as the whole list rather than as memberships: the order and the
+    #: absence of a repeat are both part of what this promises, and a
+    #: membership check states neither.
+    def test_the_detected_address_stays_in_the_origin_list(self) -> None:
+        env = share_env("console.invalid", also_reachable_at=("203.0.113.42",), frontend_port=3000)
+        assert env["API_CORS_ORIGINS"].split(",") == [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://console.invalid:3000",
+            "http://203.0.113.42:3000",
+        ]
+
+    def test_an_origin_is_never_listed_twice(self) -> None:
+        env = share_env("203.0.113.42", also_reachable_at=("203.0.113.42",), frontend_port=3000)
+        origins = env["API_CORS_ORIGINS"].split(",")
+        assert origins.count("http://203.0.113.42:3000") == 1
+
+    #: The pinned host is what the guest typed, so it is the one `next dev` has
+    #: to allow — not the address this machine happens to have (#930).
+    def test_the_dev_server_is_told_to_allow_the_pinned_host(self) -> None:
+        env = share_env("console.invalid", also_reachable_at=("203.0.113.42",))
+        assert env["LAN_SHARE_HOST"] == "console.invalid"
+
+    def test_an_unusable_extra_address_is_dropped_rather_than_fatal(self) -> None:
+        """Detection failing must not stop a pin that was given explicitly."""
+        env = share_env("console.invalid", also_reachable_at=("", "127.0.0.1"), frontend_port=3000)
+        assert env["API_CORS_ORIGINS"].split(",") == [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://console.invalid:3000",
+        ]
 
 
 def test_exports_are_quoted_for_eval() -> None:
