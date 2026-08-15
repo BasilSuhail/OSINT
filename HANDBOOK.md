@@ -866,7 +866,14 @@ Ollama, optionally, on either:
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh     # Linux
 brew install ollama && ollama serve               # macOS
+ollama pull llama3.2:3b                           # ~2 GB, both platforms
 ```
+
+Optional in the sense that everything else works without it, not in the sense that nothing changes. Without Ollama the Ask panel replies `The brain is offline right now.` to every question, and the written situation summaries do not appear. The map, the feed, ingestion, the scores and the audit trail are unaffected.
+
+`make up` starts Ollama and pulls the model itself when Ollama is installed, so the pull above only moves the download earlier. Adding it later and re-running `make up` needs nothing else redone.
+
+On a machine with 8 GB of memory, the 3B model at Q4 is roughly 2.5 GB resident against a container ceiling of about 4.3 GB. That fits, but not alongside a heavy analytical run — check with `free -h` before starting one.
 
 Three of those lines fail somewhere else entirely when they are wrong, so they are worth a sentence each.
 

@@ -59,12 +59,19 @@ macOS, with [Homebrew](https://brew.sh):
 brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
 ```
 
-Optional, for the model-backed summaries and questions:
+Optional — but without it the **Ask panel does not answer**. Ask it anything and
+it replies `The brain is offline right now.` The map, the feed, ingestion and
+every number still work; the written summaries and the question box do not.
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh     # Linux
 brew install ollama && ollama serve               # macOS
+ollama pull llama3.2:3b                           # ~2 GB, both platforms
 ```
+
+`make up` starts Ollama and pulls the model for you if it is installed, so the
+pull above is only to get the download out of the way first. You can add it any
+time later and re-run `make up` — nothing else needs redoing.
 
 Docker and Node come from their own installers because distribution packages are
 usually too old. **Do not install pnpm by name** — `corepack enable` fetches the
@@ -85,8 +92,8 @@ make down                 # stop everything, keep all data
 Open <http://localhost:3000>. First run takes several minutes — images, packages
 and the local model download.
 
-Without Ollama everything still runs; the model-backed summaries and questions
-stay dormant.
+Without Ollama everything still runs and the Ask panel answers `The brain is
+offline right now.` — see [step 1](#1-install-what-it-needs) to add it.
 
 `.env` is the only file you edit, it is git-ignored, and
 [`env.example`](https://github.com/BasilSuhail/OSINT/blob/main/env.example) is
