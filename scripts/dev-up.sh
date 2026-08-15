@@ -230,6 +230,21 @@ env_value() { # key — the value in .env, if .env sets one
   sed -n "s/^$1=//p" .env | tail -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
 }
 
+#: The interpreter that derives the network mode. `app/devx/lan_share.py`
+#: imports nothing but the standard library, so the project's virtual
+#: environment is not needed to run it and requiring one refused to share on
+#: every machine that had not built one yet — pointing at a `make install`
+#: target that does not exist (#970). The venv is still preferred when it is
+#: there, so a machine that has one keeps using the interpreter it was built
+#: with. `scripts/env_setup.py` already runs this way, for the same reason.
+share_python() {
+  if [ -x .venv/bin/python ]; then
+    echo .venv/bin/python
+    return 0
+  fi
+  command -v python3 2>/dev/null || true
+}
+
 apply_network_mode() {
   # Closed unless sharing was asked for (#928). The derivation — bind address,
   # CORS origins, and the API URL compiled into the browser bundle, which must
@@ -240,12 +255,15 @@ apply_network_mode() {
     mode="share"
   fi
 
-  if [ ! -x .venv/bin/python ]; then
+  local python
+  python="$(share_python)"
+  if [ -z "$python" ]; then
     if [ "$mode" = "share" ]; then
-      echo "Sharing needs the Python environment (.venv). Run: make install" >&2
+      echo "Sharing needs python3, and there is none on PATH." >&2
       exit 1
     fi
-    # Locked is two constants, so a missing venv must never stop the safe path.
+    # Locked is two constants, so a missing interpreter must never stop the
+    # safe path.
     export API_BIND=127.0.0.1 FRONTEND_BIND=127.0.0.1
     return
   fi
@@ -257,7 +275,7 @@ apply_network_mode() {
   export FRONTEND_PORT="${FRONTEND_PORT:-$FRONTEND_PORT_DEFAULT}"
 
   local exports
-  if ! exports="$(.venv/bin/python -m app.devx.lan_share "$mode" 2>logs/lan-share.err)"; then
+  if ! exports="$("$python" -m app.devx.lan_share "$mode" 2>logs/lan-share.err)"; then
     echo "  $(tail -n1 logs/lan-share.err 2>/dev/null)" >&2
     if [ "$mode" = "share" ]; then
       exit 1
