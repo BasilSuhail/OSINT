@@ -117,10 +117,35 @@ To open the console from another device, put the name that device would use in
 `make help` lists every command in the Makefile with a line saying what it
 does.
 
-Run `make env` again after every `git pull`. New settings get added to the
-template over time, and this is how they reach your file — otherwise the
-feature they switch on stays quietly off. `make up` runs the check for you and
-tells you what it found, then starts anyway.
+### 3. Updating, and running a branch
+
+Pull the latest:
+
+```bash
+git checkout main
+git pull
+make env                  # adds any settings the update introduced
+make up
+```
+
+Try a branch — a fix you want to test before it merges, say:
+
+```bash
+git fetch origin
+git checkout <branch-name>
+git pull
+make env
+make up
+```
+
+Back to `main` afterwards with the first block. `make down` first if the stack
+is running and the branch changes how it starts.
+
+**`make env` after every pull is the step people skip.** New settings arrive in
+`env.example` over time and this is how they reach your file; miss it and the
+feature they switch on stays quietly off, with nothing saying so. It never
+touches a value you have already set. `make up` runs the check and tells you
+what it found, then starts anyway.
 
 Full prerequisites: [§3](HANDBOOK.md#3-what-you-need-before-starting). The
 walkthrough: [§1](HANDBOOK.md#1-start-here-download-install-run-and-stop).
