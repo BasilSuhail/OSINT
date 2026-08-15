@@ -574,3 +574,63 @@ class TestTheCommandOriginates:
         assert after["API_AUTH_TOKEN"] == before["API_AUTH_TOKEN"]
         assert after["POSTGRES_PASSWORD"] == before["POSTGRES_PASSWORD"]
         assert after["NEXT_PUBLIC_API_URL"] == "http://localhost:8000"
+
+
+HOST_ID_EXAMPLE = """POSTGRES_PASSWORD=
+API_AUTH_TOKEN=
+NEXT_PUBLIC_API_TOKEN=
+NEXT_PUBLIC_API_URL=http://localhost:8000
+API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+OSINT_PUBLIC_HOST=
+DOCKER_UID=
+DOCKER_GID=
+"""
+
+
+class TestWhoTheContainersRunAs:
+    """A Linux bind mount keeps the host's ownership (#984).
+
+    A container running as the image's own user cannot then write to a data
+    directory belonging to the operator, and the story export fails with
+    "Permission denied". Docker Desktop fakes the ownership, so the same stack
+    on macOS never asks the question.
+    """
+
+    def test_linux_gets_the_running_account(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "linux")
+        written = originate(HOST_ID_EXAMPLE, HOST_ID_EXAMPLE, MACHINE, make_secret=_fixed_secret)
+        assert written["DOCKER_UID"].isdigit()
+        assert written["DOCKER_GID"].isdigit()
+
+    #: 501 on macOS names a real account. Writing it into a file that may be
+    #: copied to another machine is how a confusing failure travels.
+    def test_other_platforms_are_left_empty(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "darwin")
+        written = originate(HOST_ID_EXAMPLE, HOST_ID_EXAMPLE, MACHINE, make_secret=_fixed_secret)
+        assert "DOCKER_UID" not in written
+        assert "DOCKER_GID" not in written
+
+    def test_an_id_the_operator_set_is_never_replaced(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "linux")
+        env = HOST_ID_EXAMPLE.replace("DOCKER_UID=", "DOCKER_UID=4242")
+        written = originate(HOST_ID_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
+        assert "DOCKER_UID" not in written
+
+    #: An account id is a fact about this machine, not an address that drifts.
+    def test_refresh_cannot_rewrite_it(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "linux")
+        written = originate(
+            HOST_ID_EXAMPLE,
+            HOST_ID_EXAMPLE,
+            MACHINE,
+            make_secret=_fixed_secret,
+            secrets_too=False,
+            rederive=True,
+        )
+        assert "DOCKER_UID" not in written
+
+    def test_a_key_the_example_omits_is_not_invented(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "linux")
+        without = HOST_ID_EXAMPLE.replace("DOCKER_UID=\nDOCKER_GID=\n", "")
+        written = originate(without, without, MACHINE, make_secret=_fixed_secret)
+        assert "DOCKER_UID" not in written
