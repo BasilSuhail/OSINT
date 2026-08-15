@@ -81,3 +81,11 @@ POSITIONING-SCRATCH.md
 watchlist.json
 *.watchlist.json
 data/watchlist.json
+
+# The demo's frozen snapshot is the one data file that belongs in the
+# repository: it is what the published page draws, it is already public by
+# definition, and a page with no data is a page that looks broken. `data/`
+# above ignores every directory of that name, wherever it sits, so it needs
+# naming back.
+!demo/data/
+!demo/data/snapshot.json
