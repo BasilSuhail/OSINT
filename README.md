@@ -39,9 +39,42 @@ and refreshes on your own machine.
 
 ## Quick start
 
-```bash
-# install first:  git · docker (running) · node lts (with corepack) · ollama (optional)
+### 1. Install what it needs
 
+Skip if you already run Docker and current Node.
+
+Debian, Ubuntu, Raspberry Pi OS — then log out and back in:
+
+```bash
+sudo apt update && sudo apt install -y git curl ca-certificates && \
+curl -fsSL https://get.docker.com | sudo sh && \
+sudo usermod -aG docker "$USER" && \
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+sudo apt install -y nodejs && sudo corepack enable
+```
+
+macOS, with [Homebrew](https://brew.sh):
+
+```bash
+brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
+```
+
+Optional, for the model-backed summaries and questions:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh     # Linux
+brew install ollama && ollama serve               # macOS
+```
+
+Docker and Node come from their own installers because distribution packages are
+usually too old. **Do not install pnpm by name** — `corepack enable` fetches the
+version `packageManager` pins, and a different one resolves the lockfile
+differently. Details and the swap setting for a single-board host:
+[§3.1](HANDBOOK.md#31-required-software).
+
+### 2. Run it
+
+```bash
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
 make env                  # makes your settings file (.env), filled in and ready
