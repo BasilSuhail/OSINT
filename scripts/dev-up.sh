@@ -31,8 +31,10 @@ API_WAIT_SECONDS="${API_WAIT_SECONDS:-20}"
 FRONTEND_WAIT_SECONDS="${FRONTEND_WAIT_SECONDS:-60}"
 DOCKER_WAIT_MESSAGE_EVERY="${DOCKER_WAIT_MESSAGE_EVERY:-10}"
 OLLAMA_WAIT_SECONDS="${OLLAMA_WAIT_SECONDS:-30}"
-# Matches settings.brain_model (env BRAIN_MODEL overrides both).
-OLLAMA_BRAIN_MODEL="${BRAIN_MODEL:-llama3.2:3b}"
+# The models are read where they are pulled, in ensure_ollama, and their
+# defaults track app/settings.py: brain_model, qa_model, embed_model. Setting
+# BRAIN_MODEL, QA_MODEL or EMBED_MODEL in `.env` overrides one of them for both
+# the pull and the application.
 
 load_frontend_public_env() {
   [ -f .env ] || return 0
@@ -198,7 +200,27 @@ ensure_ollama() {
     fi
   fi
 
-  # Ensure the light brain model is present (one-time ~1GB pull on a fresh box).
+  # Every model the settings name, not only the first one (#986). Three
+  # settings name three models — the situation narrative, the Ask panel and the
+  # embeddings — and pulling one of them produced a console where the narrative
+  # worked and every question came back "The brain is offline right now.",
+  # because the Ask request asked for a model that was never downloaded and the
+  # API turned the 404 into that sentence. Every check the message invites you
+  # to make passes, since the service really is running and reachable.
+  #
+  # Defaults track app/settings.py. A model named in `.env` is pulled instead,
+  # which is how somebody points the Ask panel at a smaller one.
+  local model
+  for model in \
+    "${BRAIN_MODEL:-llama3.2:3b}" \
+    "${QA_MODEL:-qwen3.5:4b-q4_K_M}" \
+    "${EMBED_MODEL:-nomic-embed-text}"; do
+    ensure_ollama_model "$model"
+  done
+}
+
+ensure_ollama_model() {
+  local wanted="$1"
   # Right after `ollama serve` boots, the model listing is briefly flaky — the
   # CLI and the /api/tags endpoint can each momentarily miss a model that IS on
   # disk. Check BOTH and retry for a few seconds so we never trigger a spurious
@@ -207,17 +229,17 @@ ensure_ollama() {
   # the download).
   local have_model=""
   for _ in $(seq 1 8); do
-    if ollama list 2>/dev/null | grep -q "$OLLAMA_BRAIN_MODEL" ||
-      curl -s -m2 http://localhost:11434/api/tags 2>/dev/null | grep -q "$OLLAMA_BRAIN_MODEL"; then
+    if ollama list 2>/dev/null | grep -q "$wanted" ||
+      curl -s -m2 http://localhost:11434/api/tags 2>/dev/null | grep -q "$wanted"; then
       have_model=1
       break
     fi
     sleep 1
   done
   if [ -z "$have_model" ]; then
-    echo "  pulling brain model $OLLAMA_BRAIN_MODEL (one-time download)…"
-    if ! ollama pull "$OLLAMA_BRAIN_MODEL" >logs/ollama-pull.log 2>&1; then
-      echo "  model pull failed (see logs/ollama-pull.log); brain stays dormant until pulled."
+    echo "  pulling model $wanted (one-time download)…"
+    if ! ollama pull "$wanted" >>logs/ollama-pull.log 2>&1; then
+      echo "  pull of $wanted failed (see logs/ollama-pull.log); the features using it stay dormant."
     fi
   fi
 }
