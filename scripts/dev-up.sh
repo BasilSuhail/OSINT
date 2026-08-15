@@ -45,8 +45,21 @@ load_frontend_public_env() {
 
     key="${line%%=*}"
     value="${line#*=}"
+    #: Every NEXT_PUBLIC_* key, not a hand-kept list of them. `.env` is at the
+    #: repository root and the dashboard runs from osint-frontend/, so Next
+    #: never reads that file and this is the only route anything in it takes to
+    #: the browser bundle. The list this replaces was a partial copy of
+    #: env.example and had fallen behind by exactly one key —
+    #: NEXT_PUBLIC_API_TOKEN, the one every request depends on. The console
+    #: loaded, sent no credential, and every panel came back 401, which reads on
+    #: screen as "no events" rather than as a fault (#976).
+    #:
+    #: The prefix is the contract. Next already treats it as "safe to compile
+    #: into the bundle", so a key carrying it is one somebody has already
+    #: decided the browser may see. A second list here decides nothing and can
+    #: only fall behind again.
     case "$key" in
-      NEXT_PUBLIC_API_URL|NEXT_PUBLIC_EVENT_WINDOW_LIMIT|NEXT_PUBLIC_EVENT_BUFFER_LIMIT|NEXT_PUBLIC_HAZARD_EVENT_LIMIT|NEXT_PUBLIC_CYBER_EVENT_LIMIT|NEXT_PUBLIC_FIRMS_EVENT_LIMIT|NEXT_PUBLIC_SCORE_ROW_LIMIT|NEXT_PUBLIC_ANALYTICS_ROW_LIMIT)
+      NEXT_PUBLIC_*)
         if [ -z "${!key+x}" ]; then
           case "$value" in
             \"*\") value="${value#\"}"; value="${value%\"}" ;;
