@@ -117,7 +117,7 @@ corepack enable && corepack prepare pnpm@latest --activate
 On the repository page, choose **Code**, copy the HTTPS address, replace `<repository-url>` below with that address, and run the whole line once:
 
 ```bash
-git clone <repository-url> OSINT && cd OSINT && make env && (cd osint-frontend && pnpm install)
+git clone <repository-url> OSINT && cd OSINT && make env
 ```
 
 Every segment is joined with `&&`, so the next segment runs only if the previous one succeeds:
@@ -126,8 +126,9 @@ Every segment is joined with `&&`, so the next segment runs only if the previous
 | --- | --- |
 | `git clone <repository-url> OSINT` | Downloads a fresh copy into a folder named `OSINT`. |
 | `cd OSINT` | Enters the repository root. Every later command runs here. |
-| `make env` | Creates your private settings file, `.env`. If one already exists it is left alone, apart from adding any settings it is missing. |
-| `(cd osint-frontend && pnpm install)` | Installs browser packages in the frontend folder, then automatically returns to the repository root. |
+| `make env` | Creates your private settings file, `.env`, and fills in what nobody should have to type. If one already exists it is left alone, apart from adding any settings it is missing. |
+
+The browser packages are not on that line. `make up` installs them the first time it runs, from the lockfile, and says so while it happens.
 
 If the code already exists, do not clone it again. Open a terminal in the existing repository root and continue with §1.5.
 
@@ -908,17 +909,21 @@ All three names should appear. If `ls` says a file is missing, move into the cor
 
 ## 4.3 Install frontend packages
 
-```bash
-(cd osint-frontend && pnpm install)
-```
+Nothing to do. `make up` installs them the first time it runs, from the lockfile, and prints a line while it happens because it is the slow part of a first run.
 
 If `pnpm` is missing and Node includes Corepack:
 
 ```bash
-corepack enable && corepack prepare pnpm@latest --activate
+corepack enable
 ```
 
-Then repeat `pnpm install`.
+Do not pick a pnpm version yourself. `osint-frontend/package.json` names the one this project installs with, and Corepack fetches exactly that. Installing a different one is how a lockfile starts behaving differently on two machines.
+
+To install by hand anyway — after changing a dependency, say:
+
+```bash
+(cd osint-frontend && pnpm install --frozen-lockfile)
+```
 
 ## 4.4 What was downloaded
 

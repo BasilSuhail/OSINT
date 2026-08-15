@@ -40,7 +40,7 @@ and refreshes on your own machine.
 ## Quick start
 
 ```bash
-# install first:  git · docker (running) · node lts · pnpm · ollama (optional)
+# install first:  git · docker (running) · node lts (with corepack) · ollama (optional)
 
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
