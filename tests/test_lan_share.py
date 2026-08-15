@@ -284,3 +284,27 @@ def test_make_share_exists_and_does_not_persist_the_choice() -> None:
     assert "\nshare:" in makefile
     assert "LAN_SHARE=1" in makefile
     assert "LAN_SHARE" not in (ROOT / "env.example").read_text()
+
+
+class TestTheDashboardReceivesItsSettings:
+    """`.env` is at the repository root; the dashboard runs a directory down.
+
+    Next never reads that file, so `load_frontend_public_env` is the only route
+    anything in it takes to the browser bundle. A key that does not pass
+    through here is a key the console does not have (#976).
+    """
+
+    #: The failure this replaces: every request 401, drawn on screen as "no
+    #: events" rather than as a fault, because the one key the requests depend
+    #: on was missing from a hand-kept list.
+    def test_every_public_key_is_passed_through_rather_than_a_chosen_few(self) -> None:
+        script = DEV_UP.read_text()
+        assert "NEXT_PUBLIC_*)" in script
+
+    def test_no_hand_kept_list_of_public_keys_remains(self) -> None:
+        """A list here is a copy of env.example, and copies fall behind."""
+        script = DEV_UP.read_text()
+        assert "NEXT_PUBLIC_API_URL|NEXT_PUBLIC_" not in script
+
+    def test_the_token_the_console_authenticates_with_is_documented(self) -> None:
+        assert "NEXT_PUBLIC_API_TOKEN=" in (ROOT / "env.example").read_text()
