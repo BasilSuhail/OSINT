@@ -268,13 +268,49 @@ apply_network_mode() {
   eval "$exports"
 }
 
-frontend_listener_port() {
+#: What a process is actually listening on, as `address:port`, or nothing.
+#:
+#: `ss` first, `lsof` second. This asked lsof alone, which a desktop has and a
+#: server install does not — and the failure was silent in the worst way (#972).
+#: With no lsof every running dashboard looked absent, so `frontend_pid` found
+#: nothing to stop, every `make up` and `make share` spawned another `next dev`
+#: beside the first, and the first kept the port. The console stayed on
+#: whichever address it was started with, no matter how many times the mode was
+#: changed, while the script reported the change it had not made.
+frontend_listener_endpoint() {
   local pid="${1:-}"
   if [ -z "$pid" ]; then
     return
   fi
 
-  lsof -Pan -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null | tail -n 1 | sed -n 's/.*TCP .*:\([0-9][0-9]*\) (LISTEN).*/\1/p'
+  if command -v ss >/dev/null 2>&1; then
+    #: The comma matters: `pid=26,` must not match a listener held by 261.
+    ss -tlnp 2>/dev/null | grep -F "pid=${pid}," | awk '{print $4}' | tail -n 1
+    return
+  fi
+
+  lsof -Pan -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null | tail -n 1 | sed -n 's/.*TCP \(.*\) (LISTEN).*/\1/p'
+}
+
+frontend_listener_port() {
+  local endpoint
+  endpoint="$(frontend_listener_endpoint "${1:-}")"
+  [ -n "$endpoint" ] || return 0
+  echo "${endpoint##*:}"
+}
+
+#: The address half, normalised. Both tools spell "every interface" their own
+#: way, and the comparison this feeds is against a bind address written as
+#: 0.0.0.0.
+frontend_listener_address() {
+  local endpoint address
+  endpoint="$(frontend_listener_endpoint "${1:-}")"
+  [ -n "$endpoint" ] || return 0
+  address="${endpoint%:*}"
+  case "$address" in
+    "*" | "[::]" | "::" | "0.0.0.0") echo "0.0.0.0" ;;
+    *) echo "$address" ;;
+  esac
 }
 
 frontend_pid() {
@@ -429,23 +465,34 @@ spawn_frontend() {
   load_frontend_public_env
   pid="$(frontend_pid || true)"
   if [ -n "$pid" ]; then
-    local running_mode wanted_mode
+    local running_mode wanted_mode bound
     running_mode="$(cat "$FRONTEND_MODE_FILE" 2>/dev/null || true)"
     wanted_mode="$(frontend_mode_signature)"
-    if [ "$running_mode" = "$wanted_mode" ]; then
+    #: The file records what was asked for, and is written the moment the
+    #: process is spawned — before it has bound anything. Anything that goes
+    #: wrong between those two points leaves a file claiming a mode the
+    #: dashboard is not in, and the file is what the next run consults, so the
+    #: wrong mode becomes permanent and every later `make share` reports a
+    #: change it did not make (#972). The socket cannot lie, so ask it too.
+    bound="$(frontend_listener_address "$pid")"
+    if [ "$running_mode" = "$wanted_mode" ] && [ "$bound" = "$FRONTEND_BIND" ]; then
       local port
       port="$(frontend_listener_port "$pid")"
       if [ -z "$port" ]; then
         port="$FRONTEND_PORT_DEFAULT"
       fi
-      echo "  frontend already running (pid $pid on :$port)"
+      echo "  frontend already running (pid $pid on $bound:$port)"
       echo "$pid" >"$pidfile"
       return
     fi
 
     # Up on the wrong interface. `next dev` cannot be rebound in place, and the
     # API URL in its bundle is fixed at start, so this has to be a restart.
-    echo "  frontend restarting (${running_mode:-unknown} → ${wanted_mode})"
+    if [ "$running_mode" = "$wanted_mode" ]; then
+      echo "  frontend restarting (recorded as ${wanted_mode}, actually bound to ${bound:-nothing})"
+    else
+      echo "  frontend restarting (${running_mode:-unknown} → ${wanted_mode})"
+    fi
     kill "$pid" 2>/dev/null || true
     # `next dev` supervises a child server, and the sweep in frontend_pid finds
     # that child once the parent is gone. Stop both or the restart is a no-op.
