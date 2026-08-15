@@ -866,8 +866,19 @@ Ollama, optionally, on either:
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh     # Linux
 brew install ollama && ollama serve               # macOS
-ollama pull llama3.2:3b                           # ~2 GB, both platforms
 ```
+
+`make up` pulls the models itself. There are three, named by three settings, and pulling only the first produced a console where the situation summary worked and every question in the Ask panel answered "The brain is offline right now." — because the request named a model that had never been downloaded (#986):
+
+| Setting | Default | What stops without it |
+| --- | --- | --- |
+| `brain_model` | `llama3.2:3b` | the written situation summary |
+| `qa_model` | `qwen3.5:4b-q4_K_M` | the Ask panel |
+| `embed_model` | `nomic-embed-text` | semantic retrieval behind search |
+
+About 5 GB in total, once. Setting `BRAIN_MODEL`, `QA_MODEL` or `EMBED_MODEL` in `.env` changes both the model used and the model pulled. On a small host, pointing `QA_MODEL` at the 3B model already needed for the summary halves the download and the memory, in exchange for weaker answers.
+
+Three models on disk is not three in memory: the Ask path asks for its model to be unloaded once it has answered, so one is resident at a time.
 
 Optional in the sense that everything else works without it, not in the sense that nothing changes. Without Ollama the Ask panel replies `The brain is offline right now.` to every question, and the written situation summaries do not appear. The map, the feed, ingestion, the scores and the audit trail are unaffected.
 

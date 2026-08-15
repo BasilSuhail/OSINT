@@ -66,12 +66,12 @@ every number still work; the written summaries and the question box do not.
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh     # Linux
 brew install ollama && ollama serve               # macOS
-ollama pull llama3.2:3b                           # ~2 GB, both platforms
 ```
 
-`make up` starts Ollama and pulls the model for you if it is installed, so the
-pull above is only to get the download out of the way first. You can add it any
-time later and re-run `make up` — nothing else needs redoing.
+`make up` starts Ollama and pulls what it needs — **three models, about 5 GB in
+total**: one writes the situation summary, one answers in the Ask panel, one
+builds the embeddings behind search. Only one is ever loaded at a time. You can
+add Ollama later and re-run `make up`; nothing else needs redoing.
 
 Docker and Node come from their own installers because distribution packages are
 usually too old. **Do not install pnpm by name** — `corepack enable` fetches the
