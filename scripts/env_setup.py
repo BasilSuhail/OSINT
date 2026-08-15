@@ -290,6 +290,30 @@ _DERIVED: tuple[str, ...] = ("NEXT_PUBLIC_API_URL", "API_CORS_ORIGINS")
 #: Set this and detection stops arguing. Blank means work it out.
 _PINNED_HOST_KEY = "OSINT_PUBLIC_HOST"
 
+#: Who the backend containers run as, on the platforms where it matters.
+#:
+#: A Linux bind mount keeps the host's ownership, so a container running as the
+#: image's own user cannot write to a data directory belonging to the operator,
+#: and the story export fails with "Permission denied" (#984). Docker Desktop
+#: fakes the ownership, so the same stack on macOS never asks the question —
+#: which is why the two settings that answer it existed, in a compose comment,
+#: reaching nobody's `.env`.
+#:
+#: Left empty off Linux rather than filled with values that would be wrong
+#: there: 501 on macOS names a real account, and writing it into a file that
+#: might be copied to another machine is how a confusing failure travels.
+_HOST_ID_KEYS: dict[str, str] = {"DOCKER_UID": "getuid", "DOCKER_GID": "getgid"}
+
+
+def host_ids() -> dict[str, str]:
+    """The account the containers should run as, where that is a real question."""
+    if not sys.platform.startswith("linux"):
+        return {}
+    import os
+
+    return {key: str(getattr(os, reader)()) for key, reader in _HOST_ID_KEYS.items()}
+
+
 DEFAULT_API_PORT = 8000
 DEFAULT_FRONTEND_PORT = 3000
 
@@ -475,6 +499,12 @@ def originate(
             original = current(source)
             if documented(mirror) and original and not answered(mirror):
                 written[mirror] = original
+        #: Fill-once, like a secret and unlike an address: an account id is a
+        #: fact about this machine that does not drift, and `refresh` has no
+        #: business rewriting it.
+        for key, value in host_ids().items():
+            if documented(key) and not answered(key):
+                written[key] = value
 
     pinned = have.get(_PINNED_HOST_KEY, "").strip()
     host = pinned or (machine.hosts[0] if machine.hosts else "localhost")
