@@ -20,6 +20,24 @@ Two commands, both safe to run again and again:
            in ``.env`` but not in the example, which is how a typo becomes
            visible. Exits non-zero when it finds something.
 
+``refresh`` rewrites the settings derived from this machine's own addresses,
+           and only those. It cannot reach a credential.
+
+## Why this script now writes values (#964)
+
+It used to create a complete ``.env`` that still did not start anything. Three
+settings were empty and had to be supplied by hand, and one of them had to be
+typed to match another exactly or the console came up blank with nothing
+anywhere saying why. Asking somebody to run a snippet from a comment and paste
+the result into two places is a step this can take itself.
+
+So a small registry below says which keys this script may *originate* a value
+for, and how — a generated secret, a copy of another key, or something derived
+from the machine's addresses. The two promises above are unchanged and are what
+make it safe: origination fires only on a key that is missing or empty, and a
+generated value is never printed. A secret is written once and no command here,
+including ``refresh``, will replace it.
+
 **No value is ever printed.** The file holds credentials and this output goes
 to a terminal that may be shared, logged or recorded, so the report names keys
 and counts and nothing else.
@@ -33,7 +51,10 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
+import secrets
+import socket
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 #: A KEY=value line. Keys are upper snake case by convention here; anything
@@ -251,6 +272,242 @@ def set_value(env_text: str, key: str, value: str) -> tuple[str, bool]:
     return "\n".join(kept) + "\n", changed
 
 
+#: Keys this script may invent a credential for, in the order it writes them.
+#: Empty means nobody has answered yet; anything else is somebody's answer and
+#: is never replaced, by this or by `refresh`.
+_GENERATED_SECRETS: tuple[str, ...] = ("POSTGRES_PASSWORD", "API_AUTH_TOKEN")
+
+#: Keys that have to hold the same string as another key. The dashboard is an
+#: API client, so its token is the API's token; typing both by hand is a
+#: mismatch waiting to happen, and a mismatch reads as a blank console.
+_MIRRORED: dict[str, str] = {"NEXT_PUBLIC_API_TOKEN": "API_AUTH_TOKEN"}
+
+#: Keys whose value describes where this machine can be reached. Unlike a
+#: secret these go out of date — a machine changes network, or gets a new name
+#: — so `refresh` may rewrite them and `check` says when they have.
+_DERIVED: tuple[str, ...] = ("NEXT_PUBLIC_API_URL", "API_CORS_ORIGINS")
+
+#: Set this and detection stops arguing. Blank means work it out.
+_PINNED_HOST_KEY = "OSINT_PUBLIC_HOST"
+
+DEFAULT_API_PORT = 8000
+DEFAULT_FRONTEND_PORT = 3000
+
+#: TEST-NET-1. Routed nowhere, so connecting a datagram socket to it sends no
+#: packet — it only asks the routing table which source address it would use.
+_UNROUTED = ("192.0.2.1", 9)
+
+
+@dataclass(frozen=True)
+class Machine:
+    """The names this machine answers to, and the ports the stack listens on.
+
+    Passed in rather than looked up inside the functions that use it, so the
+    behaviour is testable without a network and without caring what the machine
+    running the tests happens to be called.
+    """
+
+    hosts: tuple[str, ...]
+    api_port: int = DEFAULT_API_PORT
+    frontend_port: int = DEFAULT_FRONTEND_PORT
+
+
+def generate_secret() -> str:
+    """A credential nobody has to think of."""
+    return secrets.token_urlsafe(32)
+
+
+def _lan_address() -> str:
+    """This machine's address on the network it is attached to, if any."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(_UNROUTED)
+            address = str(probe.getsockname()[0])
+    except OSError:
+        return ""
+    return "" if address.startswith("127.") else address
+
+
+def candidate_hosts() -> tuple[str, ...]:
+    """Every name this machine answers to, loopback first.
+
+    Loopback leads because it is the only one guaranteed to resolve for the
+    browser on the machine that started the stack, which is the case that must
+    never break. The rest are offered to the origin allow-list so that reaching
+    the console by another name works without editing anything.
+    """
+    found = ["localhost"]
+    try:
+        name = socket.gethostname().rstrip(".")
+    except OSError:
+        name = ""
+    if name and name != "localhost":
+        #: A bare name is an mDNS name on every platform this runs on. A name
+        #: that already has a dot is a real one and is left as it is.
+        found.append(name if "." in name else f"{name}.local")
+    address = _lan_address()
+    if address:
+        found.append(address)
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for host in found:
+        if host not in seen:
+            seen.add(host)
+            unique.append(host)
+    return tuple(unique)
+
+
+def detect_machine(
+    api_port: int = DEFAULT_API_PORT, frontend_port: int = DEFAULT_FRONTEND_PORT
+) -> Machine:
+    return Machine(hosts=candidate_hosts(), api_port=api_port, frontend_port=frontend_port)
+
+
+def _origins(hosts: tuple[str, ...], port: int, keep: str) -> str:
+    """The origin allow-list: what was already there, plus what was detected.
+
+    Never a replacement. Deriving must not silently narrow what already worked,
+    so an origin somebody put in the example stays in the list.
+    """
+    existing = [origin.strip() for origin in keep.split(",") if origin.strip()]
+    detected = [f"http://{host}:{port}" for host in hosts]
+    seen: set[str] = set()
+    origins: list[str] = []
+    for origin in [*existing, *detected]:
+        if origin not in seen:
+            seen.add(origin)
+            origins.append(origin)
+    return ",".join(origins)
+
+
+def _host_of(url: str) -> str:
+    """The host in `http://host:port`, without importing a URL parser for it."""
+    remainder = url.strip().split("://", 1)[-1]
+    return remainder.split("/", 1)[0].rsplit(":", 1)[0]
+
+
+def mismatched_mirrors(env_text: str) -> list[str]:
+    """Mirror keys that are answered, and disagree with what they mirror.
+
+    Both filled and different is a decision, however unlikely to be one that was
+    meant. It is reported rather than corrected: overwriting it would be this
+    script forming the opinion about somebody's value that it promises not to.
+    """
+    have = parse_env(env_text)
+    found = []
+    for mirror, source in _MIRRORED.items():
+        theirs = have.get(mirror, "").strip()
+        original = have.get(source, "").strip()
+        if theirs and original and theirs != original:
+            found.append(mirror)
+    return found
+
+
+def stale_addresses(env_text: str, machine: Machine) -> list[str]:
+    """Derived settings naming an address this machine no longer has.
+
+    The failure this replaces is a console that is blank, with nothing anywhere
+    saying that the address compiled into it belongs to a different network.
+    A pinned host is exempt: it is a decision, and detection does not overrule
+    one.
+    """
+    have = parse_env(env_text)
+    if have.get(_PINNED_HOST_KEY, "").strip():
+        return []
+    url = have.get("NEXT_PUBLIC_API_URL", "").strip()
+    if not url:
+        return []
+    host = _host_of(url)
+    return [] if not host or host in machine.hosts else ["NEXT_PUBLIC_API_URL"]
+
+
+def originate(
+    example_text: str,
+    env_text: str,
+    machine: Machine,
+    *,
+    make_secret: Callable[[], str] = generate_secret,
+    secrets_too: bool = True,
+    rederive: bool = False,
+) -> dict[str, str]:
+    """The values this script should write, given the ones already answered.
+
+    Returns the settings and leaves the writing to the caller, for the same
+    reason ``sync`` returns a whole file: the decision to touch somebody's
+    configuration is not this function's to make, and a test of it needs no
+    filesystem.
+
+    ``refresh`` runs this with ``secrets_too=False, rederive=True``. The first
+    is the scope boundary that stops an address command from being able to reach
+    a credential. The second is the whole point of that command: an address
+    somebody typed a month ago on a different network is exactly what they are
+    asking to have rewritten, so here alone a derived value already answered is
+    replaced. ``sync`` never sets it, and so never overrules anybody.
+    """
+    defaults = {b.key: b.value.strip() for b in unique_blocks(parse_example(example_text))}
+    have = parse_env(env_text)
+    written: dict[str, str] = {}
+
+    def current(key: str) -> str:
+        return written.get(key, have.get(key, "").strip())
+
+    def documented(key: str) -> bool:
+        #: Only settings the example lists. Writing a key it has never heard of
+        #: would put a value in somebody's file that `check` then reports back
+        #: to them as a typo, which is this script arguing with itself.
+        return key in defaults
+
+    def answered(key: str) -> bool:
+        value = have.get(key, "").strip()
+        if not value:
+            return False
+        #: A derived key still holding the example's own default is the
+        #: example's answer, not the operator's, so deriving over it takes
+        #: nothing away from anybody. A secret is never treated this way.
+        return not (key in _DERIVED and value == defaults.get(key, ""))
+
+    if secrets_too:
+        for key in _GENERATED_SECRETS:
+            if documented(key) and not answered(key):
+                written[key] = make_secret()
+        for mirror, source in _MIRRORED.items():
+            original = current(source)
+            if documented(mirror) and original and not answered(mirror):
+                written[mirror] = original
+
+    pinned = have.get(_PINNED_HOST_KEY, "").strip()
+    host = pinned or (machine.hosts[0] if machine.hosts else "localhost")
+    derived = {
+        "NEXT_PUBLIC_API_URL": f"http://{host}:{machine.api_port}",
+        "API_CORS_ORIGINS": _origins(
+            machine.hosts, machine.frontend_port, defaults.get("API_CORS_ORIGINS", "")
+        ),
+    }
+    for key, value in derived.items():
+        #: Already correct is not a change. Without this a second run would
+        #: report work it did not do.
+        if (
+            documented(key)
+            and (rederive or not answered(key))
+            and value != have.get(key, "").strip()
+        ):
+            written[key] = value
+
+    return written
+
+
+def apply(env_text: str, values: dict[str, str]) -> tuple[str, list[str]]:
+    """`.env` with each originated value set, and the keys that changed."""
+    rendered = env_text
+    changed: list[str] = []
+    for key, value in values.items():
+        rendered, did = set_value(rendered, key, value)
+        if did:
+            changed.append(key)
+    return rendered, changed
+
+
 @dataclass
 class CheckReport:
     """What is wrong with a `.env`, named by key and never by value."""
@@ -266,6 +523,11 @@ class CheckReport:
     #: from inside a container. The file is right there in the terminal and
     #: simply does not exist where it is needed (#959).
     host_paths: list[str] = field(default_factory=list)
+    #: Two keys that have to match and do not (#964). Silent otherwise: every
+    #: request is refused and the console is simply empty.
+    mirror_mismatch: list[str] = field(default_factory=list)
+    #: Derived settings naming an address this machine no longer has (#964).
+    stale: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -276,6 +538,8 @@ class CheckReport:
             or self.unknown
             or self.duplicated
             or self.host_paths
+            or self.mirror_mismatch
+            or self.stale
         )
 
 
@@ -302,6 +566,7 @@ def check(
     env_text: str | None,
     required: set[str],
     overridden: set[str] | None = None,
+    machine: Machine | None = None,
 ) -> CheckReport:
     """Everything worth saying about a `.env`, in one pass.
 
@@ -316,7 +581,11 @@ def check(
 
     documented = {b.key: b for b in parsed}
     have = parse_env(env_text)
-    report = CheckReport(duplicated=duplicated)
+    report = CheckReport(
+        duplicated=duplicated,
+        mirror_mismatch=mismatched_mirrors(env_text),
+        stale=stale_addresses(env_text, machine) if machine else [],
+    )
     for key in documented:
         if key not in have:
             report.missing.append(key)
@@ -332,6 +601,20 @@ def check(
         elif looks_like_a_host_path(key, value, required | (overridden or set())):
             report.host_paths.append(key)
     return report
+
+
+def _port(env: dict[str, str], key: str, fallback: int) -> int:
+    raw = env.get(key, "").strip()
+    return int(raw) if raw.isdigit() else fallback
+
+
+def _machine_from(env_text: str | None) -> Machine:
+    """This machine, on the ports `.env` says the stack listens on."""
+    env = parse_env(env_text or "")
+    return detect_machine(
+        api_port=_port(env, "API_PORT", DEFAULT_API_PORT),
+        frontend_port=_port(env, "FRONTEND_PORT", DEFAULT_FRONTEND_PORT),
+    )
 
 
 def _read(path: pathlib.Path) -> str | None:
@@ -379,11 +662,20 @@ def _print_check(report: CheckReport) -> None:
         for key in report.host_paths:
             print(f"    {key}")
         print("  put the file under data/ and name it /data/<file>, or leave the key empty")
+    if report.mirror_mismatch:
+        for key in report.mirror_mismatch:
+            print(f"  {key} does not match {_MIRRORED[key]}, and has to")
+        print("  every request is refused while they differ, and the console shows nothing")
+    if report.stale:
+        print(f"  {len(report.stale)} setting(s) name an address this machine no longer has:")
+        for key in report.stale:
+            print(f"    {key}")
+        print("  run `make env-refresh`, or set OSINT_PUBLIC_HOST to pin the one you want")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("sync", "check", "set"))
+    parser.add_argument("action", choices=("sync", "check", "set", "refresh"))
     parser.add_argument("key", nargs="?", help="for `set`: the setting to point somewhere")
     parser.add_argument("value", nargs="?", help="for `set`: what to point it at")
     parser.add_argument("--root", default=".", help="project root holding env.example")
@@ -411,19 +703,50 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {args.key} already points at {args.value}")
         return 0
 
+    machine = _machine_from(env_text)
+
+    if args.action == "refresh":
+        if env_text is None:
+            print(f"  no {env_path} to refresh — run `make env` first", file=sys.stderr)
+            return 1
+        rendered, changed = apply(
+            env_text,
+            originate(example_text, env_text, machine, secrets_too=False, rederive=True),
+        )
+        if changed:
+            env_path.write_text(rendered)
+            print(f"  updated {len(changed)} address setting(s):")
+            for key in changed:
+                print(f"    {key}")
+        else:
+            print("  every address setting already describes this machine")
+        print("  secrets untouched")
+        return 0
+
     if args.action == "sync":
         rendered, report = sync(example_text, env_text)
         if report.changed:
             env_path.write_text(rendered)
         if report.created:
             print(f"  wrote {env_path} from env.example ({len(report.added)} keys)")
-            print("  fill in the ones that need values, then `make up`")
         elif report.added:
             print(f"  added {len(report.added)} missing key(s) to {env_path}:")
             for key in report.added:
                 print(f"    {key}")
         else:
             print(f"  {env_path} already has every key in env.example")
+
+        #: Values, not just keys — the step that makes a first run start (#964).
+        #: Only the keys nobody has answered, and the names of them, never what
+        #: was written.
+        settled, filled = apply(rendered, originate(example_text, rendered, machine))
+        if filled:
+            env_path.write_text(settled)
+            print(f"  filled in {len(filled)} value(s) nobody had answered:")
+            for key in filled:
+                print(f"    {key}")
+        if report.created:
+            print("  nothing left to fill in — `make up` starts it")
         return 0
 
     compose_texts = [
@@ -439,6 +762,7 @@ def main(argv: list[str] | None = None) -> int:
         env_text,
         required_keys(compose_texts),
         overridden_keys(compose_texts),
+        machine,
     )
     _print_check(report)
     return 0 if report.ok else 1

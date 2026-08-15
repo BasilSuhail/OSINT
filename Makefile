@@ -21,8 +21,11 @@ help:  ## List every command in this file, with what it does
 # Everything else below is either an alias kept for muscle memory or a
 # single-purpose analysis task.
 
-env:  ## Create .env from env.example, or add the keys it is missing
+env:  ## Create .env, add missing keys, and fill in what nobody should have to type
 	@python3 scripts/env_setup.py sync
+
+env-refresh:  ## Re-derive the address settings for this machine. Secrets untouched
+	@python3 scripts/env_setup.py refresh
 
 env-check:  ## Say what .env is missing, empty or has typed wrong
 	@python3 scripts/env_setup.py check || \
