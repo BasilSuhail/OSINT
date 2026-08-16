@@ -7,8 +7,11 @@ name: demo page
 # them on a public URL with no index and no context — which is a different
 # decision from publishing them in a repository somebody chose to open.
 #
-# One-time setup, and it cannot be done from here: Settings → Pages → Source →
-# GitHub Actions.
+# Pages is switched on by the deploy step itself. The first run of this
+# workflow failed with "Get Pages site failed … Not Found", which is what the
+# publish step says when the repository has no Pages site to publish to — a
+# setup click nobody had been told to make, in a workflow whose whole point was
+# that nothing has to be set up.
 
 on:
   push:
@@ -47,7 +50,11 @@ jobs:
           python3 -c "import json,sys; json.load(open('demo/data/snapshot.json'))"
           echo "snapshot: $(du -h demo/data/snapshot.json | cut -f1)"
 
+      # `enablement` creates the Pages site when there is not one, so a fresh
+      # clone or a fork publishes without anybody visiting Settings.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: demo
