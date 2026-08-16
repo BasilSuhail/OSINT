@@ -647,8 +647,8 @@ current rather than becoming a pitch.
 - **Retention versus evaluation needs** can silently flatten a signal before it
   is ever measured — the class of defect that produced 1,101 forecasts of a
   constant.
-- The hardest questions to answer are the within-country construction, the 0.5
-  degeneracy, and how much was written by hand versus generated.
+- The hardest questions to answer are the within-country construction and the
+  0.5 degeneracy — both of which the composite's published results depend on.
 
 ---
 
