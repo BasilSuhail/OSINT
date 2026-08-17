@@ -88,23 +88,19 @@ cd OSINT
 make env
 ```
 
-**Then this, before you start it.** Four settings each default to a 4 B model of
-about 3.9 GB. On 8 GB, next to the stack and the console, one of those is already
-tight — and two can be resident at once, because the scheduled severity job loads
-its own while the summary model is still held warm. That fills memory, spills to
-the SD card, and locks the board up:
+Nothing to edit. `make env` reads how much memory the board has and, at 8 GB,
+writes the settings for it: one small model doing every job instead of three
+different ones, memory floors sized for that model, and a longer wait for an
+answer. It prints what it chose.
 
-```bash
-echo "QA_MODEL=llama3.2:3b" >> .env
-echo "SEVERITY_MODEL=llama3.2:3b" >> .env
-echo "OLLAMA_MODEL=llama3.2:3b" >> .env
-echo "BRAIN_KEEP_ALIVE=5m" >> .env
-echo "QA_KEEP_ALIVE=0" >> .env
-```
+Those numbers matter more than they look. The defaults are for a laptop, and two
+of those models resident at once come to 5.4 GB of the board's 7.9 GB — measured
+— which leaves the Ask panel nowhere to load a third. Nothing you click triggers
+the second one; a scheduled job loads it about half an hour in, and the board
+locks up while you are looking at something else.
 
-One model family everywhere, held five minutes rather than thirty. Overriding only
-the first of those is not enough: nothing you do triggers the second model, a
-scheduled job loads it about half an hour in.
+The small model answers where the big ones cannot, and it is worse: it
+contradicts itself inside a paragraph and mis-files more stories.
 
 A backstop, in case something still runs the board out of memory. It kills the
 largest process instead of letting the kernel thrash, which is the difference
@@ -189,11 +185,8 @@ make env
 make up
 ```
 
-On less than 16 GB, use the smaller Q&A model before starting:
-
-```bash
-echo "QA_MODEL=llama3.2:3b" >> .env
-```
+Nothing to edit for a smaller machine. `make env` measures the memory and, at
+8 GB or less, writes the small-model settings itself.
 
 Open <http://localhost:3000>, then fill it:
 
