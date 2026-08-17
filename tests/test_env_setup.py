@@ -649,6 +649,7 @@ QA_KEEP_ALIVE=0
 BRAIN_MIN_FREE_MB=3500
 QA_MIN_FREE_MB=3800
 BRAIN_TIMEOUT_S=120
+QA_STORIES=6
 """
 
 
@@ -693,6 +694,12 @@ class TestTheSmallMachineProfile:
     def test_the_model_is_held_between_questions(self):
         written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
         assert written["QA_KEEP_ALIVE"] != "0"
+
+    #: The prompt, not the model, is most of an answer's cost on a machine with
+    #: no GPU. Sending fewer stories is the cheaper trade than a weaker model.
+    def test_it_sends_fewer_stories_to_the_model(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert int(written["QA_STORIES"]) < 6
 
     def test_a_big_machine_keeps_every_default(self):
         assert originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=False) == {}

@@ -61,6 +61,19 @@ class Settings(BaseSettings):
     # the warm brain_model above.
     qa_model: str = Field(default="qwen3.5:4b-q4_K_M")
     qa_min_free_mb: int = Field(default=3800)
+    # How many stories go into the Q&A prompt.
+    #
+    # On a machine with a GPU this barely shows: the prompt is processed in a
+    # second or two, and six stories is a better answer than three — more
+    # evidence in front of the model, more sources it can cite, more chance the
+    # one the question is about is among them.
+    #
+    # Without a GPU the same tokens are the whole cost. Measured on a Raspberry
+    # Pi: six stories is ~2,976 tokens and 1 m 48 s an ask, nearly all of it
+    # processing the prompt rather than writing the answer. Sending fewer is the
+    # cheaper trade than running a weaker model, because retrieval has already
+    # ranked them and the ones dropped are the least relevant.
+    qa_stories: int = Field(default=6)
     # How long Ollama holds the Q&A model after answering. "0" evicts it at once,
     # which is what the API did unconditionally — and on a small machine that
     # means every question reloads gigabytes from storage before generating a

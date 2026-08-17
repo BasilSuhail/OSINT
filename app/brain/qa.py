@@ -31,6 +31,7 @@ from app.db_models import (
     StoryRow,
     StorySensorCheckRow,
 )
+from app.settings import settings
 
 
 def _latest_composite(session: Session) -> dict[str, Any] | None:
@@ -77,6 +78,11 @@ def _scoreboard(session: Session) -> dict[str, int]:
 
 #: divergence at or above this = a contested story (tellers disagree sharply).
 CONTESTED_THRESHOLD: float = 0.5
+#: The default number of stories in the prompt, and the value `qa_stories`
+#: carries unless a machine says otherwise. Kept as a name so the reason for the
+#: number stays with it: more stories is a better answer — more evidence in front
+#: of the model, more sources it can cite — right up until the machine cannot
+#: afford to read them.
 _QA_STORIES: int = 6
 _QA_WINDOW_H: int = 72
 _MAX_OUTLETS: int = 3
@@ -650,7 +656,7 @@ def _select_rows(
 def build_qa_stories(
     session: Session,
     *,
-    limit: int = _QA_STORIES,
+    limit: int | None = None,
     now: datetime | None = None,
     question: str | None = None,
     history: list[dict[str, Any]] | None = None,
@@ -662,8 +668,16 @@ def build_qa_stories(
     `exclude_story_ids` drops stories this conversation has already cited, so
     "what else?" can be answered with something else (#813). Empty for every
     other question, which leaves selection exactly as it was.
+
+    `limit` is how many stories reach the prompt, and on a machine with no GPU it
+    is the single biggest thing deciding how long an answer takes: almost all of
+    that time is processing the prompt, not writing the reply. Six stories came
+    to ~2,976 tokens and 1 m 48 s an ask on a Raspberry Pi. It is a setting so a
+    small machine can send fewer rather than run a worse model — the retrieval
+    ranks by relevance, so the ones dropped are the least relevant.
     """
     now = now or datetime.now(UTC)
+    limit = settings.qa_stories if limit is None else limit
     if trace is not None:
         trace.update(
             {

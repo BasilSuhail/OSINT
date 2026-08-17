@@ -351,6 +351,7 @@ _SMALL_MACHINE_PROFILE: dict[str, str] = {
     "BRAIN_MIN_FREE_MB": "1800",
     "QA_MIN_FREE_MB": "2000",
     "BRAIN_TIMEOUT_S": "300",
+    "QA_STORIES": "3",
 }
 
 
