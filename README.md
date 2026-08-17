@@ -73,29 +73,32 @@ Do not install pnpm yourself. `corepack enable` fetches the right version.
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 sudo systemctl enable --now ollama
-sudo systemctl edit ollama
-```
-
-An editor opens. Add these two lines above the `### Lines below` marker, then
-save and exit:
-
-```
-[Service]
-Environment="OLLAMA_HOST=0.0.0.0"
-```
-
-```bash
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+cd /etc/systemd/system/ollama.service.d
+echo '[Service]' | sudo tee override.conf
+echo 'Environment="OLLAMA_HOST=0.0.0.0"' | sudo tee -a override.conf
+cd -
+sudo systemctl daemon-reload
 sudo systemctl restart ollama
 ss -tlnp | grep 11434
 ```
 
-That must print `0.0.0.0:11434`. If it prints nothing or `127.0.0.1`, see
-[§19](HANDBOOK.md#19-troubleshooting).
+The last line must print `0.0.0.0:11434`. If it prints nothing or `127.0.0.1`,
+see [§19](HANDBOOK.md#19-troubleshooting).
 
 **macOS:**
 
 ```bash
 brew install ollama && ollama serve
+```
+
+**Both:** `make up` in step 3 downloads the three models it needs, about 5 GB.
+To get that out of the way now instead:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
 ```
 
 Skipping Ollama is allowed — the map and the feed still work, but the Ask panel
