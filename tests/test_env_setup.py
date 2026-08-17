@@ -738,3 +738,43 @@ class TestTheSmallMachineProfile:
             "QA_MODEL=qwen3.5:4b-q4_K_M\n", "QA_MODEL=qwen3.5:4b-q4_K_M\n", MACHINE, small=True
         )
         assert set(written) == {"QA_MODEL"}
+
+
+class TestTheExampleAgreesWithTheCode:
+    """`env.example` now writes the model defaults out, and `app/settings.py`
+    holds its own copies. Two spellings of one number drift, and the drift is
+    silent: whichever is wrong only shows up as a machine behaving unlike the
+    documentation somebody read."""
+
+    #: Keys where the example's value must be the code's default. Not every key
+    #: — an address is derived per machine and a secret is generated, so those
+    #: deliberately differ.
+    MIRRORS: ClassVar[dict[str, str]] = {
+        "BRAIN_MODEL": "brain_model",
+        "QA_MODEL": "qa_model",
+        "SEVERITY_MODEL": "severity_model",
+        "OLLAMA_MODEL": "ollama_model",
+        "BRAIN_KEEP_ALIVE": "brain_keep_alive",
+        "QA_KEEP_ALIVE": "qa_keep_alive",
+        "BRAIN_MIN_FREE_MB": "brain_min_free_mb",
+        "QA_MIN_FREE_MB": "qa_min_free_mb",
+        "BRAIN_TIMEOUT_S": "brain_timeout_s",
+        "QA_STORIES": "qa_stories",
+    }
+
+    def test_each_documented_default_is_the_code_default(self) -> None:
+        from pathlib import Path
+
+        from app.settings import Settings
+
+        example = parse_env((Path(__file__).resolve().parents[1] / "env.example").read_text())
+        fields = Settings.model_fields
+        for key, field_name in self.MIRRORS.items():
+            assert key in example, f"{key} is missing from env.example"
+            field = fields[field_name]
+            #: Through the declared type, not as text: a float default reads
+            #: "120.0" while the file sensibly says "120", and that is agreement.
+            documented = field.annotation(example[key].strip())
+            assert documented == field.default, (
+                f"env.example says {key}={example[key].strip()}, settings.py says {field.default}"
+            )
