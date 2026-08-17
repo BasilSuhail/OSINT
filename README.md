@@ -183,12 +183,27 @@ Leave it running and it populates itself. To fill it now:
 
 ```bash
 make fetch                        # every source, once
-make fetch SOURCES="gdelt gdacs"  # or just these
+make news                         # then build the stories and the summary
 ```
 
-It prints what each source returned, and which are dormant for want of an API
-key — on screen, "no data from this source" and "this source needs a key" look
-identical.
+`make fetch` fills the **map** — events, hazards, aircraft, markets. It prints
+what each source returned, and which are dormant for want of an API key; on
+screen "no data from this source" and "this source needs a key" look identical.
+
+`make news` fills the **left-hand side** — the story feed and the written
+situation summary. Those are built from the news `make fetch` collected, so run
+it second.
+
+Just one source, when you know which:
+
+```bash
+make fetch SOURCES="gdelt gdacs"
+```
+
+**The two halves fill at different speeds on their own.** The map arrives within
+minutes; the situation card needs clustering to finish before the summary can be
+written from it, so left to the schedule that is up to 45 minutes. A full map
+beside "No stories in the window yet" is that gap, not a fault.
 
 ---
 

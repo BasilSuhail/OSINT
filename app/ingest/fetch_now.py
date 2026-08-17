@@ -19,8 +19,14 @@ Sequential on purpose: this runs on a small machine, several fetchers download
 megabytes, and doing them at once is how a Pi runs out of memory. Slow and
 legible beats fast and unexplained.
 
-    python -m scripts.fetch_now              # every registered fetcher
-    python -m scripts.fetch_now gdelt usgs-quake
+It lives here rather than in ``scripts/`` because it runs *inside* the worker
+container, and the image copies ``app/`` but not ``scripts/`` — deliberately, as
+most of that directory is host-side tooling that runs before any container
+exists. Put in ``scripts/`` first, this command raised ``ModuleNotFoundError`` on
+every invocation (#995).
+
+    python -m app.ingest.fetch_now              # every registered fetcher
+    python -m app.ingest.fetch_now gdelt usgs-quake
 """
 
 from __future__ import annotations
@@ -32,9 +38,11 @@ from app.fetcher_registry import registered_names
 from app.sources.base import SourceMisconfiguredError
 from app.tasks import run_fetcher
 
-#: Printed width for the source column, so the states line up and a run of
-#: twenty sources can be read down rather than across.
-_WIDTH = 22
+#: States `run_fetcher` returns for a source that is switched off rather than
+#: broken: no API key, or a licensed CSV nobody has downloaded. It catches
+#: `SourceMisconfiguredError` itself and reports it as a state, so the exception
+#: never reaches here and a run of these looked identical to a run of failures.
+_DORMANT_STATES = frozenset({"misconfigured"})
 
 
 def _describe(outcome: dict[str, Any]) -> str:
@@ -60,30 +68,44 @@ def main(argv: list[str] | None = None) -> int:
     dormant: list[str] = []
     failed: list[str] = []
     rows = 0
+    #: From the names actually being run, not a constant. The longest is 26
+    #: characters and a hard-coded 22 ran the state into the name.
+    width = max(len(name) for name in names)
 
     for name in names:
-        print(f"  {name:<{_WIDTH}}", end="", flush=True)
         try:
             outcome = run_fetcher(name)
         except SourceMisconfiguredError as exc:
             dormant.append(name)
-            print(f"dormant — {exc}")
-            continue
+            result = f"dormant — {exc}"
         #: Broad on purpose: one source with an expired feed, a rate limit or a
         #: DNS failure must not stop the other nineteen from running.
         except Exception as exc:
             failed.append(name)
-            print(f"failed — {type(exc).__name__}: {exc}")
-            continue
-        rows += int(outcome.get("inserted") or 0)
-        print(_describe(outcome))
+            result = f"failed — {type(exc).__name__}: {exc}"
+        else:
+            state = str(outcome.get("state", "?"))
+            if state in _DORMANT_STATES:
+                dormant.append(name)
+            elif state == "failed":
+                failed.append(name)
+            rows += int(outcome.get("inserted") or 0)
+            result = _describe(outcome)
+        #: One complete line, printed after the call rather than a name before it
+        #: and a state after. Fetchers log to the same stream while they work —
+        #: one feed emitted 25 translation warnings — and a half-written line
+        #: with a page of logs dropped into the middle of it is unreadable.
+        print(f"  {name:<{width}}  {result}", flush=True)
 
     print(f"\n{rows} new row(s).")
     if dormant:
-        print(f"{len(dormant)} source(s) dormant for want of a key: {', '.join(dormant)}")
-        print("  That is a configuration choice, not a fault — see env.example.")
+        print(f"{len(dormant)} dormant, for want of a key or a file: {', '.join(dormant)}")
+        print("  A configuration choice, not a fault — see env.example.")
     if failed:
-        print(f"{len(failed)} source(s) failed: {', '.join(failed)}")
+        print(f"{len(failed)} failed: {', '.join(failed)}")
+        #: A feed answering 403 is put in a timed quarantine and retried later,
+        #: which is the backoff working rather than something to go and fix.
+        print("  A feed refusing today is quarantined and retried; it needs nothing from you.")
     #: Zero regardless. A dormant source is expected, and a network hiccup on one
     #: feed is not a reason for `make fetch` to look like it broke.
     return 0
