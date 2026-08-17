@@ -88,7 +88,7 @@ def test_generate_json_threads_num_predict(monkeypatch):
     assert captured["options"]["num_predict"] == 768
 
 
-def test_generate_json_omits_num_predict_by_default(monkeypatch):
+def test_generate_json_caps_num_predict_by_default(monkeypatch):
     captured: dict = {}
 
     class _Resp:
@@ -100,7 +100,11 @@ def test_generate_json_omits_num_predict_by_default(monkeypatch):
 
     monkeypatch.setattr(httpx, "post", lambda url, json, timeout: captured.update(json) or _Resp())
     client.generate_json("hi")
-    assert "num_predict" not in captured["options"]
+    #: There used to be no cap here, and Ollama generates until the context
+    #: fills when nothing says otherwise. A 1b on a Raspberry Pi found a clause
+    #: it liked and wrote it for thousands of tokens, streaming the whole way.
+    assert captured["options"]["num_predict"] == client._NUM_PREDICT
+    assert captured["options"]["repeat_penalty"] > 1.0
 
 
 # ---- endpoint wiring ---------------------------------------------------------

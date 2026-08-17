@@ -321,35 +321,49 @@ def host_ids() -> dict[str, str]:
 _SMALL_MACHINE_MAX_MB = 9216
 
 #: What a small machine runs instead of the defaults, which are written for a
-#: laptop. Every number here was measured on one 8 GB board with no GPU, booting
-#: from an SD card:
+#: laptop. Measured on one 8 GB board with no GPU, booting from an SD card.
 #:
-#: - The defaults name three different models. Two of them resident at once came
-#:   to 5.4 GB of a 7.9 GB board, and the Ask panel then had nowhere to put a
-#:   third. One model for every job means Ollama loads it once and reuses it,
-#:   which is the difference between fitting and not.
-#: - An ask took 1 m 48 s end to end against a 120 s ceiling, so it failed on
-#:   time — and a timeout reaches the console as "the brain is offline", which
-#:   sends anyone reading it to look for a broken install instead of a slow one.
-#: - `QA_KEEP_ALIVE=0` evicts after every question, so each one paid a cold 2 GB
-#:   load off the card before generating a token. Holding it briefly makes the
-#:   second question onward cost generation only.
-#: - The RAM floors are sized for a 4b. Left alone they refuse to load a model
-#:   that now fits, and the console answers "brain busy" indefinitely.
+#: One model for every job, rather than a smaller model for every job. That
+#: distinction is the whole of what was learned here, and it was learned the
+#: expensive way:
 #:
-#: The cost is accuracy, and it is not small: this repo measured a 1.5b at 3/7
-#: against the 3b's 6/7 on the same hand-checked stories, and the board's own
-#: answers contradict themselves inside a paragraph. A machine this size buys
-#: that trade. `make env` says so rather than making it quietly.
+#: - The defaults name three different models. Two resident at once came to
+#:   5.4 GB of a 7.9 GB board and locked it up. Pointing all four settings at one
+#:   model means Ollama loads it once and reuses it — 3.4 GB, which fits.
+#: - So the first version of this profile also dropped to a 1b, on the reasoning
+#:   that smaller is safer. The 1b fabricated. Asked what was happening in
+#:   Indonesia it invented a magnitude, a death toll and two government agencies,
+#:   none of them in the retrieved stories, and cited nothing. For a project whose
+#:   claim is that it shows its evidence, a model that invents evidence is not a
+#:   cheaper option, it is a broken one. It also looped: the same clause about aid
+#:   organisations, thousands of tokens of it, streaming to the reader.
+#: - The 3b is what the situation summary already uses, and this repo has
+#:   measured it at 6/7 against a 1.5b's 3/7 on the same hand-checked stories.
+#:   It is slower per token. Slow is a cost. Wrong is a defect.
+#:
+#: The floors stay where the defaults have them, because 3.4 GB needs the room a
+#: 4b needs. What makes the 3b affordable here is not a lower floor, it is that
+#: only one model is ever resident.
+#:
+#: The rest is about time rather than size:
+#:
+#: - An ask took 1 m 48 s against a 120 s ceiling, so it failed on time — and a
+#:   timeout reaches the console as "the brain is offline", which sends anyone
+#:   reading it to look for a broken install instead of a slow one.
+#: - `QA_KEEP_ALIVE=0` evicts after every answer, so each question paid a cold
+#:   multi-gigabyte load off the card before generating a token.
+#: - Three stories in the prompt rather than six. Without a GPU, reading the
+#:   prompt is nearly the whole cost of an answer, and dropping the least relevant
+#:   half of the evidence is a smaller loss than dropping to a worse model.
 _SMALL_MACHINE_PROFILE: dict[str, str] = {
-    "BRAIN_MODEL": "llama3.2:1b",
-    "QA_MODEL": "llama3.2:1b",
-    "SEVERITY_MODEL": "llama3.2:1b",
-    "OLLAMA_MODEL": "llama3.2:1b",
+    "BRAIN_MODEL": "llama3.2:3b",
+    "QA_MODEL": "llama3.2:3b",
+    "SEVERITY_MODEL": "llama3.2:3b",
+    "OLLAMA_MODEL": "llama3.2:3b",
     "BRAIN_KEEP_ALIVE": "5m",
     "QA_KEEP_ALIVE": "5m",
-    "BRAIN_MIN_FREE_MB": "1800",
-    "QA_MIN_FREE_MB": "2000",
+    "BRAIN_MIN_FREE_MB": "3500",
+    "QA_MIN_FREE_MB": "3500",
     "BRAIN_TIMEOUT_S": "300",
     "QA_STORIES": "3",
     #: The console's own patience, which is not the API's. It hangs up on a
@@ -595,7 +609,12 @@ def originate(
         #: rewrite addresses, cannot reach a model setting on its way past.
         if is_small_machine() if small is None else small:
             for key, value in _SMALL_MACHINE_PROFILE.items():
-                if documented(key) and not answered(key):
+                #: Already correct is not a change. Several profile values match
+                #: the example's own default — the memory floors a 3b needs are
+                #: the floors the example ships — and without this the file would
+                #: be rewritten with what it already said, reported back as work
+                #: that was done, every single run.
+                if documented(key) and not answered(key) and value != have.get(key, "").strip():
                     written[key] = value
 
     pinned = have.get(_PINNED_HOST_KEY, "").strip()

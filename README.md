@@ -126,8 +126,12 @@ of those models resident at once come to 5.4 GB of the board's 7.9 GB — measur
 the second one; a scheduled job loads it about half an hour in, and the board
 locks up while you are looking at something else.
 
-The small model answers where the big ones cannot, and it is worse: it
-contradicts itself inside a paragraph and mis-files more stories.
+One model rather than a smaller one. That distinction cost a day: a 1b does fit
+here, and when asked what was happening in Indonesia it invented a magnitude, a
+death toll and two government agencies that appeared in none of the retrieved
+stories. A project that shows its evidence cannot use a model that makes evidence
+up, so the board runs the same 3b the summary already uses — slower per answer,
+and answering about what is actually there.
 
 A backstop, in case something still runs the board out of memory. It kills the
 largest process instead of letting the kernel thrash, which is the difference
@@ -138,11 +142,11 @@ sudo apt install -y earlyoom
 sudo systemctl enable --now earlyoom
 ```
 
-The models. Two on a board this size, about 1.5 GB together — one that answers,
+The models. Two on a board this size, about 2.3 GB together — one that answers,
 one that turns text into vectors so the Ask panel can find the right stories:
 
 ```bash
-ollama pull llama3.2:1b
+ollama pull llama3.2:3b
 ollama pull nomic-embed-text
 ```
 
@@ -153,7 +157,7 @@ in the middle of the first start.
 Check the model actually answers before building anything on it:
 
 ```bash
-ollama run llama3.2:1b "reply with one short sentence"
+ollama run llama3.2:3b "reply with one short sentence"
 ```
 
 A sentence back means the model works. This is the check worth having: if it
@@ -166,7 +170,8 @@ make up
 ```
 
 20–40 minutes the first time: images and browser packages, plus the models if you
-skipped the pull.
+skipped the pull. An ask on this board takes a couple of minutes; the console
+streams the answer as it arrives rather than appearing to hang.
 
 Open <http://localhost:3000>, or `make share` to reach it from another
 device.
