@@ -7,6 +7,7 @@ Read-only over the local Postgres. Serves recent events + latest scores, and
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -56,6 +57,8 @@ from app.publisher import publisher_for
 from app.readable_claim import has_readable_claim
 from app.settings import settings
 from app.stories import developing
+
+logger = logging.getLogger(__name__)
 
 #: Applied to every route rather than decorated per endpoint: a check that has
 #: to be remembered is a check that will be forgotten on the next route (#824).
@@ -1200,6 +1203,10 @@ def story_deep_read(story_id: int, session: Session = Depends(get_session)) -> d
     except httpx.TimeoutException:
         return {"analysis": qa.BRAIN_SLOW_ANSWER}
     except Exception:
+        #: Logged, not swallowed. Three rounds of diagnosis went on an ask that
+        #: answered "offline" while the API held the reason and printed nothing —
+        #: a 200 in the access log and silence everywhere else (#997).
+        logger.exception("deep read failed")
         return {"analysis": qa.BRAIN_OFFLINE_ANSWER}
     text = "".join(chunks).strip()
     if not text:
@@ -1634,6 +1641,7 @@ def brain_ask(
     except httpx.TimeoutException:
         return _ask_payload(qa.BRAIN_SLOW_ANSWER, None, [])
     except Exception:
+        logger.exception("ask failed")
         return _ask_payload(qa.BRAIN_OFFLINE_ANSWER, None, [])
     if answer is None:
         #: One retry on unusable output (#474) — 3/12 audit answers died here.
@@ -1726,6 +1734,10 @@ def brain_ask_stream(
             yield _sse("final", _ask_payload(qa.BRAIN_SLOW_ANSWER, None, []))
             return
         except Exception:
+            #: The stream has already sent its headers, so the request ends 200
+            #: whatever happens next. Without this line the only trace of a
+            #: failure is a successful-looking access log entry.
+            logger.exception("ask stream failed")
             yield _sse("final", _ask_payload(qa.BRAIN_OFFLINE_ANSWER, None, []))
             return
         answer = "".join(chunks).strip()
