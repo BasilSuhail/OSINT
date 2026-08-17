@@ -118,7 +118,7 @@ indexes), so 30 days ≈ 20 GB steady state — the cap only fires on bursts. On
 Force a prune now (don't wait for 03:00):
 
 ```bash
-make data-prune           # runs scripts/prune_now.py
+make data-prune           # runs app/prune_now.py
 ```
 
 > Lesson from the Supabase era: retention was never actually running there, so

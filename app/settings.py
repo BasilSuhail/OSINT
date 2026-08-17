@@ -56,11 +56,26 @@ class Settings(BaseSettings):
     # waved through a load with nowhere near room for it.
     brain_min_free_mb: int = Field(default=3500)
     brain_keep_alive: str = Field(default="30m")
-    # Q&A (#433): user asks run the 4b model per-ask and evict it right after
-    # (keep_alive="0") — the box never keeps two models resident. Narrative and
-    # enrichment stay on the warm brain_model above.
+    # Q&A (#433): user asks run the 4b model per-ask and evict it right after —
+    # the box never keeps two models resident. Narrative and enrichment stay on
+    # the warm brain_model above.
     qa_model: str = Field(default="qwen3.5:4b-q4_K_M")
     qa_min_free_mb: int = Field(default=3800)
+    # How long Ollama holds the Q&A model after answering. "0" evicts it at once,
+    # which is what the API did unconditionally — and on a small machine that
+    # means every question reloads gigabytes from storage before generating a
+    # token. Measured on a Raspberry Pi: the 4b took over three minutes to answer
+    # "Say hello" that way, against the 120 s timeout below, and the console
+    # reported the timeout as the brain being offline.
+    #
+    # Holding it briefly makes the second question onward cost generation only.
+    # The price is its resident memory for that long, which is why this is a
+    # setting and not a new hard-coded number — a laptop can afford to hold it, a
+    # 4 GB box should still evict at once, and "0" keeps the old behaviour.
+    qa_keep_alive: str = Field(default="0")
+    # How long to wait for the model. Generous on a laptop, not always enough on a
+    # small board loading a cold model, so it moves with the machine.
+    brain_timeout_s: float = Field(default=120.0)
     # Semantic ask retrieval (#441): tiny local embedder, always keep_alive=0.
     embed_model: str = Field(default="nomic-embed-text")
     runtime_busy_lock_ttl_s: int = Field(default=1800)

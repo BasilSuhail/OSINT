@@ -25,6 +25,28 @@ if command -v python3 >/dev/null 2>&1 && [ -f scripts/env_setup.py ]; then
   fi
 fi
 
+#: The data directory, made here rather than left to compose. A bind mount whose
+#: source does not exist is created by the Docker daemon, which runs as root — so
+#: on a fresh clone `data/` arrived owned by root while the containers run as the
+#: operator (DOCKER_UID, #984). Beat could not write its schedule and crash-looped
+#: on `[Errno 13] Permission denied: '/data/celerybeat-schedule'`; the story
+#: export failed the same way on `/data/exports`.
+#:
+#: After the settings, because the location is one of them. Made by the person
+#: running the command, so it belongs to them.
+#:
+#: An existing directory is left exactly as it is. `data/postgres` belongs to the
+#: database image's own user, and chowning it is how you stop Postgres starting.
+ensure_data_dir() {
+  local configured
+  configured="$(sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null | tail -n1)"
+  configured="${configured%\"}"
+  configured="${configured#\"}"
+  mkdir -p "${configured:-./data}" 2>/dev/null ||
+    echo "  could not create ${configured:-./data} — check you can write there" >&2
+}
+ensure_data_dir
+
 DOCKER_WAIT_SECONDS="${DOCKER_WAIT_SECONDS:-30}"
 DOCKER_WAIT_STEP="${DOCKER_WAIT_STEP:-2}"
 API_WAIT_SECONDS="${API_WAIT_SECONDS:-20}"

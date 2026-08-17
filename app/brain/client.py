@@ -18,7 +18,14 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT_S: float = 120.0
+
+#: How long to wait for a local generate. A setting rather than a constant
+#: because it has to move with the machine: 120 s is generous on a laptop and not
+#: enough on a small board loading a cold model, where the reload is most of the
+#: wait (#997).
+def _timeout() -> float:
+    return settings.brain_timeout_s
+
 
 #: Context window for every local generate call.
 #:
@@ -94,7 +101,7 @@ def generate_json(
             "keep_alive": keep_alive or settings.brain_keep_alive,
             "options": _gen_options(num_predict),
         },
-        timeout=_TIMEOUT_S,
+        timeout=_timeout(),
     )
     response.raise_for_status()
     return json.loads(response.json()["response"])
@@ -120,7 +127,7 @@ def generate_text_stream(
             "keep_alive": keep_alive or settings.brain_keep_alive,
             "options": _gen_options(num_predict),
         },
-        timeout=_TIMEOUT_S,
+        timeout=_timeout(),
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -147,7 +154,7 @@ def embed(texts: list[str], *, model: str | None = None) -> list[list[float]]:
             "input": texts,
             "keep_alive": 0,
         },
-        timeout=_TIMEOUT_S,
+        timeout=_timeout(),
     )
     response.raise_for_status()
     return response.json()["embeddings"]
@@ -163,7 +170,7 @@ def evict(*, model: str | None = None) -> None:
             "stream": False,
             "keep_alive": 0,
         },
-        timeout=_TIMEOUT_S,
+        timeout=_timeout(),
     )
     response.raise_for_status()
 
@@ -193,7 +200,7 @@ def generate_plain(
             "keep_alive": keep_alive or settings.brain_keep_alive,
             "options": _gen_options(num_predict),
         },
-        timeout=_TIMEOUT_S,
+        timeout=_timeout(),
     )
     response.raise_for_status()
     return str(response.json().get("response") or "")

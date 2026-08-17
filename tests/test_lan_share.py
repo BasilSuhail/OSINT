@@ -308,3 +308,90 @@ class TestTheDashboardReceivesItsSettings:
 
     def test_the_token_the_console_authenticates_with_is_documented(self) -> None:
         assert "NEXT_PUBLIC_API_TOKEN=" in (ROOT / "env.example").read_text()
+
+
+class TestTheDataDirectoryBelongsToTheOperator:
+    """A bind mount whose source is missing is created by the daemon, as root.
+
+    The containers run as the operator (`DOCKER_UID`), so on a fresh clone
+    `data/` arrived root-owned and beat crash-looped on
+    `Permission denied: '/data/celerybeat-schedule'`. The story export failed the
+    same way on `/data/exports`. Setting the uid was half the fix; the directory
+    having the right owner in the first place is the other half.
+    """
+
+    def test_the_script_creates_it_before_compose_can(self) -> None:
+        script = DEV_UP.read_text()
+        assert "ensure_data_dir" in script
+
+    #: After the settings, because the location is one of them — reading .env
+    #: before `env_setup.py` has written it would default every time.
+    def test_it_runs_after_the_settings_are_written(self) -> None:
+        body = DEV_UP.read_text()
+        assert body.index("env_setup.py sync") < body.index("ensure_data_dir()")
+
+    #: Before anything that mounts it, or the daemon gets there first.
+    def test_it_runs_before_the_stores_come_up(self) -> None:
+        body = DEV_UP.read_text()
+        assert body.index("ensure_data_dir\n") < body.index("compose_up")
+
+    #: `data/postgres` belongs to the database image's own user. Recursively
+    #: chowning the tree is how you stop Postgres starting, so nothing here does.
+    def test_it_never_chowns_what_is_already_there(self) -> None:
+        script = DEV_UP.read_text()
+        assert "chown -R" not in script
+
+
+class TestEveryCommandWorksOnAFreshClone:
+    """The analysis targets called `.venv/bin/python` outright.
+
+    Nothing creates a host virtualenv — the backend runs in a container — so on a
+    machine that had only ever followed the README, all twenty-nine of them
+    failed. `make stories` is documented as the way to build the story clusters
+    and could not run. The workaround was `docker compose exec` typed by hand.
+    """
+
+    def test_no_target_hard_codes_the_host_virtualenv(self) -> None:
+        recipes = [
+            line
+            for line in MAKEFILE.read_text().splitlines()
+            if line.startswith("\t") and ".venv/bin/python" in line
+        ]
+        assert recipes == []
+
+    def test_the_runner_prefers_a_virtualenv_and_falls_back_to_the_container(self) -> None:
+        assert "RUN_PY ?=" in MAKEFILE.read_text()
+        body = MAKEFILE.read_text()
+        runner = body[body.index("RUN_PY ?=") :][:400]
+        assert ".venv/bin/python" in runner
+        assert "docker compose exec -T worker python" in runner
+
+    #: `scripts/` is not copied into the image — deliberately, it is host-side
+    #: tooling — so a target that runs a script from there cannot use the
+    #: container path. This one moved into `app/` for that reason.
+    def test_prune_runs_a_module_the_image_contains(self) -> None:
+        assert "$(RUN_PY) -m app.prune_now" in MAKEFILE.read_text()
+        assert not (ROOT / "scripts" / "prune_now.py").exists()
+        assert (ROOT / "app" / "prune_now.py").exists()
+
+
+class TestDataSizeDoesNotContradictItself:
+    """`du` exits non-zero when it cannot descend into a directory.
+
+    It cannot descend into `data/postgres` — that belongs to the database image's
+    own user — so `|| echo "no data yet"` fired on a populated directory and
+    printed the denial as an absence, directly under the sizes it had just listed.
+    """
+
+    def test_emptiness_is_decided_by_looking_not_by_an_exit_code(self) -> None:
+        recipe = MAKEFILE.read_text()
+        recipe = recipe[recipe.index("data-size:") :][:700]
+        assert "ls -A" in recipe
+        #: The bug was the fallback hanging off du's status.
+        assert 'du -sh "$(OSINT_DATA_DIR)"/* 2>/dev/null || echo' not in recipe
+
+    #: An unprivileged `du` reports the directory entry for Postgres, not the
+    #: database, so the largest number on screen is the one it cannot see.
+    def test_it_says_the_postgres_number_needs_sudo(self) -> None:
+        recipe = MAKEFILE.read_text()
+        assert "sudo for the true Postgres size" in recipe

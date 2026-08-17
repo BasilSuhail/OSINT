@@ -221,10 +221,20 @@ NOTHING_MORE_ANSWER = "That is everything the corpus holds on that in the last t
 BRAIN_BUSY_ANSWER = "Brain busy — the box is loaded right now, try again in a moment."
 BRAIN_OFFLINE_ANSWER = "The brain is offline right now."
 BRAIN_NOT_WORKING_ANSWER = "The brain is not working right now."
+#: A model that answered too slowly is not an absent one, and saying which it was
+#: is the difference between waiting and going to look for a service that is
+#: running perfectly well (#997). Every check "offline" invites — is Ollama up, is
+#: it listening, can the container reach it — passes when this is what happened,
+#: so that one word sent two separate investigations down the wrong road.
+BRAIN_SLOW_ANSWER = (
+    "That took longer than this machine allows. Ask again — the model is warm now "
+    "— or raise BRAIN_TIMEOUT_S, or point QA_MODEL at a smaller model."
+)
 OPERATIONAL_ANSWERS: tuple[str, ...] = (
     BRAIN_BUSY_ANSWER,
     BRAIN_OFFLINE_ANSWER,
     BRAIN_NOT_WORKING_ANSWER,
+    BRAIN_SLOW_ANSWER,
 )
 #: A semantic pick (cosine vs the question) below this is a weak match.
 SEMANTIC_RELEVANT_MIN: float = 0.55
