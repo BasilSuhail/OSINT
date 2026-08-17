@@ -111,15 +111,35 @@ sudo apt install -y earlyoom
 sudo systemctl enable --now earlyoom
 ```
 
+The models. Two on a board this size, about 1.5 GB together — one that answers,
+one that turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:1b
+ollama pull nomic-embed-text
+```
+
+`make up` pulls these itself if you skip them, and `make env` has already written
+their names into `.env`. Doing it here means the download happens now rather than
+in the middle of the first start.
+
+Check the model actually answers before building anything on it:
+
+```bash
+ollama run llama3.2:1b "reply with one short sentence"
+```
+
+A sentence back means the model works. This is the check worth having: if it
+fails here, nothing above it is the problem.
+
 Start it:
 
 ```bash
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then the models — about
-1.5 GB here, because `make env` picked the small set for this board. It
-downloads them for you; there is no model to choose and none to pull by hand.
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull.
 
 Open <http://localhost:3000>, or `make share` to reach it from another
 device.
@@ -179,6 +199,21 @@ Must print `active` and `0.0.0.0:11434`. If not:
 sudo journalctl -u ollama -n 20 --no-pager
 ```
 
+The models — about 5 GB together. One writes the summary, one answers questions,
+one turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```bash
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
 Then:
 
 ```bash
@@ -188,10 +223,8 @@ make env
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then the models — about
-5 GB on a normal machine, about 1.5 GB on one of 8 GB or less. There is no model
-to choose and none to pull by hand: `make env` decides which set this machine can
-run, and `make up` downloads them.
+`make env` prints which set it chose for this machine and writes the names into
+`.env`; `make up` pulls anything you skipped. 20–40 minutes the first time.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -227,6 +260,21 @@ curl -s http://localhost:11434/api/tags
 Any JSON back means it is running. Connection refused means it is not, and the
 Ask panel will say the brain is offline while everything else works.
 
+The models — about 5 GB together. One writes the summary, one answers questions,
+one turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```bash
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
@@ -234,9 +282,9 @@ make env
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then about 5 GB of
-models. There is no model to choose and none to pull by hand — `make env` decides
-which set this machine can run and prints them, and `make up` downloads them.
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull above. `make env` prints which set it chose for this machine and
+writes the names into `.env`.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -288,7 +336,25 @@ set this way reaches it only on a fresh start. Check, in PowerShell:
 curl.exe -s http://localhost:11434/api/tags
 ```
 
-JSON back means it is listening. Then, in Ubuntu:
+JSON back means it is listening.
+
+The models — about 5 GB together. In PowerShell, since Ollama is the Windows
+one. One writes the summary, one answers questions, one turns text into vectors
+so the Ask panel can find the right stories:
+
+```powershell
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```powershell
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
+Then, in Ubuntu:
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
@@ -298,9 +364,9 @@ echo "OLLAMA_URL=http://host.docker.internal:11434" >> .env
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then about 5 GB of
-models. There is no model to choose and none to pull by hand — `make env` decides
-which set this machine can run and prints them, and `make up` downloads them.
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull above. `make env` prints which set it chose for this machine and
+writes the names into `.env`.
 
 Open <http://localhost:3000>, then fill it:
 
