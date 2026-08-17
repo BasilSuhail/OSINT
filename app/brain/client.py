@@ -74,11 +74,31 @@ def _warn_if_oversized(prompt: str, model: str) -> None:
         )
 
 
+#: A ceiling on every answer, because there was none.
+#:
+#: Ollama generates until the context fills when nothing says otherwise, and
+#: `temperature: 0` with no repetition penalty is the standard recipe for a model
+#: that finds a sentence it likes and writes it until stopped. A 1b on a
+#: Raspberry Pi did exactly that: the same clause about aid organisations, over
+#: and over, for thousands of tokens, streaming to the reader the whole way.
+#:
+#: Generous for an answer of a few paragraphs, which is all the Ask panel asks
+#: for. The elaborate path passes its own larger value.
+_NUM_PREDICT: int = 512
+
+#: Above 1.0 makes a token less likely the more it has already been used. The
+#: loop above cost nothing to prevent and was not prevented, because greedy
+#: decoding has no reason of its own to stop repeating.
+_REPEAT_PENALTY: float = 1.15
+
+
 def _gen_options(num_predict: int | None) -> dict[str, Any]:
-    options: dict[str, Any] = {"temperature": 0, "num_ctx": _NUM_CTX}
-    if num_predict is not None:
-        options["num_predict"] = num_predict
-    return options
+    return {
+        "temperature": 0,
+        "num_ctx": _NUM_CTX,
+        "num_predict": _NUM_PREDICT if num_predict is None else num_predict,
+        "repeat_penalty": _REPEAT_PENALTY,
+    }
 
 
 def generate_json(
