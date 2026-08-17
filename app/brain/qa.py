@@ -1063,7 +1063,10 @@ def build_qa_prompt(
         f"then reply exactly: {REFUSAL_ANSWER} If related stories exist but "
         "answer the question only partly, do not refuse: say what they show, "
         "with caveats, and name what is not known.\n"
-        "- When a claim rests on a story, cite it as [n] using that story's number.\n"
+        "- When a claim rests on a story, cite it by that story's number in square\n"
+        "  brackets — [1] for the first, [2] for the second. Never write the\n"
+        '  letter n: "[n]" is how this instruction describes a number, not\n'
+        "  something to copy into the answer.\n"
         "- Every non-refusal answer that uses any story MUST include at least one valid "
         "[n] citation from the numbered stories list.\n"
         "- CONTEXT.sensors are direct instrument readings (seismometers, disaster "
@@ -1142,10 +1145,30 @@ def citation_numbers(answer: str) -> list[int]:
     return [int(match.group(1)) for match in _CITATION_RE.finditer(answer)]
 
 
+#: A literal "[n]", written out rather than replaced by a story number.
+#:
+#: "[n]" is how the prompt writes "the number of the story you are citing". A
+#: capable model substitutes one; a small one copies the notation, and the
+#: reader gets sentences like "the death toll has risen to [n] [n] people".
+#: Seen from a 1b on a Raspberry Pi, where a 4b never did it.
+#:
+#: Removed rather than repaired: which story was meant is not recoverable, and
+#: an invented number would be a fabricated citation — the one thing the whole
+#: prompt exists to prevent. Any leading space goes with it so the sentence
+#: closes up.
+_PLACEHOLDER_CITATION_RE = re.compile(r"[ \t]*\[n\]", re.IGNORECASE)
+
+
+def strip_placeholder_citations(answer: str) -> str:
+    """Remove citations left as the literal "[n]" the prompt uses to explain them."""
+    return _PLACEHOLDER_CITATION_RE.sub("", answer)
+
+
 def strip_bad_citations(answer: str, n_sources: int) -> str:
     """Remove [n] citations that point past the sources we actually supplied."""
+    cleaned = strip_placeholder_citations(answer)
     return _CITATION_RE.sub(
-        lambda m: m.group(0) if 1 <= int(m.group(1)) <= n_sources else "", answer
+        lambda m: m.group(0) if 1 <= int(m.group(1)) <= n_sources else "", cleaned
     ).strip()
 
 

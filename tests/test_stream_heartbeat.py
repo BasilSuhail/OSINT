@@ -84,3 +84,42 @@ class TestTheHeartbeatItself:
 
     def test_it_ends_the_frame_so_a_client_flushes_it(self) -> None:
         assert _HEARTBEAT.endswith("\n\n")
+
+
+class TestThePlaceholderCitation:
+    """ "[n]" is how the prompt writes "the number of the story you are citing".
+
+    A small model copies the notation instead of substituting a number, and the
+    reader gets "the death toll has risen to [n] [n] people". Observed from a 1b
+    on a Raspberry Pi; a 4b never did it.
+    """
+
+    def test_a_literal_placeholder_is_removed(self) -> None:
+        from app.brain.qa import strip_placeholder_citations
+
+        assert strip_placeholder_citations("47 died [n]") == "47 died"
+
+    def test_a_run_of_them_goes_too(self) -> None:
+        from app.brain.qa import strip_placeholder_citations
+
+        assert strip_placeholder_citations("risen to [n] [n] people") == "risen to people"
+
+    #: The real thing must survive. Removing these would strip every citation in
+    #: the answer, which is the grounding the console is built on.
+    def test_a_real_citation_survives(self) -> None:
+        from app.brain.qa import strip_placeholder_citations
+
+        assert strip_placeholder_citations("47 died [1] and [12]") == "47 died [1] and [12]"
+
+    def test_the_cleaner_the_api_already_calls_does_it(self) -> None:
+        from app.brain.qa import strip_bad_citations
+
+        assert strip_bad_citations("47 died [n] per [1]", 3) == "47 died per [1]"
+
+    #: Never repaired into a number. Which story was meant is not recoverable,
+    #: and inventing one would be a fabricated citation — the single thing the
+    #: whole prompt exists to prevent.
+    def test_it_is_not_replaced_with_a_guess(self) -> None:
+        from app.brain.qa import strip_bad_citations
+
+        assert "[1]" not in strip_bad_citations("47 died [n]", 3)
