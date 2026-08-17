@@ -49,6 +49,7 @@ somebody runs before the virtual environment exists.
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import re
 import secrets
@@ -309,9 +310,86 @@ def host_ids() -> dict[str, str]:
     """The account the containers should run as, where that is a real question."""
     if not sys.platform.startswith("linux"):
         return {}
-    import os
-
     return {key: str(getattr(os, reader)()) for key, reader in _HOST_ID_KEYS.items()}
+
+
+#: A machine this size or smaller runs the small-machine profile below.
+#:
+#: 9 GB rather than 8 because a board sold as 8 GB reports a little under it —
+#: the firmware keeps some — and a threshold of exactly 8 GB would miss the
+#: machine this was written for.
+_SMALL_MACHINE_MAX_MB = 9216
+
+#: What a small machine runs instead of the defaults, which are written for a
+#: laptop. Every number here was measured on one 8 GB board with no GPU, booting
+#: from an SD card:
+#:
+#: - The defaults name three different models. Two of them resident at once came
+#:   to 5.4 GB of a 7.9 GB board, and the Ask panel then had nowhere to put a
+#:   third. One model for every job means Ollama loads it once and reuses it,
+#:   which is the difference between fitting and not.
+#: - An ask took 1 m 48 s end to end against a 120 s ceiling, so it failed on
+#:   time — and a timeout reaches the console as "the brain is offline", which
+#:   sends anyone reading it to look for a broken install instead of a slow one.
+#: - `QA_KEEP_ALIVE=0` evicts after every question, so each one paid a cold 2 GB
+#:   load off the card before generating a token. Holding it briefly makes the
+#:   second question onward cost generation only.
+#: - The RAM floors are sized for a 4b. Left alone they refuse to load a model
+#:   that now fits, and the console answers "brain busy" indefinitely.
+#:
+#: The cost is accuracy, and it is not small: this repo measured a 1.5b at 3/7
+#: against the 3b's 6/7 on the same hand-checked stories, and the board's own
+#: answers contradict themselves inside a paragraph. A machine this size buys
+#: that trade. `make env` says so rather than making it quietly.
+_SMALL_MACHINE_PROFILE: dict[str, str] = {
+    "BRAIN_MODEL": "llama3.2:1b",
+    "QA_MODEL": "llama3.2:1b",
+    "SEVERITY_MODEL": "llama3.2:1b",
+    "OLLAMA_MODEL": "llama3.2:1b",
+    "BRAIN_KEEP_ALIVE": "5m",
+    "QA_KEEP_ALIVE": "5m",
+    "BRAIN_MIN_FREE_MB": "1800",
+    "QA_MIN_FREE_MB": "2000",
+    "BRAIN_TIMEOUT_S": "300",
+    "QA_STORIES": "3",
+    #: The console's own patience, which is not the API's. It hangs up on a
+    #: stream that has gone quiet, and on a board the quiet before the first
+    #: token is about 100 s of prompt processing — well past the 45 s default,
+    #: which was measured on a laptop. Reported to the reader as the brain being
+    #: offline, identically to a model that is not installed, so every check the
+    #: message invites is server-side and every one of them passes.
+    "NEXT_PUBLIC_STREAM_IDLE_TIMEOUT_MS": "240000",
+    "NEXT_PUBLIC_ASK_TIMEOUT_MS": "600000",
+}
+
+
+def total_ram_mb() -> int:
+    """This machine's memory, or 0 where it cannot be read.
+
+    ``sysconf`` answers on both Linux and macOS, so there is one path rather
+    than one per platform. Unreadable is 0, which is below every threshold — a
+    machine that will not say how big it is keeps the defaults, so a failed
+    reading can never quietly reconfigure somebody's install.
+    """
+    try:
+        pages = os.sysconf("SC_PHYS_PAGES")
+        page_size = os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, ValueError, OSError):
+        return 0
+    if pages <= 0 or page_size <= 0:
+        return 0
+    return int(pages * page_size / (1024 * 1024))
+
+
+def is_small_machine(ram_mb: int | None = None) -> bool:
+    """Whether this machine should run the small-machine profile.
+
+    Decided on memory alone. A board and a small laptop have the same problem,
+    and naming the board would make this depend on recognising hardware rather
+    than on the constraint that actually matters.
+    """
+    ram = total_ram_mb() if ram_mb is None else ram_mb
+    return 0 < ram <= _SMALL_MACHINE_MAX_MB
 
 
 DEFAULT_API_PORT = 8000
@@ -454,6 +532,7 @@ def originate(
     make_secret: Callable[[], str] = generate_secret,
     secrets_too: bool = True,
     rederive: bool = False,
+    small: bool | None = None,
 ) -> dict[str, str]:
     """The values this script should write, given the ones already answered.
 
@@ -486,10 +565,16 @@ def originate(
         value = have.get(key, "").strip()
         if not value:
             return False
-        #: A derived key still holding the example's own default is the
-        #: example's answer, not the operator's, so deriving over it takes
+        #: A derived or profile key still holding the example's own default is
+        #: the example's answer, not the operator's, so writing over it takes
         #: nothing away from anybody. A secret is never treated this way.
-        return not (key in _DERIVED and value == defaults.get(key, ""))
+        #:
+        #: The profile needs this, not merely benefits from it. `sync` copies
+        #: the example into `.env` before this runs, so on the fresh clone this
+        #: exists for, every model setting already holds the laptop default by
+        #: the time the question is asked.
+        overridable = key in _DERIVED or key in _SMALL_MACHINE_PROFILE
+        return not (overridable and value == defaults.get(key, ""))
 
     if secrets_too:
         for key in _GENERATED_SECRETS:
@@ -505,6 +590,13 @@ def originate(
         for key, value in host_ids().items():
             if documented(key) and not answered(key):
                 written[key] = value
+        #: Fill-once as well, and for the same reason: a machine does not grow
+        #: memory. Inside `secrets_too` so that `refresh`, which exists to
+        #: rewrite addresses, cannot reach a model setting on its way past.
+        if is_small_machine() if small is None else small:
+            for key, value in _SMALL_MACHINE_PROFILE.items():
+                if documented(key) and not answered(key):
+                    written[key] = value
 
     pinned = have.get(_PINNED_HOST_KEY, "").strip()
     host = pinned or (machine.hosts[0] if machine.hosts else "localhost")
@@ -765,6 +857,19 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"    {key}")
         else:
             print(f"  {env_path} already has every key in env.example")
+
+        #: The size of the machine, before the keys it decides, because it is
+        #: the reason several of them are about to differ from the example. Said
+        #: whichever way it goes: an operator who expected the small profile and
+        #: did not get it has no other way to find out.
+        ram_mb = total_ram_mb()
+        if is_small_machine(ram_mb):
+            print(f"  {ram_mb} MB of memory — using the small-machine settings:")
+            print("    one small model for every job, held briefly, longer patience")
+            print("    it answers on a board this size; it is less accurate than the")
+            print("    laptop models, and contradicts itself more often")
+        elif ram_mb:
+            print(f"  {ram_mb} MB of memory — using the full-size models")
 
         #: Values, not just keys — the step that makes a first run start (#964).
         #: Only the keys nobody has answered, and the names of them, never what

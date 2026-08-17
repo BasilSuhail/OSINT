@@ -214,8 +214,18 @@ Must print `active` and `0.0.0.0:11434`. If not:
 sudo journalctl -u ollama -n 20 --no-pager
 ```
 
-The models — about 5 GB together. One writes the summary, one answers questions,
-one turns text into vectors so the Ask panel can find the right stories:
+The code, and the settings for this machine:
+
+```bash
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
+```
+
+Nothing to edit. `make env` measures the memory and writes the settings to match,
+then prints the models it chose. On anything with room that is three, about 5 GB
+— one writes the summary, one answers questions, one turns text into vectors so
+the Ask panel can find the right stories:
 
 ```bash
 ollama pull llama3.2:3b
@@ -223,23 +233,24 @@ ollama pull qwen3.5:4b-q4_K_M
 ollama pull nomic-embed-text
 ```
 
+If `make env` printed different names, pull those instead — it has measured this
+machine and those commands have not. Skipping this is fine either way: `make up`
+pulls whatever `.env` names.
+
 Check the model answers:
 
 ```bash
 ollama run llama3.2:3b "reply with one short sentence"
 ```
 
-Then:
+A sentence back means the model works. If it fails here, nothing above it is the
+problem. Then:
 
 ```bash
-git clone https://github.com/BasilSuhail/OSINT.git
-cd OSINT
-make env
 make up
 ```
 
-`make env` prints which set it chose for this machine and writes the names into
-`.env`; `make up` pulls anything you skipped. 20–40 minutes the first time.
+20–40 minutes the first time: images, browser packages, and any model you skipped.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -285,8 +296,18 @@ curl -s http://localhost:11434/api/tags
 Any JSON back means it is running. Connection refused means it is not, and the
 Ask panel will say the brain is offline while everything else works.
 
-The models — about 5 GB together. One writes the summary, one answers questions,
-one turns text into vectors so the Ask panel can find the right stories:
+The code, and the settings for this Mac:
+
+```bash
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
+```
+
+Nothing to edit. `make env` measures the memory and writes the settings to match,
+then prints the models it chose. On a Mac with room that is three, about 5 GB —
+one writes the summary, one answers questions, one turns text into vectors so the
+Ask panel can find the right stories:
 
 ```bash
 ollama pull llama3.2:3b
@@ -294,22 +315,24 @@ ollama pull qwen3.5:4b-q4_K_M
 ollama pull nomic-embed-text
 ```
 
+If `make env` printed different names, pull those instead — it has measured this
+Mac and those commands have not. Skipping this is fine either way: `make up`
+pulls whatever `.env` names.
+
 Check the model answers:
 
 ```bash
 ollama run llama3.2:3b "reply with one short sentence"
 ```
 
+A sentence back means the model works. If it fails here, nothing above it is the
+problem. Then:
+
 ```bash
-git clone https://github.com/BasilSuhail/OSINT.git
-cd OSINT
-make env
 make up
 ```
 
-20–40 minutes the first time: images and browser packages, plus the models if you
-skipped the pull above. `make env` prints which set it chose for this machine and
-writes the names into `.env`.
+20–40 minutes the first time: images, browser packages, and any model you skipped.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -368,9 +391,20 @@ Ubuntu home directory — not under `/mnt/c`. A repository on the Windows drive 
 reached through a translation layer, and the difference is minutes per command
 rather than seconds.
 
-The models — about 5 GB together. In PowerShell, since Ollama is the Windows
-one. One writes the summary, one answers questions, one turns text into vectors
-so the Ask panel can find the right stories:
+The code, and the settings for this machine. In **Ubuntu**:
+
+```bash
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
+```
+
+Nothing to edit. `make env` measures the memory and writes the settings to match,
+then prints the models it chose — usually three, about 5 GB. One writes the
+summary, one answers questions, one turns text into vectors so the Ask panel can
+find the right stories.
+
+Pull them in **PowerShell**, because Ollama is the Windows one:
 
 ```powershell
 ollama pull llama3.2:3b
@@ -378,24 +412,24 @@ ollama pull qwen3.5:4b-q4_K_M
 ollama pull nomic-embed-text
 ```
 
-Check the model answers:
+If `make env` printed different names, pull those instead — it has measured this
+machine and those commands have not. Skipping this is fine either way: `make up`
+pulls whatever `.env` names.
+
+Check the model answers, still in PowerShell:
 
 ```powershell
 ollama run llama3.2:3b "reply with one short sentence"
 ```
 
-Then, in Ubuntu:
+A sentence back means the model works. If it fails here, nothing above it is the
+problem. Back in **Ubuntu**:
 
 ```bash
-git clone https://github.com/BasilSuhail/OSINT.git
-cd OSINT
-make env
 make up
 ```
 
-20–40 minutes the first time: images and browser packages, plus the models if you
-skipped the pull above. `make env` prints which set it chose for this machine and
-writes the names into `.env`.
+20–40 minutes the first time: images, browser packages, and any model you skipped.
 
 Open <http://localhost:3000>, then fill it:
 

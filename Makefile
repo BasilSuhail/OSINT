@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: help env env-check fetch news news-all logs severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: help env env-check fetch news news-all ask logs severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 #: How the analysis commands below run Python.
 #:
@@ -103,6 +103,9 @@ fetch:  ## Fetch from every source now, instead of waiting for the schedule (#99
 
 news:  ## Build the stories, cards and written summary — a few minutes (#997)
 	@docker compose exec -T worker python -m app.news_now
+
+ask:  ## Ask from the terminal, with the real error instead of "offline" (#997)
+	@docker compose exec -T api python -m app.brain.ask_now $(Q)
 
 news-all:  ## Same, but gist every story in the window rather than a batch — hours (#997)
 	@docker compose exec -T worker python -m app.news_now --all

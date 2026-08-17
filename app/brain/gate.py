@@ -57,10 +57,44 @@ def _parse_vm_stat(text: str) -> int:
     return (pages["free"] + pages["inactive"]) * page_size // (1024 * 1024)
 
 
-#: Hosts that mean "the model loads in this same machine's memory". Anything
-#: else — `host.docker.internal`, a box on the LAN — means a local reading
-#: describes a machine that will not be holding the model (#413).
+#: Hosts that mean "the model loads in this same machine's memory".
 _LOCAL_OLLAMA_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1", "", "0.0.0.0"})
+
+#: `host.docker.internal` means one thing on Docker Desktop and the opposite on
+#: native Linux Docker, and the difference decides whether a memory reading taken
+#: in here describes the machine that will hold the model.
+#:
+#: Docker Desktop runs containers inside a virtual machine, so this name points at
+#: a *different* machine and `/proc/meminfo` in here reports the VM's few
+#: gigabytes rather than the host's. Native Linux Docker has no VM: the container
+#: shares the host kernel, the name points at the same machine, and the reading is
+#: exact.
+#:
+#: Treating it as remote everywhere switched the gate off on the machine it was
+#: written for. A Raspberry Pi reached `qa_ram_blocked() -> False` for every ask,
+#: loaded a 3.4 GB model into 8 GB already holding the stack and the console, and
+#: locked up hard — twice — with the guard sitting right there returning False.
+_REMOTE_VIA_DOCKER_HOSTS: frozenset[str] = frozenset(
+    {"host.docker.internal", "gateway.docker.internal"}
+)
+
+#: Docker Desktop's VM runs a LinuxKit kernel; a Pi, a server and a desktop do
+#: not. Read from inside the container, this is the one signal that says which of
+#: the two situations above we are in, without asking the operator to declare it.
+_DESKTOP_VM_KERNEL_MARKERS: tuple[str, ...] = ("linuxkit", "docker-desktop")
+
+
+def in_docker_desktop_vm() -> bool:
+    """Whether this process runs in Docker Desktop's virtual machine.
+
+    A guess, and a load-bearing one, so `brain_same_machine_as_ollama` overrides
+    it when the guess is wrong on some setup nobody here has seen.
+    """
+    declared = settings.brain_same_machine_as_ollama
+    if declared is not None:
+        return not declared
+    release = platform.release().lower()
+    return any(marker in release for marker in _DESKTOP_VM_KERNEL_MARKERS)
 
 
 def ollama_is_local(url: str | None = None) -> bool:
@@ -78,7 +112,13 @@ def ollama_is_local(url: str | None = None) -> bool:
     successful run.
     """
     raw = url if url is not None else settings.ollama_url
-    return (urlparse(raw).hostname or "") in _LOCAL_OLLAMA_HOSTS
+    host = urlparse(raw).hostname or ""
+    if host in _LOCAL_OLLAMA_HOSTS:
+        return True
+    #: The container-to-host name: same machine unless a VM sits between them.
+    if host in _REMOTE_VIA_DOCKER_HOSTS:
+        return not in_docker_desktop_vm()
+    return False
 
 
 def ram_free_mb() -> int:

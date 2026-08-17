@@ -29,7 +29,12 @@ export const API_TIMEOUT_MS = 15_000
  * the live stack, one non-streamed ask took 24.2s end to end — a 4B model on
  * CPU, working correctly. Under the page budget it was cut off at 15s every
  * time, which the console then reported as the brain being offline. */
-export const ASK_TIMEOUT_MS = 180_000
+export const ASK_TIMEOUT_MS = intEnv(
+  process.env.NEXT_PUBLIC_ASK_TIMEOUT_MS,
+  180_000,
+  30_000,
+  900_000,
+)
 
 /** How long a stream may go quiet before it is treated as dead.
  *
@@ -38,8 +43,21 @@ export const ASK_TIMEOUT_MS = 180_000
  * context — 17.8s on the measured run, with the answer still arriving normally
  * afterwards. What distinguishes a working generation from a dead one is not
  * how long it takes but whether anything is still coming, so the clock restarts
- * on every chunk. */
-export const STREAM_IDLE_TIMEOUT_MS = 45_000
+ * on every chunk.
+ *
+ * It has to move with the machine, which is why it reads the environment. That
+ *17.8s was a laptop. The same first token on a Raspberry Pi is about 100s of
+ * prompt processing with nothing sent in the meantime, so a fixed 45s guard
+ * hung up on a generation that was working — and the panel reported the
+ * cancelled stream with the same sentence the API uses for a model that is not
+ * there. Every check that sentence invites is server-side, and all of them
+ * passed, because nothing had gone wrong on the server. */
+export const STREAM_IDLE_TIMEOUT_MS = intEnv(
+  process.env.NEXT_PUBLIC_STREAM_IDLE_TIMEOUT_MS,
+  45_000,
+  15_000,
+  600_000,
+)
 
 /** Combine the caller's cancellation with the timeout, so a viewport change
  *  still aborts in-flight work and a hung API still gives up.
