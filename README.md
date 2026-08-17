@@ -231,6 +231,8 @@ fill of a thousand finishes overnight without you doing anything.
 
 ```
   gist     the summary line on each story card
+           [........................] 0/20 stories, starting
+           [#.......................] 1/20 stories, ~4 min left
            [##########..............] 8/20 stories, ~2 min left
 ```
 

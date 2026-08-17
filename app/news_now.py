@@ -54,10 +54,11 @@ _BAR = 24
 #: watch it rather than wait blind.
 _QUICK_TARGET = 20
 
-#: Stories per step. Small enough that the bar moves several times inside a
-#: quick run, large enough that the per-call overhead stays negligible against a
-#: model generation that takes seconds.
-_STEP = 4
+#: Stories per step. One, because a step is only visible when it finishes: at
+#: four, the first line took up to a minute and a half to appear, which is most
+#: of the silence the bar exists to remove. The extra cost is one small query per
+#: story against a model generation measured in seconds.
+_STEP = 1
 
 
 def _describe(outcome: dict[str, Any]) -> str:
@@ -88,7 +89,9 @@ def _bar(done: int, total: int, started: float) -> str:
     filled = min(_BAR, round(_BAR * done / total))
     elapsed = time.monotonic() - started
     if not done:
-        eta = "estimating"
+        #: Drawn once before the first story, so the stage says it has begun
+        #: rather than sitting blank for however long one generation takes.
+        eta = "starting"
     else:
         remaining = elapsed / done * max(total - done, 0)
         #: Minutes once there are minutes left, seconds below that, and "nearly
@@ -136,7 +139,8 @@ def _gist(
     One call gisting twenty stories takes minutes on a small box and prints
     nothing until it returns, which is indistinguishable from a hang. Several
     smaller calls take the same time and can be counted, which is the whole
-    difference: `target=20, step=4` is five steps and a bar that moves.
+    difference — and a step is only visible once it finishes, so the step is one
+    story.
 
     Stops when a step gists nothing — the window is done — or when the brain
     declines for want of headroom, because calling again would spin.
@@ -150,6 +154,14 @@ def _gist(
     #: A terminal gets one line rewritten; a pipe or `docker compose exec -T`
     #: gets one line per step, because \r in a log file is unreadable.
     live = sys.stdout.isatty()
+
+    def draw() -> None:
+        line = f"{' ' * indent}{_bar(done, target or total, started)}"
+        print(f"\r{line}" if live else line, end="" if live else "\n", flush=True)
+
+    #: Before the first call, not after it. The first story takes as long as any
+    #: other, and until this line existed the stage sat blank for all of it.
+    draw()
 
     while True:
         size = step if target is None else min(step, target - done)
@@ -170,8 +182,7 @@ def _gist(
         #: The bar counts towards what this run is trying to do, not the whole
         #: window — a quick run reaching 20/20 has finished what it promised, and
         #: the summary afterwards says how much of the window that was.
-        line = f"{' ' * indent}{_bar(done, target or total, started)}"
-        print(f"\r{line}" if live else line, end="" if live else "\n", flush=True)
+        draw()
 
     if live:
         print()

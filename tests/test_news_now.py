@@ -184,8 +184,8 @@ class TestTheProgressBar:
 
     #: An estimate is the difference between waiting and wondering whether it
     #: has hung. Nothing to estimate from on the first line, so it says so.
-    def test_it_estimates_only_once_it_has_something_to_estimate_from(self) -> None:
-        assert "estimating" in _bar(0, 100, 0.0)
+    def test_it_says_starting_before_there_is_anything_to_estimate_from(self) -> None:
+        assert "starting" in _bar(0, 100, 0.0)
 
     #: Three tiers, because "nearly done" at 4 of 20 is a claim the reader can
     #: check against the counts on the same line and see is false.
@@ -200,3 +200,36 @@ class TestTheProgressBar:
 
     def test_a_zero_total_does_not_divide_by_zero(self) -> None:
         assert _bar(0, 0, 0.0)
+
+
+class TestItSaysSomethingImmediately:
+    """The first story takes as long as any other (#997).
+
+    At a step of four the first line arrived up to 90 seconds in, which is most
+    of the silence the bar exists to remove. The line is drawn before the first
+    call, and a step is one story so the next one is never far behind.
+    """
+
+    def test_a_line_is_drawn_before_the_first_story(self, capsys) -> None:
+        def enrich(size: int) -> dict:
+            #: Whatever this printed would land after the opening line, which is
+            #: the ordering being asserted.
+            print("work happening")
+            return {"window_stories": 2, "enriched": size}
+
+        _gist(target=2, step=1, indent=0, enrich=enrich)
+        lines = [line for line in capsys.readouterr().out.splitlines() if line]
+        assert "0/2 stories, starting" in lines[0]
+        assert lines[1] == "work happening"
+
+    def test_a_step_is_one_story_so_each_one_reports(self) -> None:
+        from app.news_now import _STEP
+
+        assert _STEP == 1
+
+    #: A window with nothing to do still says it started and stops at once,
+    #: rather than printing nothing at all and looking skipped.
+    def test_an_empty_window_still_reports_starting(self, capsys) -> None:
+        outcome = _gist(target=20, step=1, indent=0, enrich=lambda size: {"enriched": 0})
+        assert outcome["enriched"] == 0
+        assert "0/20 stories, starting" in capsys.readouterr().out
