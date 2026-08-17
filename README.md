@@ -213,7 +213,14 @@ brew install ollama
 brew services start ollama
 ```
 
-No systemd override here — Docker Desktop reaches the host without one.
+No override here — Docker Desktop reaches the host without one. Check it took:
+
+```bash
+curl -s http://localhost:11434/api/tags
+```
+
+Any JSON back means it is running. Connection refused means it is not, and the
+Ask panel will say the brain is offline while everything else works.
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
@@ -253,8 +260,26 @@ sudo apt install -y nodejs && sudo corepack enable
 ```
 
 Ollama, on **Windows** rather than inside Ubuntu — download it from
-[ollama.com/download](https://ollama.com/download), then in Ubuntu point the
-stack at it:
+[ollama.com/download](https://ollama.com/download).
+
+**Then let it answer the containers.** Ollama listens only to the Windows
+machine itself until told otherwise, and the stack reaches it from inside a
+container — so out of the box it refuses the connection, and the console reports
+that as the brain being offline while the map and the feed work normally. In
+PowerShell **as administrator**:
+
+```powershell
+[Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0", "Machine")
+```
+
+Quit Ollama from the system tray and start it again — an environment variable
+set this way reaches it only on a fresh start. Check, in PowerShell:
+
+```powershell
+curl.exe -s http://localhost:11434/api/tags
+```
+
+JSON back means it is listening. Then, in Ubuntu:
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
