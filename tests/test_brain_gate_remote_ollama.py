@@ -66,6 +66,9 @@ class TestWhereOllamaRuns:
 
 class TestTheFloorStillProtectsThePi:
     def test_low_ram_still_blocks_when_the_model_is_local(self, db_session: Session, monkeypatch):
+        #: Nothing resident, so the floor is the question — stated rather
+        #: than left to whether this machine is running Ollama.
+        monkeypatch.setattr(gate.client, "model_resident", lambda *a, **k: False)
         # The #409 case, unchanged: one machine, genuinely short of memory.
         monkeypatch.setattr(gate.settings, "ollama_url", "http://localhost:11434")
         monkeypatch.setattr(gate, "ram_free_mb", lambda: 500)
@@ -77,6 +80,9 @@ class TestTheFloorStillProtectsThePi:
         assert "low RAM" in reason
 
     def test_ample_ram_still_allows_when_the_model_is_local(self, db_session: Session, monkeypatch):
+        #: Nothing resident, so the floor is the question — stated rather
+        #: than left to whether this machine is running Ollama.
+        monkeypatch.setattr(gate.client, "model_resident", lambda *a, **k: False)
         monkeypatch.setattr(gate.settings, "ollama_url", "http://localhost:11434")
         monkeypatch.setattr(gate, "ram_free_mb", lambda: 4000)
         monkeypatch.setattr(gate.settings, "brain_min_free_mb", 1200)
