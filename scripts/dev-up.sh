@@ -115,6 +115,18 @@ docker_ready() {
   docker info >/dev/null 2>&1
 }
 
+#: Whether the daemon is up but refusing *us*.
+#:
+#: `sudo usermod -aG docker "$USER"` takes effect on the next login, so between
+#: installing Docker and logging back in every docker command fails — and it
+#: fails the same way to a caller as a daemon that is not running. Reported as
+#: the latter, the advice was "start Docker Desktop", which on a Linux board is
+#: not a thing that exists. The fix is one reboot; the message has to say so.
+docker_denied() {
+  ! docker info >/dev/null 2>&1 &&
+    docker info 2>&1 | grep -qiE "permission denied|dial unix.*permission"
+}
+
 docker_process_running() {
   if command -v pgrep >/dev/null 2>&1; then
     pgrep -x "Docker" >/dev/null 2>&1 && return 0
@@ -130,6 +142,20 @@ ensure_docker() {
     return
   fi
 
+  #: Before anything about starting Docker: it may be running perfectly and
+  #: simply not talking to this account yet.
+  if docker_denied; then
+    echo "Docker is running, but this account cannot reach it yet." >&2
+    echo "" >&2
+    echo "  \`usermod -aG docker\` only takes effect on a new login." >&2
+    echo "  Reboot, then run make again:" >&2
+    echo "" >&2
+    echo "    sudo reboot" >&2
+    echo "" >&2
+    echo "  \`groups\` should list docker afterwards." >&2
+    exit 1
+  fi
+
   if [ "${DOCKER_AUTOSTART:-1}" = "1" ] && command -v open >/dev/null 2>&1; then
     if docker_process_running; then
       echo "→ Docker app detected, waiting for engine socket"
@@ -143,7 +169,13 @@ ensure_docker() {
       echo "→ Docker app detected, waiting for engine socket"
       echo "  waiting up to ${DOCKER_WAIT_SECONDS}s for Docker to become available"
     else
-      echo "Docker is not reachable. Start Docker Desktop, then run make start again." >&2
+      if [ "$(uname -s)" = "Linux" ]; then
+        echo "Docker is not reachable. Start it, then run make again:" >&2
+        echo "" >&2
+        echo "    sudo systemctl start docker" >&2
+      else
+        echo "Docker is not reachable. Start Docker Desktop, then run make again." >&2
+      fi
       exit 1
     fi
   fi
