@@ -182,8 +182,8 @@ over the following hours.
 Leave it running and it populates itself. To fill it now:
 
 ```bash
-make fetch                        # every source, once
-make news                         # then build the stories and the summary
+make fetch                        # the map — a few minutes
+make news                         # the stories and the summary — a few minutes
 ```
 
 `make fetch` fills the **map** — events, hazards, aircraft, markets. It prints
@@ -191,8 +191,19 @@ what each source returned, and which are dormant for want of an API key; on
 screen "no data from this source" and "this source needs a key" look identical.
 
 `make news` fills the **left-hand side** — the story feed and the written
-situation summary. Those are built from the news `make fetch` collected, so run
-it second.
+situation summary. Built from the news `make fetch` collected, so run it second.
+
+It writes the summary and gives the first twenty stories their one-line gist,
+then tells you how many are still waiting. The rest arrive on the schedule, about
+twenty every twenty minutes, so a first fill of a thousand finishes overnight
+without you doing anything.
+
+If you want them all now, with a progress bar and an estimate — hours on a small
+machine, minutes on a laptop:
+
+```bash
+make news-all
+```
 
 Just one source, when you know which:
 

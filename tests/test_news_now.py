@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.news_now import _STAGES, _describe, main
+from app.news_now import _STAGES, _bar, _describe, _gist_everything, main
 
 ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = (ROOT / "Makefile").read_text()
@@ -37,9 +37,9 @@ class TestItRunsWhereItIsCalled:
 
 
 class TestReporting:
-    def test_takes_no_arguments(self, capsys) -> None:
+    def test_refuses_an_argument_it_does_not_know(self, capsys) -> None:
         assert main(["gdelt"]) == 2
-        assert "no arguments" in capsys.readouterr().err
+        assert "only --all" in capsys.readouterr().err
 
     #: The brain declines when the box has no headroom and says so in `reason`.
     #: That is the design working, not a failure.
@@ -77,3 +77,88 @@ class TestReporting:
         out = capsys.readouterr().out
         assert "failed — RuntimeError: no database" in out
         assert "1 stage(s) failed: cluster" in out
+
+
+class TestTheQuickRunSaysWhatItLeftUndone:
+    """The gist stage is bounded at 20 per call (#997).
+
+    On a first fill of 1,128 stories that is a rounding error, and the run
+    reported `enriched=20` with nothing saying the other 1,108 were still
+    waiting — which reads as finished.
+    """
+
+    def test_it_says_how_far_it_got_and_offers_the_long_way(self, capsys, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "app.news_now._STAGES",
+            (("gist", "gists", lambda: {"window_stories": 1128, "enriched": 20}),),
+        )
+        assert main([]) == 0
+        out = capsys.readouterr().out
+        assert "20 of 1128 stories have a gist" in out
+        assert "make news-all" in out
+
+    def test_a_finished_window_makes_no_such_offer(self, capsys, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "app.news_now._STAGES",
+            (("gist", "gists", lambda: {"window_stories": 20, "enriched": 20}),),
+        )
+        assert main([]) == 0
+        assert "news-all" not in capsys.readouterr().out
+
+
+class TestTheLongRun:
+    def test_only_all_is_accepted_as_an_argument(self, capsys) -> None:
+        assert main(["--everything"]) == 2
+        assert "only --all" in capsys.readouterr().err
+
+    def test_it_keeps_going_until_a_batch_finds_nothing(self) -> None:
+        batches = [
+            {"window_stories": 50, "enriched": 20},
+            {"window_stories": 50, "enriched": 20},
+            {"window_stories": 50, "enriched": 10},
+            {"window_stories": 50, "enriched": 0},
+        ]
+        calls = iter(batches)
+        outcome = _gist_everything(enrich=lambda: next(calls))
+        assert outcome == {"window_stories": 50, "enriched": 50}
+
+    #: A declined batch must stop rather than spin: the box has no headroom and
+    #: calling again would loop forever reporting nothing.
+    def test_a_declined_batch_stops_and_keeps_the_reason(self) -> None:
+        outcome = _gist_everything(enrich=lambda: {"persisted": False, "reason": "busy box"})
+        assert outcome == {"persisted": False, "reason": "busy box"}
+
+    def test_all_gists_everything_rather_than_one_batch(self, capsys, monkeypatch) -> None:
+        calls = iter(
+            [
+                {"window_stories": 40, "enriched": 20},
+                {"window_stories": 40, "enriched": 20},
+                {"window_stories": 40, "enriched": 0},
+            ]
+        )
+        monkeypatch.setattr("app.news_now.brain_enrich", lambda: next(calls))
+        monkeypatch.setattr(
+            "app.news_now._STAGES", (("gist", "gists", lambda: {"never": "called"}),)
+        )
+        assert main(["--all"]) == 0
+        out = capsys.readouterr().out
+        assert "40/40 stories" in out
+        assert "never" not in out
+
+
+class TestTheProgressBar:
+    def test_it_fills_as_it_goes(self) -> None:
+        assert _bar(0, 100, 0.0).startswith("[........................]")
+        assert "[############............]" in _bar(50, 100, 0.0)
+        assert "[########################]" in _bar(100, 100, 0.0)
+
+    def test_it_counts_stories_not_batches(self) -> None:
+        assert "20/1128 stories" in _bar(20, 1128, 0.0)
+
+    #: An estimate is the difference between waiting and wondering whether it
+    #: has hung. Nothing to estimate from on the first line, so it says so.
+    def test_it_estimates_only_once_it_has_something_to_estimate_from(self) -> None:
+        assert "estimating" in _bar(0, 100, 0.0)
+
+    def test_a_zero_total_does_not_divide_by_zero(self) -> None:
+        assert _bar(0, 0, 0.0)
