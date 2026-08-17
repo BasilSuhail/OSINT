@@ -73,6 +73,15 @@ class Settings(BaseSettings):
     # setting and not a new hard-coded number — a laptop can afford to hold it, a
     # 4 GB box should still evict at once, and "0" keeps the old behaviour.
     qa_keep_alive: str = Field(default="0")
+    # Whether Ollama runs in this machine's memory, when the code cannot tell.
+    #
+    # The RAM floors above only mean something if the reading describes the
+    # machine that will hold the model. Reached over `host.docker.internal` that
+    # is true on native Linux Docker, where the container shares the host kernel,
+    # and false on Docker Desktop, where it is a virtual machine with its own few
+    # gigabytes. The code decides by looking at the kernel; set this to override a
+    # guess that is wrong on some arrangement nobody here has tried.
+    brain_same_machine_as_ollama: bool | None = Field(default=None)
     # How long to wait for the model. Generous on a laptop, not always enough on a
     # small board loading a cold model, so it moves with the machine.
     brain_timeout_s: float = Field(default=120.0)
