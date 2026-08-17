@@ -134,6 +134,11 @@ def test_ask_returns_sources_and_strips_bad_citations(monkeypatch):
                     "n": 1,
                     "story_id": 5,
                     "title": "Border clashes",
+                    #: How it was picked and how well it matched. Real
+                    #: retrieval always sets both, and a story with no
+                    #: match signal is padding, not evidence.
+                    "retrieval": "semantic",
+                    "relevance": 0.9,
                     "sources": ["Reuters"],
                     "corroboration": 0.8,
                     "contested": False,
@@ -164,6 +169,11 @@ def test_ask_repairs_uncited_story_answer(monkeypatch):
                     "n": 1,
                     "story_id": 5,
                     "title": "Border clashes",
+                    #: How it was picked and how well it matched. Real
+                    #: retrieval always sets both, and a story with no
+                    #: match signal is padding, not evidence.
+                    "retrieval": "semantic",
+                    "relevance": 0.9,
                     "sources": ["Reuters"],
                     "corroboration": 0.8,
                     "contested": False,
@@ -257,6 +267,11 @@ def test_ask_stream_returns_sources_delta_and_final(monkeypatch):
                     "n": 1,
                     "story_id": 5,
                     "title": "Border clashes",
+                    #: How it was picked and how well it matched. Real
+                    #: retrieval always sets both, and a story with no
+                    #: match signal is padding, not evidence.
+                    "retrieval": "semantic",
+                    "relevance": 0.9,
                     "sources": ["Reuters"],
                     "corroboration": 0.8,
                     "contested": False,
