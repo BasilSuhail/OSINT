@@ -180,6 +180,36 @@ def embed(texts: list[str], *, model: str | None = None) -> list[list[float]]:
     return response.json()["embeddings"]
 
 
+#: A residency check has to be quick and must never be the reason a job fails.
+#: Unreachable Ollama reads as "not loaded", which sends the caller back to the
+#: memory floor — the conservative answer, and the one that was correct before
+#: this existed.
+_RESIDENT_TIMEOUT_S: float = 3.0
+
+
+def model_resident(model: str | None = None) -> bool:
+    """Is this model already loaded in Ollama's memory?
+
+    The memory floors ask whether there is room to *load* a model. Once one is
+    loaded that question is the wrong one, and answering it wrongly costs real
+    work: with one model doing every job, the first job loads it, holds it warm,
+    and the free memory it occupies then fails the floor for the second — which
+    refuses a model already sitting in memory, needing nothing further to run.
+
+    Observed on a Raspberry Pi, where the gist stage held the 3b and the
+    situation summary was skipped with "low RAM: 3057MB free < 3500MB floor".
+    Nothing was short of memory. The model was in it.
+    """
+    wanted = model or settings.brain_model
+    try:
+        response = httpx.get(f"{settings.ollama_url}/api/ps", timeout=_RESIDENT_TIMEOUT_S)
+        response.raise_for_status()
+        running = response.json().get("models") or []
+    except Exception:
+        return False
+    return any((entry.get("name") or entry.get("model")) == wanted for entry in running)
+
+
 def evict(*, model: str | None = None) -> None:
     """Unload the model now: an empty generate with keep_alive=0."""
     response = httpx.post(

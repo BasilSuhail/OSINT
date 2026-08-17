@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.brain import client
 from app.db_models import JobRunRow
 from app.runtime import load as runtime_load
 from app.settings import settings
@@ -146,6 +147,11 @@ def qa_ram_blocked() -> bool:
     """
     if not ollama_is_local():
         return False
+    #: A model already in memory needs no room to arrive in. The floor asks
+    #: whether there is space to load one, which is not the question once it is
+    #: loaded — and with one model serving every job, it usually is.
+    if client.model_resident(settings.qa_model):
+        return False
     return ram_free_mb() < settings.qa_min_free_mb
 
 
@@ -171,12 +177,20 @@ def should_run(session: Session, *, now: datetime | None = None) -> tuple[bool, 
         return False, "brain disabled (brain_enabled=false)"
     local = ollama_is_local()
     free = ram_free_mb() if local else None
-    if free is not None and free < settings.brain_min_free_mb:
+    #: Same reasoning as the ask's floor: memory the model already occupies is
+    #: not memory it still needs. On a small board one model does every job, so
+    #: the first stage to run loads it and the rest were then refused for the
+    #: space it was using — the situation summary skipped with "low RAM: 3057MB
+    #: free < 3500MB floor" while the model sat resident and ready.
+    resident = client.model_resident(settings.brain_model)
+    if free is not None and not resident and free < settings.brain_min_free_mb:
         return False, f"low RAM: {free}MB free < {settings.brain_min_free_mb}MB floor"
     if reason := runtime_load.busy_reason(now=now):
         return False, reason
     if heavy_job_active(session, now=now):
         return False, "heavy job in flight — backing off"
+    if resident:
+        return True, f"ok: {settings.brain_model} already loaded, no heavy job"
     if free is None:
         # Said plainly rather than reported as a passing RAM check: the floor
         # was not applied, and the reason should not imply otherwise.
