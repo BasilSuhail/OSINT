@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import httpx
 import sqlalchemy as sa
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -1187,10 +1188,17 @@ def story_deep_read(story_id: int, session: Session = Depends(get_session)) -> d
             client.generate_text_stream(
                 prompt,
                 model=settings.qa_model,
-                keep_alive="0",
+                keep_alive=settings.qa_keep_alive,
                 num_predict=deepread.DEEP_READ_NUM_PREDICT,
             )
         )
+    #: A timeout is not an absent service, and the difference is the whole
+    #: difference between waiting and hunting a service that is running fine
+    #: (#997). httpx raises TimeoutException for both a connect and a read
+    #: timeout; only the second one means the model was too slow, and on a small
+    #: box loading a cold model that is the common case.
+    except httpx.TimeoutException:
+        return {"analysis": qa.BRAIN_SLOW_ANSWER}
     except Exception:
         return {"analysis": qa.BRAIN_OFFLINE_ANSWER}
     text = "".join(chunks).strip()
@@ -1443,7 +1451,7 @@ def _deechoed_answer(
         raw = client.generate_json(
             qa.build_echo_retry_prompt(qa_context, question, answer, previous),
             model=settings.qa_model,
-            keep_alive="0",
+            keep_alive=settings.qa_keep_alive,
         )
     except Exception:
         return answer
@@ -1474,7 +1482,7 @@ def _derefused_answer(
         raw = client.generate_json(
             qa.build_refusal_retry_prompt(qa_context, question),
             model=settings.qa_model,
-            keep_alive="0",
+            keep_alive=settings.qa_keep_alive,
         )
     except Exception:
         return answer
@@ -1517,7 +1525,7 @@ def _checked_ask_answer(
             repaired = client.generate_json(
                 qa.build_citation_repair_prompt(qa_context, question, answer),
                 model=settings.qa_model,
-                keep_alive="0",
+                keep_alive=settings.qa_keep_alive,
             )
         except Exception:
             repaired = None
@@ -1617,9 +1625,14 @@ def brain_ask(
     try:
         answer = _extracted_answer(
             client.generate_json(
-                prompt, model=settings.qa_model, keep_alive="0", num_predict=num_predict
+                prompt,
+                model=settings.qa_model,
+                keep_alive=settings.qa_keep_alive,
+                num_predict=num_predict,
             )
         )
+    except httpx.TimeoutException:
+        return _ask_payload(qa.BRAIN_SLOW_ANSWER, None, [])
     except Exception:
         return _ask_payload(qa.BRAIN_OFFLINE_ANSWER, None, [])
     if answer is None:
@@ -1627,7 +1640,10 @@ def brain_ask(
         try:
             answer = _extracted_answer(
                 client.generate_json(
-                    prompt, model=settings.qa_model, keep_alive="0", num_predict=num_predict
+                    prompt,
+                    model=settings.qa_model,
+                    keep_alive=settings.qa_keep_alive,
+                    num_predict=num_predict,
                 )
             )
         except Exception:
@@ -1699,10 +1715,16 @@ def brain_ask_stream(
                 qa_context, req.question, history=history, elaborate=elaborate
             )
             for chunk in client.generate_text_stream(
-                prompt, model=settings.qa_model, keep_alive="0", num_predict=num_predict
+                prompt,
+                model=settings.qa_model,
+                keep_alive=settings.qa_keep_alive,
+                num_predict=num_predict,
             ):
                 chunks.append(chunk)
                 yield _sse("delta", {"text": chunk})
+        except httpx.TimeoutException:
+            yield _sse("final", _ask_payload(qa.BRAIN_SLOW_ANSWER, None, []))
+            return
         except Exception:
             yield _sse("final", _ask_payload(qa.BRAIN_OFFLINE_ANSWER, None, []))
             return
@@ -1716,7 +1738,7 @@ def brain_ask_stream(
                             qa_context, req.question, history=history, elaborate=elaborate
                         ),
                         model=settings.qa_model,
-                        keep_alive="0",
+                        keep_alive=settings.qa_keep_alive,
                         num_predict=num_predict,
                     )
                 )
