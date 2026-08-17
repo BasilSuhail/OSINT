@@ -117,8 +117,11 @@ Start it:
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then about 4 GB of
-models. Open <http://localhost:3000>, or `make share` to reach it from another
+20–40 minutes the first time: images, browser packages, then the models — about
+1.5 GB here, because `make env` picked the small set for this board. It
+downloads them for you; there is no model to choose and none to pull by hand.
+
+Open <http://localhost:3000>, or `make share` to reach it from another
 device.
 
 Fill it:
@@ -185,8 +188,10 @@ make env
 make up
 ```
 
-Nothing to edit for a smaller machine. `make env` measures the memory and, at
-8 GB or less, writes the small-model settings itself.
+20–40 minutes the first time: images, browser packages, then the models — about
+5 GB on a normal machine, about 1.5 GB on one of 8 GB or less. There is no model
+to choose and none to pull by hand: `make env` decides which set this machine can
+run, and `make up` downloads them.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -213,7 +218,14 @@ brew install ollama
 brew services start ollama
 ```
 
-No systemd override here — Docker Desktop reaches the host without one.
+No override here — Docker Desktop reaches the host without one. Check it took:
+
+```bash
+curl -s http://localhost:11434/api/tags
+```
+
+Any JSON back means it is running. Connection refused means it is not, and the
+Ask panel will say the brain is offline while everything else works.
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
@@ -221,6 +233,10 @@ cd OSINT
 make env
 make up
 ```
+
+20–40 minutes the first time: images, browser packages, then about 5 GB of
+models. There is no model to choose and none to pull by hand — `make env` decides
+which set this machine can run and prints them, and `make up` downloads them.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -253,8 +269,26 @@ sudo apt install -y nodejs && sudo corepack enable
 ```
 
 Ollama, on **Windows** rather than inside Ubuntu — download it from
-[ollama.com/download](https://ollama.com/download), then in Ubuntu point the
-stack at it:
+[ollama.com/download](https://ollama.com/download).
+
+**Then let it answer the containers.** Ollama listens only to the Windows
+machine itself until told otherwise, and the stack reaches it from inside a
+container — so out of the box it refuses the connection, and the console reports
+that as the brain being offline while the map and the feed work normally. In
+PowerShell **as administrator**:
+
+```powershell
+[Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0", "Machine")
+```
+
+Quit Ollama from the system tray and start it again — an environment variable
+set this way reaches it only on a fresh start. Check, in PowerShell:
+
+```powershell
+curl.exe -s http://localhost:11434/api/tags
+```
+
+JSON back means it is listening. Then, in Ubuntu:
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
@@ -263,6 +297,10 @@ make env
 echo "OLLAMA_URL=http://host.docker.internal:11434" >> .env
 make up
 ```
+
+20–40 minutes the first time: images, browser packages, then about 5 GB of
+models. There is no model to choose and none to pull by hand — `make env` decides
+which set this machine can run and prints them, and `make up` downloads them.
 
 Open <http://localhost:3000>, then fill it:
 
