@@ -104,7 +104,8 @@ Start it and check:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now ollama
+sudo systemctl enable ollama
+sudo systemctl restart ollama
 sleep 3
 systemctl is-active ollama
 ss -tlnp | grep 11434
