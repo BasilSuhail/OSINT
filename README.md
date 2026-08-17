@@ -117,8 +117,11 @@ Start it:
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then about 4 GB of
-models. Open <http://localhost:3000>, or `make share` to reach it from another
+20–40 minutes the first time: images, browser packages, then the models — about
+1.5 GB here, because `make env` picked the small set for this board. It
+downloads them for you; there is no model to choose and none to pull by hand.
+
+Open <http://localhost:3000>, or `make share` to reach it from another
 device.
 
 Fill it:
@@ -185,8 +188,10 @@ make env
 make up
 ```
 
-Nothing to edit for a smaller machine. `make env` measures the memory and, at
-8 GB or less, writes the small-model settings itself.
+20–40 minutes the first time: images, browser packages, then the models — about
+5 GB on a normal machine, about 1.5 GB on one of 8 GB or less. There is no model
+to choose and none to pull by hand: `make env` decides which set this machine can
+run, and `make up` downloads them.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -228,6 +233,10 @@ cd OSINT
 make env
 make up
 ```
+
+20–40 minutes the first time: images, browser packages, then about 5 GB of
+models. There is no model to choose and none to pull by hand — `make env` decides
+which set this machine can run and prints them, and `make up` downloads them.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -288,6 +297,10 @@ make env
 echo "OLLAMA_URL=http://host.docker.internal:11434" >> .env
 make up
 ```
+
+20–40 minutes the first time: images, browser packages, then about 5 GB of
+models. There is no model to choose and none to pull by hand — `make env` decides
+which set this machine can run and prints them, and `make up` downloads them.
 
 Open <http://localhost:3000>, then fill it:
 
