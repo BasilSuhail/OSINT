@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: help env env-check fetch logs severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: help env env-check fetch news news-all logs severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 #: Bare `make` starts the app, which is what it has always done. Stated rather
 #: than inherited from whichever target happens to be written first — adding a
@@ -81,7 +81,13 @@ logs:  ## Tail the whole stack — backend containers + host frontend (Ctrl-C st
 	@bash scripts/dev-logs.sh
 
 fetch:  ## Fetch from every source now, instead of waiting for the schedule (#993)
-	@docker compose exec -T worker python -m scripts.fetch_now $(SOURCES)
+	@docker compose exec -T worker python -m app.ingest.fetch_now $(SOURCES)
+
+news:  ## Build the stories, cards and written summary — a few minutes (#997)
+	@docker compose exec -T worker python -m app.news_now
+
+news-all:  ## Same, but gist every story in the window rather than a batch — hours (#997)
+	@docker compose exec -T worker python -m app.news_now --all
 
 data-size:  ## Show disk used by each data subfolder
 	@du -sh $(OSINT_DATA_DIR)/* 2>/dev/null || echo "no data yet at $(OSINT_DATA_DIR)"

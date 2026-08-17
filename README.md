@@ -115,6 +115,37 @@ curl -fsSL https://ollama.com/install.sh | sh     # Linux, and WSL2 Ubuntu
 brew install ollama && ollama serve               # macOS
 ```
 
+**On Linux there is a second step, and skipping it is silent.** Ollama's service
+binds `127.0.0.1`, the backend reaches it from inside a container, so it answers
+perfectly well on the host and is unreachable from the thing that needs it. You
+see it as translation warnings and an Ask panel that still says the brain is
+offline.
+
+```bash
+sudo systemctl edit ollama
+```
+
+Add these two lines, save, exit:
+
+```
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0"
+```
+
+```bash
+sudo systemctl restart ollama
+```
+
+Check it took — want `0.0.0.0:11434`, not `127.0.0.1:11434`:
+
+```bash
+ss -tlnp | grep 11434
+```
+
+`0.0.0.0` means every interface, not only the Docker bridge, so on a machine
+other people can reach, pair it with a firewall rule for port 11434. macOS and
+Docker Desktop need none of this.
+
 ### Step 3 — the models
 
 Nothing to do. `make up` pulls them in step 5.
@@ -182,13 +213,46 @@ over the following hours.
 Leave it running and it populates itself. To fill it now:
 
 ```bash
-make fetch                        # every source, once
-make fetch SOURCES="gdelt gdacs"  # or just these
+make fetch                        # the map — a few minutes
+make news                         # the stories and the summary — a few minutes
 ```
 
-It prints what each source returned, and which are dormant for want of an API
-key — on screen, "no data from this source" and "this source needs a key" look
-identical.
+`make fetch` fills the **map** — events, hazards, aircraft, markets. It prints
+what each source returned, and which are dormant for want of an API key; on
+screen "no data from this source" and "this source needs a key" look identical.
+
+`make news` fills the **left-hand side** — the story feed and the written
+situation summary. Built from the news `make fetch` collected, so run it second.
+
+It writes the summary and gives the first twenty stories their one-line gist,
+showing a bar and an estimate as it goes, then says how many are still waiting.
+The rest arrive on the schedule, about twenty every twenty minutes, so a first
+fill of a thousand finishes overnight without you doing anything.
+
+```
+  gist     the summary line on each story card
+           [........................] 0/20 stories, starting
+           [#.......................] 1/20 stories, ~4 min left
+           [##########..............] 8/20 stories, ~2 min left
+```
+
+To do the whole window now instead — same bar, hours on a small machine, minutes
+on a laptop:
+
+```bash
+make news-all
+```
+
+Just one source, when you know which:
+
+```bash
+make fetch SOURCES="gdelt gdacs"
+```
+
+**The two halves fill at different speeds on their own.** The map arrives within
+minutes; the situation card needs clustering to finish before the summary can be
+written from it, so left to the schedule that is up to 45 minutes. A full map
+beside "No stories in the window yet" is that gap, not a fault.
 
 ---
 
