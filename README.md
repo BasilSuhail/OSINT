@@ -48,6 +48,18 @@ database grows to a 30 GB cap before it starts trimming its own oldest days.
 <details>
 <summary><b>Raspberry Pi 5 (8 GB)</b></summary>
 
+Two things about the board itself. It needs **64-bit** Raspberry Pi OS — the
+images are arm64 and will not run on the 32-bit build — and it needs the official
+27 W supply. A phone charger browns out under load, and the board answers by
+throttling rather than by saying so:
+
+```bash
+vcgencmd get_throttled
+```
+
+`0x0` is healthy. Anything else is the power supply, and no amount of tuning
+below will fix it.
+
 Docker and Node, then log out and back in:
 
 ```bash
@@ -241,11 +253,21 @@ make news
 <details>
 <summary><b>macOS</b></summary>
 
-Needs [Homebrew](https://brew.sh):
+[Homebrew](https://brew.sh) first, if you do not have it:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+On Apple silicon it finishes by printing two `eval` lines to run. Run them, or
+`brew` is installed but not on your path. Then:
 
 ```bash
 brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
 ```
+
+Docker Desktop asks for your password and for you to accept its terms the first
+time. It has to finish starting before anything below will work.
 
 Wait for the Docker whale in the menu bar to settle, then:
 
@@ -341,6 +363,11 @@ curl.exe -s http://localhost:11434/api/tags
 
 JSON back means it is listening.
 
+Everything from here runs in the Ubuntu terminal, and the clone belongs in your
+Ubuntu home directory — not under `/mnt/c`. A repository on the Windows drive is
+reached through a translation layer, and the difference is minutes per command
+rather than seconds.
+
 The models — about 5 GB together. In PowerShell, since Ollama is the Windows
 one. One writes the summary, one answers questions, one turns text into vectors
 so the Ask panel can find the right stories:
@@ -363,7 +390,6 @@ Then, in Ubuntu:
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
 make env
-echo "OLLAMA_URL=http://host.docker.internal:11434" >> .env
 make up
 ```
 
