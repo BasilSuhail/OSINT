@@ -39,14 +39,9 @@ and refreshes on your own machine.
 
 ## Quick start
 
-Six steps, in order. Skip step 1 if you already run Docker and current Node.
+### 1. Install Docker and Node
 
-### Step 1 — Docker and Node
-
-Pick your system. Each block is one paste.
-
-<details open>
-<summary><b>Linux</b> — Debian, Ubuntu, Raspberry Pi OS</summary>
+**Linux** (Debian, Ubuntu, Raspberry Pi OS):
 
 ```bash
 sudo apt update && sudo apt install -y git curl ca-certificates && \
@@ -56,109 +51,33 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
 sudo apt install -y nodejs && sudo corepack enable
 ```
 
-**Then log out and back in.** Group membership is read at login, so `docker` will
-not work in the shell that just added you to the group — and it fails by saying
-the daemon is unreachable, which reads as "Docker is not installed".
+Log out and back in before continuing.
 
-</details>
-
-<details>
-<summary><b>macOS</b> — needs <a href="https://brew.sh">Homebrew</a></summary>
+**macOS** (needs [Homebrew](https://brew.sh)):
 
 ```bash
 brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
 ```
 
-Wait for the Docker whale in the menu bar to stop animating before step 4.
+**Windows**: install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
+and [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/),
+turn on WSL integration, then run the Linux block above inside Ubuntu — without
+the `get.docker.com` line.
 
-</details>
+Do not install pnpm yourself. `corepack enable` fetches the right version.
 
-<details>
-<summary><b>Windows</b> — via WSL2</summary>
+### 2. Install Ollama
 
-In PowerShell **as administrator**:
-
-```powershell
-wsl --install -d Ubuntu
-```
-
-Reboot, then install [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
-and turn on **Settings → Resources → WSL Integration** for Ubuntu.
-
-Everything after this runs **inside the Ubuntu terminal**, not PowerShell:
+**Linux:**
 
 ```bash
-sudo apt update && sudo apt install -y git curl ca-certificates && \
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
-sudo apt install -y nodejs && sudo corepack enable
-```
-
-No `get.docker.com` here — Docker Desktop supplies the engine through WSL
-integration, and installing a second one inside Ubuntu fights it.
-
-</details>
-
-**Do not install pnpm by name.** `corepack enable` fetches the version
-`packageManager` pins. `npm install -g pnpm` or `corepack prepare pnpm@latest`
-gets a different one that resolves the lockfile differently, and it surfaces
-later as a build failure that looks nothing like a version mismatch.
-
-### Step 2 — Ollama
-
-Called optional, and everything else runs without it. But without it the **Ask
-panel answers nothing**: ask it any question and it replies `The brain is offline
-right now.`, and the written situation summaries never appear. The map, the feed,
-ingestion, the scores and the audit trail are unaffected.
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh     # Linux, and WSL2 Ubuntu
-brew install ollama && ollama serve               # macOS
-```
-
-**On Linux there is a second step, and skipping it is silent.** Ollama's service
-binds `127.0.0.1`. The backend reaches it from inside a container, so it answers
-perfectly well on the host and is unreachable from the thing that needs it — seen
-only as translation warnings during a fetch and an Ask panel that goes on saying
-the brain is offline. macOS and Docker Desktop need none of what follows.
-
-First check the installer actually left a running service. Everything below
-depends on it:
-
-```bash
-systemctl is-active ollama
-```
-
-<details>
-<summary>Anything other than <code>active</code></summary>
-
-```bash
+curl -fsSL https://ollama.com/install.sh | sh
 sudo systemctl enable --now ollama
-```
-
-```bash
-systemctl status ollama --no-pager
-```
-
-```bash
-sudo journalctl -u ollama -n 30 --no-pager
-```
-
-**Do not run `ollama serve` to work around this.** It starts a foreground process
-as your own user, which ignores the service configuration entirely — so the
-setting below has no effect on it, Ollama looks healthy, and every container
-still gets `Connection refused`. Two hours of debugging live down that road.
-
-</details>
-
-Then tell the service to listen beyond loopback:
-
-```bash
 sudo systemctl edit ollama
 ```
 
-An editor opens on a nearly empty file with a marker in the middle. Put these two
-lines **above** the `### Lines below this comment will be discarded` marker, save,
-exit:
+An editor opens. Add these two lines above the `### Lines below` marker, then
+save and exit:
 
 ```
 [Service]
@@ -167,165 +86,67 @@ Environment="OLLAMA_HOST=0.0.0.0"
 
 ```bash
 sudo systemctl restart ollama
-```
-
-Now check it took:
-
-```bash
 ss -tlnp | grep 11434
 ```
 
-| What you see | What it means |
-|---|---|
-| `0.0.0.0:11434` or `*:11434` | correct — carry on to step 3 |
-| `127.0.0.1:11434` | the override did not apply; re-run `sudo systemctl cat ollama` and check the two lines sit under `[Service]` |
-| nothing at all | the service is not running — go back to the box above |
+That must print `0.0.0.0:11434`. If it prints nothing or `127.0.0.1`, see
+[§19](HANDBOOK.md#19-troubleshooting).
 
-`0.0.0.0` is every interface, not only the Docker bridge. On a machine other
-people can reach, pair it with a firewall rule for port 11434.
-
-### Step 3 — the models
-
-Nothing to do. `make up` pulls them in step 5.
-
-There are **three, about 5 GB in total** — one writes the situation summary, one
-answers in the Ask panel, one builds the embeddings behind search. Only one is
-loaded at a time, so three on disk is not three in memory. Pull them ahead of
-time if you would rather get the download out of the way:
+**macOS:**
 
 ```bash
-ollama pull llama3.2:3b
-ollama pull qwen3.5:4b-q4_K_M
-ollama pull nomic-embed-text
+brew install ollama && ollama serve
 ```
 
-Install Ollama later and re-run `make up` and it pulls them then. Nothing else
-needs redoing.
+Skipping Ollama is allowed — the map and the feed still work, but the Ask panel
+answers nothing.
 
-### Step 4 — get the code
+### 3. Start it
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
-```
-
-### Step 5 — settings, then start
-
-```bash
 make env
 make up
 ```
 
-`make env` writes `.env` and fills it in — database password, API token, the
-addresses this machine answers to. **Nothing needs typing into it.** It never
-overwrites a value you have set, so it is safe to re-run any time.
+First run takes 20–40 minutes. Nothing needs typing into `.env`. Open
+<http://localhost:3000>.
 
-`make up` brings up Postgres, Redis, migrations, the API, the workers, the
-console, and Ollama if it is installed. First run takes 20–40 minutes: container
-images, browser packages, then the models.
-
-Open <http://localhost:3000>.
-
-To reach it from your phone or another computer instead:
+### 4. Get data
 
 ```bash
-make share
+make fetch
+make news
 ```
 
-That prints a URL to hand over. It is open to everyone on your network with no
-password — `make up` closes it again.
+`make fetch` fills the map, `make news` fills the story feed and summary. Both
+take a few minutes. Without them the console fills itself over the next hour.
 
-Stop everything, keeping all data:
+### Other commands
 
 ```bash
-make down
+make share        # reach the console from your phone or another computer
+make down         # stop everything, keep all data
+make news-all     # gist every story now rather than 20 (hours)
+make help         # every command
 ```
 
-### Step 6 — data
+Something wrong: [§19](HANDBOOK.md#19-troubleshooting). Full detail on any step:
+[§1](HANDBOOK.md#1-start-here-download-install-run-and-stop).
 
-**The console is empty at first, and that is not a fault.** Nothing has been
-fetched yet. The schedule collects markets every five minutes and news on the
-quarter-hour, so the first rows land one to fifteen minutes in, and it fills out
-over the following hours.
-
-Leave it running and it populates itself. To fill it now:
-
-```bash
-make fetch                        # the map — a few minutes
-make news                         # the stories and the summary — a few minutes
-```
-
-`make fetch` fills the **map** — events, hazards, aircraft, markets. It prints
-what each source returned, and which are dormant for want of an API key; on
-screen "no data from this source" and "this source needs a key" look identical.
-
-`make news` fills the **left-hand side** — the story feed and the written
-situation summary. Built from the news `make fetch` collected, so run it second.
-
-It writes the summary and gives the first twenty stories their one-line gist,
-showing a bar and an estimate as it goes, then says how many are still waiting.
-The rest arrive on the schedule, about twenty every twenty minutes, so a first
-fill of a thousand finishes overnight without you doing anything.
-
-```
-  gist     the summary line on each story card
-           [........................] 0/20 stories, starting
-           [#.......................] 1/20 stories, ~4 min left
-           [##########..............] 8/20 stories, ~2 min left
-```
-
-To do the whole window now instead — same bar, hours on a small machine, minutes
-on a laptop:
-
-```bash
-make news-all
-```
-
-Just one source, when you know which:
-
-```bash
-make fetch SOURCES="gdelt gdacs"
-```
-
-**The two halves fill at different speeds on their own.** The map arrives within
-minutes; the situation card needs clustering to finish before the summary can be
-written from it, so left to the schedule that is up to 45 minutes. A full map
-beside "No stories in the window yet" is that gap, not a fault.
-
----
-
-`make help` lists every command with a line saying what it does. Optional source
-keys and moving the data directory: [§5](HANDBOOK.md#5-configure-it-safely).
-
-## Updating, and running a branch
-
-Pull the latest:
+## Updating, or running a branch
 
 ```bash
 git checkout main
 git pull
-make env                  # adds any settings the update introduced
-make up
-```
-
-Try a branch — a fix you want to test before it merges, say:
-
-```bash
-git fetch origin
-git checkout <branch-name>
-git pull
 make env
 make up
 ```
 
-Back to `main` afterwards with the first block. `make down` first if the stack
-is running and the branch changes how it starts.
-
-**`make env` after every pull is the step people skip.** New settings arrive in
-`env.example` over time and this is how they reach your file; miss it and the
-feature they switch on stays quietly off, with nothing saying so. It never
-touches a value you have already set. `make up` runs the check and tells you
-what it found, then starts anyway.
+To test a branch before it merges, swap `main` for the branch name. Run `make env`
+after every pull — new settings reach your file that way, and skipping it leaves
+the feature they switch on quietly off.
 
 Full prerequisites: [§3](HANDBOOK.md#3-what-you-need-before-starting). The
 walkthrough: [§1](HANDBOOK.md#1-start-here-download-install-run-and-stop).
