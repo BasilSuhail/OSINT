@@ -672,17 +672,33 @@ class TestSizingTheMachine:
 
 
 class TestTheSmallMachineProfile:
-    def test_every_job_gets_the_same_model(self):
+    #: What ends up in force, not what happened to be rewritten. The summary
+    #: model the example already names is the model the profile wants, so that
+    #: key is correctly left alone — and one job silently keeping a 4b would put
+    #: two models back in memory, which is the fault this profile exists for.
+    def test_every_job_ends_up_on_the_same_model(self):
         written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
-        models = {written[k] for k in ("BRAIN_MODEL", "QA_MODEL", "SEVERITY_MODEL", "OLLAMA_MODEL")}
-        assert len(models) == 1
+        shipped = parse_env(PROFILE_EXAMPLE)
+        keys = ("BRAIN_MODEL", "QA_MODEL", "SEVERITY_MODEL", "OLLAMA_MODEL")
+        assert len({written.get(k, shipped[k]) for k in keys}) == 1
 
-    #: The floors ship sized for a 4b. Left alone on a small machine they refuse
-    #: to load a model that now fits, and the console answers "brain busy".
-    def test_the_memory_floors_come_down_with_the_model(self):
+    #: The floors do NOT come down, which was the first version of this profile
+    #: and was wrong. What makes one model affordable on a small board is that
+    #: only one is ever resident, not that the guard was lowered — and a 3b needs
+    #: about the room a 4b needs. Lowering the floor to fit a 1b was how a model
+    #: that fabricates got waved through.
+    def test_the_memory_floor_still_protects_the_board(self):
         written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
-        assert int(written["QA_MIN_FREE_MB"]) < 3800
-        assert int(written["BRAIN_MIN_FREE_MB"]) < 3500
+        floors = {**{k: v for k, v in [("QA_MIN_FREE_MB", "3800"), ("BRAIN_MIN_FREE_MB", "3500")]}}
+        for key, shipped in floors.items():
+            assert int(written.get(key, shipped)) >= 3500
+
+    #: One model doing every job is the whole mechanism. Two resident at once is
+    #: what locked the board up; a weaker model was never the fix.
+    def test_the_model_is_capable_rather_than_merely_small(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert written["QA_MODEL"] == "llama3.2:3b"
+        assert "1b" not in written["QA_MODEL"]
 
     #: Measured at 1 m 48 s an ask on the board. A 120 s ceiling fails it, and
     #: the failure reaches the console as "the brain is offline".
