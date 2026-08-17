@@ -1555,11 +1555,24 @@ def _ask_payload(
     *,
     claims: list[dict] | None = None,
     reasoning: dict | None = None,
+    relevant: bool = True,
 ) -> dict:
     """Final ask response with the item-3 split (#413): a no-answer fallback
     means retrieval looked off-topic, so nothing may pose as the answer's
-    sources — the retrieved stories move to `closest_matches` instead."""
-    no_answer = answer.strip() == qa.NO_LOCAL_EVIDENCE_ANSWER
+    sources — the retrieved stories move to `closest_matches` instead.
+
+    Decided on retrieval, not on the wording. The canned string was the only
+    trigger, and a model that reaches the same finding in its own prose does not
+    match it: asked about Indonesia with no Indonesia story retrieved, a 4b said
+    so plainly and six unrelated outlets stayed labelled as that answer's
+    sources — for an answer stating they held nothing on the subject.
+
+    `relevant` is the judgement the refusal path above already makes, so the two
+    cannot disagree, and it is the one that describes this exactly: stories taken
+    as "fill" — loudness order, no match signal — are never evidence. That is what
+    a question with no match retrieves.
+    """
+    no_answer = answer.strip() == qa.NO_LOCAL_EVIDENCE_ANSWER or not relevant
     return {
         "answer": answer,
         "context_digest": digest,
@@ -1737,7 +1750,12 @@ def brain_ask(
     )
     claims, reasoning = _answer_annotations(session, answer, stories, trace, sensors)
     return _ask_payload(
-        answer, context.input_digest(qa_context), sources, claims=claims, reasoning=reasoning
+        answer,
+        context.input_digest(qa_context),
+        sources,
+        claims=claims,
+        reasoning=reasoning,
+        relevant=qa.has_relevant_evidence(stories, sensors),
     )
 
 
@@ -1847,7 +1865,15 @@ def brain_ask_stream(
             )
         claims, reasoning = _answer_annotations(session, answer, stories, trace, sensors)
         yield _sse(
-            "final", _ask_payload(answer, digest, sources, claims=claims, reasoning=reasoning)
+            "final",
+            _ask_payload(
+                answer,
+                digest,
+                sources,
+                claims=claims,
+                reasoning=reasoning,
+                relevant=qa.has_relevant_evidence(stories, sensors),
+            ),
         )
 
     return StreamingResponse(gen(), media_type="text/event-stream")
