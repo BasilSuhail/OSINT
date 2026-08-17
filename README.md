@@ -42,13 +42,28 @@ and refreshes on your own machine.
 Pick your machine. Each one is self-contained — everything from nothing to a
 running console, in order, nothing to look up elsewhere.
 
+Free disk space is the one thing to check first: about 15 GB to install, and the
+database grows to a 30 GB cap before it starts trimming its own oldest days.
+
 <details>
 <summary><b>Raspberry Pi 5 (8 GB)</b></summary>
+
+Two things about the board itself. It needs **64-bit** Raspberry Pi OS — the
+images are arm64 and will not run on the 32-bit build — and it needs the official
+27 W supply. A phone charger browns out under load, and the board answers by
+throttling rather than by saying so:
+
+```bash
+vcgencmd get_throttled
+```
+
+`0x0` is healthy. Anything else is the power supply, and no amount of tuning
+below will fix it.
 
 Docker and Node, then log out and back in:
 
 ```bash
-sudo apt update && sudo apt install -y git curl ca-certificates && \
+sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
 curl -fsSL https://get.docker.com | sudo sh && \
 sudo usermod -aG docker "$USER" && \
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
@@ -111,15 +126,35 @@ sudo apt install -y earlyoom
 sudo systemctl enable --now earlyoom
 ```
 
+The models. Two on a board this size, about 1.5 GB together — one that answers,
+one that turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:1b
+ollama pull nomic-embed-text
+```
+
+`make up` pulls these itself if you skip them, and `make env` has already written
+their names into `.env`. Doing it here means the download happens now rather than
+in the middle of the first start.
+
+Check the model actually answers before building anything on it:
+
+```bash
+ollama run llama3.2:1b "reply with one short sentence"
+```
+
+A sentence back means the model works. This is the check worth having: if it
+fails here, nothing above it is the problem.
+
 Start it:
 
 ```bash
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then the models — about
-1.5 GB here, because `make env` picked the small set for this board. It
-downloads them for you; there is no model to choose and none to pull by hand.
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull.
 
 Open <http://localhost:3000>, or `make share` to reach it from another
 device.
@@ -147,7 +182,7 @@ Swap being eaten means the model is too big for what else is running.
 Docker and Node, then log out and back in:
 
 ```bash
-sudo apt update && sudo apt install -y git curl ca-certificates && \
+sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
 curl -fsSL https://get.docker.com | sudo sh && \
 sudo usermod -aG docker "$USER" && \
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
@@ -179,6 +214,21 @@ Must print `active` and `0.0.0.0:11434`. If not:
 sudo journalctl -u ollama -n 20 --no-pager
 ```
 
+The models — about 5 GB together. One writes the summary, one answers questions,
+one turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```bash
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
 Then:
 
 ```bash
@@ -188,10 +238,8 @@ make env
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then the models — about
-5 GB on a normal machine, about 1.5 GB on one of 8 GB or less. There is no model
-to choose and none to pull by hand: `make env` decides which set this machine can
-run, and `make up` downloads them.
+`make env` prints which set it chose for this machine and writes the names into
+`.env`; `make up` pulls anything you skipped. 20–40 minutes the first time.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -205,11 +253,21 @@ make news
 <details>
 <summary><b>macOS</b></summary>
 
-Needs [Homebrew](https://brew.sh):
+[Homebrew](https://brew.sh) first, if you do not have it:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+On Apple silicon it finishes by printing two `eval` lines to run. Run them, or
+`brew` is installed but not on your path. Then:
 
 ```bash
 brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
 ```
+
+Docker Desktop asks for your password and for you to accept its terms the first
+time. It has to finish starting before anything below will work.
 
 Wait for the Docker whale in the menu bar to settle, then:
 
@@ -227,6 +285,21 @@ curl -s http://localhost:11434/api/tags
 Any JSON back means it is running. Connection refused means it is not, and the
 Ask panel will say the brain is offline while everything else works.
 
+The models — about 5 GB together. One writes the summary, one answers questions,
+one turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```bash
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
@@ -234,9 +307,9 @@ make env
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then about 5 GB of
-models. There is no model to choose and none to pull by hand — `make env` decides
-which set this machine can run and prints them, and `make up` downloads them.
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull above. `make env` prints which set it chose for this machine and
+writes the names into `.env`.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -263,7 +336,7 @@ Everything below runs in the **Ubuntu** terminal, not PowerShell. No
 `get.docker.com` — Docker Desktop supplies the engine, and a second one fights it:
 
 ```bash
-sudo apt update && sudo apt install -y git curl ca-certificates && \
+sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
 sudo apt install -y nodejs && sudo corepack enable
 ```
@@ -288,19 +361,41 @@ set this way reaches it only on a fresh start. Check, in PowerShell:
 curl.exe -s http://localhost:11434/api/tags
 ```
 
-JSON back means it is listening. Then, in Ubuntu:
+JSON back means it is listening.
+
+Everything from here runs in the Ubuntu terminal, and the clone belongs in your
+Ubuntu home directory — not under `/mnt/c`. A repository on the Windows drive is
+reached through a translation layer, and the difference is minutes per command
+rather than seconds.
+
+The models — about 5 GB together. In PowerShell, since Ollama is the Windows
+one. One writes the summary, one answers questions, one turns text into vectors
+so the Ask panel can find the right stories:
+
+```powershell
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```powershell
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
+Then, in Ubuntu:
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
 make env
-echo "OLLAMA_URL=http://host.docker.internal:11434" >> .env
 make up
 ```
 
-20–40 minutes the first time: images, browser packages, then about 5 GB of
-models. There is no model to choose and none to pull by hand — `make env` decides
-which set this machine can run and prints them, and `make up` downloads them.
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull above. `make env` prints which set it chose for this machine and
+writes the names into `.env`.
 
 Open <http://localhost:3000>, then fill it:
 
@@ -323,8 +418,33 @@ make share     # start it reachable from your phone or another computer
 make fetch     # fill the map now instead of waiting for the schedule
 make news      # build the story feed and the written summary
 make news-all  # gist every story rather than 20 — hours on a small box
+make logs      # watch what the stack is doing
+make env-check # say what .env is missing, empty, or typed wrong
 make help      # every command in the Makefile
 ```
+
+### If the Ask panel says the brain is offline
+
+It means the API could not get an answer out of the model, and it says the same
+sentence whichever reason applies — not installed, not reachable, not enough
+memory, or simply slower than the machine is allowed to wait. Four different
+faults, one sentence, which is why it is worth checking in order:
+
+```bash
+ollama ps
+```
+
+Nothing listed and no model loading when you ask means the stack cannot reach
+Ollama. Check it is listening where the containers can see it — `0.0.0.0`, not
+`127.0.0.1` — using the check in your machine's list above.
+
+```bash
+make ask
+```
+
+Runs the same question the console does, from the terminal, and prints the real
+error instead of the one sentence. It also reports free memory against the floor
+the model needs, and how long the prompt is.
 
 The console is empty at first and that is not a fault: nothing has been fetched
 yet. Left alone it fills itself over the next hour. `make fetch` and `make news`
