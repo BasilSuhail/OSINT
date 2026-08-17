@@ -68,33 +68,52 @@ Do not install pnpm yourself. `corepack enable` fetches the right version.
 
 ### 2. Install Ollama
 
-**Linux:**
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-sudo systemctl enable --now ollama
-sudo mkdir -p /etc/systemd/system/ollama.service.d
-cd /etc/systemd/system/ollama.service.d
-echo '[Service]' | sudo tee override.conf
-echo 'Environment="OLLAMA_HOST=0.0.0.0"' | sudo tee -a override.conf
-cd -
-sudo systemctl daemon-reload
-sudo systemctl restart ollama
-sleep 3
-systemctl is-active ollama
-ss -tlnp | grep 11434
-```
-
-Those last two lines must print `active` and `0.0.0.0:11434`. Anything else:
-
-```bash
-sudo journalctl -u ollama -n 20 --no-pager
-```
+Skipping this is allowed — the map and the feed still work, but the Ask panel
+answers nothing.
 
 **macOS:**
 
 ```bash
 brew install ollama && ollama serve
+```
+
+**Linux**, four blocks. Install it:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Make sure its data directory exists and belongs to it:
+
+```bash
+sudo mkdir -p /usr/share/ollama
+sudo chown -R ollama:ollama /usr/share/ollama
+```
+
+Let it listen where the containers can reach it:
+
+```bash
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+cd /etc/systemd/system/ollama.service.d
+echo '[Service]' | sudo tee override.conf
+echo 'Environment="OLLAMA_HOST=0.0.0.0"' | sudo tee -a override.conf
+cd -
+```
+
+Start it and check:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ollama
+sleep 3
+systemctl is-active ollama
+ss -tlnp | grep 11434
+```
+
+Must print `active` and `0.0.0.0:11434`. Anything else, this says why:
+
+```bash
+sudo journalctl -u ollama -n 20 --no-pager
 ```
 
 **Both:** `make up` in step 3 downloads the three models it needs, about 5 GB.
@@ -105,9 +124,6 @@ ollama pull llama3.2:3b
 ollama pull qwen3.5:4b-q4_K_M
 ollama pull nomic-embed-text
 ```
-
-Skipping Ollama is allowed — the map and the feed still work, but the Ask panel
-answers nothing.
 
 ### 3. Start it
 
