@@ -29,10 +29,21 @@ DEFAULT_QUESTION = "what is happening in Indonesia?"
 
 
 def _report_environment() -> None:
+    local = gate.ollama_is_local()
     print(f"model          {settings.qa_model}")
     print(f"ollama         {settings.ollama_url}")
-    print(f"same machine   {gate.ollama_is_local()}")
-    print(f"free RAM       {gate.ram_free_mb()} MB (floor {settings.qa_min_free_mb} MB)")
+    print(f"same machine   {local}")
+    #: The reading only means something when the model will be held in the memory
+    #: this process can see. Reached over Docker Desktop it is the container's
+    #: share, not the machine's — 724 MB against a 3800 MB floor on a Mac with far
+    #: more than either, printed beside an open gate. Three numbers that look like
+    #: a contradiction, and the guard was right: it declines to judge a machine it
+    #: cannot measure, so the floor is not what it is being compared against.
+    if local:
+        print(f"free RAM       {gate.ram_free_mb()} MB (floor {settings.qa_min_free_mb} MB)")
+    else:
+        print("free RAM       not measured — Ollama runs outside this container")
+        print(f"               (floor {settings.qa_min_free_mb} MB does not apply)")
     if gate.qa_ram_blocked():
         print("gate           BLOCKED — the console would answer 'brain busy'")
     else:
