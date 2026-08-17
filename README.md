@@ -88,13 +88,31 @@ cd OSINT
 make env
 ```
 
-**Then this, before you start it.** 8 GB is not enough for the default 4 B model
-next to the stack and the console — it fills memory, spills to the SD card, and
-the board locks up:
+**Then this, before you start it.** Four settings each default to a 4 B model of
+about 3.9 GB. On 8 GB, next to the stack and the console, one of those is already
+tight — and two can be resident at once, because the scheduled severity job loads
+its own while the summary model is still held warm. That fills memory, spills to
+the SD card, and locks the board up:
 
 ```bash
 echo "QA_MODEL=llama3.2:3b" >> .env
+echo "SEVERITY_MODEL=llama3.2:3b" >> .env
+echo "OLLAMA_MODEL=llama3.2:3b" >> .env
+echo "BRAIN_KEEP_ALIVE=5m" >> .env
 echo "QA_KEEP_ALIVE=0" >> .env
+```
+
+One model family everywhere, held five minutes rather than thirty. Overriding only
+the first of those is not enough: nothing you do triggers the second model, a
+scheduled job loads it about half an hour in.
+
+A backstop, in case something still runs the board out of memory. It kills the
+largest process instead of letting the kernel thrash, which is the difference
+between a log line and a machine you have to unplug:
+
+```bash
+sudo apt install -y earlyoom
+sudo systemctl enable --now earlyoom
 ```
 
 Start it:
