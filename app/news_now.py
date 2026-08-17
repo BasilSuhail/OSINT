@@ -49,6 +49,16 @@ _STAGES: tuple[tuple[str, str, Callable[[], dict[str, Any]]], ...] = (
 #: alongside the counts and the estimate.
 _BAR = 24
 
+#: How many stories a quick run gists. Matches what the scheduled task does per
+#: pass, so `make news` costs what it always did — the change is that you can
+#: watch it rather than wait blind.
+_QUICK_TARGET = 20
+
+#: Stories per step. Small enough that the bar moves several times inside a
+#: quick run, large enough that the per-call overhead stays negligible against a
+#: model generation that takes seconds.
+_STEP = 4
+
 
 def _describe(outcome: dict[str, Any]) -> str:
     """What a stage did, from the dict its task returns.
@@ -77,49 +87,91 @@ def _bar(done: int, total: int, started: float) -> str:
     total = max(total, 1)
     filled = min(_BAR, round(_BAR * done / total))
     elapsed = time.monotonic() - started
-    if done:
-        remaining = elapsed / done * max(total - done, 0)
-        eta = f"~{remaining / 60:.0f} min left" if remaining >= 60 else "nearly done"
-    else:
+    if not done:
         eta = "estimating"
+    else:
+        remaining = elapsed / done * max(total - done, 0)
+        #: Minutes once there are minutes left, seconds below that, and "nearly
+        #: done" only when it really is — saying that at 4 of 20 is a lie the
+        #: reader can check against the counts on the same line.
+        if remaining >= 60:
+            eta = f"~{remaining / 60:.0f} min left"
+        elif remaining >= 5:
+            eta = f"~{remaining:.0f}s left"
+        else:
+            eta = "nearly done"
     return f"[{'#' * filled}{'.' * (_BAR - filled)}] {done}/{total} stories, {eta}"
 
 
-def _gist_everything(*, enrich: Callable[[], dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Gist every story in the window, one batch at a time, reporting as it goes.
+def _enrich_batch(size: int) -> dict[str, Any]:
+    """Gist up to `size` stories, honouring the same headroom gate as the task.
 
-    The task gists a bounded batch per call — twenty — because it normally runs
-    on a schedule where finishing is not the point. Called once, that leaves the
-    great majority of a first fill undone and nothing saying so. Called until it
-    stops finding work, it finishes, and the caller can see how far along it is.
+    The Celery task takes no batch size — it is written for a schedule, where a
+    fixed twenty per run is the right shape. Driving it in smaller steps is what
+    makes progress visible, so the body is called directly with a size, the way
+    `app/brain/enrich_run.py` already does for `make enrich`.
 
-    Stops when a batch enriches nothing: either the window is done, or the box
-    declined for want of headroom and repeating it would spin.
+    The gate is re-checked here rather than skipped: gisting is model work, and
+    the reason the task declines on a loaded box applies just as much when a
+    person asked for it.
+    """
+    from app.tasks import _skip_optional_heavy
+
+    if skipped := _skip_optional_heavy():
+        return skipped
+    from app.brain.enrich import _enrich_body
+
+    return _enrich_body(batch_limit=size)
+
+
+def _gist(
+    *,
+    target: int | None,
+    step: int,
+    indent: int = 11,
+    enrich: Callable[[int], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Gist stories in visible steps, up to `target`, or the whole window if None.
+
+    One call gisting twenty stories takes minutes on a small box and prints
+    nothing until it returns, which is indistinguishable from a hang. Several
+    smaller calls take the same time and can be counted, which is the whole
+    difference: `target=20, step=4` is five steps and a bar that moves.
+
+    Stops when a step gists nothing — the window is done — or when the brain
+    declines for want of headroom, because calling again would spin.
     """
     #: Resolved here, not as a default argument: a default binds the function
-    #: object once, when this module is imported, so anything that replaces
-    #: `brain_enrich` afterwards is silently ignored.
-    enrich = enrich or brain_enrich
+    #: once, at import, so anything that replaces it afterwards is ignored.
+    enrich = enrich or _enrich_batch
     started = time.monotonic()
     total = 0
     done = 0
     #: A terminal gets one line rewritten; a pipe or `docker compose exec -T`
-    #: gets one line per batch, because \r in a log file is unreadable.
+    #: gets one line per step, because \r in a log file is unreadable.
     live = sys.stdout.isatty()
 
     while True:
-        outcome = enrich()
+        size = step if target is None else min(step, target - done)
+        if size <= 0:
+            break
+        outcome = enrich(size)
         if not isinstance(outcome, dict) or outcome.get("reason"):
             #: Declined rather than finished — say why rather than reporting a
             #: total that would look like success.
             return outcome if isinstance(outcome, dict) else {"state": str(outcome)}
         total = int(outcome.get("window_stories") or total)
-        batch = int(outcome.get("enriched") or 0)
-        done += batch
-        line = f"           {_bar(done, total, started)}"
-        print(f"\r{line}" if live else line, end="" if live else "\n", flush=True)
-        if batch == 0:
+        gisted = int(outcome.get("enriched") or 0)
+        #: A step that found nothing is the end of the window, not progress.
+        #: Drawing the bar again would repeat the previous line verbatim.
+        if gisted == 0:
             break
+        done += gisted
+        #: The bar counts towards what this run is trying to do, not the whole
+        #: window — a quick run reaching 20/20 has finished what it promised, and
+        #: the summary afterwards says how much of the window that was.
+        line = f"{' ' * indent}{_bar(done, target or total, started)}"
+        print(f"\r{line}" if live else line, end="" if live else "\n", flush=True)
 
     if live:
         print()
@@ -141,12 +193,22 @@ def main(argv: list[str] | None = None) -> int:
 
     for name, produces, task in _STAGES:
         print(f"  {name:<{width}}  {produces}")
-        #: The gist stage is the only unbounded one. Left to the task it does a
-        #: batch of twenty, which on a first fill of a thousand stories is a
-        #: rounding error — and the run reports a number that looks finished.
-        runner = (lambda: _gist_everything()) if (every and name == "gist") else task
+        #: Gisting is the only stage measured in stories rather than in one pass,
+        #: so it is the only one that can show progress — and the only one long
+        #: enough to need to. Both modes go through the same loop; they differ in
+        #: how far they go, not in what they report.
+        gisting = name == "gist"
         try:
-            outcome = runner()
+            if gisting:
+                outcome = _gist(
+                    target=None if every else _QUICK_TARGET,
+                    step=_STEP,
+                    #: Line up under the stage's own description, whatever the
+                    #: longest stage name happens to be.
+                    indent=width + 4,
+                )
+            else:
+                outcome = task()
         #: Broad, and each stage still attempted: a brain stage that declines
         #: because the box is busy must not stop the clustering that would have
         #: worked, and the failure is worth naming rather than hiding.
@@ -154,11 +216,13 @@ def main(argv: list[str] | None = None) -> int:
             failed.append(name)
             print(f"  {'':<{width}}  failed — {type(exc).__name__}: {exc}\n")
             continue
-        if not (every and name == "gist"):
-            print(f"  {'':<{width}}  {_describe(outcome)}\n")
-        else:
+        #: The bar has already said what happened, line by line. Repeating it as
+        #: a summary would be the same numbers twice.
+        if gisting:
             print()
-        if name == "gist" and isinstance(outcome, dict):
+        else:
+            print(f"  {'':<{width}}  {_describe(outcome)}\n")
+        if gisting and isinstance(outcome, dict):
             total = int(outcome.get("window_stories") or 0)
             enriched = int(outcome.get("enriched") or 0)
             if total > enriched:

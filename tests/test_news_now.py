@@ -8,12 +8,20 @@ three quarters of an hour.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
-from app.news_now import _STAGES, _bar, _describe, _gist_everything, main
+from app.news_now import _STAGES, _bar, _describe, _gist, main
 
 ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = (ROOT / "Makefile").read_text()
+
+
+def _only_gist(monkeypatch) -> None:
+    """Run the gist stage alone, so a test needs no database for the others."""
+    monkeypatch.setattr(
+        "app.news_now._STAGES", (("gist", "the summary line on each story card", None),)
+    )
 
 
 class TestTheOrder:
@@ -88,19 +96,36 @@ class TestTheQuickRunSaysWhatItLeftUndone:
     """
 
     def test_it_says_how_far_it_got_and_offers_the_long_way(self, capsys, monkeypatch) -> None:
+        _only_gist(monkeypatch)
         monkeypatch.setattr(
-            "app.news_now._STAGES",
-            (("gist", "gists", lambda: {"window_stories": 1128, "enriched": 20}),),
+            "app.news_now._enrich_batch",
+            lambda size: {"window_stories": 1128, "enriched": size},
         )
         assert main([]) == 0
         out = capsys.readouterr().out
         assert "20 of 1128 stories have a gist" in out
         assert "make news-all" in out
 
+    #: A quick run stops at its target, not at the end of the window. The bar
+    #: counts towards 20 so reaching the end of it means what it says.
+    def test_the_quick_run_stops_at_its_target(self, capsys, monkeypatch) -> None:
+        _only_gist(monkeypatch)
+        sizes: list[int] = []
+
+        def enrich(size: int) -> dict:
+            sizes.append(size)
+            return {"window_stories": 1128, "enriched": size}
+
+        monkeypatch.setattr("app.news_now._enrich_batch", enrich)
+        assert main([]) == 0
+        assert sum(sizes) == 20
+        assert "20/20 stories" in capsys.readouterr().out
+
     def test_a_finished_window_makes_no_such_offer(self, capsys, monkeypatch) -> None:
+        _only_gist(monkeypatch)
         monkeypatch.setattr(
-            "app.news_now._STAGES",
-            (("gist", "gists", lambda: {"window_stories": 20, "enriched": 20}),),
+            "app.news_now._enrich_batch",
+            lambda size: {"window_stories": 20, "enriched": size},
         )
         assert main([]) == 0
         assert "news-all" not in capsys.readouterr().out
@@ -119,13 +144,15 @@ class TestTheLongRun:
             {"window_stories": 50, "enriched": 0},
         ]
         calls = iter(batches)
-        outcome = _gist_everything(enrich=lambda: next(calls))
+        outcome = _gist(target=None, step=20, enrich=lambda size: next(calls))
         assert outcome == {"window_stories": 50, "enriched": 50}
 
     #: A declined batch must stop rather than spin: the box has no headroom and
     #: calling again would loop forever reporting nothing.
     def test_a_declined_batch_stops_and_keeps_the_reason(self) -> None:
-        outcome = _gist_everything(enrich=lambda: {"persisted": False, "reason": "busy box"})
+        outcome = _gist(
+            target=None, step=20, enrich=lambda size: {"persisted": False, "reason": "busy box"}
+        )
         assert outcome == {"persisted": False, "reason": "busy box"}
 
     def test_all_gists_everything_rather_than_one_batch(self, capsys, monkeypatch) -> None:
@@ -136,7 +163,7 @@ class TestTheLongRun:
                 {"window_stories": 40, "enriched": 0},
             ]
         )
-        monkeypatch.setattr("app.news_now.brain_enrich", lambda: next(calls))
+        monkeypatch.setattr("app.news_now._enrich_batch", lambda size: next(calls))
         monkeypatch.setattr(
             "app.news_now._STAGES", (("gist", "gists", lambda: {"never": "called"}),)
         )
@@ -159,6 +186,17 @@ class TestTheProgressBar:
     #: has hung. Nothing to estimate from on the first line, so it says so.
     def test_it_estimates_only_once_it_has_something_to_estimate_from(self) -> None:
         assert "estimating" in _bar(0, 100, 0.0)
+
+    #: Three tiers, because "nearly done" at 4 of 20 is a claim the reader can
+    #: check against the counts on the same line and see is false.
+    def test_minutes_seconds_and_nearly_done_are_distinguished(self) -> None:
+        now = time.monotonic()
+        assert "~3 min left" in _bar(4, 20, now - 40)
+        assert "~10s left" in _bar(16, 20, now - 40)
+        assert "nearly done" in _bar(1100, 1128, now - 20)
+
+    def test_a_long_first_fill_is_estimated_in_minutes(self) -> None:
+        assert "~185 min left" in _bar(20, 1128, time.monotonic() - 200)
 
     def test_a_zero_total_does_not_divide_by_zero(self) -> None:
         assert _bar(0, 0, 0.0)

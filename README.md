@@ -225,12 +225,17 @@ screen "no data from this source" and "this source needs a key" look identical.
 situation summary. Built from the news `make fetch` collected, so run it second.
 
 It writes the summary and gives the first twenty stories their one-line gist,
-then tells you how many are still waiting. The rest arrive on the schedule, about
-twenty every twenty minutes, so a first fill of a thousand finishes overnight
-without you doing anything.
+showing a bar and an estimate as it goes, then says how many are still waiting.
+The rest arrive on the schedule, about twenty every twenty minutes, so a first
+fill of a thousand finishes overnight without you doing anything.
 
-If you want them all now, with a progress bar and an estimate — hours on a small
-machine, minutes on a laptop:
+```
+  gist     the summary line on each story card
+           [##########..............] 8/20 stories, ~2 min left
+```
+
+To do the whole window now instead — same bar, hours on a small machine, minutes
+on a laptop:
 
 ```bash
 make news-all
