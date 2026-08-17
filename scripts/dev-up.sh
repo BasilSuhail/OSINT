@@ -232,11 +232,24 @@ ensure_ollama() {
   #
   # Defaults track app/settings.py. A model named in `.env` is pulled instead,
   # which is how somebody points the Ask panel at a smaller one.
+  #
+  # Every model the stack asks for, not most of them: the severity grader and
+  # the validator have their own settings, and a job that runs on a schedule
+  # fails where nobody is watching. Duplicates are skipped rather than pulled
+  # twice, which is the ordinary case on a small machine — there one model does
+  # all four jobs, so this is two downloads, not five.
   local model
+  local pulled=""
   for model in \
     "${BRAIN_MODEL:-llama3.2:3b}" \
     "${QA_MODEL:-qwen3.5:4b-q4_K_M}" \
+    "${SEVERITY_MODEL:-qwen3.5:4b-q4_K_M}" \
+    "${OLLAMA_MODEL:-qwen3.5:4b-q4_K_M}" \
     "${EMBED_MODEL:-nomic-embed-text}"; do
+    case " $pulled " in
+    *" $model "*) continue ;;
+    esac
+    pulled="$pulled $model"
     ensure_ollama_model "$model"
   done
 }

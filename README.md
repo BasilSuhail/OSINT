@@ -117,14 +117,15 @@ Must print `active` and `0.0.0.0:11434`. Anything else, this says why:
 sudo journalctl -u ollama -n 20 --no-pager
 ```
 
-**Both:** `make up` in step 3 downloads the three models it needs, about 5 GB.
-To get that out of the way now instead:
+**Both:** `make up` in step 3 downloads the models it needs. Nothing to pull by
+hand and nothing to choose — `make env` measures the machine first and picks
+them, then prints which set it took.
 
-```bash
-ollama pull llama3.2:3b
-ollama pull qwen3.5:4b-q4_K_M
-ollama pull nomic-embed-text
-```
+A laptop gets three models, about 5 GB. A machine of 8 GB or less gets one small
+model for every job, about 1.5 GB: two of the big ones resident at once fill a
+board that size, and the Ask panel is then left with nowhere to load a third.
+The small model answers on hardware the big ones cannot, and it is less accurate
+— it contradicts itself more often and mis-files more stories.
 
 ### 3. Start it
 

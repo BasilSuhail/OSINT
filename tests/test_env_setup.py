@@ -15,6 +15,7 @@ from scripts.env_setup import (
     detect_machine,
     generate_secret,
     is_placeholder,
+    is_small_machine,
     main,
     mismatched_mirrors,
     originate,
@@ -634,3 +635,99 @@ class TestWhoTheContainersRunAs:
         without = HOST_ID_EXAMPLE.replace("DOCKER_UID=\nDOCKER_GID=\n", "")
         written = originate(without, without, MACHINE, make_secret=_fixed_secret)
         assert "DOCKER_UID" not in written
+
+
+#: The model settings only, with the laptop values the real example ships. The
+#: small-machine profile has to be able to write over exactly these, because
+#: `sync` copies them into `.env` before anything asks whose answer they are.
+PROFILE_EXAMPLE = """BRAIN_MODEL=llama3.2:3b
+QA_MODEL=qwen3.5:4b-q4_K_M
+SEVERITY_MODEL=qwen3.5:4b-q4_K_M
+OLLAMA_MODEL=qwen3.5:4b-q4_K_M
+BRAIN_KEEP_ALIVE=30m
+QA_KEEP_ALIVE=0
+BRAIN_MIN_FREE_MB=3500
+QA_MIN_FREE_MB=3800
+BRAIN_TIMEOUT_S=120
+"""
+
+
+class TestSizingTheMachine:
+    def test_a_board_sized_machine_is_small(self):
+        assert is_small_machine(7900)
+
+    #: Sold as 8 GB, reports under it. A threshold of exactly 8 GB would miss
+    #: the machine the profile was written for.
+    def test_an_eight_gigabyte_board_is_small(self):
+        assert is_small_machine(8192)
+
+    def test_a_laptop_is_not(self):
+        assert not is_small_machine(16384)
+
+    #: Unreadable must not reconfigure anybody. 0 is below every threshold, so
+    #: the test is that it does not read as the smallest machine of all.
+    def test_a_machine_that_will_not_say_keeps_the_defaults(self):
+        assert not is_small_machine(0)
+
+
+class TestTheSmallMachineProfile:
+    def test_every_job_gets_the_same_model(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        models = {written[k] for k in ("BRAIN_MODEL", "QA_MODEL", "SEVERITY_MODEL", "OLLAMA_MODEL")}
+        assert len(models) == 1
+
+    #: The floors ship sized for a 4b. Left alone on a small machine they refuse
+    #: to load a model that now fits, and the console answers "brain busy".
+    def test_the_memory_floors_come_down_with_the_model(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert int(written["QA_MIN_FREE_MB"]) < 3800
+        assert int(written["BRAIN_MIN_FREE_MB"]) < 3500
+
+    #: Measured at 1 m 48 s an ask on the board. A 120 s ceiling fails it, and
+    #: the failure reaches the console as "the brain is offline".
+    def test_the_wait_outlasts_a_measured_ask(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert float(written["BRAIN_TIMEOUT_S"]) > 108
+
+    #: Evicting after every answer makes each question pay a cold load first.
+    def test_the_model_is_held_between_questions(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert written["QA_KEEP_ALIVE"] != "0"
+
+    def test_a_big_machine_keeps_every_default(self):
+        assert originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=False) == {}
+
+    #: The whole reason the profile needs its own exemption: by the time this
+    #: runs on a fresh clone, `sync` has already put the laptop values in.
+    def test_it_writes_over_the_examples_own_answer(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert written["QA_MODEL"] != "qwen3.5:4b-q4_K_M"
+
+    #: And the line it must not cross. A value that is not the example's own is
+    #: somebody's choice, on any size of machine.
+    def test_it_leaves_an_answer_somebody_gave(self):
+        env = PROFILE_EXAMPLE.replace("QA_MODEL=qwen3.5:4b-q4_K_M", "QA_MODEL=theirs:7b")
+        written = originate(PROFILE_EXAMPLE, env, MACHINE, small=True)
+        assert "QA_MODEL" not in written
+
+    def test_a_second_run_writes_nothing_new(self):
+        settled = PROFILE_EXAMPLE
+        for key, value in originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True).items():
+            settled, _ = set_value(settled, key, value)
+        assert originate(PROFILE_EXAMPLE, settled, MACHINE, small=True) == {}
+
+    #: `refresh` exists to rewrite addresses. A model setting is not an address,
+    #: and must not change on its way past.
+    def test_refresh_does_not_touch_a_model(self):
+        written = originate(
+            PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True, secrets_too=False, rederive=True
+        )
+        assert written == {}
+
+    #: Never a key the example has not heard of — `check` would report it back
+    #: to the operator as a typo.
+    def test_it_writes_nothing_the_example_does_not_document(self):
+        written = originate(
+            "QA_MODEL=qwen3.5:4b-q4_K_M\n", "QA_MODEL=qwen3.5:4b-q4_K_M\n", MACHINE, small=True
+        )
+        assert set(written) == {"QA_MODEL"}
