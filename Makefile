@@ -107,8 +107,21 @@ news:  ## Build the stories, cards and written summary — a few minutes (#997)
 news-all:  ## Same, but gist every story in the window rather than a batch — hours (#997)
 	@docker compose exec -T worker python -m app.news_now --all
 
+#: `du` exits non-zero when it cannot descend into a directory, and it cannot
+#: descend into `data/postgres` — that belongs to the database image's own user.
+#: So `|| echo "no data yet"` fired on a populated directory and printed the
+#: denial as an absence, directly underneath the sizes it had just listed. It also
+#: reported 4 KB for Postgres: the directory entry, not the database.
+#:
+#: Emptiness is decided by looking now, and `sudo` is named because the number
+#: that matters most is the one an unprivileged `du` cannot see.
 data-size:  ## Show disk used by each data subfolder
-	@du -sh $(OSINT_DATA_DIR)/* 2>/dev/null || echo "no data yet at $(OSINT_DATA_DIR)"
+	@if [ -d "$(OSINT_DATA_DIR)" ] && [ -n "$$(ls -A "$(OSINT_DATA_DIR)" 2>/dev/null)" ]; then \
+		du -sh "$(OSINT_DATA_DIR)"/* 2>/dev/null || true; \
+		echo "  (sudo for the true Postgres size — its files are not readable by you)"; \
+	else \
+		echo "no data yet at $(OSINT_DATA_DIR)"; \
+	fi
 
 data-prune:  ## Run retention housekeeping now
 	$(RUN_PY) -m app.prune_now

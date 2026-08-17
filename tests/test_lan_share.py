@@ -373,3 +373,25 @@ class TestEveryCommandWorksOnAFreshClone:
         assert "$(RUN_PY) -m app.prune_now" in MAKEFILE.read_text()
         assert not (ROOT / "scripts" / "prune_now.py").exists()
         assert (ROOT / "app" / "prune_now.py").exists()
+
+
+class TestDataSizeDoesNotContradictItself:
+    """`du` exits non-zero when it cannot descend into a directory.
+
+    It cannot descend into `data/postgres` — that belongs to the database image's
+    own user — so `|| echo "no data yet"` fired on a populated directory and
+    printed the denial as an absence, directly under the sizes it had just listed.
+    """
+
+    def test_emptiness_is_decided_by_looking_not_by_an_exit_code(self) -> None:
+        recipe = MAKEFILE.read_text()
+        recipe = recipe[recipe.index("data-size:") :][:700]
+        assert "ls -A" in recipe
+        #: The bug was the fallback hanging off du's status.
+        assert 'du -sh "$(OSINT_DATA_DIR)"/* 2>/dev/null || echo' not in recipe
+
+    #: An unprivileged `du` reports the directory entry for Postgres, not the
+    #: database, so the largest number on screen is the one it cannot see.
+    def test_it_says_the_postgres_number_needs_sudo(self) -> None:
+        recipe = MAKEFILE.read_text()
+        assert "sudo for the true Postgres size" in recipe
