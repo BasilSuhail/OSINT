@@ -39,11 +39,14 @@ and refreshes on your own machine.
 
 ## Quick start
 
-### 1. Install what it needs
+Six steps, in order. Skip step 1 if you already run Docker and current Node.
 
-Skip if you already run Docker and current Node.
+### Step 1 — Docker and Node
 
-Debian, Ubuntu, Raspberry Pi OS — then log out and back in:
+Pick your system. Each block is one paste.
+
+<details open>
+<summary><b>Linux</b> — Debian, Ubuntu, Raspberry Pi OS</summary>
 
 ```bash
 sudo apt update && sudo apt install -y git curl ca-certificates && \
@@ -53,71 +56,146 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
 sudo apt install -y nodejs && sudo corepack enable
 ```
 
-macOS, with [Homebrew](https://brew.sh):
+**Then log out and back in.** Group membership is read at login, so `docker` will
+not work in the shell that just added you to the group — and it fails by saying
+the daemon is unreachable, which reads as "Docker is not installed".
+
+</details>
+
+<details>
+<summary><b>macOS</b> — needs <a href="https://brew.sh">Homebrew</a></summary>
 
 ```bash
 brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
 ```
 
-Optional — but without it the **Ask panel does not answer**. Ask it anything and
-it replies `The brain is offline right now.` The map, the feed, ingestion and
-every number still work; the written summaries and the question box do not.
+Wait for the Docker whale in the menu bar to stop animating before step 4.
+
+</details>
+
+<details>
+<summary><b>Windows</b> — via WSL2</summary>
+
+In PowerShell **as administrator**:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Reboot, then install [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
+and turn on **Settings → Resources → WSL Integration** for Ubuntu.
+
+Everything after this runs **inside the Ubuntu terminal**, not PowerShell:
 
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh     # Linux
+sudo apt update && sudo apt install -y git curl ca-certificates && \
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+sudo apt install -y nodejs && sudo corepack enable
+```
+
+No `get.docker.com` here — Docker Desktop supplies the engine through WSL
+integration, and installing a second one inside Ubuntu fights it.
+
+</details>
+
+**Do not install pnpm by name.** `corepack enable` fetches the version
+`packageManager` pins. `npm install -g pnpm` or `corepack prepare pnpm@latest`
+gets a different one that resolves the lockfile differently, and it surfaces
+later as a build failure that looks nothing like a version mismatch.
+
+### Step 2 — Ollama
+
+Called optional, and everything else runs without it. But without it the **Ask
+panel answers nothing**: ask it any question and it replies `The brain is offline
+right now.`, and the written situation summaries never appear. The map, the feed,
+ingestion, the scores and the audit trail are unaffected.
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh     # Linux, and WSL2 Ubuntu
 brew install ollama && ollama serve               # macOS
 ```
 
-`make up` starts Ollama and pulls what it needs — **three models, about 5 GB in
-total**: one writes the situation summary, one answers in the Ask panel, one
-builds the embeddings behind search. Only one is ever loaded at a time. You can
-add Ollama later and re-run `make up`; nothing else needs redoing.
+### Step 3 — the models
 
-Docker and Node come from their own installers because distribution packages are
-usually too old. **Do not install pnpm by name** — `corepack enable` fetches the
-version `packageManager` pins, and a different one resolves the lockfile
-differently. Details and the swap setting for a single-board host:
-[§3.1](HANDBOOK.md#31-required-software).
+Nothing to do. `make up` pulls them in step 5.
 
-### 2. Run it
+There are **three, about 5 GB in total** — one writes the situation summary, one
+answers in the Ask panel, one builds the embeddings behind search. Only one is
+loaded at a time, so three on disk is not three in memory. Pull them ahead of
+time if you would rather get the download out of the way:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Install Ollama later and re-run `make up` and it pulls them then. Nothing else
+needs redoing.
+
+### Step 4 — get the code
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
 cd OSINT
-make env                  # makes your settings file (.env), filled in and ready
-make up                   # postgres · redis · migrations · api · workers · console · ollama if present
-make down                 # stop everything, keep all data
 ```
 
-Open <http://localhost:3000>. First run takes several minutes — images, packages
-and the local model download.
+### Step 5 — settings, then start
 
-Without Ollama everything still runs and the Ask panel answers `The brain is
-offline right now.` — see [step 1](#1-install-what-it-needs) to add it.
+```bash
+make env
+make up
+```
 
-`.env` is the only file you edit, it is git-ignored, and
-[`env.example`](https://github.com/BasilSuhail/OSINT/blob/main/env.example) is
-its template. There is nothing you have to put in it to start: `make env`
-generates the database password and the API token, and points the console at
-this machine. Optional source keys and moving the data directory are in
-[§5](HANDBOOK.md#5-configure-it-safely).
+`make env` writes `.env` and fills it in — database password, API token, the
+addresses this machine answers to. **Nothing needs typing into it.** It never
+overwrites a value you have set, so it is safe to re-run any time.
 
-Three commands look after that file, and you can run any of them as often as
-you like:
+`make up` brings up Postgres, Redis, migrations, the API, the workers, the
+console, and Ollama if it is installed. First run takes 20–40 minutes: container
+images, browser packages, then the models.
 
-| Command | What it does |
-|---|---|
-| `make env` | Makes `.env` if you have not got one. If you have, it adds the settings you are missing, fills in any that are empty and should not be, and leaves everything you already filled in exactly as it is. |
-| `make env-refresh` | Re-derives the addresses after this machine moves network or changes name. Addresses only — it cannot reach a credential. |
-| `make env-check` | Tells you what is missing, what still needs a value, and what you have spelled wrong. It never prints a value, so it is safe to run while someone is watching your screen. |
+Open <http://localhost:3000>.
 
-To open the console from another device, put the name that device would use in
-`OSINT_PUBLIC_HOST`, run `make env-refresh`, then `make share`.
+To reach it from your phone or another computer instead:
 
-`make help` lists every command in the Makefile with a line saying what it
-does.
+```bash
+make share
+```
 
-### 3. Updating, and running a branch
+That prints a URL to hand over. It is open to everyone on your network with no
+password — `make up` closes it again.
+
+Stop everything, keeping all data:
+
+```bash
+make down
+```
+
+### Step 6 — data
+
+**The console is empty at first, and that is not a fault.** Nothing has been
+fetched yet. The schedule collects markets every five minutes and news on the
+quarter-hour, so the first rows land one to fifteen minutes in, and it fills out
+over the following hours.
+
+Leave it running and it populates itself. To fill it now:
+
+```bash
+make fetch                        # every source, once
+make fetch SOURCES="gdelt gdacs"  # or just these
+```
+
+It prints what each source returned, and which are dormant for want of an API
+key — on screen, "no data from this source" and "this source needs a key" look
+identical.
+
+---
+
+`make help` lists every command with a line saying what it does. Optional source
+keys and moving the data directory: [§5](HANDBOOK.md#5-configure-it-safely).
+
+## Updating, and running a branch
 
 Pull the latest:
 
