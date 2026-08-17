@@ -377,6 +377,48 @@ _SMALL_MACHINE_PROFILE: dict[str, str] = {
 }
 
 
+#: Values this profile wrote in an earlier version and has since changed its mind
+#: about.
+#:
+#: The promise everywhere else here is that a value already in `.env` is somebody's
+#: answer and is never replaced. That promise is about *their* answers. These are
+#: this script's own, and leaving them alone had a consequence nobody would choose:
+#: a board set up while the profile named a 1b keeps that 1b for good, because
+#: `make env` reads it as a deliberate choice and declines to interfere. The model
+#: was found to fabricate — inventing a magnitude, a death toll and two agencies
+#: that appeared in no retrieved story — so "keeps it for good" means keeps a
+#: broken install, silently, with nothing anywhere saying so.
+#:
+#: Matched on the exact value, so this can only ever replace a string this script
+#: is known to have produced. Anything else in the field is untouched, including a
+#: 1b somebody typed deliberately — that is a different string only if they chose a
+#: different one, which is the limit of what can be told apart from here, and the
+#: report says what changed so the choice can be made again.
+_SUPERSEDED: dict[str, frozenset[str]] = {
+    "BRAIN_MODEL": frozenset({"llama3.2:1b"}),
+    "QA_MODEL": frozenset({"llama3.2:1b"}),
+    "SEVERITY_MODEL": frozenset({"llama3.2:1b"}),
+    "OLLAMA_MODEL": frozenset({"llama3.2:1b"}),
+    #: Lowered to admit the 1b, which is how the fabricating model got past a
+    #: guard sized for something bigger.
+    "BRAIN_MIN_FREE_MB": frozenset({"1800"}),
+    "QA_MIN_FREE_MB": frozenset({"2000"}),
+}
+
+
+def superseded(key: str, value: str) -> bool:
+    """Whether this exact value is one this script wrote and has replaced."""
+    return value in _SUPERSEDED.get(key, frozenset())
+
+
+def outdated_profile_keys(env_text: str, *, small: bool | None = None) -> list[str]:
+    """Keys still holding a value this script wrote and has since superseded."""
+    if not (is_small_machine() if small is None else small):
+        return []
+    have = parse_env(env_text)
+    return [key for key in _SMALL_MACHINE_PROFILE if superseded(key, have.get(key, "").strip())]
+
+
 def total_ram_mb() -> int:
     """This machine's memory, or 0 where it cannot be read.
 
@@ -614,7 +656,11 @@ def originate(
                 #: the floors the example ships — and without this the file would
                 #: be rewritten with what it already said, reported back as work
                 #: that was done, every single run.
-                if documented(key) and not answered(key) and value != have.get(key, "").strip():
+                current_value = have.get(key, "").strip()
+                #: Superseded counts as unanswered: it is this script's own
+                #: earlier answer, not the operator's.
+                stale = superseded(key, current_value)
+                if documented(key) and (stale or not answered(key)) and value != current_value:
                     written[key] = value
 
     pinned = have.get(_PINNED_HOST_KEY, "").strip()
@@ -881,6 +927,17 @@ def main(argv: list[str] | None = None) -> int:
         #: the reason several of them are about to differ from the example. Said
         #: whichever way it goes: an operator who expected the small profile and
         #: did not get it has no other way to find out.
+        #: Said before it happens, because it is the one case here that replaces
+        #: a value already in the file. Silence would make it indistinguishable
+        #: from the script overruling somebody.
+        stale = outdated_profile_keys(rendered)
+        if stale:
+            print(f"  {len(stale)} setting(s) written by an earlier version are being updated:")
+            for key in stale:
+                print(f"    {key}")
+            print("    (this project changed what it recommends; edit any of them")
+            print("     yourself and it will not touch them again)")
+
         ram_mb = total_ram_mb()
         if is_small_machine(ram_mb):
             print(f"  {ram_mb} MB of memory — using the small-machine settings:")

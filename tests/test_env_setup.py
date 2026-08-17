@@ -19,6 +19,7 @@ from scripts.env_setup import (
     main,
     mismatched_mirrors,
     originate,
+    outdated_profile_keys,
     overridden_keys,
     parse_env,
     parse_example,
@@ -794,3 +795,67 @@ class TestTheExampleAgreesWithTheCode:
             assert documented == field.default, (
                 f"env.example says {key}={example[key].strip()}, settings.py says {field.default}"
             )
+
+
+class TestUpdatingWhatThisScriptItselfWrote:
+    """A board set up while the profile named a 1b kept that 1b for good.
+
+    `make env` read it as a deliberate choice and declined to interfere, which is
+    the right instinct about somebody's answer and the wrong one about its own.
+    The 1b was found to fabricate — a magnitude, a death toll and two agencies
+    that appeared in no retrieved story — so the install stayed broken with
+    nothing anywhere saying so.
+    """
+
+    #: The exact file `make env` produced when the profile named a 1b.
+    def _earlier_version(self) -> str:
+        env = PROFILE_EXAMPLE
+        for key, value in (
+            ("BRAIN_MODEL", "llama3.2:1b"),
+            ("QA_MODEL", "llama3.2:1b"),
+            ("SEVERITY_MODEL", "llama3.2:1b"),
+            ("OLLAMA_MODEL", "llama3.2:1b"),
+            ("QA_MIN_FREE_MB", "2000"),
+            ("BRAIN_MIN_FREE_MB", "1800"),
+        ):
+            env, _ = set_value(env, key, value)
+        return env
+
+    def test_the_superseded_models_are_replaced(self):
+        written = originate(PROFILE_EXAMPLE, self._earlier_version(), MACHINE, small=True)
+        assert written["QA_MODEL"] == "llama3.2:3b"
+        assert written["BRAIN_MODEL"] == "llama3.2:3b"
+
+    #: Lowered to admit the 1b, which is how a model that invents evidence got
+    #: past a guard sized for something bigger.
+    def test_the_lowered_floors_are_raised_back(self):
+        written = originate(PROFILE_EXAMPLE, self._earlier_version(), MACHINE, small=True)
+        assert int(written["QA_MIN_FREE_MB"]) >= 3500
+
+    #: The line this must not cross. A value that is not one of ours is somebody's.
+    def test_a_deliberate_choice_is_left_alone(self):
+        env, _ = set_value(self._earlier_version(), "QA_MODEL", "mistral:7b")
+        written = originate(PROFILE_EXAMPLE, env, MACHINE, small=True)
+        assert "QA_MODEL" not in written
+
+    def test_a_current_file_is_not_touched(self):
+        settled = PROFILE_EXAMPLE
+        for key, value in originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True).items():
+            settled, _ = set_value(settled, key, value)
+        assert originate(PROFILE_EXAMPLE, settled, MACHINE, small=True) == {}
+
+    #: Reported rather than done quietly: it is the one case here that replaces
+    #: something already in the file, and silence would be indistinguishable from
+    #: the script overruling an operator.
+    def test_the_outdated_keys_can_be_named_before_they_change(self):
+        assert set(outdated_profile_keys(self._earlier_version(), small=True)) == {
+            "BRAIN_MODEL",
+            "QA_MODEL",
+            "SEVERITY_MODEL",
+            "OLLAMA_MODEL",
+            "QA_MIN_FREE_MB",
+            "BRAIN_MIN_FREE_MB",
+        }
+
+    def test_a_big_machine_has_none_to_update(self):
+        assert outdated_profile_keys(self._earlier_version(), small=False) == []
