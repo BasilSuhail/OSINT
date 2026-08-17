@@ -88,9 +88,18 @@ attribution, though it welcomes credit:
 
 ## Third-party code
 
-Python and JavaScript dependencies are not vendored here. They are fetched at
-install time from PyPI and npm, each under its own licence, and each stays
-under it — this repository's licence does not reach them.
+Python and JavaScript dependencies are fetched at install time from PyPI and
+npm, each under its own licence, and each stays under it — this repository's
+licence does not reach them.
+
+One file is vendored rather than fetched:
+[`osint-frontend/app/vendor/shadcn-animations.css`](osint-frontend/app/vendor/shadcn-animations.css),
+copied unchanged from the `shadcn` package (MIT) at version 4.10.0. That
+package is a scaffolding command line tool whose only runtime artefact is that
+stylesheet, and depending on it pulled a model-context-protocol server, an HTTP
+framework and a rate limiter into a map application — eight of fourteen
+security advisories on this project arrived through that subtree. The file
+carries its origin and its licence in a header comment.
 
 ## Warranty
 
