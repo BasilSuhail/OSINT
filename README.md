@@ -39,9 +39,13 @@ and refreshes on your own machine.
 
 ## Quick start
 
-### 1. Install Docker and Node
+Pick your machine. Each one is self-contained — everything from nothing to a
+running console, in order, nothing to look up elsewhere.
 
-**Linux** (Debian, Ubuntu, Raspberry Pi OS):
+<details>
+<summary><b>Raspberry Pi 5 (8 GB)</b></summary>
+
+Docker and Node, then log out and back in:
 
 ```bash
 sudo apt update && sudo apt install -y git curl ca-certificates && \
@@ -51,58 +55,17 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
 sudo apt install -y nodejs && sudo corepack enable
 ```
 
-Log out and back in before continuing.
-
-**macOS** (needs [Homebrew](https://brew.sh)):
-
-```bash
-brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
-```
-
-**Windows**: install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
-and [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/),
-turn on WSL integration, then run the Linux block above inside Ubuntu — without
-the `get.docker.com` line.
-
-Do not install pnpm yourself. `corepack enable` fetches the right version.
-
-### 2. Install Ollama
-
-Skipping this is allowed — the map and the feed still work, but the Ask panel
-answers nothing.
-
-**macOS:**
-
-```bash
-brew install ollama && ollama serve
-```
-
-**Linux**, four blocks. Install it:
+Ollama:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Make sure its data directory exists and belongs to it:
-
-```bash
 sudo mkdir -p /usr/share/ollama
 sudo chown -R ollama:ollama /usr/share/ollama
-```
-
-Let it listen where the containers can reach it:
-
-```bash
 sudo mkdir -p /etc/systemd/system/ollama.service.d
 cd /etc/systemd/system/ollama.service.d
 echo '[Service]' | sudo tee override.conf
 echo 'Environment="OLLAMA_HOST=0.0.0.0"' | sudo tee -a override.conf
 cd -
-```
-
-Start it and check:
-
-```bash
 sudo systemctl daemon-reload
 sudo systemctl enable ollama
 sudo systemctl restart ollama
@@ -111,22 +74,95 @@ systemctl is-active ollama
 ss -tlnp | grep 11434
 ```
 
-Must print `active` and `0.0.0.0:11434`. Anything else, this says why:
+Must print `active` and `0.0.0.0:11434`. If not:
 
 ```bash
 sudo journalctl -u ollama -n 20 --no-pager
 ```
 
-**Both:** `make up` in step 3 downloads the three models it needs, about 5 GB.
-To get that out of the way now instead:
+The code:
 
 ```bash
-ollama pull llama3.2:3b
-ollama pull qwen3.5:4b-q4_K_M
-ollama pull nomic-embed-text
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
 ```
 
-### 3. Start it
+**Then this, before you start it.** 8 GB is not enough for the default 4 B model
+next to the stack and the console — it fills memory, spills to the SD card, and
+the board locks up:
+
+```bash
+echo "QA_MODEL=llama3.2:3b" >> .env
+echo "QA_KEEP_ALIVE=0" >> .env
+```
+
+Start it:
+
+```bash
+make up
+```
+
+20–40 minutes the first time: images, browser packages, then about 4 GB of
+models. Open <http://localhost:3000>, or `make share` to reach it from another
+device.
+
+Fill it:
+
+```bash
+make fetch
+make news
+```
+
+Worth watching the first time you ask the console a question:
+
+```bash
+watch -n5 'free -h; echo; ollama ps'
+```
+
+Swap being eaten means the model is too big for what else is running.
+
+</details>
+
+<details>
+<summary><b>Linux desktop or server</b> — Debian, Ubuntu</summary>
+
+Docker and Node, then log out and back in:
+
+```bash
+sudo apt update && sudo apt install -y git curl ca-certificates && \
+curl -fsSL https://get.docker.com | sudo sh && \
+sudo usermod -aG docker "$USER" && \
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+sudo apt install -y nodejs && sudo corepack enable
+```
+
+Ollama — the systemd override is what lets the containers reach it:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+sudo mkdir -p /usr/share/ollama
+sudo chown -R ollama:ollama /usr/share/ollama
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+cd /etc/systemd/system/ollama.service.d
+echo '[Service]' | sudo tee override.conf
+echo 'Environment="OLLAMA_HOST=0.0.0.0"' | sudo tee -a override.conf
+cd -
+sudo systemctl daemon-reload
+sudo systemctl enable ollama
+sudo systemctl restart ollama
+sleep 3
+systemctl is-active ollama
+ss -tlnp | grep 11434
+```
+
+Must print `active` and `0.0.0.0:11434`. If not:
+
+```bash
+sudo journalctl -u ollama -n 20 --no-pager
+```
+
+Then:
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
@@ -135,29 +171,117 @@ make env
 make up
 ```
 
-First run takes 20–40 minutes. Nothing needs typing into `.env`. Open
-<http://localhost:3000>.
+On less than 16 GB, use the smaller Q&A model before starting:
 
-### 4. Get data
+```bash
+echo "QA_MODEL=llama3.2:3b" >> .env
+```
+
+Open <http://localhost:3000>, then fill it:
 
 ```bash
 make fetch
 make news
 ```
 
-`make fetch` fills the map, `make news` fills the story feed and summary. Both
-take a few minutes. Without them the console fills itself over the next hour.
+</details>
 
-### Other commands
+<details>
+<summary><b>macOS</b></summary>
+
+Needs [Homebrew](https://brew.sh):
 
 ```bash
-make share        # reach the console from your phone or another computer
-make down         # stop everything, keep all data
-make news-all     # gist every story now rather than 20 (hours)
-make help         # every command
+brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
 ```
 
-Something wrong: [§19](HANDBOOK.md#19-troubleshooting). Full detail on any step:
+Wait for the Docker whale in the menu bar to settle, then:
+
+```bash
+brew install ollama
+brew services start ollama
+```
+
+No systemd override here — Docker Desktop reaches the host without one.
+
+```bash
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
+make up
+```
+
+Open <http://localhost:3000>, then fill it:
+
+```bash
+make fetch
+make news
+```
+
+</details>
+
+<details>
+<summary><b>Windows</b> — through WSL2</summary>
+
+In PowerShell **as administrator**:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Reboot. Install [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
+and turn on **Settings → Resources → WSL Integration** for Ubuntu.
+
+Everything below runs in the **Ubuntu** terminal, not PowerShell. No
+`get.docker.com` — Docker Desktop supplies the engine, and a second one fights it:
+
+```bash
+sudo apt update && sudo apt install -y git curl ca-certificates && \
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+sudo apt install -y nodejs && sudo corepack enable
+```
+
+Ollama, on **Windows** rather than inside Ubuntu — download it from
+[ollama.com/download](https://ollama.com/download), then in Ubuntu point the
+stack at it:
+
+```bash
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
+echo "OLLAMA_URL=http://host.docker.internal:11434" >> .env
+make up
+```
+
+Open <http://localhost:3000>, then fill it:
+
+```bash
+make fetch
+make news
+```
+
+</details>
+
+Do not install pnpm yourself on any of them. `corepack enable` fetches the
+version this project pins; a different one resolves the lockfile differently.
+
+## Basic commands
+
+```bash
+make up        # start everything
+make down      # stop everything, keep all data
+make share     # start it reachable from your phone or another computer
+make fetch     # fill the map now instead of waiting for the schedule
+make news      # build the story feed and the written summary
+make news-all  # gist every story rather than 20 — hours on a small box
+make help      # every command in the Makefile
+```
+
+The console is empty at first and that is not a fault: nothing has been fetched
+yet. Left alone it fills itself over the next hour. `make fetch` and `make news`
+skip the wait.
+
+Something wrong: [§19](HANDBOOK.md#19-troubleshooting). Any step in full detail:
 [§1](HANDBOOK.md#1-start-here-download-install-run-and-stop).
 
 ## Updating, or running a branch
