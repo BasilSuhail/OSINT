@@ -116,16 +116,49 @@ brew install ollama && ollama serve               # macOS
 ```
 
 **On Linux there is a second step, and skipping it is silent.** Ollama's service
-binds `127.0.0.1`, the backend reaches it from inside a container, so it answers
-perfectly well on the host and is unreachable from the thing that needs it. You
-see it as translation warnings and an Ask panel that still says the brain is
-offline.
+binds `127.0.0.1`. The backend reaches it from inside a container, so it answers
+perfectly well on the host and is unreachable from the thing that needs it — seen
+only as translation warnings during a fetch and an Ask panel that goes on saying
+the brain is offline. macOS and Docker Desktop need none of what follows.
+
+First check the installer actually left a running service. Everything below
+depends on it:
+
+```bash
+systemctl is-active ollama
+```
+
+<details>
+<summary>Anything other than <code>active</code></summary>
+
+```bash
+sudo systemctl enable --now ollama
+```
+
+```bash
+systemctl status ollama --no-pager
+```
+
+```bash
+sudo journalctl -u ollama -n 30 --no-pager
+```
+
+**Do not run `ollama serve` to work around this.** It starts a foreground process
+as your own user, which ignores the service configuration entirely — so the
+setting below has no effect on it, Ollama looks healthy, and every container
+still gets `Connection refused`. Two hours of debugging live down that road.
+
+</details>
+
+Then tell the service to listen beyond loopback:
 
 ```bash
 sudo systemctl edit ollama
 ```
 
-Add these two lines, save, exit:
+An editor opens on a nearly empty file with a marker in the middle. Put these two
+lines **above** the `### Lines below this comment will be discarded` marker, save,
+exit:
 
 ```
 [Service]
@@ -136,15 +169,20 @@ Environment="OLLAMA_HOST=0.0.0.0"
 sudo systemctl restart ollama
 ```
 
-Check it took — want `0.0.0.0:11434`, not `127.0.0.1:11434`:
+Now check it took:
 
 ```bash
 ss -tlnp | grep 11434
 ```
 
-`0.0.0.0` means every interface, not only the Docker bridge, so on a machine
-other people can reach, pair it with a firewall rule for port 11434. macOS and
-Docker Desktop need none of this.
+| What you see | What it means |
+|---|---|
+| `0.0.0.0:11434` or `*:11434` | correct — carry on to step 3 |
+| `127.0.0.1:11434` | the override did not apply; re-run `sudo systemctl cat ollama` and check the two lines sit under `[Service]` |
+| nothing at all | the service is not running — go back to the box above |
+
+`0.0.0.0` is every interface, not only the Docker bridge. On a machine other
+people can reach, pair it with a firewall rule for port 11434.
 
 ### Step 3 — the models
 
