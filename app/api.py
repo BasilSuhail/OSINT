@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
+import threading
 from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -1593,6 +1595,64 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+#: How often to say "still here" while the model has sent nothing. Well inside
+#: any reasonable client guard, and far enough apart that a healthy answer never
+#: emits one: once generation starts, chunks arrive faster than this.
+_HEARTBEAT_S: float = 10.0
+
+#: An SSE comment. Every client ignores it as a message and every client counts
+#: it as traffic, which is the point — it proves the connection is alive without
+#: inventing an event that readers would have to learn to skip.
+_HEARTBEAT = ": still working\n\n"
+
+
+def _kept_alive(chunks: Iterator[str], every: float = _HEARTBEAT_S) -> Iterator[str]:
+    """`chunks`, with a heartbeat whenever it has been quiet for `every` seconds.
+
+    A streamed answer sends nothing for as long as the model takes to read the
+    prompt — about a second on a machine with a GPU, and around a hundred on a
+    small board without one. A client cannot tell that silence from a dead
+    connection, so it hangs up, and the console then reported the stream it had
+    cancelled itself as the brain being offline. Nothing was wrong with the
+    server, which is why every check that message invites came back clean and
+    why the fault survived four rounds of looking in the wrong place.
+
+    Raising the client's patience fixes one console on one machine and leaves
+    the next slower box to rediscover this. A connection that says it is alive
+    needs no such tuning, and needs nothing of the client at all: bytes are what
+    reset an idle timer.
+
+    The generation blocks, so it runs in a thread. Exceptions cross back and are
+    raised here, leaving the caller's error handling exactly as it was.
+    """
+    handoff: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+    def pump() -> None:
+        try:
+            for chunk in chunks:
+                handoff.put(("chunk", chunk))
+        except BaseException as exc:
+            #: Re-raised in the consumer below, not swallowed.
+            handoff.put(("raised", exc))
+            return
+        handoff.put(("done", None))
+
+    threading.Thread(target=pump, daemon=True).start()
+    while True:
+        try:
+            kind, payload = handoff.get(timeout=every)
+        except queue.Empty:
+            #: Nothing has arrived, which is exactly when the connection has to
+            #: prove it is still there.
+            yield _HEARTBEAT
+            continue
+        if kind == "done":
+            return
+        if kind == "raised":
+            raise payload
+        yield payload
+
+
 @app.post("/brain/ask")
 def brain_ask(
     req: AskRequest,
@@ -1722,12 +1782,21 @@ def brain_ask_stream(
             prompt = qa.build_qa_text_prompt(
                 qa_context, req.question, history=history, elaborate=elaborate
             )
-            for chunk in client.generate_text_stream(
-                prompt,
-                model=settings.qa_model,
-                keep_alive=settings.qa_keep_alive,
-                num_predict=num_predict,
+            #: Wrapped so the connection keeps speaking while the model reads
+            #: the prompt. Without it the stream is silent for the whole of that
+            #: read, and a client that gives up on silence reports a working
+            #: generation as a brain that is offline.
+            for chunk in _kept_alive(
+                client.generate_text_stream(
+                    prompt,
+                    model=settings.qa_model,
+                    keep_alive=settings.qa_keep_alive,
+                    num_predict=num_predict,
+                )
             ):
+                if chunk is _HEARTBEAT:
+                    yield chunk
+                    continue
                 chunks.append(chunk)
                 yield _sse("delta", {"text": chunk})
         except httpx.TimeoutException:

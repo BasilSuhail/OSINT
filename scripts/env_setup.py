@@ -352,6 +352,14 @@ _SMALL_MACHINE_PROFILE: dict[str, str] = {
     "QA_MIN_FREE_MB": "2000",
     "BRAIN_TIMEOUT_S": "300",
     "QA_STORIES": "3",
+    #: The console's own patience, which is not the API's. It hangs up on a
+    #: stream that has gone quiet, and on a board the quiet before the first
+    #: token is about 100 s of prompt processing — well past the 45 s default,
+    #: which was measured on a laptop. Reported to the reader as the brain being
+    #: offline, identically to a model that is not installed, so every check the
+    #: message invites is server-side and every one of them passes.
+    "NEXT_PUBLIC_STREAM_IDLE_TIMEOUT_MS": "240000",
+    "NEXT_PUBLIC_ASK_TIMEOUT_MS": "600000",
 }
 
 
