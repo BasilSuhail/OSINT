@@ -60,7 +60,7 @@ vcgencmd get_throttled
 `0x0` is healthy. Anything else is the power supply, and no amount of tuning
 below will fix it.
 
-Docker and Node, then log out and back in:
+Docker and Node:
 
 ```bash
 sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
@@ -69,6 +69,18 @@ sudo usermod -aG docker "$USER" && \
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
 sudo apt install -y nodejs && sudo corepack enable
 ```
+
+**Then reboot.** Not optional and not cosmetic: the line above adds you to the
+`docker` group, and a group only takes effect on a new login. Until then every
+Docker command is refused, and the next few steps do not touch Docker — so the
+failure surfaces several minutes later, at `make up`, looking like Docker is
+broken:
+
+```bash
+sudo reboot
+```
+
+Afterwards `groups` lists `docker`. Pick the list up again from here.
 
 Ollama:
 
@@ -179,7 +191,7 @@ Swap being eaten means the model is too big for what else is running.
 <details>
 <summary><b>Linux desktop or server</b> — Debian, Ubuntu</summary>
 
-Docker and Node, then log out and back in:
+Docker and Node:
 
 ```bash
 sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
@@ -188,6 +200,18 @@ sudo usermod -aG docker "$USER" && \
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
 sudo apt install -y nodejs && sudo corepack enable
 ```
+
+**Then reboot.** Not optional and not cosmetic: the line above adds you to the
+`docker` group, and a group only takes effect on a new login. Until then every
+Docker command is refused, and the next few steps do not touch Docker — so the
+failure surfaces several minutes later, at `make up`, looking like Docker is
+broken:
+
+```bash
+sudo reboot
+```
+
+Afterwards `groups` lists `docker`. Pick the list up again from here.
 
 Ollama — the systemd override is what lets the containers reach it:
 
