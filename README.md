@@ -80,11 +80,16 @@ echo 'Environment="OLLAMA_HOST=0.0.0.0"' | sudo tee -a override.conf
 cd -
 sudo systemctl daemon-reload
 sudo systemctl restart ollama
+sleep 3
+systemctl is-active ollama
 ss -tlnp | grep 11434
 ```
 
-The last line must print `0.0.0.0:11434`. If it prints nothing or `127.0.0.1`,
-see [§19](HANDBOOK.md#19-troubleshooting).
+Those last two lines must print `active` and `0.0.0.0:11434`. Anything else:
+
+```bash
+sudo journalctl -u ollama -n 20 --no-pager
+```
 
 **macOS:**
 
