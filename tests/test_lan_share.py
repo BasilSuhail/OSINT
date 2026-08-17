@@ -308,3 +308,35 @@ class TestTheDashboardReceivesItsSettings:
 
     def test_the_token_the_console_authenticates_with_is_documented(self) -> None:
         assert "NEXT_PUBLIC_API_TOKEN=" in (ROOT / "env.example").read_text()
+
+
+class TestTheDataDirectoryBelongsToTheOperator:
+    """A bind mount whose source is missing is created by the daemon, as root.
+
+    The containers run as the operator (`DOCKER_UID`), so on a fresh clone
+    `data/` arrived root-owned and beat crash-looped on
+    `Permission denied: '/data/celerybeat-schedule'`. The story export failed the
+    same way on `/data/exports`. Setting the uid was half the fix; the directory
+    having the right owner in the first place is the other half.
+    """
+
+    def test_the_script_creates_it_before_compose_can(self) -> None:
+        script = DEV_UP.read_text()
+        assert "ensure_data_dir" in script
+
+    #: After the settings, because the location is one of them — reading .env
+    #: before `env_setup.py` has written it would default every time.
+    def test_it_runs_after_the_settings_are_written(self) -> None:
+        body = DEV_UP.read_text()
+        assert body.index("env_setup.py sync") < body.index("ensure_data_dir()")
+
+    #: Before anything that mounts it, or the daemon gets there first.
+    def test_it_runs_before_the_stores_come_up(self) -> None:
+        body = DEV_UP.read_text()
+        assert body.index("ensure_data_dir\n") < body.index("compose_up")
+
+    #: `data/postgres` belongs to the database image's own user. Recursively
+    #: chowning the tree is how you stop Postgres starting, so nothing here does.
+    def test_it_never_chowns_what_is_already_there(self) -> None:
+        script = DEV_UP.read_text()
+        assert "chown -R" not in script
