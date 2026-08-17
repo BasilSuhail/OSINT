@@ -115,6 +115,37 @@ curl -fsSL https://ollama.com/install.sh | sh     # Linux, and WSL2 Ubuntu
 brew install ollama && ollama serve               # macOS
 ```
 
+**On Linux there is a second step, and skipping it is silent.** Ollama's service
+binds `127.0.0.1`, the backend reaches it from inside a container, so it answers
+perfectly well on the host and is unreachable from the thing that needs it. You
+see it as translation warnings and an Ask panel that still says the brain is
+offline.
+
+```bash
+sudo systemctl edit ollama
+```
+
+Add these two lines, save, exit:
+
+```
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0"
+```
+
+```bash
+sudo systemctl restart ollama
+```
+
+Check it took — want `0.0.0.0:11434`, not `127.0.0.1:11434`:
+
+```bash
+ss -tlnp | grep 11434
+```
+
+`0.0.0.0` means every interface, not only the Docker bridge, so on a machine
+other people can reach, pair it with a firewall rule for port 11434. macOS and
+Docker Desktop need none of this.
+
 ### Step 3 — the models
 
 Nothing to do. `make up` pulls them in step 5.
