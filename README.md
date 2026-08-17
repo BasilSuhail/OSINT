@@ -39,70 +39,48 @@ and refreshes on your own machine.
 
 ## Quick start
 
-### 1. Install Docker and Node
+Pick your machine. Each one is self-contained — everything from nothing to a
+running console, in order, nothing to look up elsewhere.
 
-**Linux** (Debian, Ubuntu, Raspberry Pi OS):
+Free disk space is the one thing to check first: about 15 GB to install, and the
+database grows to a 30 GB cap before it starts trimming its own oldest days.
+
+<details>
+<summary><b>Raspberry Pi 5 (8 GB)</b></summary>
+
+Two things about the board itself. It needs **64-bit** Raspberry Pi OS — the
+images are arm64 and will not run on the 32-bit build — and it needs the official
+27 W supply. A phone charger browns out under load, and the board answers by
+throttling rather than by saying so:
 
 ```bash
-sudo apt update && sudo apt install -y git curl ca-certificates && \
+vcgencmd get_throttled
+```
+
+`0x0` is healthy. Anything else is the power supply, and no amount of tuning
+below will fix it.
+
+Docker and Node, then log out and back in:
+
+```bash
+sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
 curl -fsSL https://get.docker.com | sudo sh && \
 sudo usermod -aG docker "$USER" && \
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
 sudo apt install -y nodejs && sudo corepack enable
 ```
 
-Log out and back in before continuing.
-
-**macOS** (needs [Homebrew](https://brew.sh)):
-
-```bash
-brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
-```
-
-**Windows**: install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
-and [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/),
-turn on WSL integration, then run the Linux block above inside Ubuntu — without
-the `get.docker.com` line.
-
-Do not install pnpm yourself. `corepack enable` fetches the right version.
-
-### 2. Install Ollama
-
-Skipping this is allowed — the map and the feed still work, but the Ask panel
-answers nothing.
-
-**macOS:**
-
-```bash
-brew install ollama && ollama serve
-```
-
-**Linux**, four blocks. Install it:
+Ollama:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Make sure its data directory exists and belongs to it:
-
-```bash
 sudo mkdir -p /usr/share/ollama
 sudo chown -R ollama:ollama /usr/share/ollama
-```
-
-Let it listen where the containers can reach it:
-
-```bash
 sudo mkdir -p /etc/systemd/system/ollama.service.d
 cd /etc/systemd/system/ollama.service.d
 echo '[Service]' | sudo tee override.conf
 echo 'Environment="OLLAMA_HOST=0.0.0.0"' | sudo tee -a override.conf
 cd -
-```
-
-Start it and check:
-
-```bash
 sudo systemctl daemon-reload
 sudo systemctl enable ollama
 sudo systemctl restart ollama
@@ -111,23 +89,147 @@ systemctl is-active ollama
 ss -tlnp | grep 11434
 ```
 
-Must print `active` and `0.0.0.0:11434`. Anything else, this says why:
+Must print `active` and `0.0.0.0:11434`. If not:
 
 ```bash
 sudo journalctl -u ollama -n 20 --no-pager
 ```
 
-**Both:** `make up` in step 3 downloads the models it needs. Nothing to pull by
-hand and nothing to choose — `make env` measures the machine first and picks
-them, then prints which set it took.
+The code:
 
-A laptop gets three models, about 5 GB. A machine of 8 GB or less gets one small
-model for every job, about 1.5 GB: two of the big ones resident at once fill a
-board that size, and the Ask panel is then left with nowhere to load a third.
-The small model answers on hardware the big ones cannot, and it is less accurate
-— it contradicts itself more often and mis-files more stories.
+```bash
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
+```
 
-### 3. Start it
+Nothing to edit. `make env` reads how much memory the board has and, at 8 GB,
+writes the settings for it: one small model doing every job instead of three
+different ones, memory floors sized for that model, and a longer wait for an
+answer. It prints what it chose.
+
+Those numbers matter more than they look. The defaults are for a laptop, and two
+of those models resident at once come to 5.4 GB of the board's 7.9 GB — measured
+— which leaves the Ask panel nowhere to load a third. Nothing you click triggers
+the second one; a scheduled job loads it about half an hour in, and the board
+locks up while you are looking at something else.
+
+The small model answers where the big ones cannot, and it is worse: it
+contradicts itself inside a paragraph and mis-files more stories.
+
+A backstop, in case something still runs the board out of memory. It kills the
+largest process instead of letting the kernel thrash, which is the difference
+between a log line and a machine you have to unplug:
+
+```bash
+sudo apt install -y earlyoom
+sudo systemctl enable --now earlyoom
+```
+
+The models. Two on a board this size, about 1.5 GB together — one that answers,
+one that turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:1b
+ollama pull nomic-embed-text
+```
+
+`make up` pulls these itself if you skip them, and `make env` has already written
+their names into `.env`. Doing it here means the download happens now rather than
+in the middle of the first start.
+
+Check the model actually answers before building anything on it:
+
+```bash
+ollama run llama3.2:1b "reply with one short sentence"
+```
+
+A sentence back means the model works. This is the check worth having: if it
+fails here, nothing above it is the problem.
+
+Start it:
+
+```bash
+make up
+```
+
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull.
+
+Open <http://localhost:3000>, or `make share` to reach it from another
+device.
+
+Fill it:
+
+```bash
+make fetch
+make news
+```
+
+Worth watching the first time you ask the console a question:
+
+```bash
+watch -n5 'free -h; echo; ollama ps'
+```
+
+Swap being eaten means the model is too big for what else is running.
+
+</details>
+
+<details>
+<summary><b>Linux desktop or server</b> — Debian, Ubuntu</summary>
+
+Docker and Node, then log out and back in:
+
+```bash
+sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
+curl -fsSL https://get.docker.com | sudo sh && \
+sudo usermod -aG docker "$USER" && \
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+sudo apt install -y nodejs && sudo corepack enable
+```
+
+Ollama — the systemd override is what lets the containers reach it:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+sudo mkdir -p /usr/share/ollama
+sudo chown -R ollama:ollama /usr/share/ollama
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+cd /etc/systemd/system/ollama.service.d
+echo '[Service]' | sudo tee override.conf
+echo 'Environment="OLLAMA_HOST=0.0.0.0"' | sudo tee -a override.conf
+cd -
+sudo systemctl daemon-reload
+sudo systemctl enable ollama
+sudo systemctl restart ollama
+sleep 3
+systemctl is-active ollama
+ss -tlnp | grep 11434
+```
+
+Must print `active` and `0.0.0.0:11434`. If not:
+
+```bash
+sudo journalctl -u ollama -n 20 --no-pager
+```
+
+The models — about 5 GB together. One writes the summary, one answers questions,
+one turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```bash
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
+Then:
 
 ```bash
 git clone https://github.com/BasilSuhail/OSINT.git
@@ -136,29 +238,219 @@ make env
 make up
 ```
 
-First run takes 20–40 minutes. Nothing needs typing into `.env`. Open
-<http://localhost:3000>.
+`make env` prints which set it chose for this machine and writes the names into
+`.env`; `make up` pulls anything you skipped. 20–40 minutes the first time.
 
-### 4. Get data
+Open <http://localhost:3000>, then fill it:
 
 ```bash
 make fetch
 make news
 ```
 
-`make fetch` fills the map, `make news` fills the story feed and summary. Both
-take a few minutes. Without them the console fills itself over the next hour.
+</details>
 
-### Other commands
+<details>
+<summary><b>macOS</b></summary>
+
+[Homebrew](https://brew.sh) first, if you do not have it:
 
 ```bash
-make share        # reach the console from your phone or another computer
-make down         # stop everything, keep all data
-make news-all     # gist every story now rather than 20 (hours)
-make help         # every command
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-Something wrong: [§19](HANDBOOK.md#19-troubleshooting). Full detail on any step:
+On Apple silicon it finishes by printing two `eval` lines to run. Run them, or
+`brew` is installed but not on your path. Then:
+
+```bash
+brew install git node && brew install --cask docker && sudo corepack enable && open -a Docker
+```
+
+Docker Desktop asks for your password and for you to accept its terms the first
+time. It has to finish starting before anything below will work.
+
+Wait for the Docker whale in the menu bar to settle, then:
+
+```bash
+brew install ollama
+brew services start ollama
+```
+
+No override here — Docker Desktop reaches the host without one. Check it took:
+
+```bash
+curl -s http://localhost:11434/api/tags
+```
+
+Any JSON back means it is running. Connection refused means it is not, and the
+Ask panel will say the brain is offline while everything else works.
+
+The models — about 5 GB together. One writes the summary, one answers questions,
+one turns text into vectors so the Ask panel can find the right stories:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```bash
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
+```bash
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
+make up
+```
+
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull above. `make env` prints which set it chose for this machine and
+writes the names into `.env`.
+
+Open <http://localhost:3000>, then fill it:
+
+```bash
+make fetch
+make news
+```
+
+</details>
+
+<details>
+<summary><b>Windows</b> — through WSL2</summary>
+
+In PowerShell **as administrator**:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Reboot. Install [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
+and turn on **Settings → Resources → WSL Integration** for Ubuntu.
+
+Everything below runs in the **Ubuntu** terminal, not PowerShell. No
+`get.docker.com` — Docker Desktop supplies the engine, and a second one fights it:
+
+```bash
+sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+sudo apt install -y nodejs && sudo corepack enable
+```
+
+Ollama, on **Windows** rather than inside Ubuntu — download it from
+[ollama.com/download](https://ollama.com/download).
+
+**Then let it answer the containers.** Ollama listens only to the Windows
+machine itself until told otherwise, and the stack reaches it from inside a
+container — so out of the box it refuses the connection, and the console reports
+that as the brain being offline while the map and the feed work normally. In
+PowerShell **as administrator**:
+
+```powershell
+[Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0", "Machine")
+```
+
+Quit Ollama from the system tray and start it again — an environment variable
+set this way reaches it only on a fresh start. Check, in PowerShell:
+
+```powershell
+curl.exe -s http://localhost:11434/api/tags
+```
+
+JSON back means it is listening.
+
+Everything from here runs in the Ubuntu terminal, and the clone belongs in your
+Ubuntu home directory — not under `/mnt/c`. A repository on the Windows drive is
+reached through a translation layer, and the difference is minutes per command
+rather than seconds.
+
+The models — about 5 GB together. In PowerShell, since Ollama is the Windows
+one. One writes the summary, one answers questions, one turns text into vectors
+so the Ask panel can find the right stories:
+
+```powershell
+ollama pull llama3.2:3b
+ollama pull qwen3.5:4b-q4_K_M
+ollama pull nomic-embed-text
+```
+
+Check the model answers:
+
+```powershell
+ollama run llama3.2:3b "reply with one short sentence"
+```
+
+Then, in Ubuntu:
+
+```bash
+git clone https://github.com/BasilSuhail/OSINT.git
+cd OSINT
+make env
+make up
+```
+
+20–40 minutes the first time: images and browser packages, plus the models if you
+skipped the pull above. `make env` prints which set it chose for this machine and
+writes the names into `.env`.
+
+Open <http://localhost:3000>, then fill it:
+
+```bash
+make fetch
+make news
+```
+
+</details>
+
+Do not install pnpm yourself on any of them. `corepack enable` fetches the
+version this project pins; a different one resolves the lockfile differently.
+
+## Basic commands
+
+```bash
+make up        # start everything
+make down      # stop everything, keep all data
+make share     # start it reachable from your phone or another computer
+make fetch     # fill the map now instead of waiting for the schedule
+make news      # build the story feed and the written summary
+make news-all  # gist every story rather than 20 — hours on a small box
+make logs      # watch what the stack is doing
+make env-check # say what .env is missing, empty, or typed wrong
+make help      # every command in the Makefile
+```
+
+### If the Ask panel says the brain is offline
+
+It means the API could not get an answer out of the model, and it says the same
+sentence whichever reason applies — not installed, not reachable, not enough
+memory, or simply slower than the machine is allowed to wait. Four different
+faults, one sentence, which is why it is worth checking in order:
+
+```bash
+ollama ps
+```
+
+Nothing listed and no model loading when you ask means the stack cannot reach
+Ollama. Check it is listening where the containers can see it — `0.0.0.0`, not
+`127.0.0.1` — using the check in your machine's list above.
+
+```bash
+make ask
+```
+
+Runs the same question the console does, from the terminal, and prints the real
+error instead of the one sentence. It also reports free memory against the floor
+the model needs, and how long the prompt is.
+
+The console is empty at first and that is not a fault: nothing has been fetched
+yet. Left alone it fills itself over the next hour. `make fetch` and `make news`
+skip the wait.
+
+Something wrong: [§19](HANDBOOK.md#19-troubleshooting). Any step in full detail:
 [§1](HANDBOOK.md#1-start-here-download-install-run-and-stop).
 
 ## Updating, or running a branch
