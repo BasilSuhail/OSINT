@@ -324,6 +324,20 @@ def build_qa_sensors(
     rather than two competing ones.
     """
     kinds = question_kinds(question)
+    iso = country_from_text(question)
+    #: A question that names a place and no hazard still wants the hazards at
+    #: that place. "What is happening in Indonesia?" names no kind, so this used
+    #: to return nothing while the map beside it drew forty quake readings inside
+    #: the country — and the Ask panel answered that it had no local evidence. A
+    #: console contradicting itself on screen is worse than either answer alone.
+    #:
+    #: Relevance comes from the place instead of the hazard word, and only
+    #: readings that match the place survive the filter below. So this widens what
+    #: is searched without widening what is shown: the anti-padding rule that made
+    #: the kind gate strict is the rule being applied, not relaxed.
+    place_only = not kinds and iso is not None
+    if place_only:
+        kinds = frozenset(_KIND_TERMS)
     if not kinds:
         return []
     predicate = _kind_filter(kinds)
@@ -351,11 +365,17 @@ def build_qa_sensors(
     # purely by magnitude returned the six biggest quakes on earth for a
     # question about Peru, and the model cited a New Zealand reading as
     # confirmation of the Peru event (#513).
-    iso = country_from_text(question)
     magnitudes = question_magnitudes(question)
     reasons = {id(row): _match_reason(row, iso, magnitudes) for row in rows}
+    candidates = _deduplicated(rows)
+    if place_only:
+        #: The place is the entire reason any of these are here, so a reading
+        #: that does not match it is padding — exactly what the kind gate exists
+        #: to keep out. Without this, asking about one country would hand the
+        #: model the biggest readings on earth and invite it to cite them.
+        candidates = [row for row in candidates if reasons.get(id(row)) == "place"]
     ranked = sorted(
-        _deduplicated(rows),
+        candidates,
         key=lambda row: (
             0 if reasons.get(id(row)) == "place" else 1 if reasons.get(id(row)) else 2,
             -(_row_magnitude(row) or 0.0),
