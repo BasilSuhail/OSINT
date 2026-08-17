@@ -5,6 +5,24 @@ OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
 .PHONY: help env env-check fetch news news-all logs severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
+#: How the analysis commands below run Python.
+#:
+#: A host virtual environment when there is one — a developer with `.venv` gets
+#: the fast path and their own interpreter. Otherwise the worker container, which
+#: every install has, because `make up` built it.
+#:
+#: Before this, all twenty-nine of them called `.venv/bin/python` outright, so on
+#: a fresh clone every one failed: nothing creates a host virtualenv, the backend
+#: runs in a container, and `make stories` — documented as the way to build the
+#: story clusters — could not work on a machine that had only ever followed the
+#: README. The workaround was `docker compose exec` typed out by hand, which is
+#: what this variable now does for you.
+#:
+#: The container path needs the stack up. `make up` first if a command reports no
+#: such service.
+RUN_PY ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; \
+	else echo "docker compose exec -T worker python"; fi)
+
 #: Bare `make` starts the app, which is what it has always done. Stated rather
 #: than inherited from whichever target happens to be written first — adding a
 #: command at the top of this file should not change what `make` on its own
@@ -93,94 +111,94 @@ data-size:  ## Show disk used by each data subfolder
 	@du -sh $(OSINT_DATA_DIR)/* 2>/dev/null || echo "no data yet at $(OSINT_DATA_DIR)"
 
 data-prune:  ## Run retention housekeeping now
-	.venv/bin/python scripts/prune_now.py
+	$(RUN_PY) -m app.prune_now
 
 labels:  ## Compute P1-P3 ground-truth labels from ACLED aggregates (idempotent)
-	.venv/bin/python -m app.labels.run
+	$(RUN_PY) -m app.labels.run
 
 panel:  ## Export the country-month panel dataset (parquet + csv + meta)
-	.venv/bin/python -m app.panel.run
+	$(RUN_PY) -m app.panel.run
 
 baselines:  ## Score B0/B1/B2 baselines on the panel and write the report
-	.venv/bin/python -m app.baselines.run
+	$(RUN_PY) -m app.baselines.run
 
 coverage:  ## Compute the WS-D coverage-bias table from ACLED aggregates
-	.venv/bin/python -m app.coverage.run
+	$(RUN_PY) -m app.coverage.run
 
 journal:  ## Run the WS-E prediction journal once (emit + grade + scoreboard)
-	.venv/bin/python -m app.journal.run
+	$(RUN_PY) -m app.journal.run
 
 stories:  ## Cluster the rolling news window into stories (WS-A)
-	.venv/bin/python -m app.stories.run
+	$(RUN_PY) -m app.stories.run
 
 stories-audit:  ## Emit the threshold hand-check sheet (WS-C step 1, #334)
-	.venv/bin/python -m app.stories.audit
+	$(RUN_PY) -m app.stories.audit
 
 sensor-checks:  ## Run WS-C sensor cross-checks once — claim-vs-sensor verdicts (#361)
-	.venv/bin/python -m app.corroboration.run
+	$(RUN_PY) -m app.corroboration.run
 
 disagreement:  ## Run WS-B telling divergence once — most contested stories (#370)
-	.venv/bin/python -m app.disagreement.run
+	$(RUN_PY) -m app.disagreement.run
 
 indicator-ranking:  ## Rank every dashboard indicator by measured predictive value (WS-F, #376)
-	.venv/bin/python -m app.ranking.run
+	$(RUN_PY) -m app.ranking.run
 
 onset-eval:  ## Run the pre-registered onset evaluation — the composite's real exam (#380)
-	.venv/bin/python -m app.onset.run
+	$(RUN_PY) -m app.onset.run
 
 within-eval:  ## Run the pre-registered within-country evaluation (#582)
-	.venv/bin/python -m app.within.run
+	$(RUN_PY) -m app.within.run
 
 severity-grade:  ## Grade stored news severity with the local model — reports; --apply writes (#591)
-	.venv/bin/python -m app.severity.grade_run
+	$(RUN_PY) -m app.severity.grade_run
 
 severity-audit:  ## Emit the human-check sheet that gates LLM severity use (#593)
-	.venv/bin/python -m app.severity.audit
+	$(RUN_PY) -m app.severity.audit
 
 severity-agreement:  ## Publish model-vs-human agreement from the filled sheet (#593)
-	.venv/bin/python -m app.severity.agreement
+	$(RUN_PY) -m app.severity.agreement
 
 severity-bench:  ## Replay the human sheet through candidate graders (#646)
-	.venv/bin/python -m app.severity.bench
+	$(RUN_PY) -m app.severity.bench
 
 validator:  ## Run WS-G local-LLM claim extraction once (needs Ollama, #378)
-	.venv/bin/python -m app.validator.run
+	$(RUN_PY) -m app.validator.run
 
 brain:  ## Run the brain narrate once — needs Ollama + llama3.2:3b (#409)
-	.venv/bin/python -m app.brain.run
+	$(RUN_PY) -m app.brain.run
 
 category-audit:  ## Emit the blank sheet that gates a categoriser change (#951)
-	.venv/bin/python -m app.brain.category_audit
+	$(RUN_PY) -m app.brain.category_audit
 
 category-agreement:  ## Score models against the filled category sheet (#951)
-	.venv/bin/python -m app.brain.category_agreement
+	$(RUN_PY) -m app.brain.category_agreement
 
 enrich:  ## Run one brain enrichment pass — gist + tags for new stories (#413)
-	.venv/bin/python -m app.brain.enrich_run
+	$(RUN_PY) -m app.brain.enrich_run
 
 brain-qa-eval:  ## Compare Q&A candidate models locally (Phase C, #413)
-	.venv/bin/python -m app.brain.qa_eval
+	$(RUN_PY) -m app.brain.qa_eval
 
 brain-qa-audit:  ## Emit the human answer-audit sheet (#413 item 9)
-	.venv/bin/python -m app.brain.qa_audit
+	$(RUN_PY) -m app.brain.qa_audit
 
 brain-qa-audit-score:  ## Score a graded answer-audit sheet
-	.venv/bin/python -m app.brain.qa_audit score
+	$(RUN_PY) -m app.brain.qa_audit score
 
 validator-audit:  ## Emit the ~50-story human-check sheet for the validator (#378)
-	.venv/bin/python -m app.validator.audit
+	$(RUN_PY) -m app.validator.audit
 
 validator-agreement:  ## Compute + publish the model-vs-human agreement rate from the filled sheet (#386)
-	.venv/bin/python -m app.validator.agreement
+	$(RUN_PY) -m app.validator.agreement
 
 briefing:  ## Generate the weekly briefing now — the newsletter artifact (#401)
-	.venv/bin/python -m app.briefing.run
+	$(RUN_PY) -m app.briefing.run
 
 data-audit:  ## Run the source-data audit now and record it in the run history (#669)
-	.venv/bin/python -m app.audit.task
+	$(RUN_PY) -m app.audit.task
 
 backfill-signals:  ## Backfill historical market+geopolitical+hazard composite scores (2015-2024); GDELT download resumes via $OSINT_DATA_DIR/gdelt/ checkpoints
-	.venv/bin/python -m app.composite.backfill
+	$(RUN_PY) -m app.composite.backfill
 
 data-reset:  ## Stop stack and wipe all local data (DESTRUCTIVE)
 	@test -n "$(strip $(OSINT_DATA_DIR))" || { echo "OSINT_DATA_DIR is empty — refusing to delete"; exit 1; }

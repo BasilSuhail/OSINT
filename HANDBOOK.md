@@ -4526,7 +4526,7 @@ mutates rows an analysis reads.
 | `data_audit.py` | Audits every source: does its severity parse, vary, and reach anything. Report-only, always exits 0 — a tool, not a gate. | No |
 | `db_snapshot.py` | The measured database figures quoted in documentation. Exact `count(*)`, because the earlier estimates from `pg_stat_user_tables` reported 18 rows where there were 582. | No |
 | `snapshot.py` | Roll-back backup: streams each table to gzipped CSV via server-side `COPY`, so it stays memory-light on a ~300k-row `events` table and needs no `pg_dump`. | Writes files |
-| `prune_now.py` | Runs retention and the disk cap immediately, then a best-effort vacuum. Same code path as the scheduled 03:00 UTC pass. `make data-prune`. | Yes |
+| `app/prune_now.py` | Runs retention and the disk cap immediately, then a best-effort vacuum. Same code path as the scheduled 03:00 UTC pass. `make data-prune`. | Yes |
 | `enrich_country.py` | Backfills `events.country` for rows that have coordinates but no country, in batches. Idempotent — a re-run picks up only still-null rows. | Yes |
 | `backfill_news_geo.py` | Re-resolves country, coordinates and scope on stored RSS rows. It **clears** as well as sets: a row tagged GB because it name-dropped London, on a story about China, comes back CN or null. | Yes |
 | `backfill_news_cities.py` | Backfills `lat`/`lon`/`payload.city` on RSS rows ingested before the city lookup existed. | Yes |

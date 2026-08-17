@@ -340,3 +340,36 @@ class TestTheDataDirectoryBelongsToTheOperator:
     def test_it_never_chowns_what_is_already_there(self) -> None:
         script = DEV_UP.read_text()
         assert "chown -R" not in script
+
+
+class TestEveryCommandWorksOnAFreshClone:
+    """The analysis targets called `.venv/bin/python` outright.
+
+    Nothing creates a host virtualenv — the backend runs in a container — so on a
+    machine that had only ever followed the README, all twenty-nine of them
+    failed. `make stories` is documented as the way to build the story clusters
+    and could not run. The workaround was `docker compose exec` typed by hand.
+    """
+
+    def test_no_target_hard_codes_the_host_virtualenv(self) -> None:
+        recipes = [
+            line
+            for line in MAKEFILE.read_text().splitlines()
+            if line.startswith("\t") and ".venv/bin/python" in line
+        ]
+        assert recipes == []
+
+    def test_the_runner_prefers_a_virtualenv_and_falls_back_to_the_container(self) -> None:
+        assert "RUN_PY ?=" in MAKEFILE.read_text()
+        body = MAKEFILE.read_text()
+        runner = body[body.index("RUN_PY ?=") :][:400]
+        assert ".venv/bin/python" in runner
+        assert "docker compose exec -T worker python" in runner
+
+    #: `scripts/` is not copied into the image — deliberately, it is host-side
+    #: tooling — so a target that runs a script from there cannot use the
+    #: container path. This one moved into `app/` for that reason.
+    def test_prune_runs_a_module_the_image_contains(self) -> None:
+        assert "$(RUN_PY) -m app.prune_now" in MAKEFILE.read_text()
+        assert not (ROOT / "scripts" / "prune_now.py").exists()
+        assert (ROOT / "app" / "prune_now.py").exists()
