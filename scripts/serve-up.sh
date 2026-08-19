@@ -25,6 +25,43 @@ serve_python() {
   command -v python3 2>/dev/null || true
 }
 
+env_value() { # key — the value in .env, if .env sets one
+  [ -f .env ] || return 0
+  sed -n "s/^$1=//p" .env | tail -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
+#: Every NEXT_PUBLIC_* key `.env` sets, exported for whichever command runs
+#: next to compile it in or write it to the service's env file. `.env` never
+#: reaches a Python subprocess's environment on its own — `app/devx/` is
+#: standard-library only, on purpose — so this is the only route a value
+#: typed there takes into the bundle or the unit. Same fix, same reasoning,
+#: as `dev-up.sh`'s `load_frontend_public_env`: every key it finds, not a
+#: hand-kept list of them, and an already-exported value wins over `.env`'s.
+load_frontend_public_env() {
+  [ -f .env ] || return 0
+
+  local line key value
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "" | \#*) continue ;;
+    esac
+
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+      NEXT_PUBLIC_*)
+        if [ -z "${!key+x}" ]; then
+          case "$value" in
+            \"*\") value="${value#\"}"; value="${value%\"}" ;;
+            \'*\') value="${value#\'}"; value="${value%\'}" ;;
+          esac
+          export "$key=$value"
+        fi
+        ;;
+    esac
+  done < .env
+}
+
 #: Every setting serve mode derives, into this shell. The module prints
 #: nothing on failure and says why on stderr, so a refusal cannot be evalled
 #: into a half-configured start.
@@ -35,6 +72,20 @@ apply_serve_mode() {
     echo "serve mode needs python3, and there is none on PATH." >&2
     exit 1
   fi
+
+  #: `lan_share serve` reads these five straight from this process's
+  #: environment — it parses no file itself. `dev-up.sh`'s
+  #: `apply_network_mode` solves the identical problem the identical way:
+  #: pull the named keys `.env` sets, into this shell, before the subprocess
+  #: that needs them runs. Without this, `API_AUTH_TOKEN` is never set, and
+  #: serve mode refuses every time rather than only when a token is genuinely
+  #: missing.
+  export API_AUTH_TOKEN="${API_AUTH_TOKEN:-$(env_value API_AUTH_TOKEN)}"
+  export API_CORS_ORIGINS="${API_CORS_ORIGINS:-$(env_value API_CORS_ORIGINS)}"
+  export API_PORT="${API_PORT:-$(env_value API_PORT)}"
+  export FRONTEND_PORT="${FRONTEND_PORT:-$(env_value FRONTEND_PORT)}"
+  export OSINT_PUBLIC_HOST="${OSINT_PUBLIC_HOST:-$(env_value OSINT_PUBLIC_HOST)}"
+
   local exports
   if ! exports="$("$python" -m app.devx.lan_share serve)"; then
     exit 1
@@ -84,6 +135,12 @@ PY
 
 cmd_build() {
   apply_serve_mode
+  #: The bundle compiles in NEXT_PUBLIC_* from this shell's environment.
+  #: Serve mode has just derived NEXT_PUBLIC_API_URL; everything else
+  #: NEXT_PUBLIC_* — above all NEXT_PUBLIC_API_TOKEN, which is how the
+  #: console authenticates every request once it is running — lives only in
+  #: `.env`, and reaches the build from here or not at all.
+  load_frontend_public_env
   echo "→ building the console for the tailnet"
   echo "  console: $OSINT_SERVE_URL"
   echo "  API:     $NEXT_PUBLIC_API_URL"
@@ -106,6 +163,11 @@ cmd_install() {
     exit 1
   fi
   apply_serve_mode
+  #: The installed service reads the env file rendered below, not this
+  #: shell — so `.env`'s NEXT_PUBLIC_* keys have to be loaded before that
+  #: file is rendered, or the service starts as unable to authenticate as
+  #: the build was.
+  load_frontend_public_env
 
   local tmp
   tmp="$(mktemp -d)"

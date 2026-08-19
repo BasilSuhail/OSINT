@@ -530,11 +530,15 @@ def test_the_serve_targets_exist() -> None:
 
 
 #: systemd is Linux's. On anything else the install would write a file nothing
-#: reads and report success, which is worse than refusing.
+#: reads and report success, which is worse than refusing. Presence alone
+#: would pass even if the check ran after the destructive work, so this pins
+#: the refusal ahead of the first `systemctl` call it guards.
 def test_installing_the_unit_refuses_where_there_is_no_systemd() -> None:
     script = _serve_script()
     assert "uname" in script
     assert "systemctl" in script
+    install_body = script.split("cmd_install() {", 1)[1]
+    assert install_body.index("uname") < install_body.index("systemctl")
 
 
 #: The build bakes NEXT_PUBLIC_* into the bundle, so it must run with serve
@@ -552,8 +556,35 @@ def test_the_build_records_the_commit_it_built() -> None:
 
 
 #: The install prints the unit before writing it. A file installed into
-#: /etc without being shown is a file nobody reviewed.
+#: /etc without being shown is a file nobody reviewed. Presence alone would
+#: pass even if the reveal came after the write, so this pins `cat` (or
+#: `printf`) ahead of the first `sudo` that actually writes something.
 def test_the_install_shows_the_unit_before_writing_it() -> None:
     script = _serve_script()
     assert "sudo" in script
     assert "cat" in script or "printf" in script
+    install_body = script.split("cmd_install() {", 1)[1]
+    reveal = "cat" if "cat" in install_body else "printf"
+    assert install_body.index(reveal) < install_body.index("sudo")
+
+
+#: `pnpm build` compiles NEXT_PUBLIC_* into the bundle from this shell's
+#: environment, and NEXT_PUBLIC_API_TOKEN — how the built console
+#: authenticates every request — is not among what serve mode derives; it
+#: lives only in `.env`. A build that starts before `.env` is read ships a
+#: console that can never authenticate.
+def test_the_build_loads_dot_env_before_building() -> None:
+    script = _serve_script()
+    assert "load_frontend_public_env" in script
+    build_body = script.split("cmd_build() {", 1)[1]
+    assert build_body.index("load_frontend_public_env") < build_body.index("pnpm build")
+
+
+#: The installed service runs from the env file rendered here, not from the
+#: shell that installed it, so the same `.env` values the build needed have
+#: to be loaded before that file is rendered — or the service starts unable
+#: to authenticate for the same reason the build would have been.
+def test_the_install_loads_dot_env_before_rendering_the_env_file() -> None:
+    script = _serve_script()
+    install_body = script.split("cmd_install() {", 1)[1]
+    assert install_body.index("load_frontend_public_env") < install_body.index("render_env_file")
