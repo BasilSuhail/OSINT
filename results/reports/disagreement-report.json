@@ -1,0 +1,316 @@
+{
+  "generated_at": "2026-07-09T21:10:48.704257+00:00",
+  "run": {
+    "stories": 1992,
+    "scored": 185,
+    "single_group": 1807,
+    "pair_months": 83
+  },
+  "most_contested_24h": [
+    {
+      "story_id": 2227,
+      "divergence": 0.8958,
+      "groups": {
+        "CA": 1,
+        "SG": 1
+      },
+      "title": "Cuba hit with yet another island-wide power outage"
+    },
+    {
+      "story_id": 2292,
+      "divergence": 0.8862,
+      "groups": {
+        "GB": 1,
+        "IN": 1,
+        "US": 1
+      },
+      "title": "Why a Diljit Dosanjh film vanished from streaming after two days"
+    },
+    {
+      "story_id": 1990,
+      "divergence": 0.8744,
+      "groups": {
+        "CA": 1,
+        "GB": 2,
+        "IN": 1,
+        "PK": 1,
+        "QA": 1,
+        "SG": 1
+      },
+      "title": "Trump denied latest bid to delay $5.8m judgment payment to E Jean Carroll"
+    },
+    {
+      "story_id": 2230,
+      "divergence": 0.8738,
+      "groups": {
+        "IN": 1,
+        "RU": 1,
+        "SG": 1
+      },
+      "title": "RTC JAC to hold protests on July 7-8 as talks with government fail"
+    },
+    {
+      "story_id": 2869,
+      "divergence": 0.8722,
+      "groups": {
+        "CA": 1,
+        "FR": 1,
+        "GB": 4,
+        "IN": 1,
+        "PK": 1,
+        "RU": 4,
+        "UY": 1
+      },
+      "title": "Ceasefire with Iran no longer in effect \u2014 Trump"
+    },
+    {
+      "story_id": 2460,
+      "divergence": 0.8657,
+      "groups": {
+        "CA": 1,
+        "FR": 1,
+        "GB": 5,
+        "IL": 1,
+        "PK": 1,
+        "QA": 1,
+        "SG": 1
+      },
+      "title": "Graham Platner likely to quit Maine Senate race after sexual misconduct allegations: Who can replace him?"
+    },
+    {
+      "story_id": 2045,
+      "divergence": 0.8651,
+      "groups": {
+        "RU": 1,
+        "US": 1
+      },
+      "title": "US poised to escalate tensions with Iran again - expert"
+    },
+    {
+      "story_id": 2306,
+      "divergence": 0.8651,
+      "groups": {
+        "PK": 1,
+        "QA": 1
+      },
+      "title": "Pakistan taking on mantle of mediation for war-torn Libya"
+    },
+    {
+      "story_id": 2630,
+      "divergence": 0.8639,
+      "groups": {
+        "DE": 2,
+        "FR": 2,
+        "GB": 4,
+        "IL": 2,
+        "IN": 1,
+        "PK": 1,
+        "QA": 3,
+        "RU": 1,
+        "SG": 1,
+        "US": 1
+      },
+      "title": "Middle East live: US launches strikes on Iran after ships attacked in Strait of Hormuz"
+    },
+    {
+      "story_id": 2926,
+      "divergence": 0.8619,
+      "groups": {
+        "FR": 1,
+        "PK": 1,
+        "RU": 1,
+        "US": 1
+      },
+      "title": "Oil prices surge as US and Iran return to hostilities"
+    },
+    {
+      "story_id": 2745,
+      "divergence": 0.854,
+      "groups": {
+        "IL": 2,
+        "SG": 1,
+        "US": 1
+      },
+      "title": "As Israel Loses Support in the U.S., Rahm Emanuel Criticizes Netanyahu"
+    },
+    {
+      "story_id": 3272,
+      "divergence": 0.853,
+      "groups": {
+        "IN": 1,
+        "PK": 1
+      },
+      "title": "ICC seeks explanation from ECB over Stokes retirement video"
+    },
+    {
+      "story_id": 3495,
+      "divergence": 0.8521,
+      "groups": {
+        "AU": 1,
+        "FR": 1,
+        "IN": 1,
+        "QA": 4,
+        "ZA": 1
+      },
+      "title": "France vs Morocco: World Cup quarterfinal \u2013 prediction, start time, lineups"
+    },
+    {
+      "story_id": 2901,
+      "divergence": 0.848,
+      "groups": {
+        "FR": 1,
+        "SG": 1
+      },
+      "title": "British populist leader Farage\u2019s election gamble could see him face one challenger \u2013 Count Binface"
+    },
+    {
+      "story_id": 2053,
+      "divergence": 0.8442,
+      "groups": {
+        "AU": 1,
+        "FR": 2
+      },
+      "title": "Tadej Pogacar wins third stage of Tour de France to take yellow jersey from Vingegaard"
+    },
+    {
+      "story_id": 2994,
+      "divergence": 0.8417,
+      "groups": {
+        "GB": 3,
+        "SG": 1
+      },
+      "title": "Neo-Nazi who planned gun attack jailed after MI5 sting"
+    },
+    {
+      "story_id": 3112,
+      "divergence": 0.8397,
+      "groups": {
+        "FR": 1,
+        "GB": 1
+      },
+      "title": "What does Le Pen's presidential bid mean for relationship with Bardella?"
+    },
+    {
+      "story_id": 1844,
+      "divergence": 0.8395,
+      "groups": {
+        "DE": 1,
+        "NZ": 1,
+        "US": 3
+      },
+      "title": "China tests long-range missile in South Pacific in move Australia condemns as \u2018destabilising to region\u2019"
+    },
+    {
+      "story_id": 2064,
+      "divergence": 0.8383,
+      "groups": {
+        "CA": 1,
+        "FR": 1,
+        "QA": 1
+      },
+      "title": "Portugal vs Spain LIVE: FIFA World Cup 2026 round of 16"
+    },
+    {
+      "story_id": 2621,
+      "divergence": 0.8358,
+      "groups": {
+        "IL": 2,
+        "QA": 1,
+        "RU": 1
+      },
+      "title": "US says strikes launched as explosions heard in southern Iran"
+    }
+  ],
+  "pair_months": [
+    {
+      "pair": "DE|RU",
+      "month": "2026-07-01",
+      "n_stories": 2,
+      "mean_divergence": 0.9431
+    },
+    {
+      "pair": "DE|QA",
+      "month": "2026-07-01",
+      "n_stories": 2,
+      "mean_divergence": 0.8781
+    },
+    {
+      "pair": "AU|FR",
+      "month": "2026-07-01",
+      "n_stories": 2,
+      "mean_divergence": 0.8692
+    },
+    {
+      "pair": "DE|PK",
+      "month": "2026-07-01",
+      "n_stories": 3,
+      "mean_divergence": 0.8659
+    },
+    {
+      "pair": "DE|FR",
+      "month": "2026-07-01",
+      "n_stories": 3,
+      "mean_divergence": 0.8573
+    },
+    {
+      "pair": "FR|IN",
+      "month": "2026-07-01",
+      "n_stories": 9,
+      "mean_divergence": 0.8535
+    },
+    {
+      "pair": "CA|IN",
+      "month": "2026-07-01",
+      "n_stories": 6,
+      "mean_divergence": 0.8374
+    },
+    {
+      "pair": "IL|US",
+      "month": "2026-07-01",
+      "n_stories": 5,
+      "mean_divergence": 0.8347
+    },
+    {
+      "pair": "DE|SG",
+      "month": "2026-07-01",
+      "n_stories": 4,
+      "mean_divergence": 0.8336
+    },
+    {
+      "pair": "RU|US",
+      "month": "2026-07-01",
+      "n_stories": 11,
+      "mean_divergence": 0.8318
+    },
+    {
+      "pair": "CA|QA",
+      "month": "2026-07-01",
+      "n_stories": 7,
+      "mean_divergence": 0.83
+    },
+    {
+      "pair": "IL|RU",
+      "month": "2026-07-01",
+      "n_stories": 5,
+      "mean_divergence": 0.8261
+    },
+    {
+      "pair": "CA|DE",
+      "month": "2026-07-01",
+      "n_stories": 2,
+      "mean_divergence": 0.8245
+    },
+    {
+      "pair": "IN|US",
+      "month": "2026-07-01",
+      "n_stories": 7,
+      "mean_divergence": 0.8223
+    },
+    {
+      "pair": "AU|IN",
+      "month": "2026-07-01",
+      "n_stories": 2,
+      "mean_divergence": 0.8188
+    }
+  ]
+}

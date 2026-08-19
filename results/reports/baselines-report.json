@@ -1,0 +1,665 @@
+{
+  "generated_at": "2026-08-10T00:02:02.378841+00:00",
+  "test_window_opened": "2026-08-10",
+  "random_seed": 20260703,
+  "windows": [
+    {
+      "window": "train+validation 2015-01 \u2192 2022-12",
+      "span": [
+        "2015-01-01",
+        "2022-12-01"
+      ],
+      "rows": 12785,
+      "results": [
+        {
+          "baseline": "B0 random",
+          "horizon_months": 1,
+          "n": 12785,
+          "positive_rate": 0.2661,
+          "auroc": 0.5041595232424984,
+          "aupr": 0.26933074500472165,
+          "brier": 0.330123104513916
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 1,
+          "n": 12785,
+          "positive_rate": 0.2661,
+          "auroc": 0.8721660710393289,
+          "aupr": 0.7295991907805838,
+          "brier": 0.09949159170903403
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 1,
+          "n": 12785,
+          "positive_rate": 0.2661,
+          "auroc": 0.9308575435968949,
+          "aupr": 0.8426599711556508,
+          "brier": 0.09566490294457337
+        },
+        {
+          "baseline": "B0 random",
+          "horizon_months": 3,
+          "n": 12785,
+          "positive_rate": 0.3467,
+          "auroc": 0.5024357588293793,
+          "aupr": 0.34934339846881096,
+          "brier": 0.3313390604813924
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 3,
+          "n": 12785,
+          "positive_rate": 0.3467,
+          "auroc": 0.8346679363777297,
+          "aupr": 0.7958813088404331,
+          "brier": 0.1248337895971842
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 3,
+          "n": 12785,
+          "positive_rate": 0.3467,
+          "auroc": 0.9304200840528987,
+          "aupr": 0.8892417992294545,
+          "brier": 0.12813893794700493
+        },
+        {
+          "baseline": "B0 random",
+          "horizon_months": 6,
+          "n": 12782,
+          "positive_rate": 0.4004,
+          "auroc": 0.49674373205706496,
+          "aupr": 0.3980436842348441,
+          "brier": 0.3344650705848557
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 6,
+          "n": 12782,
+          "positive_rate": 0.4004,
+          "auroc": 0.8049840568430551,
+          "aupr": 0.8068686620434998,
+          "brier": 0.160381786887811
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 6,
+          "n": 12782,
+          "positive_rate": 0.4004,
+          "auroc": 0.9263983889396057,
+          "aupr": 0.9078421201922494,
+          "brier": 0.16008295750182225
+        }
+      ],
+      "head_to_head_common_support": [
+        {
+          "baseline": "B0 random",
+          "horizon_months": 1,
+          "n": 12618,
+          "positive_rate": 0.2599,
+          "auroc": 0.5040165295015466,
+          "aupr": 0.26237414157678207,
+          "brier": 0.3300675455980905
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 1,
+          "n": 12618,
+          "positive_rate": 0.2599,
+          "auroc": 0.8696563330177819,
+          "aupr": 0.7250214603174863,
+          "brier": 0.09993659851006499
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 1,
+          "n": 12618,
+          "positive_rate": 0.2599,
+          "auroc": 0.9290154706423994,
+          "aupr": 0.8346469097674577,
+          "brier": 0.0961575315303777
+        },
+        {
+          "baseline": "B3 geopolitical only",
+          "horizon_months": 1,
+          "n": 12618,
+          "positive_rate": 0.2599,
+          "auroc": 0.5029278557545492,
+          "aupr": 0.26193877844340363,
+          "brier": 2.0892862062081083
+        },
+        {
+          "baseline": "B4 market only",
+          "horizon_months": 1,
+          "n": 12618,
+          "positive_rate": 0.2599,
+          "auroc": 0.4929890135648592,
+          "aupr": 0.29289584936419844,
+          "brier": 0.3982252958509458
+        },
+        {
+          "baseline": "B5 hazard only",
+          "horizon_months": 1,
+          "n": 12618,
+          "positive_rate": 0.2599,
+          "auroc": 0.47935294872760725,
+          "aupr": 0.27552380546930827,
+          "brier": 0.6281200643175325
+        },
+        {
+          "baseline": "B6 composite",
+          "horizon_months": 1,
+          "n": 12618,
+          "positive_rate": 0.2599,
+          "auroc": 0.5016269856548016,
+          "aupr": 0.27411378643055534,
+          "brier": 0.2605241268335864
+        },
+        {
+          "baseline": "B0 random",
+          "horizon_months": 3,
+          "n": 12618,
+          "positive_rate": 0.3409,
+          "auroc": 0.5020029108243892,
+          "aupr": 0.3428546919088862,
+          "brier": 0.3314154355154566
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 3,
+          "n": 12618,
+          "positive_rate": 0.3409,
+          "auroc": 0.8312068181315043,
+          "aupr": 0.7906865053332062,
+          "brier": 0.1256934537961642
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 3,
+          "n": 12618,
+          "positive_rate": 0.3409,
+          "auroc": 0.9284155534446097,
+          "aupr": 0.8831308193189057,
+          "brier": 0.1293988145918441
+        },
+        {
+          "baseline": "B3 geopolitical only",
+          "horizon_months": 3,
+          "n": 12618,
+          "positive_rate": 0.3409,
+          "auroc": 0.5036115287161312,
+          "aupr": 0.3473580414290601,
+          "brier": 2.167176754464849
+        },
+        {
+          "baseline": "B4 market only",
+          "horizon_months": 3,
+          "n": 12618,
+          "positive_rate": 0.3409,
+          "auroc": 0.49410673783058723,
+          "aupr": 0.3740633240708423,
+          "brier": 0.4777520488902378
+        },
+        {
+          "baseline": "B5 hazard only",
+          "horizon_months": 3,
+          "n": 12618,
+          "positive_rate": 0.3409,
+          "auroc": 0.4812330288562274,
+          "aupr": 0.365488844671636,
+          "brier": 0.7058702011758942
+        },
+        {
+          "baseline": "B6 composite",
+          "horizon_months": 3,
+          "n": 12618,
+          "positive_rate": 0.3409,
+          "auroc": 0.5019284742669216,
+          "aupr": 0.3607882355097875,
+          "brier": 0.2603585268744629
+        },
+        {
+          "baseline": "B0 random",
+          "horizon_months": 6,
+          "n": 12615,
+          "positive_rate": 0.3953,
+          "auroc": 0.4961719032673204,
+          "aupr": 0.3921490877829362,
+          "brier": 0.3346150075627606
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 6,
+          "n": 12615,
+          "positive_rate": 0.3953,
+          "auroc": 0.8009914135430672,
+          "aupr": 0.801263706706247,
+          "brier": 0.1617915180340864
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 6,
+          "n": 12615,
+          "positive_rate": 0.3953,
+          "auroc": 0.924413871976946,
+          "aupr": 0.9031332168253073,
+          "brier": 0.1618226372865643
+        },
+        {
+          "baseline": "B3 geopolitical only",
+          "horizon_months": 6,
+          "n": 12615,
+          "positive_rate": 0.3953,
+          "auroc": 0.5039377946373208,
+          "aupr": 0.4022377301326401,
+          "brier": 2.223384986900235
+        },
+        {
+          "baseline": "B4 market only",
+          "horizon_months": 6,
+          "n": 12615,
+          "positive_rate": 0.3953,
+          "auroc": 0.49328072074967017,
+          "aupr": 0.4232574532088834,
+          "brier": 0.5345848879876557
+        },
+        {
+          "baseline": "B5 hazard only",
+          "horizon_months": 6,
+          "n": 12615,
+          "positive_rate": 0.3953,
+          "auroc": 0.48357348140298495,
+          "aupr": 0.4242171817458502,
+          "brier": 0.7551544981628625
+        },
+        {
+          "baseline": "B6 composite",
+          "horizon_months": 6,
+          "n": 12615,
+          "positive_rate": 0.3953,
+          "auroc": 0.5019788471525705,
+          "aupr": 0.41494780251277474,
+          "brier": 0.2604974653686562
+        }
+      ],
+      "verdicts": [
+        {
+          "horizon_months": 1,
+          "n": 12618,
+          "passed": false,
+          "undecided": false,
+          "beaten": [],
+          "lost_to": [
+            "B3 geopolitical only",
+            "B4 market only",
+            "B5 hazard only"
+          ],
+          "summary": "FAIL \u2014 the composite does not beat B3 geopolitical only, B4 market only, B5 hazard only"
+        },
+        {
+          "horizon_months": 3,
+          "n": 12618,
+          "passed": false,
+          "undecided": false,
+          "beaten": [],
+          "lost_to": [
+            "B3 geopolitical only",
+            "B4 market only",
+            "B5 hazard only"
+          ],
+          "summary": "FAIL \u2014 the composite does not beat B3 geopolitical only, B4 market only, B5 hazard only"
+        },
+        {
+          "horizon_months": 6,
+          "n": 12615,
+          "passed": false,
+          "undecided": false,
+          "beaten": [],
+          "lost_to": [
+            "B3 geopolitical only",
+            "B4 market only",
+            "B5 hazard only"
+          ],
+          "summary": "FAIL \u2014 the composite does not beat B3 geopolitical only, B4 market only, B5 hazard only"
+        }
+      ],
+      "code_positive_rates": {
+        "label_p1": 0.1883,
+        "label_p2": 0.1104,
+        "label_p3": 0.0386,
+        "label_any": 0.2653
+      }
+    },
+    {
+      "window": "held-out test 2023-01 \u2192 2024-12",
+      "span": [
+        "2023-01-01",
+        "2024-12-01"
+      ],
+      "rows": 4672,
+      "results": [
+        {
+          "baseline": "B0 random",
+          "horizon_months": 1,
+          "n": 4664,
+          "positive_rate": 0.2193,
+          "auroc": 0.5017989160594436,
+          "aupr": 0.22414479897727954,
+          "brier": 0.33014836345186904
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 1,
+          "n": 4664,
+          "positive_rate": 0.2193,
+          "auroc": 0.8883430346738016,
+          "aupr": 0.7476810878584703,
+          "brier": 0.07611492281303602
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 1,
+          "n": 4664,
+          "positive_rate": 0.2193,
+          "auroc": 0.9498154637783063,
+          "aupr": 0.8443923319454585,
+          "brier": 0.07349550650608742
+        },
+        {
+          "baseline": "B0 random",
+          "horizon_months": 3,
+          "n": 4650,
+          "positive_rate": 0.2791,
+          "auroc": 0.4947249945758299,
+          "aupr": 0.27575947943392287,
+          "brier": 0.33369285269854354
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 3,
+          "n": 4650,
+          "positive_rate": 0.2791,
+          "auroc": 0.8522998481232371,
+          "aupr": 0.8000233814285532,
+          "brier": 0.09247311827956989
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 3,
+          "n": 4650,
+          "positive_rate": 0.2791,
+          "auroc": 0.951367948119192,
+          "aupr": 0.898482409212842,
+          "brier": 0.09067214495272552
+        },
+        {
+          "baseline": "B0 random",
+          "horizon_months": 6,
+          "n": 4627,
+          "positive_rate": 0.3205,
+          "auroc": 0.4943425832033616,
+          "aupr": 0.31605119840272333,
+          "brier": 0.33456969408350146
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 6,
+          "n": 4627,
+          "positive_rate": 0.3205,
+          "auroc": 0.8230576302419791,
+          "aupr": 0.8044589968146061,
+          "brier": 0.11821914847633455
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 6,
+          "n": 4627,
+          "positive_rate": 0.3205,
+          "auroc": 0.9487741906149251,
+          "aupr": 0.9137862670074295,
+          "brier": 0.11098235647500657
+        }
+      ],
+      "head_to_head_common_support": [
+        {
+          "baseline": "B0 random",
+          "horizon_months": 1,
+          "n": 4593,
+          "positive_rate": 0.2151,
+          "auroc": 0.5032470084846171,
+          "aupr": 0.22072911407761295,
+          "brier": 0.3294511036476914
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 1,
+          "n": 4593,
+          "positive_rate": 0.2151,
+          "auroc": 0.8895157984580571,
+          "aupr": 0.7478032253349552,
+          "brier": 0.07424341389070324
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 1,
+          "n": 4593,
+          "positive_rate": 0.2151,
+          "auroc": 0.9494686585769877,
+          "aupr": 0.8412860549432551,
+          "brier": 0.07307001049515088
+        },
+        {
+          "baseline": "B3 geopolitical only",
+          "horizon_months": 1,
+          "n": 4593,
+          "positive_rate": 0.2151,
+          "auroc": 0.5060257065366928,
+          "aupr": 0.2249498180125922,
+          "brier": 1.826988692648553
+        },
+        {
+          "baseline": "B4 market only",
+          "horizon_months": 1,
+          "n": 4593,
+          "positive_rate": 0.2151,
+          "auroc": 0.49498980835209755,
+          "aupr": 0.2533024943122572,
+          "brier": 0.28150981466293395
+        },
+        {
+          "baseline": "B5 hazard only",
+          "horizon_months": 1,
+          "n": 4593,
+          "positive_rate": 0.2151,
+          "auroc": 0.4777502007445799,
+          "aupr": 0.24110608219553756,
+          "brier": 0.7069011550273863
+        },
+        {
+          "baseline": "B6 composite",
+          "horizon_months": 1,
+          "n": 4593,
+          "positive_rate": 0.2151,
+          "auroc": 0.49831655314537276,
+          "aupr": 0.23512344580344133,
+          "brier": 0.26179564290533813
+        },
+        {
+          "baseline": "B0 random",
+          "horizon_months": 3,
+          "n": 4579,
+          "positive_rate": 0.2739,
+          "auroc": 0.4952539242843952,
+          "aupr": 0.2711600119698792,
+          "brier": 0.3332752134114053
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 3,
+          "n": 4579,
+          "positive_rate": 0.2739,
+          "auroc": 0.8515607199817726,
+          "aupr": 0.7984099219620231,
+          "brier": 0.09150469534832933
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 3,
+          "n": 4579,
+          "positive_rate": 0.2739,
+          "auroc": 0.9497811514432013,
+          "aupr": 0.8930863848165809,
+          "brier": 0.09143506311606484
+        },
+        {
+          "baseline": "B3 geopolitical only",
+          "horizon_months": 3,
+          "n": 4579,
+          "positive_rate": 0.2739,
+          "auroc": 0.5176153301915075,
+          "aupr": 0.28931369102155197,
+          "brier": 1.8684451031812408
+        },
+        {
+          "baseline": "B4 market only",
+          "horizon_months": 3,
+          "n": 4579,
+          "positive_rate": 0.2739,
+          "auroc": 0.49122231415860224,
+          "aupr": 0.31608973188511574,
+          "brier": 0.3415830179253302
+        },
+        {
+          "baseline": "B5 hazard only",
+          "horizon_months": 3,
+          "n": 4579,
+          "positive_rate": 0.2739,
+          "auroc": 0.47778813061361536,
+          "aupr": 0.3119385489422399,
+          "brier": 0.7609599446086157
+        },
+        {
+          "baseline": "B6 composite",
+          "horizon_months": 3,
+          "n": 4579,
+          "positive_rate": 0.2739,
+          "auroc": 0.506907460037654,
+          "aupr": 0.3009094295097578,
+          "brier": 0.2602319277338404
+        },
+        {
+          "baseline": "B0 random",
+          "horizon_months": 6,
+          "n": 4556,
+          "positive_rate": 0.3154,
+          "auroc": 0.4949728949311279,
+          "aupr": 0.3117604649332086,
+          "brier": 0.3341268016380459
+        },
+        {
+          "baseline": "B1 persistence",
+          "horizon_months": 6,
+          "n": 4556,
+          "positive_rate": 0.3154,
+          "auroc": 0.8213811994324859,
+          "aupr": 0.8017834637679297,
+          "brier": 0.11764705882352941
+        },
+        {
+          "baseline": "B2 base rate",
+          "horizon_months": 6,
+          "n": 4556,
+          "positive_rate": 0.3154,
+          "auroc": 0.9468494331663767,
+          "aupr": 0.9084339405964844,
+          "brier": 0.11231727568801737
+        },
+        {
+          "baseline": "B3 geopolitical only",
+          "horizon_months": 6,
+          "n": 4556,
+          "positive_rate": 0.3154,
+          "auroc": 0.5119594966803904,
+          "aupr": 0.3264849491533563,
+          "brier": 1.9191243147010457
+        },
+        {
+          "baseline": "B4 market only",
+          "horizon_months": 6,
+          "n": 4556,
+          "positive_rate": 0.3154,
+          "auroc": 0.4912636158431844,
+          "aupr": 0.3584266074531176,
+          "brier": 0.38559386751602837
+        },
+        {
+          "baseline": "B5 hazard only",
+          "horizon_months": 6,
+          "n": 4556,
+          "positive_rate": 0.3154,
+          "auroc": 0.4844876275183216,
+          "aupr": 0.3609671822757505,
+          "brier": 0.8013928296166714
+        },
+        {
+          "baseline": "B6 composite",
+          "horizon_months": 6,
+          "n": 4556,
+          "positive_rate": 0.3154,
+          "auroc": 0.5038606622976379,
+          "aupr": 0.33742181303626767,
+          "brier": 0.26056931513913806
+        }
+      ],
+      "verdicts": [
+        {
+          "horizon_months": 1,
+          "n": 4593,
+          "passed": false,
+          "undecided": false,
+          "beaten": [],
+          "lost_to": [
+            "B3 geopolitical only",
+            "B4 market only",
+            "B5 hazard only"
+          ],
+          "summary": "FAIL \u2014 the composite does not beat B3 geopolitical only, B4 market only, B5 hazard only"
+        },
+        {
+          "horizon_months": 3,
+          "n": 4579,
+          "passed": false,
+          "undecided": false,
+          "beaten": [],
+          "lost_to": [
+            "B3 geopolitical only",
+            "B4 market only",
+            "B5 hazard only"
+          ],
+          "summary": "FAIL \u2014 the composite does not beat B3 geopolitical only, B4 market only, B5 hazard only"
+        },
+        {
+          "horizon_months": 6,
+          "n": 4556,
+          "passed": false,
+          "undecided": false,
+          "beaten": [],
+          "lost_to": [
+            "B3 geopolitical only",
+            "B4 market only",
+            "B5 hazard only"
+          ],
+          "summary": "FAIL \u2014 the composite does not beat B3 geopolitical only, B4 market only, B5 hazard only"
+        }
+      ],
+      "code_positive_rates": {
+        "label_p1": 0.1479,
+        "label_p2": 0.1064,
+        "label_p3": 0.0225,
+        "label_any": 0.2183
+      }
+    }
+  ]
+}
