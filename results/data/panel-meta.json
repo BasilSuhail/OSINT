@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-07-07T23:28:35.262915+00:00",
+  "rows": 31637,
+  "countries": 200,
+  "span": [
+    "1996-12-01",
+    "2026-06-01"
+  ],
+  "label_counts": {
+    "label_p1": 5309,
+    "label_p2": 2445,
+    "label_p3": 1417,
+    "label_any": 7088
+  },
+  "score_rows": 17367,
+  "method_versions": [
+    "v1.0"
+  ]
+}

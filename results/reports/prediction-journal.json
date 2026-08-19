@@ -1,0 +1,77 @@
+{
+  "generated_at": "2026-07-14T22:41:45.033475+00:00",
+  "run": {
+    "issued": 0,
+    "issued_disagreement": 0,
+    "graded_now": 0,
+    "total_predictions": 546
+  },
+  "scoreboard": [
+    {
+      "source": "composite",
+      "method_version": "v1.0",
+      "horizon_months": 1,
+      "issued": 158,
+      "graded": 0,
+      "pending": 158,
+      "positive_rate": null,
+      "mean_score": null,
+      "brier": null
+    },
+    {
+      "source": "composite",
+      "method_version": "v1.0",
+      "horizon_months": 3,
+      "issued": 158,
+      "graded": 0,
+      "pending": 158,
+      "positive_rate": null,
+      "mean_score": null,
+      "brier": null
+    },
+    {
+      "source": "composite",
+      "method_version": "v1.0",
+      "horizon_months": 6,
+      "issued": 158,
+      "graded": 0,
+      "pending": 158,
+      "positive_rate": null,
+      "mean_score": null,
+      "brier": null
+    },
+    {
+      "source": "disagreement",
+      "method_version": "disagreement-v1.0",
+      "horizon_months": 1,
+      "issued": 24,
+      "graded": 0,
+      "pending": 24,
+      "positive_rate": null,
+      "mean_score": null,
+      "brier": null
+    },
+    {
+      "source": "disagreement",
+      "method_version": "disagreement-v1.0",
+      "horizon_months": 3,
+      "issued": 24,
+      "graded": 0,
+      "pending": 24,
+      "positive_rate": null,
+      "mean_score": null,
+      "brier": null
+    },
+    {
+      "source": "disagreement",
+      "method_version": "disagreement-v1.0",
+      "horizon_months": 6,
+      "issued": 24,
+      "graded": 0,
+      "pending": 24,
+      "positive_rate": null,
+      "mean_score": null,
+      "brier": null
+    }
+  ]
+}

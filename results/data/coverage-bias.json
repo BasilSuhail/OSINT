@@ -1,0 +1,2012 @@
+{
+  "generated_at": "2026-07-30T01:08:22.769811+00:00",
+  "countries": 200,
+  "global_events": 3080334,
+  "top_share": {
+    "5": 0.3025,
+    "10": 0.4768,
+    "20": 0.6528
+  },
+  "stats": [
+    {
+      "country": "UA",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 328634,
+      "events_per_month": 3190.621359223301,
+      "global_share": 0.10668778126008413,
+      "fatalities_per_event": 0.8005227700116239,
+      "baseline_std": 2360.3237729052853
+    },
+    {
+      "country": "IN",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 212915,
+      "events_per_month": 1676.4960629921259,
+      "global_share": 0.06912075119126693,
+      "fatalities_per_event": 0.06521381772068666,
+      "baseline_std": 535.7661358715244
+    },
+    {
+      "country": "SY",
+      "coverage_months": 115,
+      "observed_months": 115,
+      "total_events": 152009,
+      "events_per_month": 1321.817391304348,
+      "global_share": 0.04934822003068499,
+      "fatalities_per_event": 0.9437138590478196,
+      "baseline_std": 642.9917246422477
+    },
+    {
+      "country": "MX",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 121793,
+      "events_per_month": 1182.4563106796118,
+      "global_share": 0.03953889415888017,
+      "fatalities_per_event": 0.5770610790439517,
+      "baseline_std": 250.31447315304015
+    },
+    {
+      "country": "PK",
+      "coverage_months": 199,
+      "observed_months": 199,
+      "total_events": 116543,
+      "events_per_month": 585.643216080402,
+      "global_share": 0.03783453352785769,
+      "fatalities_per_event": 0.49356889731687015,
+      "baseline_std": 253.1539312478472
+    },
+    {
+      "country": "BR",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 114779,
+      "events_per_month": 1114.3592233009708,
+      "global_share": 0.037261868355834143,
+      "fatalities_per_event": 0.5505362479199156,
+      "baseline_std": 415.9192148587477
+    },
+    {
+      "country": "YE",
+      "coverage_months": 139,
+      "observed_months": 139,
+      "total_events": 114109,
+      "events_per_month": 820.9280575539568,
+      "global_share": 0.03704435947530365,
+      "fatalities_per_event": 1.4665714360830433,
+      "baseline_std": 260.0929452100258
+    },
+    {
+      "country": "MM",
+      "coverage_months": 199,
+      "observed_months": 199,
+      "total_events": 108188,
+      "events_per_month": 543.6582914572864,
+      "global_share": 0.03512216532363049,
+      "fatalities_per_event": 1.0122009834732133,
+      "baseline_std": 686.9666584106795
+    },
+    {
+      "country": "US",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 103638,
+      "events_per_month": 1311.873417721519,
+      "global_share": 0.03364505277674434,
+      "fatalities_per_event": 0.005065709488797546,
+      "baseline_std": 812.2216659322984
+    },
+    {
+      "country": "PS",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 96038,
+      "events_per_month": 756.2047244094488,
+      "global_share": 0.031177787863264177,
+      "fatalities_per_event": 0.7578770903184157,
+      "baseline_std": 612.9638123521408
+    },
+    {
+      "country": "AF",
+      "coverage_months": 115,
+      "observed_months": 115,
+      "total_events": 69711,
+      "events_per_month": 606.1826086956522,
+      "global_share": 0.022630987418896784,
+      "fatalities_per_event": 2.9293081436215234,
+      "baseline_std": 499.0044799417039
+    },
+    {
+      "country": "IQ",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 68680,
+      "events_per_month": 540.7874015748032,
+      "global_share": 0.022296283454975988,
+      "fatalities_per_event": 1.5695253348864298,
+      "baseline_std": 233.68157990342664
+    },
+    {
+      "country": "RU",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 60825,
+      "events_per_month": 590.5339805825242,
+      "global_share": 0.019746235310846162,
+      "fatalities_per_event": 0.1255076037813399,
+      "baseline_std": 681.58528539905
+    },
+    {
+      "country": "SO",
+      "coverage_months": 353,
+      "observed_months": 346,
+      "total_events": 57057,
+      "events_per_month": 161.6345609065156,
+      "global_share": 0.018522991337952315,
+      "fatalities_per_event": 1.655923024344077,
+      "baseline_std": 141.83264145574628
+    },
+    {
+      "country": "NG",
+      "coverage_months": 354,
+      "observed_months": 354,
+      "total_events": 50650,
+      "events_per_month": 143.07909604519773,
+      "global_share": 0.0164430220878645,
+      "fatalities_per_event": 2.841401776900296,
+      "baseline_std": 180.48855375785175
+    },
+    {
+      "country": "TR",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 50526,
+      "events_per_month": 397.84251968503935,
+      "global_share": 0.016402766712960346,
+      "fatalities_per_event": 0.1921980762379765,
+      "baseline_std": 206.53811015883218
+    },
+    {
+      "country": "KR",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 47809,
+      "events_per_month": 464.1650485436893,
+      "global_share": 0.01552071950639119,
+      "fatalities_per_event": 2.0916563826894516e-05,
+      "baseline_std": 126.43461006803436
+    },
+    {
+      "country": "TF",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 47178,
+      "events_per_month": 597.1898734177215,
+      "global_share": 0.015315871590548298,
+      "fatalities_per_event": 0.0012505828988087669,
+      "baseline_std": 326.8104035942741
+    },
+    {
+      "country": "CD",
+      "coverage_months": 353,
+      "observed_months": 353,
+      "total_events": 45911,
+      "events_per_month": 130.05949008498584,
+      "global_share": 0.01490455255826154,
+      "fatalities_per_event": 2.1693929559364857,
+      "baseline_std": 151.87257733721637
+    },
+    {
+      "country": "LB",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 43867,
+      "events_per_month": 345.40944881889766,
+      "global_share": 0.014240988152583454,
+      "fatalities_per_event": 0.19290126974719038,
+      "baseline_std": 537.625625009286
+    },
+    {
+      "country": "IR",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 41630,
+      "events_per_month": 327.79527559055117,
+      "global_share": 0.01351476820370778,
+      "fatalities_per_event": 0.8073985106894067,
+      "baseline_std": 334.50961495503384
+    },
+    {
+      "country": "SD",
+      "coverage_months": 355,
+      "observed_months": 355,
+      "total_events": 40354,
+      "events_per_month": 113.67323943661972,
+      "global_share": 0.013100527410339268,
+      "fatalities_per_event": 3.6322545472567773,
+      "baseline_std": 171.78804575451093
+    },
+    {
+      "country": "CO",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 38040,
+      "events_per_month": 369.3203883495146,
+      "global_share": 0.012349310172208599,
+      "fatalities_per_event": 0.42676130389064143,
+      "baseline_std": 181.4892124742112
+    },
+    {
+      "country": "BD",
+      "coverage_months": 199,
+      "observed_months": 199,
+      "total_events": 35314,
+      "events_per_month": 177.4572864321608,
+      "global_share": 0.011464341204557688,
+      "fatalities_per_event": 0.23789431953332957,
+      "baseline_std": 113.45314014923508
+    },
+    {
+      "country": "IT",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 29550,
+      "events_per_month": 374.0506329113924,
+      "global_share": 0.009593115551755103,
+      "fatalities_per_event": 0.00013536379018612522,
+      "baseline_std": 219.60170497679053
+    },
+    {
+      "country": "VE",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 29505,
+      "events_per_month": 286.45631067961165,
+      "global_share": 0.009578506746346338,
+      "fatalities_per_event": 0.46534485680393156,
+      "baseline_std": 129.58925227361843
+    },
+    {
+      "country": "DE",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 28064,
+      "events_per_month": 355.24050632911394,
+      "global_share": 0.009110700333145691,
+      "fatalities_per_event": 0.0019954389965792475,
+      "baseline_std": 228.0793896420509
+    },
+    {
+      "country": "ID",
+      "coverage_months": 139,
+      "observed_months": 139,
+      "total_events": 26976,
+      "events_per_month": 194.07194244604315,
+      "global_share": 0.008757491882373795,
+      "fatalities_per_event": 0.07176749703440095,
+      "baseline_std": 150.68728113144803
+    },
+    {
+      "country": "NP",
+      "coverage_months": 198,
+      "observed_months": 198,
+      "total_events": 26216,
+      "events_per_month": 132.40404040404042,
+      "global_share": 0.008510765391025778,
+      "fatalities_per_event": 0.015067134574305767,
+      "baseline_std": 123.44421053653454
+    },
+    {
+      "country": "ES",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 26041,
+      "events_per_month": 329.63291139240505,
+      "global_share": 0.008453953369991695,
+      "fatalities_per_event": 0.00030720786452133173,
+      "baseline_std": 148.13449048506777
+    },
+    {
+      "country": "ZA",
+      "coverage_months": 354,
+      "observed_months": 353,
+      "total_events": 24928,
+      "events_per_month": 70.4180790960452,
+      "global_share": 0.00809262891621493,
+      "fatalities_per_event": 0.14297175866495507,
+      "baseline_std": 70.70328955128096
+    },
+    {
+      "country": "CM",
+      "coverage_months": 353,
+      "observed_months": 249,
+      "total_events": 24742,
+      "events_per_month": 70.09065155807366,
+      "global_share": 0.008032245853858705,
+      "fatalities_per_event": 0.8199013822649746,
+      "baseline_std": 134.6602176537512
+    },
+    {
+      "country": "KE",
+      "coverage_months": 354,
+      "observed_months": 353,
+      "total_events": 21431,
+      "events_per_month": 60.53954802259887,
+      "global_share": 0.006957362415893861,
+      "fatalities_per_event": 0.7359432597638934,
+      "baseline_std": 85.4546489286834
+    },
+    {
+      "country": "IL",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 20976,
+      "events_per_month": 165.16535433070865,
+      "global_share": 0.006809651161205246,
+      "fatalities_per_event": 0.10092486651411137,
+      "baseline_std": 180.74477432375988
+    },
+    {
+      "country": "AR",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 19513,
+      "events_per_month": 189.44660194174756,
+      "global_share": 0.006334702665360315,
+      "fatalities_per_event": 0.0067647209552605956,
+      "baseline_std": 82.76821398178623
+    },
+    {
+      "country": "PH",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 19142,
+      "events_per_month": 150.7244094488189,
+      "global_share": 0.00621426118076806,
+      "fatalities_per_event": 0.9737227040016717,
+      "baseline_std": 101.20795440132197
+    },
+    {
+      "country": "AZ",
+      "coverage_months": 102,
+      "observed_months": 102,
+      "total_events": 19039,
+      "events_per_month": 186.65686274509804,
+      "global_share": 0.006180823248388,
+      "fatalities_per_event": 0.4095803351016335,
+      "baseline_std": 248.05927087022457
+    },
+    {
+      "country": "ET",
+      "coverage_months": 354,
+      "observed_months": 339,
+      "total_events": 18682,
+      "events_per_month": 52.77401129943503,
+      "global_share": 0.006064926725478471,
+      "fatalities_per_event": 4.560486029333048,
+      "baseline_std": 81.18076225772727
+    },
+    {
+      "country": "CN",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 18243,
+      "events_per_month": 177.11650485436894,
+      "global_share": 0.005922409712712972,
+      "fatalities_per_event": 0.0059200789343857915,
+      "baseline_std": 88.10610339667237
+    },
+    {
+      "country": "EC",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 17599,
+      "events_per_month": 170.8640776699029,
+      "global_share": 0.005713341475307548,
+      "fatalities_per_event": 0.7527700437524859,
+      "baseline_std": 177.29932173103546
+    },
+    {
+      "country": "SS",
+      "coverage_months": 182,
+      "observed_months": 181,
+      "total_events": 17440,
+      "events_per_month": 95.82417582417582,
+      "global_share": 0.005661723696196581,
+      "fatalities_per_event": 3.0311926605504587,
+      "baseline_std": 60.80930260791841
+    },
+    {
+      "country": "CL",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 16199,
+      "events_per_month": 157.27184466019418,
+      "global_share": 0.005258845307034886,
+      "fatalities_per_event": 0.015062658188777086,
+      "baseline_std": 160.92355986585122
+    },
+    {
+      "country": "MA",
+      "coverage_months": 354,
+      "observed_months": 297,
+      "total_events": 16115,
+      "events_per_month": 45.5225988700565,
+      "global_share": 0.005231575536938527,
+      "fatalities_per_event": 0.026000620539869686,
+      "baseline_std": 86.71712436873467
+    },
+    {
+      "country": "ML",
+      "coverage_months": 354,
+      "observed_months": 247,
+      "total_events": 15404,
+      "events_per_month": 43.51412429378531,
+      "global_share": 0.0050007564114800535,
+      "fatalities_per_event": 2.0990002596728123,
+      "baseline_std": 66.00724214200736
+    },
+    {
+      "country": "BF",
+      "coverage_months": 353,
+      "observed_months": 225,
+      "total_events": 14559,
+      "events_per_month": 41.243626062322946,
+      "global_share": 0.004726435509915483,
+      "fatalities_per_event": 2.415001030290542,
+      "baseline_std": 70.59365924544406
+    },
+    {
+      "country": "BH",
+      "coverage_months": 127,
+      "observed_months": 127,
+      "total_events": 14488,
+      "events_per_month": 114.07874015748031,
+      "global_share": 0.004703386061381655,
+      "fatalities_per_event": 0.0017945886250690225,
+      "baseline_std": 110.16577389096614
+    },
+    {
+      "country": "JP",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 14485,
+      "events_per_month": 140.63106796116506,
+      "global_share": 0.004702412141021071,
+      "fatalities_per_event": 6.903693476009665e-05,
+      "baseline_std": 53.44882141366584
+    },
+    {
+      "country": "TH",
+      "coverage_months": 199,
+      "observed_months": 199,
+      "total_events": 13477,
+      "events_per_month": 67.72361809045226,
+      "global_share": 0.004375174899864755,
+      "fatalities_per_event": 0.2572530978704459,
+      "baseline_std": 43.545724769526934
+    },
+    {
+      "country": "PE",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 13274,
+      "events_per_month": 128.873786407767,
+      "global_share": 0.004309272955465219,
+      "fatalities_per_event": 0.028326050926623474,
+      "baseline_std": 144.495686743947
+    },
+    {
+      "country": "HT",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 13231,
+      "events_per_month": 128.45631067961165,
+      "global_share": 0.004295313430296844,
+      "fatalities_per_event": 1.2285541531252362,
+      "baseline_std": 77.99549111924743
+    },
+    {
+      "country": "LY",
+      "coverage_months": 355,
+      "observed_months": 231,
+      "total_events": 13214,
+      "events_per_month": 37.222535211267605,
+      "global_share": 0.004289794548253533,
+      "fatalities_per_event": 1.8288935976994096,
+      "baseline_std": 53.587349245941496
+    },
+    {
+      "country": "DZ",
+      "coverage_months": 354,
+      "observed_months": 351,
+      "total_events": 12869,
+      "events_per_month": 36.35310734463277,
+      "global_share": 0.004177793706786342,
+      "fatalities_per_event": 1.0747532830833786,
+      "baseline_std": 53.93747325763282
+    },
+    {
+      "country": "EG",
+      "coverage_months": 355,
+      "observed_months": 305,
+      "total_events": 12188,
+      "events_per_month": 34.332394366197185,
+      "global_share": 0.0039567137849337115,
+      "fatalities_per_event": 1.2671480144404332,
+      "baseline_std": 56.198611016487796
+    },
+    {
+      "country": "HN",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 12080,
+      "events_per_month": 117.28155339805825,
+      "global_share": 0.003921652651952678,
+      "fatalities_per_event": 0.49403973509933774,
+      "baseline_std": 41.46408376230143
+    },
+    {
+      "country": "TN",
+      "coverage_months": 343,
+      "observed_months": 220,
+      "total_events": 11827,
+      "events_per_month": 34.481049562682216,
+      "global_share": 0.003839518701543404,
+      "fatalities_per_event": 0.07550519996617908,
+      "baseline_std": 48.99734111969029
+    },
+    {
+      "country": "BI",
+      "coverage_months": 354,
+      "observed_months": 341,
+      "total_events": 11304,
+      "events_per_month": 31.93220338983051,
+      "global_share": 0.0036697319186815456,
+      "fatalities_per_event": 2.182855626326964,
+      "baseline_std": 37.76414962421355
+    },
+    {
+      "country": "GT",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 10928,
+      "events_per_month": 106.09708737864078,
+      "global_share": 0.0035476672334883164,
+      "fatalities_per_event": 0.589586383601757,
+      "baseline_std": 71.53782549779893
+    },
+    {
+      "country": "CA",
+      "coverage_months": 67,
+      "observed_months": 67,
+      "total_events": 9949,
+      "events_per_month": 148.49253731343285,
+      "global_share": 0.0032298445558176484,
+      "fatalities_per_event": 0.002010252286661976,
+      "baseline_std": 56.351342707209064
+    },
+    {
+      "country": "UG",
+      "coverage_months": 355,
+      "observed_months": 353,
+      "total_events": 9877,
+      "events_per_month": 27.822535211267606,
+      "global_share": 0.003206470467163626,
+      "fatalities_per_event": 1.6866457426344033,
+      "baseline_std": 25.35860104764911
+    },
+    {
+      "country": "FK",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 9741,
+      "events_per_month": 123.30379746835443,
+      "global_share": 0.003162319410817139,
+      "fatalities_per_event": 0.0014372241043014065,
+      "baseline_std": 70.05212425159934
+    },
+    {
+      "country": "LK",
+      "coverage_months": 199,
+      "observed_months": 199,
+      "total_events": 9403,
+      "events_per_month": 47.25125628140704,
+      "global_share": 0.00305259105019131,
+      "fatalities_per_event": 0.05668403700946507,
+      "baseline_std": 37.62973786499968
+    },
+    {
+      "country": "CF",
+      "coverage_months": 355,
+      "observed_months": 323,
+      "total_events": 9263,
+      "events_per_month": 26.092957746478874,
+      "global_share": 0.0030071414333640444,
+      "fatalities_per_event": 2.1595595379466697,
+      "baseline_std": 30.55108547410553
+    },
+    {
+      "country": "BO",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 9197,
+      "events_per_month": 89.29126213592232,
+      "global_share": 0.0029857151854311903,
+      "fatalities_per_event": 0.018158095030988367,
+      "baseline_std": 60.579023423867916
+    },
+    {
+      "country": "PL",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 9074,
+      "events_per_month": 114.86075949367088,
+      "global_share": 0.002945784450647235,
+      "fatalities_per_event": 0.001763279700242451,
+      "baseline_std": 129.04338728487724
+    },
+    {
+      "country": "GR",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 8106,
+      "events_per_month": 78.69902912621359,
+      "global_share": 0.002631532814298709,
+      "fatalities_per_event": 0.05650135701949174,
+      "baseline_std": 69.41011299130099
+    },
+    {
+      "country": "SE",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 7888,
+      "events_per_month": 99.84810126582279,
+      "global_share": 0.0025607612680962517,
+      "fatalities_per_event": 0.0002535496957403651,
+      "baseline_std": 34.50668201942553
+    },
+    {
+      "country": "RS",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 7540,
+      "events_per_month": 73.20388349514563,
+      "global_share": 0.002447786506268476,
+      "fatalities_per_event": 0.004111405835543766,
+      "baseline_std": 97.3248348576256
+    },
+    {
+      "country": "TW",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 7487,
+      "events_per_month": 72.68932038834951,
+      "global_share": 0.0024305805798981537,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 37.38231478602454
+    },
+    {
+      "country": "AM",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 7444,
+      "events_per_month": 72.27184466019418,
+      "global_share": 0.002416621054729779,
+      "fatalities_per_event": 0.04124126813541107,
+      "baseline_std": 62.55501565802593
+    },
+    {
+      "country": "PY",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 7073,
+      "events_per_month": 68.66990291262135,
+      "global_share": 0.002296179570137524,
+      "fatalities_per_event": 0.020359112116499364,
+      "baseline_std": 47.37546543553206
+    },
+    {
+      "country": "ZW",
+      "coverage_months": 350,
+      "observed_months": 344,
+      "total_events": 6822,
+      "events_per_month": 19.49142857142857,
+      "global_share": 0.0022146948999686397,
+      "fatalities_per_event": 0.09484022280856054,
+      "baseline_std": 24.284237938319126
+    },
+    {
+      "country": "NE",
+      "coverage_months": 354,
+      "observed_months": 263,
+      "total_events": 6015,
+      "events_per_month": 16.991525423728813,
+      "global_share": 0.00195271032297147,
+      "fatalities_per_event": 2.2121363258520366,
+      "baseline_std": 28.293107432404046
+    },
+    {
+      "country": "KZ",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 5840,
+      "events_per_month": 56.699029126213595,
+      "global_share": 0.0018958983019373872,
+      "fatalities_per_event": 0.049143835616438356,
+      "baseline_std": 32.41443851588552
+    },
+    {
+      "country": "MZ",
+      "coverage_months": 350,
+      "observed_months": 262,
+      "total_events": 5756,
+      "events_per_month": 16.445714285714285,
+      "global_share": 0.0018686285318410276,
+      "fatalities_per_event": 1.374739402362752,
+      "baseline_std": 28.642449444907495
+    },
+    {
+      "country": "GE",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 5654,
+      "events_per_month": 54.89320388349515,
+      "global_share": 0.0018355152395811622,
+      "fatalities_per_event": 0.0017686593562079944,
+      "baseline_std": 30.005149273733235
+    },
+    {
+      "country": "NL",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 5608,
+      "events_per_month": 70.9873417721519,
+      "global_share": 0.0018205817940522035,
+      "fatalities_per_event": 0.0007132667617689016,
+      "baseline_std": 32.41327032148754
+    },
+    {
+      "country": "BE",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 5467,
+      "events_per_month": 69.20253164556962,
+      "global_share": 0.0017748075371047426,
+      "fatalities_per_event": 0.0016462410828608012,
+      "baseline_std": 41.084161766076605
+    },
+    {
+      "country": "BG",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 5089,
+      "events_per_month": 49.407766990291265,
+      "global_share": 0.001652093571671124,
+      "fatalities_per_event": 0.0005895067793279622,
+      "baseline_std": 37.5299070110277
+    },
+    {
+      "country": "SL",
+      "coverage_months": 354,
+      "observed_months": 246,
+      "total_events": 5011,
+      "events_per_month": 14.155367231638419,
+      "global_share": 0.0016267716422959327,
+      "fatalities_per_event": 0.06525643584114947,
+      "baseline_std": 37.99354891726249
+    },
+    {
+      "country": "MG",
+      "coverage_months": 348,
+      "observed_months": 233,
+      "total_events": 4990,
+      "events_per_month": 14.339080459770114,
+      "global_share": 0.001619954199771843,
+      "fatalities_per_event": 0.9074148296593186,
+      "baseline_std": 22.203214307645354
+    },
+    {
+      "country": "SV",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 4608,
+      "events_per_month": 44.737864077669904,
+      "global_share": 0.0014959416738574453,
+      "fatalities_per_event": 0.6664496527777778,
+      "baseline_std": 32.233360625063725
+    },
+    {
+      "country": "AU",
+      "coverage_months": 66,
+      "observed_months": 66,
+      "total_events": 4508,
+      "events_per_month": 68.3030303030303,
+      "global_share": 0.0014634776618379695,
+      "fatalities_per_event": 0.00510204081632653,
+      "baseline_std": 25.250244341433845
+    },
+    {
+      "country": "AO",
+      "coverage_months": 355,
+      "observed_months": 268,
+      "total_events": 4224,
+      "events_per_month": 11.898591549295775,
+      "global_share": 0.0013712798677026582,
+      "fatalities_per_event": 34.15838068181818,
+      "baseline_std": 25.172774768895906
+    },
+    {
+      "country": "BY",
+      "coverage_months": 103,
+      "observed_months": 102,
+      "total_events": 4156,
+      "events_per_month": 40.349514563106794,
+      "global_share": 0.0013492043395294147,
+      "fatalities_per_event": 0.0052935514918190565,
+      "baseline_std": 85.0174977692758
+    },
+    {
+      "country": "JO",
+      "coverage_months": 126,
+      "observed_months": 123,
+      "total_events": 4147,
+      "events_per_month": 32.91269841269841,
+      "global_share": 0.0013462825784476618,
+      "fatalities_per_event": 0.049192187123221605,
+      "baseline_std": 30.959015365497475
+    },
+    {
+      "country": "PA",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 3999,
+      "events_per_month": 38.8252427184466,
+      "global_share": 0.0012982358406588377,
+      "fatalities_per_event": 0.008252063015753939,
+      "baseline_std": 38.98927589286349
+    },
+    {
+      "country": "RO",
+      "coverage_months": 102,
+      "observed_months": 102,
+      "total_events": 3799,
+      "events_per_month": 37.245098039215684,
+      "global_share": 0.001233307816619886,
+      "fatalities_per_event": 0.0015793629902605948,
+      "baseline_std": 24.76019745340422
+    },
+    {
+      "country": "GH",
+      "coverage_months": 352,
+      "observed_months": 238,
+      "total_events": 3729,
+      "events_per_month": 10.59375,
+      "global_share": 0.001210583008206253,
+      "fatalities_per_event": 0.45508179136497723,
+      "baseline_std": 17.242661997373894
+    },
+    {
+      "country": "TT",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 3709,
+      "events_per_month": 36.00970873786408,
+      "global_share": 0.001204090205802358,
+      "fatalities_per_event": 0.5413858182798598,
+      "baseline_std": 15.114125808140297
+    },
+    {
+      "country": "SA",
+      "coverage_months": 138,
+      "observed_months": 119,
+      "total_events": 3704,
+      "events_per_month": 26.840579710144926,
+      "global_share": 0.001202467005201384,
+      "fatalities_per_event": 1.755669546436285,
+      "baseline_std": 32.515825885209644
+    },
+    {
+      "country": "JM",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 3553,
+      "events_per_month": 34.49514563106796,
+      "global_share": 0.0011534463470519755,
+      "fatalities_per_event": 0.7534477905994934,
+      "baseline_std": 13.266406795008068
+    },
+    {
+      "country": "CI",
+      "coverage_months": 354,
+      "observed_months": 294,
+      "total_events": 3364,
+      "events_per_month": 9.502824858757062,
+      "global_share": 0.0010920893643351663,
+      "fatalities_per_event": 1.286860879904875,
+      "baseline_std": 13.179389959470386
+    },
+    {
+      "country": "GN",
+      "coverage_months": 344,
+      "observed_months": 265,
+      "total_events": 3317,
+      "events_per_month": 9.642441860465116,
+      "global_share": 0.0010768312786860125,
+      "fatalities_per_event": 1.0952668073560445,
+      "baseline_std": 15.789956731169381
+    },
+    {
+      "country": "GL",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 3271,
+      "events_per_month": 41.40506329113924,
+      "global_share": 0.0010618978331570538,
+      "fatalities_per_event": 0.0003057169061449098,
+      "baseline_std": 27.391451584987298
+    },
+    {
+      "country": "PT",
+      "coverage_months": 78,
+      "observed_months": 78,
+      "total_events": 3014,
+      "events_per_month": 38.64102564102564,
+      "global_share": 0.0009784653222670008,
+      "fatalities_per_event": 0.0009953550099535502,
+      "baseline_std": 20.237040398147787
+    },
+    {
+      "country": "NO",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 2683,
+      "events_per_month": 33.962025316455694,
+      "global_share": 0.000871009442482536,
+      "fatalities_per_event": 0.0014908684308609765,
+      "baseline_std": 18.21909072330914
+    },
+    {
+      "country": "PR",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 2667,
+      "events_per_month": 25.893203883495147,
+      "global_share": 0.0008658152005594199,
+      "fatalities_per_event": 0.5433070866141733,
+      "baseline_std": 11.885303498425847
+    },
+    {
+      "country": "CY",
+      "coverage_months": 102,
+      "observed_months": 102,
+      "total_events": 2610,
+      "events_per_month": 25.58823529411765,
+      "global_share": 0.0008473107137083187,
+      "fatalities_per_event": 0.008045977011494253,
+      "baseline_std": 12.507529450864567
+    },
+    {
+      "country": "KH",
+      "coverage_months": 198,
+      "observed_months": 195,
+      "total_events": 2488,
+      "events_per_month": 12.565656565656566,
+      "global_share": 0.0008077046190445581,
+      "fatalities_per_event": 0.10128617363344052,
+      "baseline_std": 9.272160586543942
+    },
+    {
+      "country": "MR",
+      "coverage_months": 352,
+      "observed_months": 234,
+      "total_events": 2470,
+      "events_per_month": 7.017045454545454,
+      "global_share": 0.0008018610968810525,
+      "fatalities_per_event": 0.06761133603238867,
+      "baseline_std": 10.885496205240141
+    },
+    {
+      "country": "CR",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 2412,
+      "events_per_month": 23.41747572815534,
+      "global_share": 0.0007830319699097566,
+      "fatalities_per_event": 0.019071310116086235,
+      "baseline_std": 36.29665374713903
+    },
+    {
+      "country": "TD",
+      "coverage_months": 353,
+      "observed_months": 265,
+      "total_events": 2388,
+      "events_per_month": 6.764872521246459,
+      "global_share": 0.0007752406070250824,
+      "fatalities_per_event": 4.8626465661641545,
+      "baseline_std": 8.697869300362326
+    },
+    {
+      "country": "KG",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 2380,
+      "events_per_month": 23.106796116504853,
+      "global_share": 0.0007726434860635243,
+      "fatalities_per_event": 0.05168067226890756,
+      "baseline_std": 14.526114830374556
+    },
+    {
+      "country": "AT",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 2354,
+      "events_per_month": 29.79746835443038,
+      "global_share": 0.0007642028429384605,
+      "fatalities_per_event": 0.0033984706881903144,
+      "baseline_std": 18.424240874961953
+    },
+    {
+      "country": "SN",
+      "coverage_months": 352,
+      "observed_months": 304,
+      "total_events": 2332,
+      "events_per_month": 6.625,
+      "global_share": 0.0007570607602941759,
+      "fatalities_per_event": 0.6672384219554031,
+      "baseline_std": 8.151355854870236
+    },
+    {
+      "country": "MD",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 2212,
+      "events_per_month": 21.475728155339805,
+      "global_share": 0.000718103945870805,
+      "fatalities_per_event": 0.00135623869801085,
+      "baseline_std": 14.502657714380126
+    },
+    {
+      "country": "CZ",
+      "coverage_months": 78,
+      "observed_months": 78,
+      "total_events": 2053,
+      "events_per_month": 26.32051282051282,
+      "global_share": 0.0006664861667598383,
+      "fatalities_per_event": 0.000974184120798831,
+      "baseline_std": 35.61240549833781
+    },
+    {
+      "country": "NI",
+      "coverage_months": 102,
+      "observed_months": 101,
+      "total_events": 2024,
+      "events_per_month": 19.84313725490196,
+      "global_share": 0.0006570716032741904,
+      "fatalities_per_event": 0.2450592885375494,
+      "baseline_std": 42.18743077799154
+    },
+    {
+      "country": "IE",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 1969,
+      "events_per_month": 24.924050632911392,
+      "global_share": 0.0006392163966634787,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 14.279109421488933
+    },
+    {
+      "country": "FI",
+      "coverage_months": 78,
+      "observed_months": 78,
+      "total_events": 1957,
+      "events_per_month": 25.08974358974359,
+      "global_share": 0.0006353207152211416,
+      "fatalities_per_event": 0.001021972406745018,
+      "baseline_std": 11.310519153601986
+    },
+    {
+      "country": "BJ",
+      "coverage_months": 345,
+      "observed_months": 166,
+      "total_events": 1940,
+      "events_per_month": 5.6231884057971016,
+      "global_share": 0.0006298018331778307,
+      "fatalities_per_event": 0.7345360824742269,
+      "baseline_std": 11.15906267072378
+    },
+    {
+      "country": "TZ",
+      "coverage_months": 349,
+      "observed_months": 276,
+      "total_events": 1872,
+      "events_per_month": 5.363896848137536,
+      "global_share": 0.0006077263050045872,
+      "fatalities_per_event": 0.8242521367521367,
+      "baseline_std": 11.618430312372542
+    },
+    {
+      "country": "LR",
+      "coverage_months": 354,
+      "observed_months": 297,
+      "total_events": 1866,
+      "events_per_month": 5.271186440677966,
+      "global_share": 0.0006057784642834186,
+      "fatalities_per_event": 0.6822079314040729,
+      "baseline_std": 6.444891574411306
+    },
+    {
+      "country": "CU",
+      "coverage_months": 102,
+      "observed_months": 97,
+      "total_events": 1814,
+      "events_per_month": 17.784313725490197,
+      "global_share": 0.0005888971780332912,
+      "fatalities_per_event": 0.018743109151047408,
+      "baseline_std": 25.083244720440334
+    },
+    {
+      "country": "MY",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 1777,
+      "events_per_month": 17.25242718446602,
+      "global_share": 0.0005768854935860852,
+      "fatalities_per_event": 0.032076533483398985,
+      "baseline_std": 11.255823473648679
+    },
+    {
+      "country": "MW",
+      "coverage_months": 351,
+      "observed_months": 229,
+      "total_events": 1745,
+      "events_per_month": 4.971509971509971,
+      "global_share": 0.0005664970097398529,
+      "fatalities_per_event": 0.26876790830945557,
+      "baseline_std": 6.996074418139474
+    },
+    {
+      "country": "ME",
+      "coverage_months": 102,
+      "observed_months": 101,
+      "total_events": 1741,
+      "events_per_month": 17.068627450980394,
+      "global_share": 0.0005651984492590739,
+      "fatalities_per_event": 0.0017231476163124641,
+      "baseline_std": 16.39180797545971
+    },
+    {
+      "country": "ZM",
+      "coverage_months": 352,
+      "observed_months": 272,
+      "total_events": 1606,
+      "events_per_month": 4.5625,
+      "global_share": 0.0005213720330327815,
+      "fatalities_per_event": 0.22353673723536738,
+      "baseline_std": 5.327518877147564
+    },
+    {
+      "country": "BA",
+      "coverage_months": 102,
+      "observed_months": 101,
+      "total_events": 1599,
+      "events_per_month": 15.676470588235293,
+      "global_share": 0.0005190995521914182,
+      "fatalities_per_event": 0.010631644777986242,
+      "baseline_std": 10.229869533894727
+    },
+    {
+      "country": "PG",
+      "coverage_months": 66,
+      "observed_months": 66,
+      "total_events": 1557,
+      "events_per_month": 23.59090909090909,
+      "global_share": 0.0005054646671432384,
+      "fatalities_per_event": 0.9203596660244059,
+      "baseline_std": 10.341117214022853
+    },
+    {
+      "country": "HR",
+      "coverage_months": 102,
+      "observed_months": 101,
+      "total_events": 1531,
+      "events_per_month": 15.009803921568627,
+      "global_share": 0.0004970240240181747,
+      "fatalities_per_event": 0.012410189418680601,
+      "baseline_std": 9.803455871292368
+    },
+    {
+      "country": "MK",
+      "coverage_months": 102,
+      "observed_months": 102,
+      "total_events": 1524,
+      "events_per_month": 14.941176470588236,
+      "global_share": 0.0004947515431768113,
+      "fatalities_per_event": 0.0013123359580052493,
+      "baseline_std": 10.193061393747282
+    },
+    {
+      "country": "AL",
+      "coverage_months": 102,
+      "observed_months": 102,
+      "total_events": 1496,
+      "events_per_month": 14.666666666666666,
+      "global_share": 0.00048566161981135813,
+      "fatalities_per_event": 0.00267379679144385,
+      "baseline_std": 14.232201360139463
+    },
+    {
+      "country": "HU",
+      "coverage_months": 78,
+      "observed_months": 78,
+      "total_events": 1480,
+      "events_per_month": 18.974358974358974,
+      "global_share": 0.000480467377888242,
+      "fatalities_per_event": 0.0006756756756756757,
+      "baseline_std": 18.153176142930626
+    },
+    {
+      "country": "CH",
+      "coverage_months": 78,
+      "observed_months": 78,
+      "total_events": 1366,
+      "events_per_month": 17.512820512820515,
+      "global_share": 0.00044345840418603955,
+      "fatalities_per_event": 0.0014641288433382138,
+      "baseline_std": 9.221968739337756
+    },
+    {
+      "country": "NA",
+      "coverage_months": 354,
+      "observed_months": 251,
+      "total_events": 1285,
+      "events_per_month": 3.6299435028248586,
+      "global_share": 0.0004171625544502642,
+      "fatalities_per_event": 0.22334630350194554,
+      "baseline_std": 4.484915898684946
+    },
+    {
+      "country": "XK",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 1265,
+      "events_per_month": 12.281553398058252,
+      "global_share": 0.000410669752046369,
+      "fatalities_per_event": 0.007905138339920948,
+      "baseline_std": 8.758260983267862
+    },
+    {
+      "country": "BZ",
+      "coverage_months": 103,
+      "observed_months": 103,
+      "total_events": 1252,
+      "events_per_month": 12.155339805825243,
+      "global_share": 0.00040644943048383713,
+      "fatalities_per_event": 0.4073482428115016,
+      "baseline_std": 7.300428610310544
+    },
+    {
+      "country": "SK",
+      "coverage_months": 77,
+      "observed_months": 77,
+      "total_events": 1239,
+      "events_per_month": 16.09090909090909,
+      "global_share": 0.0004022291089213053,
+      "fatalities_per_event": 0.002421307506053269,
+      "baseline_std": 17.23646227162309
+    },
+    {
+      "country": "NZ",
+      "coverage_months": 66,
+      "observed_months": 66,
+      "total_events": 1199,
+      "events_per_month": 18.166666666666668,
+      "global_share": 0.000389243504113515,
+      "fatalities_per_event": 0.0008340283569641367,
+      "baseline_std": 12.199830268731553
+    },
+    {
+      "country": "UZ",
+      "coverage_months": 103,
+      "observed_months": 102,
+      "total_events": 1182,
+      "events_per_month": 11.475728155339805,
+      "global_share": 0.00038372462207020405,
+      "fatalities_per_event": 0.046531302876480544,
+      "baseline_std": 8.37222019966816
+    },
+    {
+      "country": "DO",
+      "coverage_months": 102,
+      "observed_months": 102,
+      "total_events": 1095,
+      "events_per_month": 10.735294117647058,
+      "global_share": 0.00035548093161326015,
+      "fatalities_per_event": 0.12146118721461187,
+      "baseline_std": 8.284081676759367
+    },
+    {
+      "country": "RW",
+      "coverage_months": 354,
+      "observed_months": 233,
+      "total_events": 875,
+      "events_per_month": 2.4717514124293785,
+      "global_share": 0.0002840601051704133,
+      "fatalities_per_event": 8.637714285714285,
+      "baseline_std": 3.622831521336526
+    },
+    {
+      "country": "SZ",
+      "coverage_months": 353,
+      "observed_months": 169,
+      "total_events": 865,
+      "events_per_month": 2.45042492917847,
+      "global_share": 0.00028081370396846575,
+      "fatalities_per_event": 0.1722543352601156,
+      "baseline_std": 5.314841701532892
+    },
+    {
+      "country": "TG",
+      "coverage_months": 354,
+      "observed_months": 184,
+      "total_events": 831,
+      "events_per_month": 2.347457627118644,
+      "global_share": 0.000269775939881844,
+      "fatalities_per_event": 0.8543922984356197,
+      "baseline_std": 3.8898181997023475
+    },
+    {
+      "country": "MN",
+      "coverage_months": 102,
+      "observed_months": 102,
+      "total_events": 782,
+      "events_per_month": 7.666666666666667,
+      "global_share": 0.0002538685739923008,
+      "fatalities_per_event": 0.0012787723785166241,
+      "baseline_std": 5.724617177599333
+    },
+    {
+      "country": "MU",
+      "coverage_months": 78,
+      "observed_months": 78,
+      "total_events": 743,
+      "events_per_month": 9.525641025641026,
+      "global_share": 0.00024120760930470528,
+      "fatalities_per_event": 0.016150740242261104,
+      "baseline_std": 4.436805153903145
+    },
+    {
+      "country": "SI",
+      "coverage_months": 78,
+      "observed_months": 77,
+      "total_events": 718,
+      "events_per_month": 9.205128205128204,
+      "global_share": 0.0002330916062998363,
+      "fatalities_per_event": 0.001392757660167131,
+      "baseline_std": 6.194205262155695
+    },
+    {
+      "country": "LT",
+      "coverage_months": 79,
+      "observed_months": 79,
+      "total_events": 646,
+      "events_per_month": 8.177215189873417,
+      "global_share": 0.00020971751764581374,
+      "fatalities_per_event": 0.0015479876160990713,
+      "baseline_std": 6.02685864744022
+    },
+    {
+      "country": "GY",
+      "coverage_months": 103,
+      "observed_months": 98,
+      "total_events": 644,
+      "events_per_month": 6.252427184466019,
+      "global_share": 0.00020906823740542423,
+      "fatalities_per_event": 0.03571428571428571,
+      "baseline_std": 8.07815999260086
+    },
+    {
+      "country": "UY",
+      "coverage_months": 102,
+      "observed_months": 100,
+      "total_events": 598,
+      "events_per_month": 5.862745098039215,
+      "global_share": 0.00019413479187646536,
+      "fatalities_per_event": 0.011705685618729096,
+      "baseline_std": 4.132698913249549
+    },
+    {
+      "country": "GA",
+      "coverage_months": 346,
+      "observed_months": 163,
+      "total_events": 572,
+      "events_per_month": 1.653179190751445,
+      "global_share": 0.00018569414875140163,
+      "fatalities_per_event": 0.07867132867132867,
+      "baseline_std": 2.7645471793078515
+    },
+    {
+      "country": "VN",
+      "coverage_months": 183,
+      "observed_months": 139,
+      "total_events": 570,
+      "events_per_month": 3.1147540983606556,
+      "global_share": 0.00018504486851101212,
+      "fatalities_per_event": 0.2596491228070175,
+      "baseline_std": 3.804362008895005
+    },
+    {
+      "country": "CG",
+      "coverage_months": 353,
+      "observed_months": 177,
+      "total_events": 555,
+      "events_per_month": 1.5722379603399435,
+      "global_share": 0.00018017526670809075,
+      "fatalities_per_event": 1.2468468468468468,
+      "baseline_std": 3.0288545932977504
+    },
+    {
+      "country": "KP",
+      "coverage_months": 102,
+      "observed_months": 88,
+      "total_events": 478,
+      "events_per_month": 4.686274509803922,
+      "global_share": 0.00015517797745309437,
+      "fatalities_per_event": 0.29497907949790797,
+      "baseline_std": 4.383526184135017
+    },
+    {
+      "country": "EE",
+      "coverage_months": 79,
+      "observed_months": 74,
+      "total_events": 457,
+      "events_per_month": 5.784810126582278,
+      "global_share": 0.00014836053492900446,
+      "fatalities_per_event": 0.002188183807439825,
+      "baseline_std": 5.96545092266993
+    },
+    {
+      "country": "MV",
+      "coverage_months": 78,
+      "observed_months": 75,
+      "total_events": 450,
+      "events_per_month": 5.769230769230769,
+      "global_share": 0.00014608805408764113,
+      "fatalities_per_event": 0.0022222222222222222,
+      "baseline_std": 4.66553945247953
+    },
+    {
+      "country": "NC",
+      "coverage_months": 65,
+      "observed_months": 56,
+      "total_events": 434,
+      "events_per_month": 6.676923076923077,
+      "global_share": 0.000140893812164525,
+      "fatalities_per_event": 0.04377880184331797,
+      "baseline_std": 11.490608462576589
+    },
+    {
+      "country": "ER",
+      "coverage_months": 351,
+      "observed_months": 141,
+      "total_events": 424,
+      "events_per_month": 1.207977207977208,
+      "global_share": 0.00013764741096257744,
+      "fatalities_per_event": 128.3443396226415,
+      "baseline_std": 4.589663123718789
+    },
+    {
+      "country": "MT",
+      "coverage_months": 78,
+      "observed_months": 77,
+      "total_events": 414,
+      "events_per_month": 5.3076923076923075,
+      "global_share": 0.00013440100976062986,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 2.843380492173737
+    },
+    {
+      "country": "GW",
+      "coverage_months": 350,
+      "observed_months": 156,
+      "total_events": 403,
+      "events_per_month": 1.1514285714285715,
+      "global_share": 0.0001308299684384875,
+      "fatalities_per_event": 2.4491315136476426,
+      "baseline_std": 2.577359826153381
+    },
+    {
+      "country": "KW",
+      "coverage_months": 126,
+      "observed_months": 66,
+      "total_events": 368,
+      "events_per_month": 2.9206349206349205,
+      "global_share": 0.00011946756423167097,
+      "fatalities_per_event": 0.04076086956521739,
+      "baseline_std": 13.781516938301289
+    },
+    {
+      "country": "LV",
+      "coverage_months": 78,
+      "observed_months": 75,
+      "total_events": 355,
+      "events_per_month": 4.551282051282051,
+      "global_share": 0.00011524724266913913,
+      "fatalities_per_event": 0.011267605633802818,
+      "baseline_std": 3.6114044284859736
+    },
+    {
+      "country": "IS",
+      "coverage_months": 77,
+      "observed_months": 70,
+      "total_events": 321,
+      "events_per_month": 4.1688311688311686,
+      "global_share": 0.00010420947858251736,
+      "fatalities_per_event": 0.009345794392523364,
+      "baseline_std": 4.185325624355367
+    },
+    {
+      "country": "CV",
+      "coverage_months": 78,
+      "observed_months": 75,
+      "total_events": 320,
+      "events_per_month": 4.102564102564102,
+      "global_share": 0.00010388483846232259,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 3.55033311398379
+    },
+    {
+      "country": "GM",
+      "coverage_months": 350,
+      "observed_months": 158,
+      "total_events": 319,
+      "events_per_month": 0.9114285714285715,
+      "global_share": 0.00010356019834212783,
+      "fatalities_per_event": 0.48589341692789967,
+      "baseline_std": 1.4757606132957684
+    },
+    {
+      "country": "SR",
+      "coverage_months": 101,
+      "observed_months": 84,
+      "total_events": 308,
+      "events_per_month": 3.0495049504950495,
+      "global_share": 9.99891570199855e-05,
+      "fatalities_per_event": 0.03896103896103896,
+      "baseline_std": 3.0745722961789235
+    },
+    {
+      "country": "AE",
+      "coverage_months": 110,
+      "observed_months": 30,
+      "total_events": 269,
+      "events_per_month": 2.4454545454545453,
+      "global_share": 8.732819233238992e-05,
+      "fatalities_per_event": 0.07063197026022305,
+      "baseline_std": 13.514023937199704
+    },
+    {
+      "country": "KM",
+      "coverage_months": 78,
+      "observed_months": 67,
+      "total_events": 268,
+      "events_per_month": 3.4358974358974357,
+      "global_share": 8.700355221219517e-05,
+      "fatalities_per_event": 0.048507462686567165,
+      "baseline_std": 4.921407302351072
+    },
+    {
+      "country": "LS",
+      "coverage_months": 351,
+      "observed_months": 111,
+      "total_events": 262,
+      "events_per_month": 0.7464387464387464,
+      "global_share": 8.505571149102662e-05,
+      "fatalities_per_event": 0.9312977099236641,
+      "baseline_std": 1.6610444046003914
+    },
+    {
+      "country": "LU",
+      "coverage_months": 77,
+      "observed_months": 69,
+      "total_events": 252,
+      "events_per_month": 3.272727272727273,
+      "global_share": 8.180931028907905e-05,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 2.3775812419312765
+    },
+    {
+      "country": "DJ",
+      "coverage_months": 345,
+      "observed_months": 110,
+      "total_events": 227,
+      "events_per_month": 0.6579710144927536,
+      "global_share": 7.36933072842101e-05,
+      "fatalities_per_event": 0.7400881057268722,
+      "baseline_std": 1.4582504702356345
+    },
+    {
+      "country": "TJ",
+      "coverage_months": 101,
+      "observed_months": 64,
+      "total_events": 197,
+      "events_per_month": 1.9504950495049505,
+      "global_share": 6.395410367836734e-05,
+      "fatalities_per_event": 1.350253807106599,
+      "baseline_std": 2.5499999519462713
+    },
+    {
+      "country": "BW",
+      "coverage_months": 345,
+      "observed_months": 99,
+      "total_events": 171,
+      "events_per_month": 0.4956521739130435,
+      "global_share": 5.551346055330363e-05,
+      "fatalities_per_event": 0.2046783625730994,
+      "baseline_std": 1.0104432637025895
+    },
+    {
+      "country": "QA",
+      "coverage_months": 111,
+      "observed_months": 31,
+      "total_events": 154,
+      "events_per_month": 1.3873873873873874,
+      "global_share": 4.999457850999275e-05,
+      "fatalities_per_event": 0.08441558441558442,
+      "baseline_std": 5.554271420455898
+    },
+    {
+      "country": "BS",
+      "coverage_months": 101,
+      "observed_months": 74,
+      "total_events": 153,
+      "events_per_month": 1.5148514851485149,
+      "global_share": 4.966993838979799e-05,
+      "fatalities_per_event": 0.0392156862745098,
+      "baseline_std": 1.4597833922198062
+    },
+    {
+      "country": "AG",
+      "coverage_months": 100,
+      "observed_months": 72,
+      "total_events": 144,
+      "events_per_month": 1.44,
+      "global_share": 4.6748177308045166e-05,
+      "fatalities_per_event": 0.04861111111111111,
+      "baseline_std": 1.4987995196156156
+    },
+    {
+      "country": "GQ",
+      "coverage_months": 348,
+      "observed_months": 65,
+      "total_events": 88,
+      "events_per_month": 0.25287356321839083,
+      "global_share": 2.8568330577138713e-05,
+      "fatalities_per_event": 1.7613636363636365,
+      "baseline_std": 0.629146307282943
+    },
+    {
+      "country": "TL",
+      "coverage_months": 77,
+      "observed_months": 50,
+      "total_events": 88,
+      "events_per_month": 1.1428571428571428,
+      "global_share": 2.8568330577138713e-05,
+      "fatalities_per_event": 0.045454545454545456,
+      "baseline_std": 1.2660839072159937
+    },
+    {
+      "country": "DM",
+      "coverage_months": 99,
+      "observed_months": 47,
+      "total_events": 87,
+      "events_per_month": 0.8787878787878788,
+      "global_share": 2.8243690456943956e-05,
+      "fatalities_per_event": 0.011494252873563218,
+      "baseline_std": 1.4090094469772934
+    },
+    {
+      "country": "OM",
+      "coverage_months": 120,
+      "observed_months": 26,
+      "total_events": 73,
+      "events_per_month": 0.6083333333333333,
+      "global_share": 2.369872877421734e-05,
+      "fatalities_per_event": 0.273972602739726,
+      "baseline_std": 2.106718749356185
+    },
+    {
+      "country": "LC",
+      "coverage_months": 93,
+      "observed_months": 41,
+      "total_events": 66,
+      "events_per_month": 0.7096774193548387,
+      "global_share": 2.1426247932854034e-05,
+      "fatalities_per_event": 0.015151515151515152,
+      "baseline_std": 1.022127710822894
+    },
+    {
+      "country": "FJ",
+      "coverage_months": 63,
+      "observed_months": 37,
+      "total_events": 61,
+      "events_per_month": 0.9682539682539683,
+      "global_share": 1.9803047331880243e-05,
+      "fatalities_per_event": 0.03278688524590164,
+      "baseline_std": 1.1948069375592898
+    },
+    {
+      "country": "TM",
+      "coverage_months": 100,
+      "observed_months": 39,
+      "total_events": 58,
+      "events_per_month": 0.58,
+      "global_share": 1.882912697129597e-05,
+      "fatalities_per_event": 0.6379310344827587,
+      "baseline_std": 0.8852118390532291
+    },
+    {
+      "country": "LA",
+      "coverage_months": 185,
+      "observed_months": 44,
+      "total_events": 56,
+      "events_per_month": 0.3027027027027027,
+      "global_share": 1.8179846730906452e-05,
+      "fatalities_per_event": 0.7857142857142857,
+      "baseline_std": 0.678028336522767
+    },
+    {
+      "country": "SB",
+      "coverage_months": 65,
+      "observed_months": 23,
+      "total_events": 55,
+      "events_per_month": 0.8461538461538461,
+      "global_share": 1.7855206610711695e-05,
+      "fatalities_per_event": 0.16363636363636364,
+      "baseline_std": 1.9472329024365218
+    },
+    {
+      "country": "ST",
+      "coverage_months": 69,
+      "observed_months": 34,
+      "total_events": 52,
+      "events_per_month": 0.7536231884057971,
+      "global_share": 1.6881286250127422e-05,
+      "fatalities_per_event": 0.11538461538461539,
+      "baseline_std": 0.9232236700656804
+    },
+    {
+      "country": "SG",
+      "coverage_months": 74,
+      "observed_months": 26,
+      "total_events": 37,
+      "events_per_month": 0.5,
+      "global_share": 1.2011684447206049e-05,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.9760649070132081
+    },
+    {
+      "country": "SM",
+      "coverage_months": 69,
+      "observed_months": 23,
+      "total_events": 36,
+      "events_per_month": 0.5217391304347826,
+      "global_share": 1.1687044327011291e-05,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.8782178207271372
+    },
+    {
+      "country": "AD",
+      "coverage_months": 77,
+      "observed_months": 29,
+      "total_events": 35,
+      "events_per_month": 0.45454545454545453,
+      "global_share": 1.1362404206816534e-05,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.6750748788762091
+    },
+    {
+      "country": "SC",
+      "coverage_months": 73,
+      "observed_months": 21,
+      "total_events": 30,
+      "events_per_month": 0.410958904109589,
+      "global_share": 9.739203605842743e-06,
+      "fatalities_per_event": 0.06666666666666667,
+      "baseline_std": 0.7371848792917102
+    },
+    {
+      "country": "BB",
+      "coverage_months": 101,
+      "observed_months": 24,
+      "total_events": 29,
+      "events_per_month": 0.2871287128712871,
+      "global_share": 9.414563485647985e-06,
+      "fatalities_per_event": 0.06896551724137931,
+      "baseline_std": 0.5687685788651513
+    },
+    {
+      "country": "GD",
+      "coverage_months": 97,
+      "observed_months": 20,
+      "total_events": 29,
+      "events_per_month": 0.29896907216494845,
+      "global_share": 9.414563485647985e-06,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.7203227863737494
+    },
+    {
+      "country": "WS",
+      "coverage_months": 56,
+      "observed_months": 12,
+      "total_events": 25,
+      "events_per_month": 0.44642857142857145,
+      "global_share": 8.116003004868952e-06,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 1.084297713090019
+    },
+    {
+      "country": "MC",
+      "coverage_months": 74,
+      "observed_months": 19,
+      "total_events": 23,
+      "events_per_month": 0.3108108108108108,
+      "global_share": 7.466722764479436e-06,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.5910521007737578
+    },
+    {
+      "country": "VU",
+      "coverage_months": 60,
+      "observed_months": 14,
+      "total_events": 17,
+      "events_per_month": 0.2833333333333333,
+      "global_share": 5.518882043310887e-06,
+      "fatalities_per_event": 0.058823529411764705,
+      "baseline_std": 0.5505048188304582
+    },
+    {
+      "country": "LI",
+      "coverage_months": 44,
+      "observed_months": 9,
+      "total_events": 15,
+      "events_per_month": 0.3409090909090909,
+      "global_share": 4.8696018029213714e-06,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.8775788443776283
+    },
+    {
+      "country": "BT",
+      "coverage_months": 68,
+      "observed_months": 11,
+      "total_events": 12,
+      "events_per_month": 0.17647058823529413,
+      "global_share": 3.895681442337097e-06,
+      "fatalities_per_event": 0.08333333333333333,
+      "baseline_std": 0.4180197177515263
+    },
+    {
+      "country": "KN",
+      "coverage_months": 92,
+      "observed_months": 10,
+      "total_events": 10,
+      "events_per_month": 0.10869565217391304,
+      "global_share": 3.246401201947581e-06,
+      "fatalities_per_event": 0.1,
+      "baseline_std": 0.31125697963644244
+    },
+    {
+      "country": "VC",
+      "coverage_months": 73,
+      "observed_months": 10,
+      "total_events": 10,
+      "events_per_month": 0.136986301369863,
+      "global_share": 3.246401201947581e-06,
+      "fatalities_per_event": 0.2,
+      "baseline_std": 0.34383288761674335
+    },
+    {
+      "country": "VA",
+      "coverage_months": 76,
+      "observed_months": 8,
+      "total_events": 9,
+      "events_per_month": 0.11842105263157894,
+      "global_share": 2.921761081752823e-06,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.36154293852721275
+    },
+    {
+      "country": "AQ",
+      "coverage_months": 38,
+      "observed_months": 6,
+      "total_events": 8,
+      "events_per_month": 0.21052631578947367,
+      "global_share": 2.597120961558065e-06,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.5692975698101036
+    },
+    {
+      "country": "TO",
+      "coverage_months": 51,
+      "observed_months": 5,
+      "total_events": 6,
+      "events_per_month": 0.11764705882352941,
+      "global_share": 1.9478407211685486e-06,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.3781823827840375
+    },
+    {
+      "country": "MH",
+      "coverage_months": 10,
+      "observed_months": 3,
+      "total_events": 5,
+      "events_per_month": 0.5,
+      "global_share": 1.6232006009737904e-06,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.9219544457292888
+    },
+    {
+      "country": "KI",
+      "coverage_months": 32,
+      "observed_months": 2,
+      "total_events": 3,
+      "events_per_month": 0.09375,
+      "global_share": 9.739203605842743e-07,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.38400642898264087
+    },
+    {
+      "country": "NR",
+      "coverage_months": 17,
+      "observed_months": 3,
+      "total_events": 3,
+      "events_per_month": 0.17647058823529413,
+      "global_share": 9.739203605842743e-07,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.3812200410828153
+    },
+    {
+      "country": "PW",
+      "coverage_months": 5,
+      "observed_months": 3,
+      "total_events": 3,
+      "events_per_month": 0.6,
+      "global_share": 9.739203605842743e-07,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.48989794855663565
+    },
+    {
+      "country": "BN",
+      "coverage_months": 45,
+      "observed_months": 2,
+      "total_events": 2,
+      "events_per_month": 0.044444444444444446,
+      "global_share": 6.492802403895162e-07,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.20608041101101565
+    },
+    {
+      "country": "FM",
+      "coverage_months": 21,
+      "observed_months": 2,
+      "total_events": 2,
+      "events_per_month": 0.09523809523809523,
+      "global_share": 6.492802403895162e-07,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.29354352395090366
+    },
+    {
+      "country": "TV",
+      "coverage_months": 1,
+      "observed_months": 1,
+      "total_events": 1,
+      "events_per_month": 1.0,
+      "global_share": 3.246401201947581e-07,
+      "fatalities_per_event": 0.0,
+      "baseline_std": 0.0
+    }
+  ]
+}

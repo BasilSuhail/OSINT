@@ -1,0 +1,448 @@
+{
+  "generated_at": "2026-07-10T00:05:56.043984+00:00",
+  "protocol": "docs/onset-eval.md",
+  "eval_window": [
+    "2015-01-01",
+    "2022-12-01"
+  ],
+  "calm_primary_months": 12,
+  "calm_sensitivity_months": 6,
+  "primary": [
+    {
+      "calm_months": 12,
+      "contender": "B0 random",
+      "horizon_months": 1,
+      "n": 5764,
+      "positive_rate": 0.017,
+      "auroc": 0.4673923222660049,
+      "aupr": 0.01533827647808619
+    },
+    {
+      "calm_months": 12,
+      "contender": "B1 persistence",
+      "horizon_months": 1,
+      "n": 5764,
+      "positive_rate": 0.017,
+      "auroc": 0.5439607540863151,
+      "aupr": 0.031711223243318085
+    },
+    {
+      "calm_months": 12,
+      "contender": "B2 base rate",
+      "horizon_months": 1,
+      "n": 5764,
+      "positive_rate": 0.017,
+      "auroc": 0.7439200530194429,
+      "aupr": 0.0587082455176118
+    },
+    {
+      "calm_months": 12,
+      "contender": "B6 composite",
+      "horizon_months": 1,
+      "n": 5764,
+      "positive_rate": 0.017,
+      "auroc": 0.49575340196085493,
+      "aupr": 0.02136221260587251
+    },
+    {
+      "calm_months": 12,
+      "contender": "B0 random",
+      "horizon_months": 3,
+      "n": 5764,
+      "positive_rate": 0.0468,
+      "auroc": 0.4969684099826073,
+      "aupr": 0.044777649175427904
+    },
+    {
+      "calm_months": 12,
+      "contender": "B1 persistence",
+      "horizon_months": 3,
+      "n": 5764,
+      "positive_rate": 0.0468,
+      "auroc": 0.5345521713923607,
+      "aupr": 0.07475648456196311
+    },
+    {
+      "calm_months": 12,
+      "contender": "B2 base rate",
+      "horizon_months": 3,
+      "n": 5764,
+      "positive_rate": 0.0468,
+      "auroc": 0.748358815677709,
+      "aupr": 0.15893692687061475
+    },
+    {
+      "calm_months": 12,
+      "contender": "B6 composite",
+      "horizon_months": 3,
+      "n": 5764,
+      "positive_rate": 0.0468,
+      "auroc": 0.5204917148673974,
+      "aupr": 0.05820544805796802
+    },
+    {
+      "calm_months": 12,
+      "contender": "B0 random",
+      "horizon_months": 6,
+      "n": 5761,
+      "positive_rate": 0.0861,
+      "auroc": 0.4883340226082162,
+      "aupr": 0.08058136043240399
+    },
+    {
+      "calm_months": 12,
+      "contender": "B1 persistence",
+      "horizon_months": 6,
+      "n": 5761,
+      "positive_rate": 0.0861,
+      "auroc": 0.5333681800079649,
+      "aupr": 0.12608908682447037
+    },
+    {
+      "calm_months": 12,
+      "contender": "B2 base rate",
+      "horizon_months": 6,
+      "n": 5761,
+      "positive_rate": 0.0861,
+      "auroc": 0.7486042183622829,
+      "aupr": 0.2815300357042635
+    },
+    {
+      "calm_months": 12,
+      "contender": "B6 composite",
+      "horizon_months": 6,
+      "n": 5761,
+      "positive_rate": 0.0861,
+      "auroc": 0.5264666237784518,
+      "aupr": 0.10279446676864074
+    }
+  ],
+  "sensitivity": [
+    {
+      "calm_months": 6,
+      "contender": "B0 random",
+      "horizon_months": 1,
+      "n": 7048,
+      "positive_rate": 0.0244,
+      "auroc": 0.4842779739437477,
+      "aupr": 0.02318018709669154
+    },
+    {
+      "calm_months": 6,
+      "contender": "B1 persistence",
+      "horizon_months": 1,
+      "n": 7048,
+      "positive_rate": 0.0244,
+      "auroc": 0.5746310050462005,
+      "aupr": 0.057486259323830405
+    },
+    {
+      "calm_months": 6,
+      "contender": "B2 base rate",
+      "horizon_months": 1,
+      "n": 7048,
+      "positive_rate": 0.0244,
+      "auroc": 0.7953037697687947,
+      "aupr": 0.10086822707760015
+    },
+    {
+      "calm_months": 6,
+      "contender": "B6 composite",
+      "horizon_months": 1,
+      "n": 7048,
+      "positive_rate": 0.0244,
+      "auroc": 0.5206151832460733,
+      "aupr": 0.030368570174409318
+    },
+    {
+      "calm_months": 6,
+      "contender": "B0 random",
+      "horizon_months": 3,
+      "n": 7048,
+      "positive_rate": 0.0647,
+      "auroc": 0.49206640691534664,
+      "aupr": 0.06191846503515824
+    },
+    {
+      "calm_months": 6,
+      "contender": "B1 persistence",
+      "horizon_months": 3,
+      "n": 7048,
+      "positive_rate": 0.0647,
+      "auroc": 0.5592251639414069,
+      "aupr": 0.1263142414838037
+    },
+    {
+      "calm_months": 6,
+      "contender": "B2 base rate",
+      "horizon_months": 3,
+      "n": 7048,
+      "positive_rate": 0.0647,
+      "auroc": 0.7896332010624255,
+      "aupr": 0.23077591060414518
+    },
+    {
+      "calm_months": 6,
+      "contender": "B6 composite",
+      "horizon_months": 3,
+      "n": 7048,
+      "positive_rate": 0.0647,
+      "auroc": 0.514575083035258,
+      "aupr": 0.07578594900660202
+    },
+    {
+      "calm_months": 6,
+      "contender": "B0 random",
+      "horizon_months": 6,
+      "n": 7045,
+      "positive_rate": 0.1101,
+      "auroc": 0.4857470403375799,
+      "aupr": 0.10340820981779959
+    },
+    {
+      "calm_months": 6,
+      "contender": "B1 persistence",
+      "horizon_months": 6,
+      "n": 7045,
+      "positive_rate": 0.1101,
+      "auroc": 0.5493507983153892,
+      "aupr": 0.18247518513931293
+    },
+    {
+      "calm_months": 6,
+      "contender": "B2 base rate",
+      "horizon_months": 6,
+      "n": 7045,
+      "positive_rate": 0.1101,
+      "auroc": 0.7818826643293049,
+      "aupr": 0.3445436650578873
+    },
+    {
+      "calm_months": 6,
+      "contender": "B6 composite",
+      "horizon_months": 6,
+      "n": 7045,
+      "positive_rate": 0.1101,
+      "auroc": 0.5165562668868084,
+      "aupr": 0.12529300484107736
+    }
+  ],
+  "secondary_exploratory": [
+    {
+      "indicator": "signal_geopolitical",
+      "variant": "abs",
+      "horizon_months": 1,
+      "n": 5674,
+      "positive_rate": 0.0155,
+      "auroc": 0.5575383263353189,
+      "aupr": 0.01973595191413745
+    },
+    {
+      "indicator": "signal_hazard",
+      "variant": "abs",
+      "horizon_months": 1,
+      "n": 5674,
+      "positive_rate": 0.0155,
+      "auroc": 0.5273054796081111,
+      "aupr": 0.01867343084362538
+    },
+    {
+      "indicator": "signal_market",
+      "variant": "raw",
+      "horizon_months": 1,
+      "n": 5674,
+      "positive_rate": 0.0155,
+      "auroc": 0.5059411922663802,
+      "aupr": 0.01959958547208389
+    },
+    {
+      "indicator": "signal_market",
+      "variant": "abs",
+      "horizon_months": 1,
+      "n": 5674,
+      "positive_rate": 0.0155,
+      "auroc": 0.49992371350454057,
+      "aupr": 0.019141658593483057
+    },
+    {
+      "indicator": "composite_score",
+      "variant": "abs",
+      "horizon_months": 1,
+      "n": 5674,
+      "positive_rate": 0.0155,
+      "auroc": 0.4914681183478176,
+      "aupr": 0.018299897903416663
+    },
+    {
+      "indicator": "composite_score",
+      "variant": "raw",
+      "horizon_months": 1,
+      "n": 5674,
+      "positive_rate": 0.0155,
+      "auroc": 0.4914681183478176,
+      "aupr": 0.018299897903416663
+    },
+    {
+      "indicator": "signal_geopolitical",
+      "variant": "raw",
+      "horizon_months": 1,
+      "n": 5674,
+      "positive_rate": 0.0155,
+      "auroc": 0.4900420694593627,
+      "aupr": 0.01851336345371252
+    },
+    {
+      "indicator": "signal_hazard",
+      "variant": "raw",
+      "horizon_months": 1,
+      "n": 5674,
+      "positive_rate": 0.0155,
+      "auroc": 0.4768648488103375,
+      "aupr": 0.01603902543988691
+    },
+    {
+      "indicator": "signal_geopolitical",
+      "variant": "raw",
+      "horizon_months": 3,
+      "n": 5505,
+      "positive_rate": 0.0144,
+      "auroc": 0.5389894880253071,
+      "aupr": 0.03182971898377417
+    },
+    {
+      "indicator": "composite_score",
+      "variant": "abs",
+      "horizon_months": 3,
+      "n": 5505,
+      "positive_rate": 0.0144,
+      "auroc": 0.5357071204281308,
+      "aupr": 0.021560319653117128
+    },
+    {
+      "indicator": "composite_score",
+      "variant": "raw",
+      "horizon_months": 3,
+      "n": 5505,
+      "positive_rate": 0.0144,
+      "auroc": 0.5357071204281308,
+      "aupr": 0.021560319653117128
+    },
+    {
+      "indicator": "signal_hazard",
+      "variant": "abs",
+      "horizon_months": 3,
+      "n": 5505,
+      "positive_rate": 0.0144,
+      "auroc": 0.5231328763991471,
+      "aupr": 0.016911459409599504
+    },
+    {
+      "indicator": "signal_geopolitical",
+      "variant": "abs",
+      "horizon_months": 3,
+      "n": 5505,
+      "positive_rate": 0.0144,
+      "auroc": 0.5103859989641996,
+      "aupr": 0.029403219730941024
+    },
+    {
+      "indicator": "signal_market",
+      "variant": "raw",
+      "horizon_months": 3,
+      "n": 5505,
+      "positive_rate": 0.0144,
+      "auroc": 0.5067397014841807,
+      "aupr": 0.015968705293206098
+    },
+    {
+      "indicator": "signal_market",
+      "variant": "abs",
+      "horizon_months": 3,
+      "n": 5505,
+      "positive_rate": 0.0144,
+      "auroc": 0.5005225659856201,
+      "aupr": 0.015280288632397816
+    },
+    {
+      "indicator": "signal_hazard",
+      "variant": "raw",
+      "horizon_months": 3,
+      "n": 5505,
+      "positive_rate": 0.0144,
+      "auroc": 0.4969859140472269,
+      "aupr": 0.015746536895758494
+    },
+    {
+      "indicator": "signal_hazard",
+      "variant": "abs",
+      "horizon_months": 6,
+      "n": 5278,
+      "positive_rate": 0.0123,
+      "auroc": 0.5366376957015745,
+      "aupr": 0.016250464051668086
+    },
+    {
+      "indicator": "signal_geopolitical",
+      "variant": "abs",
+      "horizon_months": 6,
+      "n": 5278,
+      "positive_rate": 0.0123,
+      "auroc": 0.5233661408608656,
+      "aupr": 0.017049097999056077
+    },
+    {
+      "indicator": "signal_geopolitical",
+      "variant": "raw",
+      "horizon_months": 6,
+      "n": 5278,
+      "positive_rate": 0.0123,
+      "auroc": 0.5187298027121545,
+      "aupr": 0.018022832595643155
+    },
+    {
+      "indicator": "composite_score",
+      "variant": "abs",
+      "horizon_months": 6,
+      "n": 5278,
+      "positive_rate": 0.0123,
+      "auroc": 0.5177234428721097,
+      "aupr": 0.021524635922698866
+    },
+    {
+      "indicator": "composite_score",
+      "variant": "raw",
+      "horizon_months": 6,
+      "n": 5278,
+      "positive_rate": 0.0123,
+      "auroc": 0.5177234428721097,
+      "aupr": 0.021524635922698866
+    },
+    {
+      "indicator": "signal_market",
+      "variant": "raw",
+      "horizon_months": 6,
+      "n": 5278,
+      "positive_rate": 0.0123,
+      "auroc": 0.5080198911006507,
+      "aupr": 0.013434966173689434
+    },
+    {
+      "indicator": "signal_market",
+      "variant": "abs",
+      "horizon_months": 6,
+      "n": 5278,
+      "positive_rate": 0.0123,
+      "auroc": 0.501943366435981,
+      "aupr": 0.01278644780173959
+    },
+    {
+      "indicator": "signal_hazard",
+      "variant": "raw",
+      "horizon_months": 6,
+      "n": 5278,
+      "positive_rate": 0.0123,
+      "auroc": 0.49667842228747655,
+      "aupr": 0.014757402600001092
+    }
+  ]
+}

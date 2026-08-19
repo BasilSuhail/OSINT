@@ -1,0 +1,312 @@
+{
+  "generated_at": "2026-07-10T20:27:15.016235+00:00",
+  "run": {
+    "window_stories": 2664,
+    "extracted": 6,
+    "reviewed": 1,
+    "failed": 0,
+    "skipped_existing": 0,
+    "budget_stopped": false
+  },
+  "extracted_24h": [
+    {
+      "story_id": 5292,
+      "claims": {
+        "countries": [
+          "IT"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Venice art installation grapples with its Jewish history at 61st International Art Exhibition"
+    },
+    {
+      "story_id": 5293,
+      "claims": {
+        "countries": [],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "What to watch this week: Larry David's new HBO comedy, talking sheep, and Kim Novak"
+    },
+    {
+      "story_id": 5295,
+      "claims": {
+        "countries": [],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "After 50-years of Jewish outreach, pioneering American Rabbi Ephraim Buchwald steps down"
+    },
+    {
+      "story_id": 5063,
+      "claims": {
+        "countries": [
+          "IR",
+          "US"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Countries must reject Iran efforts to control Hormuz, UN agency document says"
+    },
+    {
+      "story_id": 5294,
+      "claims": {
+        "countries": [
+          "IL",
+          "EG"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Israeli, Egyptian senior officers discuss Gaza in Cairo meeting - report"
+    },
+    {
+      "story_id": 5296,
+      "claims": {
+        "countries": [
+          "UA",
+          "MC"
+        ],
+        "casualties": 1,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Ukraine wants joint investigation in Monaco bomb case after suspect found dead, top prosecutor says"
+    },
+    {
+      "story_id": 4909,
+      "claims": {
+        "countries": [
+          "IL"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Natural Intelligence marketing firm wins Dun award for advancing women in Israeli high-tech sector"
+    },
+    {
+      "story_id": 4906,
+      "claims": {
+        "countries": [
+          "US"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "As U.S. turns 250, retired judges hit the road to defend judicial independence"
+    },
+    {
+      "story_id": 4910,
+      "claims": {
+        "countries": [],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Scientists identify nearby 'super-Earth' as promising candidate in search for alien life - study"
+    },
+    {
+      "story_id": 4899,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Andhra Pradesh police being misused to target critics, alleges YSRCP\u2019s Lakshmi Parvathi"
+    },
+    {
+      "story_id": 4904,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "UDF members to head Syndicate panels in Calicut University"
+    },
+    {
+      "story_id": 4905,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Delhi HC seeks Centre\u2019s stand on Ambassador Hotel\u2019s plea against show-cause notice for eviction"
+    },
+    {
+      "story_id": 4907,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Sliding rupee value comes as a blessing for Telangana\u2019s Musi project"
+    },
+    {
+      "story_id": 4908,
+      "claims": {
+        "countries": [
+          "IR",
+          "US"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Push for diplomacy  continues even as strikes in Iran, Hormuz intensify, US official says"
+    },
+    {
+      "story_id": 4895,
+      "claims": {
+        "countries": [
+          "ZA"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Broos confirms he\u2019s not staying as Bafana coach"
+    },
+    {
+      "story_id": 4900,
+      "claims": {
+        "countries": [
+          "ZA"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "LIVE | Madlanga Commission of Inquiry Day 137 | Friday, 10 July 2026"
+    },
+    {
+      "story_id": 4890,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Abolish adjustment charges, roll back smart meters: CPI(M) to Andhra Pradesh govt"
+    },
+    {
+      "story_id": 4889,
+      "claims": {
+        "countries": [
+          "GB"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "SIR: Residents flag purple stickers pasted despite no enumeration forms being distributed"
+    },
+    {
+      "story_id": 4893,
+      "claims": {
+        "countries": [
+          "IN",
+          "GB"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "India lays out tariffs and quotas for U.K. vehicles under trade deal"
+    },
+    {
+      "story_id": 4894,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "\u2018When will ED freeze temple funds?' Derek O'Brien questions TMC accounts freeze"
+    },
+    {
+      "story_id": 4896,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "\u20b9200 crore sanctioned for tap water to every home in Machilipatnam: Kollu Ravindra"
+    },
+    {
+      "story_id": 4897,
+      "claims": {
+        "countries": [
+          "TR"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "E20 costlier to produce than pure petrol: Government"
+    },
+    {
+      "story_id": 4902,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Karnataka CM inaugurates Syed Mohammad Gesu Daraz Research Academy at Khwaja Banda Nawaz Dargah"
+    },
+    {
+      "story_id": 4903,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "Calcutta High Court allows Trinamool to operate frozen accounts under judicial watch"
+    },
+    {
+      "story_id": 4891,
+      "claims": {
+        "countries": [
+          "IN"
+        ],
+        "casualties": null,
+        "event_type": "none"
+      },
+      "model": "qwen3.5:4b-q4_K_M",
+      "title": "SIR: Anomalies and unmapped voters could land 30% forms for scrutiny in Telangana"
+    }
+  ]
+}
