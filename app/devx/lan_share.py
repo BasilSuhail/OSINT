@@ -11,6 +11,7 @@ So: closed by default, open when asked, and never open by accident.
 
     make up        # 127.0.0.1 only, nothing on the network can reach it
     make share     # reachable from the local network, prints the guest URL
+    make serve     # reachable from the tailnet, and still there after a reboot
 
 ## Why the flag is never written to a file
 
@@ -44,15 +45,39 @@ together: one address in, everything that depends on it out.
 Share mode adds none. The guest loads the frontend, so `NEXT_PUBLIC_API_TOKEN`
 travels to them inside the bundle; a secret every visitor is handed is not one.
 Network scope is the control being asked for, and stating that is better than
-implying a protection that is not there.
+implying a protection that is not there. Serve mode is the exception: it
+requires `API_AUTH_TOKEN` set, and does not carry the token to just anyone —
+the reasoning that makes a bundled secret pointless for a guest on the home
+wifi does not apply when the only devices that can even reach the board are
+the operator's own, admitted to the tailnet one at a time by the operator.
+
+## Two modes, two protections
+
+Share and serve are not the same guarantee reached by different addresses.
+Share mode's protection *is* the bind address — a guest reaches the console
+because, and only because, the process is listening where their packets
+arrive. Take the address away and the protection is gone with it, which is
+the whole argument, above, for never writing it to a file: the one thing
+standing between "closed" and "open" must not survive past the run that set
+it.
+
+Serve mode's protection is the tailnet itself. A device Tailscale has not
+admitted cannot resolve the board's name or route to its address, whatever
+the board happens to be bound to — the network refuses the packet before the
+bind address is ever consulted. Remembering "this machine serves" does not
+widen who can reach it; only the operator, from the Tailscale admin console,
+does that. That is what makes it safe for serve mode to survive a reboot
+where share mode may not.
 
     python -m app.devx.lan_share locked     # print shell exports for eval
     python -m app.devx.lan_share share      # detect the address, then the same
+    python -m app.devx.lan_share serve      # read the tailnet identity, then the same
 """
 
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
 import re
 import shlex
@@ -183,6 +208,97 @@ def share_env(
     }
 
 
+#: What Tailscale hands out. An address outside it is another network — in
+#: practice the home wifi, which is the exposure share mode announces and this
+#: mode does not.
+TAILNET_RANGE = ipaddress.ip_network("100.64.0.0/10")
+
+
+class ServeRefused(RuntimeError):  # noqa: N818 - named for what it does, not what it is
+    """Serve mode will not start, and the message says what to do about it."""
+
+
+def _tailscale_status() -> dict:
+    """`tailscale status --json`, parsed. Seam for the tests."""
+    try:
+        raw = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ServeRefused("tailscale is not installed or not running") from exc
+    if raw.returncode != 0:
+        raise ServeRefused("tailscale is installed but not up — run `tailscale up`")
+    try:
+        return json.loads(raw.stdout)
+    except json.JSONDecodeError as exc:
+        raise ServeRefused("tailscale answered something this cannot read") from exc
+
+
+def tailnet_identity() -> tuple[str, str]:
+    """This board's name and address on the tailnet.
+
+    The name is what the phone resolves and the address is what the API binds,
+    and they are read together so a console can never be built naming one
+    machine and bound to another.
+    """
+    status = _tailscale_status()
+    myself = status.get("Self") or {}
+    host = str(myself.get("DNSName") or "").strip().rstrip(".")
+    addresses = [str(a) for a in (myself.get("TailscaleIPs") or []) if ":" not in str(a)]
+    if not host or not addresses:
+        raise ServeRefused("the tailnet did not say what this machine is called — is it up?")
+    return host, addresses[0]
+
+
+def serve_env(
+    host: str,
+    address: str,
+    *,
+    api_port: int = DEFAULT_API_PORT,
+    frontend_port: int = DEFAULT_FRONTEND_PORT,
+    cors_origins: str = "",
+    api_token: str = "",
+) -> dict[str, str]:
+    """Every setting a served console needs, derived from the tailnet identity.
+
+    Two arguments rather than one because the two answers differ and both are
+    load-bearing: the bundle must name what the *phone* resolves, and the bind
+    must name the interface the tailnet is on.
+    """
+    if not api_token.strip():
+        raise ServeRefused(
+            "serve mode needs API_AUTH_TOKEN set — it is the only thing between "
+            "a device on the tailnet and an endpoint that spends model inference"
+        )
+    name = _validated(host)
+    try:
+        bind = ipaddress.IPv4Address(address.strip())
+    except ipaddress.AddressValueError as exc:
+        raise ServeRefused(f"{address!r} is not an IPv4 address") from exc
+    if bind not in TAILNET_RANGE:
+        raise ServeRefused(f"{bind} is not a tailnet address — serve mode binds the tailnet only")
+
+    origin = f"http://{name}:{frontend_port}"
+    configured = [o.strip() for o in (cors_origins or DEFAULT_CORS_ORIGINS).split(",") if o.strip()]
+    origins: list[str] = []
+    for candidate in [*configured, origin]:
+        if candidate not in origins:
+            origins.append(candidate)
+
+    return {
+        "API_BIND": str(bind),
+        "FRONTEND_BIND": str(bind),
+        "NEXT_PUBLIC_API_URL": f"http://{name}:{api_port}",
+        "API_CORS_ORIGINS": ",".join(origins),
+        "OSINT_SERVE_HOST": name,
+        "OSINT_SERVE_URL": origin,
+    }
+
+
 def detect_lan_ip() -> str:
     """This machine's address on the network it is currently attached to.
 
@@ -235,8 +351,30 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(render_exports(locked_env()))
         return 0
 
+    if mode == "serve":
+        try:
+            pinned = _env("OSINT_PUBLIC_HOST").strip()
+            host, address = tailnet_identity()
+            env = serve_env(
+                pinned or host,
+                address,
+                api_port=int(_env_port("API_PORT", DEFAULT_API_PORT)),
+                frontend_port=int(_env_port("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)),
+                cors_origins=_env("API_CORS_ORIGINS"),
+                api_token=_env("API_AUTH_TOKEN"),
+            )
+        except (ServeRefused, ShareAddressError) as exc:
+            #: The caller evals this output, so a failure must print no exports.
+            print(f"cannot serve: {exc}", file=sys.stderr)
+            return 1
+        sys.stdout.write(render_exports(env))
+        return 0
+
     if mode != "share":
-        print(f"usage: python -m app.devx.lan_share [locked|share] (got {mode!r})", file=sys.stderr)
+        print(
+            f"usage: python -m app.devx.lan_share [locked|share|serve] (got {mode!r})",
+            file=sys.stderr,
+        )
         return 2
 
     #: The same setting `make env` derives NEXT_PUBLIC_API_URL from (#964).

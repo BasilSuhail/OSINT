@@ -26,16 +26,20 @@ network, and nothing under test cares which range the address is from.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import yaml
 
+from app.devx import lan_share
 from app.devx.lan_share import (
     ALL_INTERFACES,
     LOOPBACK,
+    ServeRefused,
     ShareAddressError,
     locked_env,
     render_exports,
+    serve_env,
     share_env,
 )
 
@@ -395,3 +399,121 @@ class TestDataSizeDoesNotContradictItself:
     def test_it_says_the_postgres_number_needs_sudo(self) -> None:
         recipe = MAKEFILE.read_text()
         assert "sudo for the true Postgres size" in recipe
+
+
+#: Tailscale hands out addresses from the carrier-grade NAT range and names
+#: hosts under a tailnet's own domain. Both here are invented: an address
+#: inside the range with no machine behind it, and a domain that cannot exist.
+SERVE_HOST = "board.example-tailnet.ts.net"
+SERVE_ADDRESS = "100.100.100.100"
+
+
+class TestServeMode:
+    #: The whole point of the mode. Not 0.0.0.0: that also publishes on the
+    #: home wifi, which is share mode's exposure arriving through a mode that
+    #: never said it would.
+    def test_it_binds_the_tailnet_address_and_not_every_interface(self) -> None:
+        env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
+        assert env["API_BIND"] == SERVE_ADDRESS
+        assert env["FRONTEND_BIND"] == SERVE_ADDRESS
+        assert ALL_INTERFACES not in env.values()
+
+    #: Compiled into the bundle the phone downloads, so it must name what the
+    #: phone can resolve — the tailnet name, never the address the board calls
+    #: itself.
+    def test_the_bundle_points_at_the_tailnet_name(self) -> None:
+        env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
+        assert env["NEXT_PUBLIC_API_URL"] == f"http://{SERVE_HOST}:8000"
+
+    def test_it_adds_the_tailnet_origin_without_dropping_configured_ones(self) -> None:
+        env = serve_env(
+            SERVE_HOST,
+            SERVE_ADDRESS,
+            cors_origins="http://localhost:3000",
+            api_token="a-token",
+        )
+        origins = env["API_CORS_ORIGINS"].split(",")
+        assert "http://localhost:3000" in origins
+        assert f"http://{SERVE_HOST}:3000" in origins
+
+    def test_it_honours_non_default_ports(self) -> None:
+        env = serve_env(
+            SERVE_HOST, SERVE_ADDRESS, api_port=9000, frontend_port=4000, api_token="a-token"
+        )
+        assert env["NEXT_PUBLIC_API_URL"] == f"http://{SERVE_HOST}:9000"
+        assert f"http://{SERVE_HOST}:4000" in env["API_CORS_ORIGINS"]
+
+    def test_it_reports_the_url_to_open(self) -> None:
+        env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
+        assert env["OSINT_SERVE_URL"] == f"http://{SERVE_HOST}:3000"
+        assert env["OSINT_SERVE_HOST"] == SERVE_HOST
+
+    #: `next start` has no equivalent of the dev server's host allow-list, so
+    #: emitting the setting share mode needs would be a setting that does
+    #: nothing.
+    def test_it_emits_no_dev_server_host(self) -> None:
+        assert "LAN_SHARE_HOST" not in serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
+
+    #: An address outside the tailnet range is the home wifi, or a mistake.
+    #: Either way it is not the interface this mode means.
+    @pytest.mark.parametrize("address", ["192.0.2.10", "0.0.0.0", "127.0.0.1"])
+    def test_it_refuses_an_address_that_is_not_on_the_tailnet(self, address: str) -> None:
+        with pytest.raises(ServeRefused):
+            serve_env(SERVE_HOST, address, api_token="a-token")
+
+    #: On a laptop an empty token is a convenience. On a board that is up all
+    #: the time and reachable from a phone, it is the only thing between a
+    #: tailnet device and an endpoint that spends model inference per call.
+    @pytest.mark.parametrize("token", ["", "   "])
+    def test_it_refuses_to_serve_without_a_token(self, token: str) -> None:
+        with pytest.raises(ServeRefused) as raised:
+            serve_env(SERVE_HOST, SERVE_ADDRESS, api_token=token)
+        assert "API_AUTH_TOKEN" in str(raised.value)
+
+    def test_it_refuses_a_host_a_phone_could_not_resolve(self) -> None:
+        with pytest.raises(ShareAddressError):
+            serve_env("localhost", SERVE_ADDRESS, api_token="a-token")
+
+
+class TestReadingTheTailnet:
+    #: The shape `tailscale status --json` returns. Trimmed to the two fields
+    #: this reads; the real payload carries the whole tailnet, which is
+    #: exactly why none of it is pasted here.
+    STATUS: ClassVar[dict] = {
+        "Self": {
+            "DNSName": "board.example-tailnet.ts.net.",
+            "TailscaleIPs": ["100.100.100.100", "fd7a:1::1"],
+        }
+    }
+
+    def test_it_reads_the_name_and_the_address(self, monkeypatch) -> None:
+        monkeypatch.setattr(lan_share, "_tailscale_status", lambda: self.STATUS)
+        assert lan_share.tailnet_identity() == (SERVE_HOST, SERVE_ADDRESS)
+
+    #: The name comes back fully qualified, with the root dot. A URL built
+    #: from it unstripped is a URL that does not work.
+    def test_it_drops_the_trailing_dot(self, monkeypatch) -> None:
+        monkeypatch.setattr(lan_share, "_tailscale_status", lambda: self.STATUS)
+        host, _ = lan_share.tailnet_identity()
+        assert not host.endswith(".")
+
+    #: The v4 address, not whichever came first. A bind address in brackets is
+    #: a shape neither compose nor the unit has been tried with.
+    def test_it_takes_the_v4_address(self, monkeypatch) -> None:
+        monkeypatch.setattr(lan_share, "_tailscale_status", lambda: self.STATUS)
+        _, address = lan_share.tailnet_identity()
+        assert ":" not in address
+
+    @pytest.mark.parametrize("status", [{}, {"Self": {}}, {"Self": {"TailscaleIPs": []}}])
+    def test_it_refuses_when_the_tailnet_says_nothing_usable(self, monkeypatch, status) -> None:
+        monkeypatch.setattr(lan_share, "_tailscale_status", lambda: status)
+        with pytest.raises(ServeRefused):
+            lan_share.tailnet_identity()
+
+    def test_it_refuses_when_tailscale_is_not_there(self, monkeypatch) -> None:
+        def absent() -> dict:
+            raise ServeRefused("tailscale is not installed or not running")
+
+        monkeypatch.setattr(lan_share, "_tailscale_status", absent)
+        with pytest.raises(ServeRefused):
+            lan_share.tailnet_identity()
