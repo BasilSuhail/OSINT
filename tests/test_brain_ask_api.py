@@ -68,6 +68,10 @@ def test_ask_empty_question_is_422():
 
 def test_ask_ram_below_floor_returns_busy(monkeypatch):
     client = _client()
+    #: Not already loaded, so the floor decides. Without this the check reaches a
+    #: real Ollama, and the test turns on which model that machine happens to be
+    #: holding — passing today and failing on the machine that has it warm.
+    monkeypatch.setattr(api.gate.client, "model_resident", lambda *a, **k: False)
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 100)
     monkeypatch.setattr(api.settings, "qa_min_free_mb", 3800)
     called = {"model": False}
