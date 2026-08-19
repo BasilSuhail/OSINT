@@ -13,7 +13,7 @@ open, run and check.
 | | |
 | --- | --- |
 | This document | Eight appendices, each pointing at files below |
-| `results/data/` | The analysis panel (31,637 rows) and the coverage table, as CSV and Parquet |
+| `results/data/` | The analysis panel (31,637 rows) and the coverage table, as CSV |
 | `results/reports/` | Nine result sets, each as machine-readable JSON and a rendered table |
 | `results/audit-sheets/` | Four sheets a person filled in by hand |
 
@@ -76,8 +76,9 @@ country-month.
 | Rows carrying a composite score | 17,367 |
 
 Built by [`app/panel/run.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/panel/run.py); metadata in
-[`results/data/panel-meta.json`](results/data/panel-meta.json). A Parquet copy
-is written beside the CSV for analysis in pandas or R.
+[`results/data/panel-meta.json`](results/data/panel-meta.json). CSV only — a
+Parquet copy was described here before one existed, and the claim is removed
+rather than left standing.
 
 ### Schema
 
@@ -110,9 +111,16 @@ panel.groupby(panel.month.dt.year)["label_any"].mean()
 ### The shape of the target, and why it matters
 
 The positive rate is **26.53%** on the training span and **21.83%** on the
-held-out span — but it is not spread evenly. Of 238 countries present between
-2015 and 2022, **133 are never labelled** and **10 are labelled in at least 90%
-of their months**. Sixty percent of countries are constants.
+held-out span — but it is not spread evenly. Of the **197** countries the panel
+carries between 2015-01 and 2022-12, **91 are never labelled** and **16 are
+labelled in at least 90% of their months**. That is **107 of 197, or 54%,
+constant either way.** Over the whole span the same count is 80 never, 11
+always, 91 of 200.
+
+An earlier revision of this appendix gave 238, 133 and 10 here. Those figures
+counted countries in the label source rather than rows in the panel, which is a
+different population from the one every result is computed on. The numbers
+above are recomputed from `panel.csv` itself with the snippet below.
 
 That single fact is why a pooled metric over this panel is misleading, and it
 is visible directly in the CSV:
