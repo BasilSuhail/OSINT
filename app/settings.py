@@ -1,6 +1,6 @@
 """Runtime settings, loaded from environment via pydantic-settings."""
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +43,38 @@ class Settings(BaseSettings):
     # The brain (#409) — a light always-warm-when-idle local model, separate
     # from the 4b nightly validator above. Localhost only.
     brain_enabled: bool = Field(default=True)
+    #: The question path only. `brain_enabled` above stops the whole brain —
+    #: gists, tags, severity, the situation summary, the embeddings — and a
+    #: small board wants every one of those; what it cannot afford is a
+    #: user-triggered generation that takes minutes and holds the box while it
+    #: runs. `make env` writes this false at 9 GB or less.
+    #:
+    #: `env.example` ships the key with no value, and has to. A key holding the
+    #: value the example suggests is the example's answer rather than the
+    #: operator's, and `scripts/env_setup.py` is allowed to write over exactly
+    #: those — so an operator who turned questions back on by typing the same
+    #: word the example printed would have it turned off again at the next
+    #: `make env`. Blank is the only value that is unmistakably nobody's answer.
+    ask_enabled: bool = Field(default=True)
+
+    @field_validator("ask_enabled", mode="before")
+    @classmethod
+    def _blank_means_the_default(cls, value: object) -> object:
+        """A key present with no value is the same as a key that is absent.
+
+        Pydantic reads a bool from a small vocabulary and refuses everything
+        else, blank included: `ASK_ENABLED=` in `.env` would otherwise stop the
+        API from starting at all, with a validation error about a setting the
+        operator never touched. It has to mean what the console's own reader
+        already makes it mean — on — or the file the project ships would not
+        boot the project.
+
+        The refusal is kept for a word that is neither: `ASK_ENABLED=maybe` is
+        a mistake worth failing loudly on, because guessing at it is how a
+        console ends up drawing a control the API will refuse.
+        """
+        return True if isinstance(value, str) and not value.strip() else value
+
     # Moved off the 1.5b in #926. The tags it wrote were not merely sparse but
     # wrong — a total solar eclipse filed as a disaster, a missile strike on a
     # ship filed as a crime — and measurement said the model was the limit

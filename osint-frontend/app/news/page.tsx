@@ -42,6 +42,7 @@ import {
 import { sortByActivity } from "@/lib/situation"
 import { TagChip } from "@/components/ListRow"
 import { AskDock } from "@/components/news/AskDock"
+import { ASK_ENABLED } from "@/lib/askFlag"
 
 const REFRESH_MS = 60_000
 //: The window the page reads over. Long enough that a story running for two
@@ -417,8 +418,10 @@ export default function NewsPage() {
 
       {/*: Above the reader on purpose (z-40 over z-30): a question about the
           story you have open is the ordinary case, so the composer must not be
-          the thing that opening a story buries. */}
-      <AskDock onOpenStory={setOpenId} />
+          the thing that opening a story buries. Absent rather than disabled
+          when the flag is off — a build that cannot answer draws no dock to
+          ask into. */}
+      {ASK_ENABLED && <AskDock onOpenStory={setOpenId} />}
     </div>
   )
 }
