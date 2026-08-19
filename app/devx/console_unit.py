@@ -30,6 +30,18 @@ def env_file_text(env: dict[str, str]) -> str:
     for key, value in env.items():
         if "\n" in value or "\r" in value:
             raise ValueError(f"{key} contains a newline, which would truncate it")
+        if value.endswith("\\"):
+            # systemd's EnvironmentFile parser reads a trailing backslash as a
+            # line continuation and merges the next line into this value,
+            # corrupting both — the same class of failure the newline check
+            # above exists to catch.
+            raise ValueError(f"{key} ends with a backslash, which systemd reads as a continuation")
+        if value.startswith(('"', "'")):
+            # A leading quote is quote-processed by systemd too, not just a
+            # trailing one — the docstring above already refuses to add
+            # quotes; a value that arrives already carrying one is refused
+            # for the same reason.
+            raise ValueError(f"{key} starts with a quote character, which systemd strips out")
         lines.append(f"{key}={value}")
     return "\n".join(lines) + "\n"
 
@@ -45,15 +57,23 @@ def unit_text(
     """The service that keeps the console up."""
     return f"""[Unit]
 Description=OSINT console
-Documentation=https://github.com/BasilSuhail/OSINT
-# The bind address does not exist until the tailnet is up, and a unit that
-# starts before it fails at boot while working perfectly when tried by hand.
+# `After=` only orders two units that are already starting; it does not pull
+# tailscaled into the boot transaction. `Wants=` is what starts it. Together
+# they are what actually keeps this unit from binding an address that does
+# not exist yet.
 After=network-online.target tailscaled.service
-Wants=network-online.target
+Wants=network-online.target tailscaled.service
 
 [Service]
 Type=simple
 WorkingDirectory={working_dir}
+# systemd units run with a minimal built-in PATH and never source a login
+# shell, so an inherited PATH cannot be relied on to contain `pnpm` — this
+# repository has already hit exactly that failure once, in
+# scripts/dev-up.sh, which runs `pnpm dev` through a login shell for the
+# same reason. Named explicitly here instead, covering where the documented
+# install (`apt install nodejs && corepack enable`) puts its shims.
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Beside the unit rather than in it: unit files are world-readable.
 EnvironmentFile={env_file}
 # Which build is being served, in the journal, so a fix that was pulled and

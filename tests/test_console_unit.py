@@ -36,11 +36,24 @@ def test_the_unit_is_named_for_what_it_runs() -> None:
 
 #: The bind address does not exist until the tailnet is up. Starting before
 #: that is the one failure that happens at boot and not when tried by hand,
-#: which is the hardest kind to find.
+#: which is the hardest kind to find. `After=` alone only orders two units
+#: that are already starting — it takes `Wants=` to pull tailscaled into the
+#: boot transaction at all.
 def test_it_waits_for_the_network_and_the_tailnet() -> None:
     unit = _unit()
     assert "After=network-online.target tailscaled.service" in unit
     assert "Wants=network-online.target" in unit
+    assert "Wants=network-online.target tailscaled.service" in unit
+
+
+#: systemd units start with a minimal built-in PATH and never source a login
+#: shell, so `pnpm` on an inherited PATH is not guaranteed — the failure mode
+#: is a restart loop that logs `status=127` and never says why.
+def test_it_does_not_rely_on_an_inherited_path() -> None:
+    unit = _unit()
+    assert "Environment=PATH=" in unit
+    assert "/usr/bin" in unit
+    assert "/usr/local/bin" in unit
 
 
 def test_it_comes_back_after_a_crash() -> None:
@@ -64,8 +77,11 @@ def test_it_says_which_build_it_is_serving() -> None:
     assert "BUILD_COMMIT" in _unit()
 
 
-#: The unit file is world-readable. The token belongs in the environment file
-#: beside it, which is not.
+#: `unit_text` has no parameter that could receive a secret, so this assertion
+#: cannot fail whatever the function does — it is not a regression guard.
+#: What it records is the interface property that keeps a secret out of the
+#: unit in the first place: the token has nowhere to enter, because the unit
+#: file is world-readable and the environment file beside it is not.
 def test_no_secret_is_written_into_the_unit() -> None:
     unit = _unit()
     assert "a-token" not in unit
@@ -92,3 +108,18 @@ def test_a_value_with_a_newline_is_refused() -> None:
     #: key systemd does not know.
     with pytest.raises(ValueError):
         env_file_text({"API_CORS_ORIGINS": "http://a:3000\nEVIL=1"})
+
+
+def test_a_value_ending_in_a_backslash_is_refused() -> None:
+    #: systemd's EnvironmentFile parser reads a trailing backslash as a line
+    #: continuation and merges the next line into this value, corrupting
+    #: both — the same failure the newline check exists to catch.
+    with pytest.raises(ValueError):
+        env_file_text({"API_CORS_ORIGINS": "http://a:3000\\"})
+
+
+def test_a_value_starting_with_a_quote_is_refused() -> None:
+    #: A leading quote is quote-processed by systemd, same as a trailing one
+    #: — arriving already carrying one is refused rather than silently kept.
+    with pytest.raises(ValueError):
+        env_file_text({"API_CORS_ORIGINS": '"http://a:3000'})
