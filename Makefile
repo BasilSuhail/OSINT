@@ -55,6 +55,15 @@ up:  ## Start everything: Docker stores, backend, frontend, Ollama
 share:  ## Start everything, reachable from the local network (no password)
 	@LAN_SHARE=1 bash scripts/dev-up.sh
 
+serve-build:  ## Build the console for the tailnet — run this after every pull
+	@bash scripts/serve-up.sh build
+
+serve-install:  ## Install and enable the console's service (asks for sudo, Linux only)
+	@bash scripts/serve-up.sh install
+
+serve:  ## Start the stack for the tailnet and restart the served console
+	@bash scripts/serve-up.sh start
+
 down:  ## Stop everything, keep all data
 	@bash scripts/dev-down.sh
 

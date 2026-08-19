@@ -517,3 +517,43 @@ class TestReadingTheTailnet:
         monkeypatch.setattr(lan_share, "_tailscale_status", absent)
         with pytest.raises(ServeRefused):
             lan_share.tailnet_identity()
+
+
+def _serve_script() -> str:
+    return (Path(__file__).resolve().parents[1] / "scripts/serve-up.sh").read_text()
+
+
+def test_the_serve_targets_exist() -> None:
+    makefile = (Path(__file__).resolve().parents[1] / "Makefile").read_text()
+    for target in ("serve-build:", "serve-install:", "serve:"):
+        assert target in makefile
+
+
+#: systemd is Linux's. On anything else the install would write a file nothing
+#: reads and report success, which is worse than refusing.
+def test_installing_the_unit_refuses_where_there_is_no_systemd() -> None:
+    script = _serve_script()
+    assert "uname" in script
+    assert "systemctl" in script
+
+
+#: The build bakes NEXT_PUBLIC_* into the bundle, so it must run with serve
+#: mode's environment in place, not the shell's defaults.
+def test_the_build_runs_under_serve_mode() -> None:
+    script = _serve_script()
+    assert "lan_share serve" in script
+    assert "pnpm build" in script
+
+
+#: A build whose commit is not recorded is a build whose staleness cannot be
+#: seen from the journal.
+def test_the_build_records_the_commit_it_built() -> None:
+    assert "BUILD_COMMIT" in _serve_script()
+
+
+#: The install prints the unit before writing it. A file installed into
+#: /etc without being shown is a file nobody reviewed.
+def test_the_install_shows_the_unit_before_writing_it() -> None:
+    script = _serve_script()
+    assert "sudo" in script
+    assert "cat" in script or "printf" in script
