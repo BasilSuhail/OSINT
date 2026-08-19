@@ -472,6 +472,92 @@ make news
 Do not install pnpm yourself on any of them. `corepack enable` fetches the
 version this project pins; a different one resolves the lockfile differently.
 
+<details>
+<summary><b>Run it as a server</b> — the console as a service, reachable from a phone</summary>
+
+Everything above gets a console running on the machine you typed it into. The
+backend side already survives a reboot — the containers restart themselves —
+but `make up` runs the console itself as a development server, and a
+development server dies with the power. This turns the console into a service
+that starts on its own, and turns the board into something you can reach from
+a phone rather than only from the machine sitting next to it.
+
+[Tailscale](https://tailscale.com) makes that reachable-from-a-phone part
+work, and this repository does not install it — follow its own instructions
+for the board and for whatever you'll read the console on, a phone or a
+laptop. Then bring it up on the board:
+
+```bash
+sudo tailscale up
+```
+
+and find the name the board answers to on the tailnet:
+
+```bash
+tailscale status
+```
+
+Nothing below asks you to type that name in — it's found automatically — but
+it's what you'll open in a browser at the end.
+
+`API_AUTH_TOKEN` has to be set in `.env` before any of this starts. It is the
+only thing standing between a device on the tailnet and an endpoint that
+spends model inference on every call, and serve mode refuses to start without
+it.
+
+Build the console for the tailnet it finds:
+
+```bash
+make serve-build
+```
+
+A few minutes. It prints the console URL and the API URL it is baking in —
+worth reading, because this is the sharp part: both are compiled into the
+bundle, not read again at startup. Change the tailnet name later and the fix
+is building again, not restarting.
+
+Install the service — Linux only, and it refuses outright on anything else:
+
+```bash
+make serve-install
+```
+
+It asks for `sudo`. Before writing anything it prints the systemd unit in
+full and asks you to confirm; answer yes and it writes
+`/etc/systemd/system/osint-console.service`, and `/etc/osint-console.env`
+beside it, readable by root alone because that second file carries the API
+token the bundle needs to authenticate.
+
+Start it:
+
+```bash
+make serve
+```
+
+This brings the containers up with the API published on the tailnet address
+only, then restarts the console's service so it is serving the build from
+above.
+
+Reboot the board, then open the console from the phone. That is the actual
+test, and it is the only one that proves it:
+
+```bash
+sudo reboot
+```
+
+If it does not come back: `systemctl status osint-console` for whether the
+service is running at all, `journalctl -u osint-console -n 50` for why it is
+not, and — since an old build serving quietly looks the same as a working one
+— the line the unit logs at every start naming which build it is serving.
+
+One thing this is not. The console has no login, and the bundle it serves
+carries the API token to whoever downloads it — anyone reaching the tailnet
+address can use it. The tailnet is the entire boundary. Do not port-forward
+the console beyond it: a URL reachable from the open internet needs an
+identity layer in front of it, and that is separate work, not a setting here.
+
+</details>
+
 ## Basic commands
 
 ```bash
