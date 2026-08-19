@@ -26,6 +26,12 @@
  * The bar itself never goes anywhere — hiding the left panel hides what is
  * under the bar, never the bar, because the way into the system is not a thing
  * a reader should be able to lose.
+ *
+ * A build with `ASK_ENABLED=false` is this same box doing the cheap half
+ * only: search still runs on every pause, it never asked a model to begin
+ * with. The ask button and the transcript are not drawn — not disabled —
+ * because a control the endpoint would refuse is not a control, and the
+ * placeholder and label stop promising a question this build cannot answer.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -33,6 +39,7 @@ import { ChevronDown, ChevronLeft, Search, Sparkles, X } from "lucide-react"
 
 import { EventDetailCard } from "@/components/EventDetailCard"
 import { ChatEntry, useBrainChat } from "@/components/panels/SituationPanel"
+import { ASK_ENABLED } from "@/lib/askFlag"
 import { fetchSearch, type SearchPlace, type SearchResponse } from "@/lib/apiClient"
 import { eventHeadline } from "@/lib/eventTitle"
 import type { VisibleEvent } from "@/lib/queries"
@@ -126,18 +133,32 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
   const { messages, pending, ask, clear } = useBrainChat()
 
   const typed = query.trim().length >= MIN_QUERY
+  /** Whether there is a transcript this build can show.
+   *
+   *  Not simply `messages.length > 0`. `useBrainChat` restores the transcript
+   *  from `sessionStorage` on mount, and the flag can change between one mount
+   *  and the next: a tab that asked something while the flag was on, and is
+   *  reloaded after the operator turned it off, comes up holding a
+   *  conversation this build has no ask control to have produced and no ask
+   *  control to continue. Everything that reads the transcript reads this
+   *  instead, so the column is never held by one, and no clear (✕) is offered
+   *  for something the reader cannot see.
+   */
+  const hasTranscript = ASK_ENABLED && messages.length > 0
   /** Whether the reader is using this box: it has the cursor, or something is
    *  in it — a query, a row opened from a result, an answer.
    *
    *  This is what takes the column from the deck, so the panel below renders
    *  on exactly the same condition. The two must not disagree: hiding the deck
    *  on a condition the panel does not fill leaves an empty column with the
-   *  collapse handle stranded beside nothing (#938).
+   *  collapse handle stranded beside nothing (#938). A restored transcript on a
+   *  build that draws no transcript is exactly that disagreement, which is why
+   *  the flag reaches this line and not only the section at the bottom.
    *
    *  Declared above the effects that read it: they list it as a dependency,
    *  which is evaluated while this function runs, not when the effect fires.
    */
-  const searching = focused || query.trim().length > 0 || detail !== null || messages.length > 0
+  const searching = focused || query.trim().length > 0 || detail !== null || hasTranscript
 
   const focusBar = useCallback(() => {
     setPanel("top", true)
@@ -240,6 +261,10 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
   }, [query])
 
   const submitAsk = () => {
+    //: Belt and braces (#938 follow-up): the button is gone and Enter is
+    //: gated below when the flag is off, but a third caller added later
+    //: should not get to the endpoint just by skipping those two.
+    if (!ASK_ENABLED) return
     const q = query.trim()
     if (!q || pending) return
     setPanel("top", true)
@@ -318,11 +343,20 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
           onKeyDown={(e) => {
             //: Enter asks. The search underneath has already answered by the
             //: time a key is pressed, so the only thing left for Enter to mean
-            //: is the expensive question.
-            if (e.key === "Enter") submitAsk()
+            //: is the expensive question — and with the flag off there is no
+            //: second thing Enter could mean, so it does nothing.
+            if (e.key === "Enter" && ASK_ENABLED) submitAsk()
           }}
-          placeholder={narrow ? "ask or find…" : "ask anything, find anything…"}
-          aria-label="Search the console or ask the brain"
+          placeholder={
+            ASK_ENABLED
+              ? narrow
+                ? "ask or find…"
+                : "ask anything, find anything…"
+              : narrow
+                ? "find…"
+                : "find anything…"
+          }
+          aria-label={ASK_ENABLED ? "Search the console or ask the brain" : "Search the console"}
           //: 16px on a phone, and not for legibility: below it mobile Safari
           //: zooms the page to the focused field on its own, and the console
           //: never zooms back out.
@@ -339,27 +373,32 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
         {/*: Two words of label on a phone cost more width than the box has to
             spare, and the icon says the same thing beside a box already
             labelled "ask or find". On a wide screen the words stay — there is
-            room, and a named button is a better button. */}
-        <button
-          type="button"
-          onClick={submitAsk}
-          disabled={!canAsk}
-          aria-label="Ask the brain"
-          className={cn(
-            "shrink-0 rounded-lg border border-neutral-700/60 text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-100 disabled:opacity-40",
-            narrow
-              ? "grid h-10 w-10 place-items-center"
-              : "px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
-          )}
-        >
-          {narrow ? (
-            <Sparkles className="h-4 w-4" aria-hidden />
-          ) : pending ? (
-            "…"
-          ) : (
-            "ask AI"
-          )}
-        </button>
+            room, and a named button is a better button.
+            Gone rather than disabled when the flag is off: a greyed-out
+            button still tells the reader a question is possible, and here it
+            is not. */}
+        {ASK_ENABLED && (
+          <button
+            type="button"
+            onClick={submitAsk}
+            disabled={!canAsk}
+            aria-label="Ask the brain"
+            className={cn(
+              "shrink-0 rounded-lg border border-neutral-700/60 text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-100 disabled:opacity-40",
+              narrow
+                ? "grid h-10 w-10 place-items-center"
+                : "px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+            )}
+          >
+            {narrow ? (
+              <Sparkles className="h-4 w-4" aria-hidden />
+            ) : pending ? (
+              "…"
+            ) : (
+              "ask AI"
+            )}
+          </button>
+        )}
         {/*: Only while there is a search to leave. A permanent cross on an
             empty box is a control for undoing nothing. */}
         {searching && (
@@ -408,7 +447,7 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
           {/*: The column is never blank while search holds it. Below the query
               floor there is nothing to list, so the panel says what the box is
               for rather than showing an empty rectangle where the deck was. */}
-          {!detail && !typed && messages.length === 0 && (
+          {!detail && !typed && !hasTranscript && (
             <p className="px-3 py-6 font-mono text-[10px] uppercase tracking-widest text-neutral-600">
               a place moves the map · a word finds what mentions it
             </p>
@@ -540,7 +579,16 @@ export function Omnibox({ narrow = false }: OmniboxProps) {
             </p>
           )}
 
-          {messages.length > 0 && (
+          {/*: No transcript to show when the flag is off. Not because
+              `messages` is empty — it need not be. The transcript is kept per
+              tab in `sessionStorage` and restored on mount, so a tab that
+              asked something while the flag was on and was reloaded after it
+              went off comes up holding one; the flag is a setting, and a
+              setting can be turned off between two loads of the same tab.
+              `hasTranscript` carries that, here and at every other line that
+              reads the transcript, so the column, the hint and this section
+              can never disagree about whether this build has one. */}
+          {hasTranscript && (
             <section className="border-t border-neutral-800">
               <div className="flex items-baseline justify-between px-3 pt-2">
                 <p className="font-mono text-[9px] uppercase tracking-wide text-neutral-500">

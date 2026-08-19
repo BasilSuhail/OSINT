@@ -62,3 +62,21 @@ class TestWhatItReports:
     def test_a_prompt_that_fits_is_not(self, capsys) -> None:
         ask_now._report_prompt("x" * 100)
         assert "TRUNCATED" not in capsys.readouterr().out
+
+    #: This command goes past `ASK_ENABLED` on purpose — running it is itself a
+    #: decision to ask. Printing the setting is what stops that being confusing:
+    #: an answer here beside no ask control on screen is a difference the
+    #: operator can read off the output rather than one they have to deduce.
+    def test_it_names_the_question_setting_beside_the_gate(self, capsys, monkeypatch) -> None:
+        monkeypatch.setattr(ask_now.gate, "qa_ram_blocked", lambda: False)
+        monkeypatch.setattr(ask_now.gate, "ollama_is_local", lambda: False)
+        monkeypatch.setattr(ask_now.settings, "ask_enabled", False)
+        ask_now._report_environment()
+        assert "ask_enabled" in capsys.readouterr().out
+
+    def test_it_says_so_when_the_console_has_the_box(self, capsys, monkeypatch) -> None:
+        monkeypatch.setattr(ask_now.gate, "qa_ram_blocked", lambda: False)
+        monkeypatch.setattr(ask_now.gate, "ollama_is_local", lambda: False)
+        monkeypatch.setattr(ask_now.settings, "ask_enabled", True)
+        ask_now._report_environment()
+        assert "ask_enabled    true" in capsys.readouterr().out

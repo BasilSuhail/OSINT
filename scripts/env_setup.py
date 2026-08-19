@@ -278,10 +278,23 @@ def set_value(env_text: str, key: str, value: str) -> tuple[str, bool]:
 #: is never replaced, by this or by `refresh`.
 _GENERATED_SECRETS: tuple[str, ...] = ("POSTGRES_PASSWORD", "API_AUTH_TOKEN")
 
-#: Keys that have to hold the same string as another key. The dashboard is an
-#: API client, so its token is the API's token; typing both by hand is a
-#: mismatch waiting to happen, and a mismatch reads as a blank console.
-_MIRRORED: dict[str, str] = {"NEXT_PUBLIC_API_TOKEN": "API_AUTH_TOKEN"}
+#: Keys that have to hold the same string as another key. The dashboard is a
+#: separate process with its own build-time environment, so anything the API
+#: and the console both have to agree about exists twice; typing both by hand
+#: is a mismatch waiting to happen, and every one of these mismatches is
+#: silent on screen rather than loud.
+#:
+#: The token, because the dashboard is an API client and its token is the
+#: API's — differ, and every request is refused and the console shows nothing.
+#: The question setting, because the console decides at build time whether to
+#: draw the ask control and the API decides at request time whether to answer
+#: — differ, and the console draws a button for an endpoint that refuses, or
+#: hides one that works. A dead control is the thing this setting exists to
+#: prevent, so the two values are copied across rather than typed twice.
+_MIRRORED: dict[str, str] = {
+    "NEXT_PUBLIC_API_TOKEN": "API_AUTH_TOKEN",
+    "NEXT_PUBLIC_ASK_ENABLED": "ASK_ENABLED",
+}
 
 #: Keys whose value describes where this machine can be reached. Unlike a
 #: secret these go out of date — a machine changes network, or gets a new name
@@ -355,7 +368,16 @@ _SMALL_MACHINE_MAX_MB = 9216
 #: - Three stories in the prompt rather than six. Without a GPU, reading the
 #:   prompt is nearly the whole cost of an answer, and dropping the least relevant
 #:   half of the evidence is a smaller loss than dropping to a worse model.
+#:
+#: Everything above is a machine that answers slower. The question box is
+#: different: it is the one job the board does that is not cheap, on a box
+#: that also has ingestion and scoring to get through, so the profile removes
+#: that control rather than spending another paragraph tuning it. One key,
+#: not two: `NEXT_PUBLIC_ASK_ENABLED` is a mirror of this one, so the copy the
+#: console compiles in follows whatever this says without the profile naming
+#: it, and the two can be reported when they drift instead of set twice.
 _SMALL_MACHINE_PROFILE: dict[str, str] = {
+    "ASK_ENABLED": "false",
     "BRAIN_MODEL": "llama3.2:3b",
     "QA_MODEL": "llama3.2:3b",
     "SEVERITY_MODEL": "llama3.2:3b",
@@ -636,10 +658,6 @@ def originate(
         for key in _GENERATED_SECRETS:
             if documented(key) and not answered(key):
                 written[key] = make_secret()
-        for mirror, source in _MIRRORED.items():
-            original = current(source)
-            if documented(mirror) and original and not answered(mirror):
-                written[mirror] = original
         #: Fill-once, like a secret and unlike an address: an account id is a
         #: fact about this machine that does not drift, and `refresh` has no
         #: business rewriting it.
@@ -662,6 +680,18 @@ def originate(
                 stale = superseded(key, current_value)
                 if documented(key) and (stale or not answered(key)) and value != current_value:
                     written[key] = value
+        #: Last, so that a mirror copies the value this run settled on rather
+        #: than the one it found. Both sources are written above — the token is
+        #: generated, the question setting can be turned off by the profile —
+        #: and a mirror taken before either would be a copy of what `.env` said
+        #: a moment ago: a console compiled with the ask control still drawn,
+        #: on the board that just turned answering off. `current` reads what
+        #: this run wrote before what the file holds, which is what makes the
+        #: order do the work.
+        for mirror, source in _MIRRORED.items():
+            original = current(source)
+            if documented(mirror) and original and not answered(mirror):
+                written[mirror] = original
 
     pinned = have.get(_PINNED_HOST_KEY, "").strip()
     host = pinned or (machine.hosts[0] if machine.hosts else "localhost")
@@ -852,7 +882,11 @@ def _print_check(report: CheckReport) -> None:
     if report.mirror_mismatch:
         for key in report.mirror_mismatch:
             print(f"  {key} does not match {_MIRRORED[key]}, and has to")
-        print("  every request is refused while they differ, and the console shows nothing")
+        print("  the console compiles its copy in at build time, so while they differ it")
+        print("  acts on a value the API is not using: a token that differs has every")
+        print("  request refused and the console showing nothing; a question setting that")
+        print("  differs draws an ask control the API will refuse, or hides one that works")
+        print("  empty the console's copy and `make env` writes the other value across")
     if report.stale:
         print(f"  {len(report.stale)} setting(s) name an address this machine no longer has:")
         for key in report.stale:
@@ -942,8 +976,20 @@ def main(argv: list[str] | None = None) -> int:
         if is_small_machine(ram_mb):
             print(f"  {ram_mb} MB of memory — using the small-machine settings:")
             print("    one small model for every job, held briefly, longer patience")
-            print("    it answers on a board this size; it is less accurate than the")
-            print("    laptop models, and contradicts itself more often")
+            #: Which build this board gets, in the words the operator will use
+            #: to look for it. The line that stood here described how an answer
+            #: reads on a small board, on the run that had just stopped the
+            #: board answering — the summary contradicting the settings it was
+            #: summarising. Read from the file rather than assumed, because the
+            #: profile writes this key only when nobody has answered it, and an
+            #: operator who turned questions back on would be told otherwise.
+            if parse_env(rendered).get("ASK_ENABLED", "").strip():
+                print("    the question box is left as .env already answers it")
+            else:
+                print("    and no question box: fetching, scoring, gists, tags and both")
+                print("    search boxes all run — a typed question is the one thing this")
+                print("    build leaves out, because it is minutes of a board that has")
+                print("    other work. Set ASK_ENABLED=true in .env to have it back.")
         elif ram_mb:
             print(f"  {ram_mb} MB of memory — using the full-size models")
 

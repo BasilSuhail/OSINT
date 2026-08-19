@@ -134,3 +134,22 @@ def test_score_main_reads_latest_sheet(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "2026-07-17-answer-audit.md" in out  # newest wins
     assert "accuracy: 0/1 pass" in out
+
+
+#: A sheet whose every answer is "the question path is off on this build" looks,
+#: at a glance in the audits directory, exactly like an audit of a model that
+#: answered badly — same shape, same blank grade cells, no clue in either. The
+#: generator refuses rather than writing it.
+def test_it_refuses_to_write_a_sheet_on_a_build_that_cannot_answer(monkeypatch, capsys):
+    monkeypatch.setattr(qa_audit.settings, "ask_enabled", False)
+    assert qa_audit.main([]) == 1
+    assert "ASK_ENABLED" in capsys.readouterr().out
+
+
+#: And the scorer still works, because grading a sheet somebody already has is
+#: reading a file — it never goes near the model or the flag.
+def test_scoring_an_existing_sheet_does_not_need_the_question_path(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(qa_audit.settings, "ask_enabled", False)
+    sheet = tmp_path / "2026-08-19-answer-audit.md"
+    sheet.write_text(qa_audit.build_sheet([], created="2026-08-19", model="llama3.2:3b"))
+    assert qa_audit.main(["score", str(sheet)]) == 0

@@ -236,11 +236,18 @@ BRAIN_SLOW_ANSWER = (
     "That took longer than this machine allows. Ask again — the model is warm now "
     "— or raise BRAIN_TIMEOUT_S, or point QA_MODEL at a smaller model."
 )
+#: Not a failure. This build does not answer questions — the search box beside
+#: it does, instantly, and saying which one works is more use than an apology.
+ASK_DISABLED_ANSWER = (
+    "This build does not answer questions. Search still works — type to find "
+    "places, stories and events."
+)
 OPERATIONAL_ANSWERS: tuple[str, ...] = (
     BRAIN_BUSY_ANSWER,
     BRAIN_OFFLINE_ANSWER,
     BRAIN_NOT_WORKING_ANSWER,
     BRAIN_SLOW_ANSWER,
+    ASK_DISABLED_ANSWER,
 )
 #: A semantic pick (cosine vs the question) below this is a weak match.
 SEMANTIC_RELEVANT_MIN: float = 0.55
