@@ -117,21 +117,34 @@ make env
 
 Nothing to edit. `make env` reads how much memory the board has and, at 8 GB,
 writes the settings for it: one small model doing every job instead of three
-different ones, memory floors sized for that model, and a longer wait for an
-answer. It prints what it chose.
+different ones, and memory floors and generation timeouts sized for that model.
+It prints what it chose.
 
-Those numbers matter more than they look. The defaults are for a laptop, and two
-of those models resident at once come to 5.4 GB of the board's 7.9 GB — measured
-— which leaves the Ask panel nowhere to load a third. Nothing you click triggers
-the second one; a scheduled job loads it about half an hour in, and the board
-locks up while you are looking at something else.
+Those numbers are in force from the first run, not held in reserve.
+`BRAIN_TIMEOUT_S` is the ceiling on every local generate this board makes — the
+gists, the keywords and tags, the severity grades, the situation summary — and
+raising it to 300 s is what stops the slowest of them being cut off and
+reported as the brain being offline. `QA_MIN_FREE_MB` is the free-memory floor
+a reader-triggered read has to clear, and the reasoned read behind a contested
+story still asks for one. They are also the numbers an answer would use, sized
+so they are already right if you turn the question box back on.
 
-One model rather than a smaller one. That distinction cost a day: a 1b does fit
-here, and when asked what was happening in Indonesia it invented a magnitude, a
-death toll and two government agencies that appeared in none of the retrieved
-stories. A project that shows its evidence cannot use a model that makes evidence
-up, so the board runs the same 3b the summary already uses — slower per answer,
-and answering about what is actually there.
+The question box is the one thing `make env` turns off on a board this size.
+Everything else runs: it fetches, it stores, it scores, it writes the gists and
+the tags and the situation summary, and both search boxes answer as fast as
+they do on a laptop, because neither has ever gone near a model. What it does
+not do is answer typed questions — that costs minutes of a board that has other
+work, and the box is not drawn rather than left there to disappoint.
+
+`ASK_ENABLED` in `.env` is the setting. It ships blank, which means on; `make
+env` writes `false` into it here. To have the box: write `true` over that,
+empty the `NEXT_PUBLIC_ASK_ENABLED` line below it — that is the console's own
+copy, and `make env` writes the new value across whenever it is blank — then
+run `make env && make up`. The restart is not optional: the dashboard compiles
+the setting into its bundle when it starts, so a running one keeps serving the
+build it was started with. `make env` leaves a `true` you typed alone from then
+on, on every later run, and `make env-check` says so if the two lines ever
+drift apart.
 
 A backstop, in case something still runs the board out of memory. It kills the
 largest process instead of letting the kernel thrash, which is the difference
@@ -142,8 +155,9 @@ sudo apt install -y earlyoom
 sudo systemctl enable --now earlyoom
 ```
 
-The models. Two on a board this size, about 2.3 GB together — one that answers,
-one that turns text into vectors so the Ask panel can find the right stories:
+The models. Two on a board this size, about 2.3 GB together — one that writes
+the gists and the tags, one that turns text into vectors now, so retrieval is
+warm if you ever turn the question box back on:
 
 ```bash
 ollama pull llama3.2:3b
@@ -170,8 +184,7 @@ make up
 ```
 
 20–40 minutes the first time: images and browser packages, plus the models if you
-skipped the pull. An ask on this board takes a couple of minutes; the console
-streams the answer as it arrives rather than appearing to hang.
+skipped the pull.
 
 Open <http://localhost:3000>, or `make share` to reach it from another
 device.
@@ -182,14 +195,6 @@ Fill it:
 make fetch
 make news
 ```
-
-Worth watching the first time you ask the console a question:
-
-```bash
-watch -n5 'free -h; echo; ollama ps'
-```
-
-Swap being eaten means the model is too big for what else is running.
 
 </details>
 
@@ -505,9 +510,14 @@ Ollama. Check it is listening where the containers can see it — `0.0.0.0`, not
 make ask
 ```
 
-Runs the same question the console does, from the terminal, and prints the real
-error instead of the one sentence. It also reports free memory against the floor
-the model needs, and how long the prompt is.
+Runs the retrieval and the model call the console's ask does, from the terminal,
+and prints the real error instead of the one sentence. It also reports free
+memory against the floor the model needs, and how long the prompt is.
+
+It goes past `ASK_ENABLED` deliberately — running it is itself a decision to ask
+— so it still answers on a build where the console's box is gone. It prints the
+setting beside the floor, so an answer here and no box on screen is a difference
+you can see rather than one you have to work out.
 
 The console is empty at first and that is not a fault: nothing has been fetched
 yet. Left alone it fills itself over the next hour. `make fetch` and `make news`

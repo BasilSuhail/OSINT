@@ -48,6 +48,15 @@ def _report_environment() -> None:
         print("gate           BLOCKED — the console would answer 'brain busy'")
     else:
         print("gate           open")
+    #: This command goes past the flag on purpose — somebody typing it has asked
+    #: deliberately, and a build without the box is exactly when the terminal
+    #: route matters most. Printed anyway, beside the gate and the floor, so an
+    #: answer here and no ask control on screen is one line of output rather
+    #: than a puzzle about which of the two is broken.
+    if settings.ask_enabled:
+        print("ask_enabled    true — the console draws the ask control")
+    else:
+        print("ask_enabled    false — the console draws no ask control; this asks anyway")
 
 
 def _report_prompt(prompt: str) -> None:

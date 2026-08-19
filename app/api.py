@@ -1677,8 +1677,12 @@ def brain_ask(
     User-initiated and synchronous, so it does NOT back off on every running job
     the way the scheduled narrative does — it refuses only when RAM is genuinely
     low, to protect the Pi from OOM. Every failure returns a typed answer at HTTP
-    200; only a bad request is a 422.
+    200; only a bad request is a 422. The `ask_enabled` flag is checked before
+    the RAM gate so a board with the question path off never reports a memory
+    refusal for a setting.
     """
+    if not settings.ask_enabled:
+        return _ask_payload(qa.ASK_DISABLED_ANSWER, None, [])
     if gate.qa_ram_blocked():
         return _ask_payload(qa.BRAIN_BUSY_ANSWER, None, [])
     history = [h.model_dump() for h in req.history]
@@ -1768,6 +1772,9 @@ def brain_ask_stream(
     """Stream ask-the-brain answer chunks, then a citation-checked final answer."""
 
     def gen() -> Iterator[str]:
+        if not settings.ask_enabled:
+            yield _sse("final", _ask_payload(qa.ASK_DISABLED_ANSWER, None, []))
+            return
         if gate.qa_ram_blocked():
             yield _sse("final", _ask_payload(qa.BRAIN_BUSY_ANSWER, None, []))
             return
