@@ -6,12 +6,12 @@
 [![dependency review](https://github.com/BasilSuhail/OSINT/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/BasilSuhail/OSINT/actions/workflows/dependency-review.yml)
 [![licence: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/licence-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 
-**A self-hosted world-event monitor that shows its evidence — and publishes the
+**A self-hosted world-event monitor that shows its evidence, and publishes the
 experiments where its own predictions failed.**
 
-It collects public data about world events — news, machine-coded event records,
+It collects public data about world events: news, machine-coded event records,
 disasters, markets, cyber indicators, satellite fire detections, aircraft
-presence — normalises it into one row shape, stores it locally, and puts it on a
+presence, normalises it into one row shape, stores it locally, and puts it on a
 map with the provenance attached. It runs on one machine. Nothing leaves it.
 
 <br>
@@ -20,7 +20,7 @@ map with the provenance attached. It runs on one machine. Nothing leaves it.
 &nbsp;
 [![Quick start](https://img.shields.io/badge/QUICK_START-238636?style=for-the-badge&logo=docker&logoColor=white)](#quick-start)
 &nbsp;
-[![What failed](https://img.shields.io/badge/WHAT_FAILED-8957e5?style=for-the-badge)](#02-the-claim-it-was-built-to-test)
+[![Supplementary material](https://img.shields.io/badge/SUPPLEMENTARY_MATERIAL-8957e5?style=for-the-badge)](SUPPLEMENTARY.md)
 
 <br>
 
@@ -28,7 +28,7 @@ map with the provenance attached. It runs on one machine. Nothing leaves it.
 
 ## See it without installing anything
 
-**[basilsuhail.github.io/OSINT](https://basilsuhail.github.io/OSINT/)** — the map,
+**[basilsuhail.github.io/OSINT](https://basilsuhail.github.io/OSINT/)**: the map,
 the filters and the cards, drawn from a frozen snapshot of a running console.
 Hazards, military aircraft and AIS vessels, all clickable. Nothing there is
 live: it is one moment saved to a file, and the page says so at the top and
@@ -39,7 +39,7 @@ and refreshes on your own machine.
 
 ## Quick start
 
-Pick your machine. Each one is self-contained — everything from nothing to a
+Pick your machine. Each one is self-contained: everything from nothing to a
 running console, in order, nothing to look up elsewhere.
 
 Free disk space is the one thing to check first: about 15 GB to install, and the
@@ -48,8 +48,8 @@ database grows to a 30 GB cap before it starts trimming its own oldest days.
 <details>
 <summary><b>Raspberry Pi 5 (8 GB)</b></summary>
 
-Two things about the board itself. It needs **64-bit** Raspberry Pi OS — the
-images are arm64 and will not run on the 32-bit build — and it needs the official
+Two things about the board itself. It needs **64-bit** Raspberry Pi OS (the
+images are arm64 and will not run on the 32-bit build), and it needs the official
 27 W supply. A phone charger browns out under load, and the board answers by
 throttling rather than by saying so:
 
@@ -72,7 +72,7 @@ sudo apt install -y nodejs && sudo corepack enable
 
 **Then reboot.** Not optional and not cosmetic: the line above adds you to the
 `docker` group, and a group only takes effect on a new login. Until then every
-Docker command is refused, and the next few steps do not touch Docker — so the
+Docker command is refused, and the next few steps do not touch Docker, so the
 failure surfaces several minutes later, at `make up`, looking like Docker is
 broken:
 
@@ -121,8 +121,8 @@ different ones, and memory floors and generation timeouts sized for that model.
 It prints what it chose.
 
 Those numbers are in force from the first run, not held in reserve.
-`BRAIN_TIMEOUT_S` is the ceiling on every local generate this board makes — the
-gists, the keywords and tags, the severity grades, the situation summary — and
+`BRAIN_TIMEOUT_S` is the ceiling on every local generate this board makes (the
+gists, the keywords and tags, the severity grades, the situation summary), and
 raising it to 300 s is what stops the slowest of them being cut off and
 reported as the brain being offline. `QA_MIN_FREE_MB` is the free-memory floor
 a reader-triggered read has to clear, and the reasoned read behind a contested
@@ -133,13 +133,13 @@ The question box is the one thing `make env` turns off on a board this size.
 Everything else runs: it fetches, it stores, it scores, it writes the gists and
 the tags and the situation summary, and both search boxes answer as fast as
 they do on a laptop, because neither has ever gone near a model. What it does
-not do is answer typed questions — that costs minutes of a board that has other
+not do is answer typed questions: that costs minutes of a board that has other
 work, and the box is not drawn rather than left there to disappoint.
 
 `ASK_ENABLED` in `.env` is the setting. It ships blank, which means on; `make
 env` writes `false` into it here. To have the box: write `true` over that,
-empty the `NEXT_PUBLIC_ASK_ENABLED` line below it — that is the console's own
-copy, and `make env` writes the new value across whenever it is blank — then
+empty the `NEXT_PUBLIC_ASK_ENABLED` line below it (that is the console's own
+copy, and `make env` writes the new value across whenever it is blank), then
 run `make env && make up`. The restart is not optional: the dashboard compiles
 the setting into its bundle when it starts, so a running one keeps serving the
 build it was started with. `make env` leaves a `true` you typed alone from then
@@ -155,7 +155,7 @@ sudo apt install -y earlyoom
 sudo systemctl enable --now earlyoom
 ```
 
-The models. Two on a board this size, about 2.3 GB together — one that writes
+The models. Two on a board this size, about 2.3 GB together: one that writes
 the gists and the tags, one that turns text into vectors now, so retrieval is
 warm if you ever turn the question box back on:
 
@@ -199,7 +199,7 @@ make news
 </details>
 
 <details>
-<summary><b>Linux desktop or server</b> — Debian, Ubuntu</summary>
+<summary><b>Linux desktop or server</b>: Debian, Ubuntu</summary>
 
 Docker and Node:
 
@@ -213,7 +213,7 @@ sudo apt install -y nodejs && sudo corepack enable
 
 **Then reboot.** Not optional and not cosmetic: the line above adds you to the
 `docker` group, and a group only takes effect on a new login. Until then every
-Docker command is refused, and the next few steps do not touch Docker — so the
+Docker command is refused, and the next few steps do not touch Docker, so the
 failure surfaces several minutes later, at `make up`, looking like Docker is
 broken:
 
@@ -223,7 +223,7 @@ sudo reboot
 
 Afterwards `groups` lists `docker`. Pick the list up again from here.
 
-Ollama — the systemd override is what lets the containers reach it:
+Ollama. The systemd override is what lets the containers reach it:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
@@ -257,8 +257,8 @@ make env
 ```
 
 Nothing to edit. `make env` measures the memory and writes the settings to match,
-then prints the models it chose. On anything with room that is three, about 5 GB
-— one writes the summary, one answers questions, one turns text into vectors so
+then prints the models it chose. On anything with room that is three, about 5 GB:
+one writes the summary, one answers questions, one turns text into vectors so
 the Ask panel can find the right stories:
 
 ```bash
@@ -267,7 +267,7 @@ ollama pull qwen3.5:4b-q4_K_M
 ollama pull nomic-embed-text
 ```
 
-If `make env` printed different names, pull those instead — it has measured this
+If `make env` printed different names, pull those instead, because it has measured this
 machine and those commands have not. Skipping this is fine either way: `make up`
 pulls whatever `.env` names.
 
@@ -321,7 +321,7 @@ brew install ollama
 brew services start ollama
 ```
 
-No override here — Docker Desktop reaches the host without one. Check it took:
+No override here: Docker Desktop reaches the host without one. Check it took:
 
 ```bash
 curl -s http://localhost:11434/api/tags
@@ -339,7 +339,7 @@ make env
 ```
 
 Nothing to edit. `make env` measures the memory and writes the settings to match,
-then prints the models it chose. On a Mac with room that is three, about 5 GB —
+then prints the models it chose. On a Mac with room that is three, about 5 GB:
 one writes the summary, one answers questions, one turns text into vectors so the
 Ask panel can find the right stories:
 
@@ -349,7 +349,7 @@ ollama pull qwen3.5:4b-q4_K_M
 ollama pull nomic-embed-text
 ```
 
-If `make env` printed different names, pull those instead — it has measured this
+If `make env` printed different names, pull those instead, because it has measured this
 Mac and those commands have not. Skipping this is fine either way: `make up`
 pulls whatever `.env` names.
 
@@ -378,7 +378,7 @@ make news
 </details>
 
 <details>
-<summary><b>Windows</b> — through WSL2</summary>
+<summary><b>Windows</b>: through WSL2</summary>
 
 In PowerShell **as administrator**:
 
@@ -390,7 +390,7 @@ Reboot. Install [Docker Desktop](https://docs.docker.com/desktop/install/windows
 and turn on **Settings → Resources → WSL Integration** for Ubuntu.
 
 Everything below runs in the **Ubuntu** terminal, not PowerShell. No
-`get.docker.com` — Docker Desktop supplies the engine, and a second one fights it:
+`get.docker.com`: Docker Desktop supplies the engine, and a second one fights it:
 
 ```bash
 sudo apt update && sudo apt install -y git curl ca-certificates make python3 && \
@@ -398,12 +398,12 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
 sudo apt install -y nodejs && sudo corepack enable
 ```
 
-Ollama, on **Windows** rather than inside Ubuntu — download it from
+Ollama, on **Windows** rather than inside Ubuntu. Download it from
 [ollama.com/download](https://ollama.com/download).
 
 **Then let it answer the containers.** Ollama listens only to the Windows
 machine itself until told otherwise, and the stack reaches it from inside a
-container — so out of the box it refuses the connection, and the console reports
+container, so out of the box it refuses the connection, and the console reports
 that as the brain being offline while the map and the feed work normally. In
 PowerShell **as administrator**:
 
@@ -411,7 +411,7 @@ PowerShell **as administrator**:
 [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0", "Machine")
 ```
 
-Quit Ollama from the system tray and start it again — an environment variable
+Quit Ollama from the system tray and start it again: an environment variable
 set this way reaches it only on a fresh start. Check, in PowerShell:
 
 ```powershell
@@ -421,7 +421,7 @@ curl.exe -s http://localhost:11434/api/tags
 JSON back means it is listening.
 
 Everything from here runs in the Ubuntu terminal, and the clone belongs in your
-Ubuntu home directory — not under `/mnt/c`. A repository on the Windows drive is
+Ubuntu home directory, not under `/mnt/c`. A repository on the Windows drive is
 reached through a translation layer, and the difference is minutes per command
 rather than seconds.
 
@@ -434,7 +434,7 @@ make env
 ```
 
 Nothing to edit. `make env` measures the memory and writes the settings to match,
-then prints the models it chose — usually three, about 5 GB. One writes the
+then prints the models it chose, usually three, about 5 GB. One writes the
 summary, one answers questions, one turns text into vectors so the Ask panel can
 find the right stories.
 
@@ -446,7 +446,7 @@ ollama pull qwen3.5:4b-q4_K_M
 ollama pull nomic-embed-text
 ```
 
-If `make env` printed different names, pull those instead — it has measured this
+If `make env` printed different names, pull those instead, because it has measured this
 machine and those commands have not. Skipping this is fine either way: `make up`
 pulls whatever `.env` names.
 
@@ -485,7 +485,7 @@ make down      # stop everything, keep all data
 make share     # start it reachable from your phone or another computer
 make fetch     # fill the map now instead of waiting for the schedule
 make news      # build the story feed and the written summary
-make news-all  # gist every story rather than 20 — hours on a small box
+make news-all  # gist every story rather than 20, hours on a small box
 make logs      # watch what the stack is doing
 make env-check # say what .env is missing, empty, or typed wrong
 make help      # every command in the Makefile
@@ -494,7 +494,7 @@ make help      # every command in the Makefile
 ### If the Ask panel says the brain is offline
 
 It means the API could not get an answer out of the model, and it says the same
-sentence whichever reason applies — not installed, not reachable, not enough
+sentence whichever reason applies: not installed, not reachable, not enough
 memory, or simply slower than the machine is allowed to wait. Four different
 faults, one sentence, which is why it is worth checking in order:
 
@@ -503,8 +503,8 @@ ollama ps
 ```
 
 Nothing listed and no model loading when you ask means the stack cannot reach
-Ollama. Check it is listening where the containers can see it — `0.0.0.0`, not
-`127.0.0.1` — using the check in your machine's list above.
+Ollama. Check it is listening where the containers can see it: `0.0.0.0`, not
+`127.0.0.1`, using the check in your machine's list above.
 
 ```bash
 make ask
@@ -514,8 +514,8 @@ Runs the retrieval and the model call the console's ask does, from the terminal,
 and prints the real error instead of the one sentence. It also reports free
 memory against the floor the model needs, and how long the prompt is.
 
-It goes past `ASK_ENABLED` deliberately — running it is itself a decision to ask
-— so it still answers on a build where the console's box is gone. It prints the
+It goes past `ASK_ENABLED` deliberately, since running it is itself a decision to ask,
+so it still answers on a build where the console's box is gone. It prints the
 setting beside the floor, so an answer here and no box on screen is a difference
 you can see rather than one you have to work out.
 
@@ -536,7 +536,7 @@ make up
 ```
 
 To test a branch before it merges, swap `main` for the branch name. Run `make env`
-after every pull — new settings reach your file that way, and skipping it leaves
+after every pull: new settings reach your file that way, and skipping it leaves
 the feature they switch on quietly off.
 
 Full prerequisites: [§3](HANDBOOK.md#3-what-you-need-before-starting). The
@@ -548,7 +548,7 @@ Anything that goes wrong: [§19](HANDBOOK.md#19-troubleshooting).
 > been put through every pre-registered protocol built for it and refused every time. That is stated up front, with
 > the tables, rather than buried.
 
-**Licence: PolyForm Noncommercial 1.0.0 — source-available, not open source.**
+**Licence: PolyForm Noncommercial 1.0.0: source-available, not open source.**
 Security reporting, provider data terms, and attribution are in
 [§25](#25-licence-security-and-provider-terms).
 
@@ -561,7 +561,7 @@ Security reporting, provider data terms, and attribution are in
 |  | The handbook covers |
 | --- | --- |
 | **Operate it** | [Install and first run](HANDBOOK.md#1-start-here-download-install-run-and-stop) · [read the console](HANDBOOK.md#2-see-and-understand-the-console) · [configure](HANDBOOK.md#5-configure-it-safely) · [every control](HANDBOOK.md#7-use-the-console) · [troubleshooting](HANDBOOK.md#19-troubleshooting) |
-| **Every formula** | [Corroboration](HANDBOOK.md#142-corroboration--how-much-independent-telling-a-story-has) · [divergence](HANDBOOK.md#143-divergence--how-differently-two-country-blocs-word-the-same-story) · [the composite](HANDBOOK.md#144-the-composite-stress-index--and-why-the-live-one-reads-05) · [severity](HANDBOOK.md#145-severity--and-why-08-does-not-compare-across-families) · [lead-time gate](HANDBOOK.md#148-the-lead-time-gate--does-narrative-move-before-the-physical-signal) — each with a worked example and its failure modes |
+| **Every formula** | [Corroboration](HANDBOOK.md#142-corroboration--how-much-independent-telling-a-story-has) · [divergence](HANDBOOK.md#143-divergence--how-differently-two-country-blocs-word-the-same-story) · [the composite](HANDBOOK.md#144-the-composite-stress-index--and-why-the-live-one-reads-05) · [severity](HANDBOOK.md#145-severity--and-why-08-does-not-compare-across-families) · [lead-time gate](HANDBOOK.md#148-the-lead-time-gate--does-narrative-move-before-the-physical-signal), each with a worked example and its failure modes |
 | **What was tested, and what failed** | [Every pre-registered refusal](HANDBOOK.md#15-evaluation--what-was-claimed-what-was-tested-what-failed), with baselines, bootstrap confidence intervals, and the held-out window |
 | **Whether to trust the data** | [Bias and provenance](HANDBOOK.md#16-bias-provenance-and-one-country-traced-end-to-end), including one country traced end to end with measured counts |
 | **Rebuild it yourself** | [Every command](HANDBOOK.md#17-reproduce-the-analysis) that regenerates every number quoted anywhere |
@@ -590,14 +590,14 @@ to the code that produces it.*
 # 0. What this system is for, and what it is not
 
 Read this page first. It states the claim the project makes, the claim it does
-**not** make, and what is actually being offered — so nothing later in the
+**not** make, and what is actually being offered, so nothing later in the
 handbook has to be inferred.
 
 ## 0.1 In one paragraph
 
-This is a self-hosted system that collects public data about world events —
+This is a self-hosted system that collects public data about world events:
 news, machine-coded event records, disasters, markets, cyber indicators,
-satellite fire detections, aircraft presence — normalises it into one row shape,
+satellite fire detections, aircraft presence, normalises it into one row shape,
 stores it locally, and puts it on a map with the evidence attached. It runs on
 one machine. Nothing leaves it. Every number it shows can be traced back to the
 row that produced it.
@@ -607,16 +607,16 @@ row that produced it.
 > A composite of several open-data signal domains discriminates later instability
 > better than the best single-domain baseline.
 
-That claim was pre-registered, evaluated, and **refused**. Not once — under every
+That claim was pre-registered, evaluated, and **refused**. Not once: under every
 protocol built for it, including on a held-out window reserved specifically for
 the question:
 
 | Evaluation | Result |
 | --- | --- |
 | Incidence, pooled | Composite AUROC ≈ 0.502 against a 0.929 base rate |
-| Head-to-head vs single domains | `beaten: []` — dominates none of them, in either window |
+| Head-to-head vs single domains | `beaten: []`, dominates none of them, in either window |
 | Held-out test 2023–24 | Same verdict on data reserved for this question |
-| Onset | 0.496 / 0.520 / 0.526 — a coin flip |
+| Onset | 0.496 / 0.520 / 0.526, a coin flip |
 | Within-country concordance | 0.531 best, CI [0.474, 0.582], below the declared 0.55 |
 
 **The predictive claim failed.** This document does not soften that anywhere, and
@@ -694,7 +694,7 @@ Stated here rather than left to be discovered:
 It is useful to someone who has to answer *"is this story actually being
 independently reported, or is it one wire item repeated?"*, *"does any physical
 sensor agree with this claim?"*, *"are two countries telling this differently?"*,
-and *"how much should I trust what I am looking at?"* — and who wants each answer
+and *"how much should I trust what I am looking at?"*, and who wants each answer
 to arrive with the evidence attached rather than as a verdict.
 
 It is not useful to someone who wants a risk number to act on. That number was
@@ -729,7 +729,7 @@ every OSI-approved licence permits commercial use, so calling this open source
 would tell you that you have a right you do not have.
 
 You may use it, run it, study it, fork it, modify it and share your changes, for
-any **noncommercial** purpose — personal projects, study and research, and use by
+any **noncommercial** purpose: personal projects, study and research, and use by
 charities, educational institutions, public research bodies and government. You
 may not sell it or use it commercially.
 
@@ -751,8 +751,8 @@ the organisations that publish them, each on its own terms. Nobody here has the
 right to sub-licence them, so nobody here has granted you anything over them.
 
 > **Running this software makes you the one fetching the data.** Whatever the
-> provider requires — registration, an API key, attribution, a commercial
-> licence, a limit on redistribution — it requires of *you*, directly, under the
+> provider requires (registration, an API key, attribution, a commercial
+> licence, a limit on redistribution), it requires of *you*, directly, under the
 > agreement you accept when you take the key.
 
 [`NOTICE.md`](https://github.com/BasilSuhail/OSINT/blob/main/NOTICE.md) is the
@@ -773,7 +773,7 @@ is rendered on the map itself.
 
 ## 25.4 Reporting a security problem
 
-Report privately — **do not open a public issue**. The channels, the information
+Report privately. **Do not open a public issue.** The channels, the information
 to include, and the automated tooling in place are in
 [`SECURITY.md`](https://github.com/BasilSuhail/OSINT/blob/main/SECURITY.md).
 
@@ -794,8 +794,8 @@ still recommended, is logged in
 
 **Operational security when you run it** is a separate matter and is covered in
 this handbook: the API token in [§5.4](HANDBOOK.md#54-protect-the-api-outside-one-laptop),
-and network exposure — including the fact that `make share` adds **no password**
-— in [§5.7](HANDBOOK.md#57-make-share--opening-the-console-to-the-local-network).
+and network exposure, including the fact that `make share` adds **no password**,
+in [§5.7](HANDBOOK.md#57-make-share--opening-the-console-to-the-local-network).
 
 ## 25.5 Working agreements
 
@@ -815,15 +815,15 @@ obstacle to route around.
 **Issues are welcome.** A good one names what you ran, what you expected, and
 what happened, with the relevant lines from `bash scripts/dev-logs.sh`. If the
 console is involved, say which browser. [§19](HANDBOOK.md#19-troubleshooting)
-covers the failures that already have known causes — worth a look first, because
+covers the failures that already have known causes, worth a look first, because
 several of them look like bugs and are configuration.
 
 **Security problems do not go in issues.** Use the private channel in
 [§25.4](#254-reporting-a-security-problem).
 
 **Pull requests**: one issue, one branch, one pull request, one commit. Read
-[`AGENTS.md`](https://github.com/BasilSuhail/OSINT/blob/main/AGENTS.md) first —
-it is short, and it is binding on what may appear in a commit message, an issue
+[`AGENTS.md`](https://github.com/BasilSuhail/OSINT/blob/main/AGENTS.md) first.
+It is short, and it is binding on what may appear in a commit message, an issue
 or a PR description, because this repository is public and has been forked.
 
 Before opening one:
@@ -853,7 +853,7 @@ The shape first, then the route data takes through it.
 
 ```text
 OSINT/
-├── app/                      PYTHON BACKEND — ingest · score · serve
+├── app/                      PYTHON BACKEND: ingest · score · serve
 │   ├── api.py                  FastAPI read-API: /events /scores /ingest-health /stream
 │   ├── celery_app.py           Celery app instance (broker = Redis)
 │   ├── tasks.py                Celery tasks + beat schedule (cadence + nightly prune)
@@ -876,10 +876,10 @@ OSINT/
 │   ├── audit/                  nightly source-data audit + expectations
 │   ├── brain/                  local-model narrate · enrich · ask
 │   ├── severity/               grading and measured agreement
-│   ├── devx/                   lan_share — who on the network may reach this
+│   ├── devx/                   lan_share: who on the network may reach this
 │   └── enrichment/             geocode · NER · sentiment (+ data/ gazetteers)
 │
-├── osint-frontend/           NEXT.JS CONSOLE — reads app/api.py
+├── osint-frontend/           NEXT.JS CONSOLE: reads app/api.py
 │   ├── app/                    routes: page.tsx, layout.tsx, providers.tsx, news/
 │   ├── lib/                    apiClient.ts · queries.ts · realtime.ts · types.ts
 │   ├── components/             MapPane · CardDeck · FilterRail · panels/
@@ -889,18 +889,18 @@ OSINT/
 ├── data/        ALL LOCAL STORAGE ($OSINT_DATA_DIR, gitignored)
 │   ├── postgres/                the actual database files
 │   ├── redis/                   Redis append-only file
-│   ├── private/                 licensed/manual inputs — never commit
+│   ├── private/                 licensed/manual inputs, never commit
 │   └── exports/                 generated reports (evaluations, audits)
 ├── backups/     snapshot dumps (gitignored)
 ├── migrations/  Alembic schema migrations
 ├── scripts/     dev-up.sh · dev-down.sh · snapshot.py · one-off tools
 ├── tests/       pytest suite (backend)
-├── docs/        specifications, protocols, and evaluation records — see §27
+├── docs/        specifications, protocols, and evaluation records, see §27
 │
 ├── docker-compose.yml   Postgres + Redis services
 ├── Makefile             every command in this handbook
 ├── env.example          copy → .env, then fill in
-└── .env                 YOUR config and secrets (gitignored — never commit)
+└── .env                 YOUR config and secrets (gitignored, never commit)
 ```
 
 ## 26.1 Where is…?
@@ -908,9 +908,9 @@ OSINT/
 | I want | Open |
 | --- | --- |
 | My config and secrets | `.env`, from [`env.example`](https://github.com/BasilSuhail/OSINT/blob/main/env.example); read via [`app/settings.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/settings.py). Every setting explained in [§5](HANDBOOK.md#5-configure-it-safely) |
-| The database itself | `data/postgres/` — relocate with `OSINT_DATA_DIR` ([§5.5](HANDBOOK.md#55-move-persistent-data-to-another-disk)) |
+| The database itself | `data/postgres/`, relocate with `OSINT_DATA_DIR` ([§5.5](HANDBOOK.md#55-move-persistent-data-to-another-disk)) |
 | What the console fetches | [`osint-frontend/lib/apiClient.ts`](https://github.com/BasilSuhail/OSINT/blob/main/osint-frontend/lib/apiClient.ts) ↔ served by [`app/api.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/api.py) |
-| To add or adjust a source | [`app/sources/`](https://github.com/BasilSuhail/OSINT/tree/main/app/sources) + [`app/fetcher_registry.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/fetcher_registry.py) — full steps in [§12.5](HANDBOOK.md#125-add-or-change-a-source) |
+| To add or adjust a source | [`app/sources/`](https://github.com/BasilSuhail/OSINT/tree/main/app/sources) + [`app/fetcher_registry.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/fetcher_registry.py), full steps in [§12.5](HANDBOOK.md#125-add-or-change-a-source) |
 | How long data is kept | [`app/housekeeping.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/housekeeping.py) and `RETENTION_*` ([§11.3](HANDBOOK.md#113-retention-rule)) |
 
 ## 26.2 Trace one row, source to screen
@@ -937,10 +937,10 @@ A GDELT event's whole life. Every path is a link.
 | GDELT history | [`app/composite/gdelt.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/composite/gdelt.py) | monthly checkpoints + daily volume |
 | USGS · GDACS · FIRMS · EONET | [`app/sources/`](https://github.com/BasilSuhail/OSINT/tree/main/app/sources) | `events` → footprint enrichment |
 | yfinance · FRED | [`app/sources/`](https://github.com/BasilSuhail/OSINT/tree/main/app/sources) | `events`, market and macro |
-| ACLED (labels) | local drop folder ([§5.3](HANDBOOK.md#53-add-optional-source-access)) | `labels` — ground truth, kept separate |
+| ACLED (labels) | local drop folder ([§5.3](HANDBOOK.md#53-add-optional-source-access)) | `labels`, ground truth, kept separate |
 | RSS, 55 feeds | [`app/sources/rss_feeds.json`](https://github.com/BasilSuhail/OSINT/blob/main/app/sources/rss_feeds.json) | `events` → stories |
 
-## 26.4 Analytical subsystems — one folder each, formula inside
+## 26.4 Analytical subsystems: one folder each, formula inside
 
 | Concern | Folder | Formula | Method in |
 | --- | --- | --- | --- |
@@ -950,26 +950,26 @@ A GDELT event's whole life. Every path is a link.
 | Lead-time gate | [`app/divergence/`](https://github.com/BasilSuhail/OSINT/tree/main/app/divergence) | `config.py` | [§14.8](HANDBOOK.md#148-the-lead-time-gate--does-narrative-move-before-the-physical-signal) |
 | Country Instability Index | [`app/cii/`](https://github.com/BasilSuhail/OSINT/tree/main/app/cii) | `scoring.py` | [§14.9](HANDBOOK.md#149-the-country-instability-index-cii) |
 | Prediction journal | [`app/journal/`](https://github.com/BasilSuhail/OSINT/tree/main/app/journal) | `emit.py` | [§15.10](HANDBOOK.md#1510-the-prediction-journal-the-hindcast-guard-and-the-degeneracy-check) |
-| Evaluations | [`app/onset/`](https://github.com/BasilSuhail/OSINT/tree/main/app/onset) · [`app/within/`](https://github.com/BasilSuhail/OSINT/tree/main/app/within) · [`app/baselines/`](https://github.com/BasilSuhail/OSINT/tree/main/app/baselines) | — | [§15](HANDBOOK.md#15-evaluation--what-was-claimed-what-was-tested-what-failed) |
-| Retention | [`app/housekeeping.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/housekeeping.py) | — | [§11.3](HANDBOOK.md#113-retention-rule) |
+| Evaluations | [`app/onset/`](https://github.com/BasilSuhail/OSINT/tree/main/app/onset) · [`app/within/`](https://github.com/BasilSuhail/OSINT/tree/main/app/within) · [`app/baselines/`](https://github.com/BasilSuhail/OSINT/tree/main/app/baselines) | n/a | [§15](HANDBOOK.md#15-evaluation--what-was-claimed-what-was-tested-what-failed) |
+| Retention | [`app/housekeeping.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/housekeeping.py) | n/a | [§11.3](HANDBOOK.md#113-retention-rule) |
 
 ---
 
 # 27. Documentation index
 
 This handbook is the entry point. The files below are the primary records it
-draws on — read the protocol before the result, which is the order they were
+draws on. Read the protocol before the result, which is the order they were
 written in.
 
 | Document | What it is |
 | --- | --- |
-| [`docs/methodology.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/methodology.md) | Part A: the pre-registered evaluation protocol — ground truth, splits, baselines, metrics, sensitivity programme, reporting checklist. Part B: the literature baseline with citations and reading priority. |
+| [`docs/methodology.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/methodology.md) | Part A: the pre-registered evaluation protocol: ground truth, splits, baselines, metrics, sensitivity programme, reporting checklist. Part B: the literature baseline with citations and reading priority. |
 | [`docs/onset-eval.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/onset-eval.md) | The onset evaluation, frozen 2026-07-10, with its single run and amendment log ([§15.6](HANDBOOK.md#156-result-2--the-onset-evaluation-2026-07-10)). |
 | [`docs/within-country-eval.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/within-country-eval.md) | The within-country evaluation, frozen 2026-07-22, and its NEGATIVE verdict ([§15.7](HANDBOOK.md#157-result-3--the-within-country-evaluation-2026-07-22)). |
-| [`docs/disagreement-exam.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/disagreement-exam.md) | A forward evaluation — not gradable until enough predictions mature. |
+| [`docs/disagreement-exam.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/disagreement-exam.md) | A forward evaluation, not gradable until enough predictions mature. |
 | [`docs/backtest/`](https://github.com/BasilSuhail/OSINT/tree/main/docs/backtest) | Lead-time gate reports, including threshold sensitivity ([§15.8](HANDBOOK.md#158-lead-time-and-its-sensitivity-to-the-threshold)). |
 | [`docs/severity-grading.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/severity-grading.md) | How headline severity is decided, which model, and the measured agreement ([§14.5](HANDBOOK.md#145-severity--and-why-08-does-not-compare-across-families)). |
-| [`docs/analytical-agenda.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/analytical-agenda.md) | The workstreams: what is actually done with the data — quantify, validate, predict. |
+| [`docs/analytical-agenda.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/analytical-agenda.md) | The workstreams: what is actually done with the data: quantify, validate, predict. |
 | [`docs/project-direction.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/project-direction.md) | What the project is, who it serves, and the long-term path. |
 | [`docs/data-coverage.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/data-coverage.md) | The operational record of what actually landed in storage ([§16.3](HANDBOOK.md#163-event-data-concentration-measured)). |
 | [`docs/storage.md`](https://github.com/BasilSuhail/OSINT/blob/main/docs/storage.md) | Storage layout, retention, move, back up, restore, wipe ([§11](HANDBOOK.md#11-data-storage-and-retention)). |
@@ -1010,7 +1010,7 @@ current rather than becoming a pitch.
   baselines, on either window ([§15.5](HANDBOOK.md#155-result-1--the-incidence-evaluation-2026-07-09)).
 - **The running version has never been evaluated.** Every published result
   grades `v1.0`; the live system emits `v3.0` ([§14.1](HANDBOOK.md#141-what-fixed-before-running-means-in-this-repository)).
-- **No forward evidence yet** — 1,695 predictions issued, none graded
+- **No forward evidence yet**: 1,695 predictions issued, none graded
   ([§15.10](HANDBOOK.md#1510-the-prediction-journal-the-hindcast-guard-and-the-degeneracy-check)).
 - The live composite is degenerate at 0.5 from the retention-versus-z-score
   mismatch, and the label panel is maintained by hand.
@@ -1022,7 +1022,7 @@ current rather than becoming a pitch.
 
 ## 28.3 Opportunities
 
-- **Slow-onset hazards** — drought, flood, sustained unrest — are the untested
+- **Slow-onset hazards** (drought, flood, sustained unrest) are the untested
   anchor where a sensor could plausibly lead coverage. An open question, not a
   settled failure.
 - The hazard domain is the strongest single indicator measured so far and beats
@@ -1037,10 +1037,10 @@ current rather than becoming a pitch.
   changes, and sensor values that turn out to measure something other than what
   they appear to.
 - **Retention versus evaluation needs** can silently flatten a signal before it
-  is ever measured — the class of defect that produced 1,101 forecasts of a
+  is ever measured: the class of defect that produced 1,101 forecasts of a
   constant.
 - The hardest questions to answer are the within-country construction and the
-  0.5 degeneracy — both of which the composite's published results depend on.
+  0.5 degeneracy, both of which the composite's published results depend on.
 
 ---
 
