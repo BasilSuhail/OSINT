@@ -23,7 +23,7 @@ from app.models import Event
 from app.sources.base import Fetcher
 from app.sources.gdelt_parser import parse_csv_body
 
-GDELT_LASTUPDATE_URL: Final[str] = "http://data.gdeltproject.org/gdeltv2/lastupdate.txt"
+GDELT_LASTUPDATE_URL: Final[str] = "https://data.gdeltproject.org/gdeltv2/lastupdate.txt"
 GDELT_USER_AGENT: Final[str] = "OSINT-project/0.0.1 (academic)"
 
 
@@ -80,7 +80,13 @@ class GdeltFetcher(Fetcher):
 
     def _latest_export_url(self) -> str | None:
         with httpx.Client(
-            timeout=self.timeout_seconds, headers={"User-Agent": GDELT_USER_AGENT}
+            timeout=self.timeout_seconds,
+            headers={"User-Agent": GDELT_USER_AGENT},
+            # Upstream 301s the plain-HTTP paths to their TLS twin, and an
+            # unfollowed 301 raises — the whole fetcher died on it, quietly,
+            # every fifteen minutes. Asking over https above spares this hop;
+            # following it is what survives the next one.
+            follow_redirects=True,
         ) as client:
             response = client.get(GDELT_LASTUPDATE_URL)
             response.raise_for_status()
@@ -88,7 +94,12 @@ class GdeltFetcher(Fetcher):
 
     def _download_export(self, url: str) -> str:
         with httpx.Client(
-            timeout=self.timeout_seconds, headers={"User-Agent": GDELT_USER_AGENT}
+            timeout=self.timeout_seconds,
+            headers={"User-Agent": GDELT_USER_AGENT},
+            # This URL is read out of lastupdate.txt, which lists its zips as
+            # `http://` whichever scheme we asked it with, so the redirect
+            # arrives here too and the constant above cannot spare it.
+            follow_redirects=True,
         ) as client:
             response = client.get(url)
             response.raise_for_status()

@@ -126,3 +126,51 @@ class TestGdeltFetcherHttp:
         respx.get(GDELT_LASTUPDATE_URL).mock(return_value=httpx.Response(503))
         with pytest.raises(httpx.HTTPStatusError):
             GdeltFetcher().fetch()
+
+
+class TestGdeltFetcherFollowsRedirects:
+    """Upstream answers the plain-HTTP paths with a 301 to their TLS twin.
+
+    Both clients meet it: the lastupdate fetch, and then the export download,
+    whose URL is read out of the lastupdate body and is published as `http://`
+    no matter which scheme the first request used. A client that does not
+    follow redirects raises on the 301 and the whole geopolitical fetcher
+    dies — silently, every fifteen minutes.
+    """
+
+    @respx.mock
+    def test_lastupdate_redirect_is_followed(self) -> None:
+        moved_to = "https://cdn.example.org/gdeltv2/lastupdate.txt"
+        export_url = "https://data.gdeltproject.org/gdeltv2/20260618224500.export.CSV.zip"
+
+        respx.get(GDELT_LASTUPDATE_URL).mock(
+            return_value=httpx.Response(301, headers={"Location": moved_to})
+        )
+        respx.get(moved_to).mock(
+            return_value=httpx.Response(200, text=f"123456 abc {export_url}\n")
+        )
+        respx.get(export_url).mock(return_value=httpx.Response(200, content=_build_zip("")))
+
+        assert GdeltFetcher().fetch() == []
+
+    @respx.mock
+    def test_export_download_redirect_is_followed(self) -> None:
+        export_url = "http://data.gdeltproject.org/gdeltv2/20260618224500.export.CSV.zip"
+        moved_to = "https://data.gdeltproject.org/gdeltv2/20260618224500.export.CSV.zip"
+
+        respx.get(GDELT_LASTUPDATE_URL).mock(
+            return_value=httpx.Response(200, text=f"123456 abc {export_url}\n")
+        )
+        respx.get(export_url).mock(return_value=httpx.Response(301, headers={"Location": moved_to}))
+        respx.get(moved_to).mock(
+            return_value=httpx.Response(200, content=_build_zip(_conflict_row()))
+        )
+
+        events = GdeltFetcher().fetch()
+        assert len(events) == 1
+        assert events[0].source == "gdelt"
+
+    def test_lastupdate_url_is_https(self) -> None:
+        #: The redirect is followed either way; asking over TLS in the first
+        #: place spares every fetch a wasted round trip.
+        assert GDELT_LASTUPDATE_URL.startswith("https://")
