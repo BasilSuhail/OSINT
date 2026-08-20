@@ -476,9 +476,10 @@ version this project pins; a different one resolves the lockfile differently.
 <summary><b>Run it as a server</b> — the console as a service, reachable from a phone</summary>
 
 Everything above gets a console running on the machine you typed it into. The
-backend side already survives a reboot — the containers restart themselves —
-but `make up` runs the console itself as a development server, and a
-development server dies with the power. This turns the console into a service
+backend side mostly survives a reboot already — the containers restart
+themselves, though in this mode they need a hand with the timing, below — but
+`make up` runs the console itself as a development server, and a development
+server dies with the power. This turns the console into a service
 that starts on its own, and turns the board into something you can reach from
 a phone rather than only from the machine sitting next to it.
 
@@ -528,8 +529,9 @@ Install the service — Linux only, and it refuses outright on anything else:
 make serve-install
 ```
 
-It asks for `sudo`. Before writing anything it prints both systemd units in
-full and asks you to confirm; answer yes and it writes
+Run it as yourself and let it ask for `sudo`; it refuses if you run the whole
+thing under `sudo`, for a reason two paragraphs down. Before writing anything
+it prints both systemd units in full and asks you to confirm; answer yes and it writes
 `/etc/systemd/system/osint-stack.service` and
 `/etc/systemd/system/osint-console.service`, and `/etc/osint-console.env`
 beside them. That last file holds the settings `next start` reads while it is
@@ -552,12 +554,11 @@ address to actually appear on an interface and then brings the containers up.
 It is also why the console is ordered behind it: the console binds the same
 address and would race the same way.
 
-Run `make serve-install` as yourself and let it ask for `sudo` — it refuses if
-you run the whole thing under `sudo`. The console's service runs as the account
-you install it from, because it writes its build cache inside your checkout and
-a root service would leave you a directory you can no longer write to, which
-surfaces as the *next* `make serve-build` failing on a permission error in your
-own files. The container start does run as root, because talking to the Docker
+And that is why it wants you rather than root: the console's service runs as
+the account you install it from, because it writes its build cache inside your
+checkout. A root service would leave you a directory you can no longer write
+to, which surfaces as the *next* `make serve-build` failing on a permission
+error in your own files. The container start does run as root, because talking to the Docker
 socket is root either way.
 
 Start it:
