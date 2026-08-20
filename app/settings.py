@@ -56,6 +56,21 @@ class Settings(BaseSettings):
     # waved through a load with nowhere near room for it.
     brain_min_free_mb: int = Field(default=3500)
     brain_keep_alive: str = Field(default="30m")
+    # How long the narrative may go unwritten before the heavy-job backoff
+    # stops applying to it.
+    #
+    # The backoff is right on a laptop — do not load a model while something
+    # else has the box — but it had no floor, and a job that yields to heavy
+    # work yields forever on a machine where heavy work never stops. Measured
+    # on a small board: five consecutive narrate beats refused, and the console
+    # a reader opens showed nothing at all.
+    #
+    # Four missed beats at the 15-minute cadence. Shorter and one ordinary
+    # overrun — a clustering run working through a backlog — would count as
+    # starvation; longer and the page a reader opens is over an hour stale,
+    # which is beyond what a page describing "now" can claim. On a laptop the
+    # heavy beats finish in seconds and this never opens.
+    brain_narrate_starvation_minutes: int = Field(default=60)
     # Q&A (#433): user asks run the 4b model per-ask and evict it right after —
     # the box never keeps two models resident. Narrative and enrichment stay on
     # the warm brain_model above.

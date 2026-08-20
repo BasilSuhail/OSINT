@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.brain import gate
-from app.db_models import Base, JobRunRow
+from app.db_models import Base, BrainNarrativeRow, JobRunRow
 
 MEMINFO = """MemTotal:        8000000 kB
 MemFree:          500000 kB
@@ -115,3 +115,127 @@ def test_the_ram_floor_leaves_room_for_the_model_it_guards():
     defaults = Settings()
     assert defaults.brain_model == "llama3.2:3b"
     assert defaults.brain_min_free_mb >= 3400
+
+
+def _narrative(at: datetime) -> BrainNarrativeRow:
+    return BrainNarrativeRow(created_at=at, model="test", payload={}, input_digest="d")
+
+
+def _fed_gate(monkeypatch):
+    """Everything the gate checks before the heavy job is out of the way."""
+    monkeypatch.setattr(gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(gate.runtime_load, "busy_reason", lambda now=None: None)
+
+
+def test_narrate_starved_past_the_threshold_runs_despite_a_heavy_job(monkeypatch):
+    """#409's backoff has no floor: on a box where heavy jobs run nearly
+    back to back, a beat that always yields never runs at all."""
+    session = _memory_session()
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    _fed_gate(monkeypatch)
+    session.add(JobRunRow(job="severity-grade", status="running", heartbeat_at=now))
+    session.add(_narrative(now - timedelta(minutes=90)))
+    session.commit()
+
+    allowed, reason = gate.should_run(session, now=now, allow_when_starved=True)
+
+    assert allowed is True
+    assert "starved" in reason
+    assert "heavy job" in reason
+
+
+def test_a_box_that_has_never_narrated_counts_as_starved(monkeypatch):
+    session = _memory_session()
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    _fed_gate(monkeypatch)
+    session.add(JobRunRow(job="stories-cluster", status="running", heartbeat_at=now))
+    session.commit()
+
+    allowed, reason = gate.should_run(session, now=now, allow_when_starved=True)
+
+    assert allowed is True
+    assert "starved" in reason
+
+
+def test_a_recent_narrative_still_backs_off_from_a_heavy_job(monkeypatch):
+    session = _memory_session()
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    _fed_gate(monkeypatch)
+    session.add(JobRunRow(job="stories-cluster", status="running", heartbeat_at=now))
+    session.add(_narrative(now - timedelta(minutes=20)))
+    session.commit()
+
+    allowed, reason = gate.should_run(session, now=now, allow_when_starved=True)
+
+    assert allowed is False
+    assert reason == "heavy job in flight — backing off"
+
+
+def test_the_escape_is_shut_unless_the_caller_asks_for_it(monkeypatch):
+    """Only the beat the reader misses opens the box mid-heavy-job; the
+    enrichment pass keeps the plain backoff it has always had."""
+    session = _memory_session()
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    _fed_gate(monkeypatch)
+    session.add(JobRunRow(job="stories-cluster", status="running", heartbeat_at=now))
+    session.commit()
+
+    allowed, reason = gate.should_run(session, now=now)
+
+    assert allowed is False
+    assert reason == "heavy job in flight — backing off"
+
+
+def test_an_idle_box_reads_the_same_whether_or_not_the_escape_is_offered(monkeypatch):
+    session = _memory_session()
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    _fed_gate(monkeypatch)
+
+    plain = gate.should_run(session, now=now)
+    offered = gate.should_run(session, now=now, allow_when_starved=True)
+
+    assert plain == offered
+    assert offered[0] is True
+    assert "starved" not in offered[1]
+
+
+def test_starvation_does_not_lift_the_ram_floor(monkeypatch):
+    """The floor guards a load the box cannot hold — no amount of waiting
+    makes the model fit."""
+    session = _memory_session()
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(gate, "ram_free_mb", lambda: 500)
+    monkeypatch.setattr(gate.settings, "brain_min_free_mb", 1200)
+    monkeypatch.setattr(gate.runtime_load, "busy_reason", lambda now=None: None)
+    session.add(JobRunRow(job="stories-cluster", status="running", heartbeat_at=now))
+    session.commit()
+
+    allowed, reason = gate.should_run(session, now=now, allow_when_starved=True)
+
+    assert allowed is False
+    assert "low RAM" in reason
+
+
+def test_starvation_does_not_lift_the_runtime_busy_lock(monkeypatch):
+    session = _memory_session()
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(gate, "ram_free_mb", lambda: 8000)
+    monkeypatch.setattr(gate.runtime_load, "busy_reason", lambda now=None: "you are working")
+    session.add(JobRunRow(job="stories-cluster", status="running", heartbeat_at=now))
+    session.commit()
+
+    allowed, reason = gate.should_run(session, now=now, allow_when_starved=True)
+
+    assert allowed is False
+    assert reason == "you are working"
+
+
+def test_the_threshold_is_a_whole_number_of_missed_beats():
+    # The narrate beat is every 15 minutes (app/tasks.py: brain-narrate-15min).
+    # A threshold that is not a multiple of it would fire mid-beat and read as
+    # arbitrary to whoever tunes it next.
+    from app.settings import Settings
+
+    minutes = Settings().brain_narrate_starvation_minutes
+    assert minutes % 15 == 0
+    assert minutes >= 30
