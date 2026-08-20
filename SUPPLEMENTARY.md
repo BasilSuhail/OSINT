@@ -479,57 +479,39 @@ One per stage of the diagram. Click a heading to open it, or click the stage
 in the drawing above.
 
 <details id="ch-1">
-<summary><b>§1 &nbsp; The clock</b> &nbsp;—&nbsp; the scheduler. 84 timetable entries, cron-style, all UTC</summary>
+<summary><b>§1 &nbsp; The clock</b> &nbsp;—&nbsp; a program that watches the time and names the job that is due</summary>
 <br>
 
 **`app/tasks.py` → `beat_schedule`**
 
-## The words first
-
-**Celery** is the Python library this project uses to run jobs in the
-background. It has three parts, and all three appear in the diagram:
-
-| Celery's name | What it does | Where it is here |
-| --- | --- | --- |
-| **beat** | the scheduler — decides *when* | §1, this chapter |
-| **broker** | the mailbox between the two | §2, Redis |
-| **worker** | does the actual jobs | §3 onward |
-
-**beat means scheduler.** It is a product name, chosen because it keeps steady
-time like a drumbeat. This chapter says "scheduler" throughout, and "beat" only
-where the code itself uses the word — `beat_schedule`, the `beat` container,
-the `celerybeat-schedule` file. Same thing every time.
-
 ## What it is
 
-**A program** — not a file, and not a cron job. It runs non-stop in its own
-container, reads a list written in a Python file, and does one thing: look at
-the clock and publish a job's name when that job is due.
+**A custom program.** Not a file, not a cron job. It runs non-stop in its own
+container and does one thing: watch the clock, and when a job is due, publish
+that job's *name* to Redis for a worker to pick up.
 
-It does no work. It never reads the database, never downloads anything, never
-computes a score. In sampling terms it is the part of the system that sets the
-**sampling rate** for every data source, and nothing else.
+It never does the work itself. It never touches the database, downloads
+nothing, computes nothing.
 
-Three properties follow, and everything downstream depends on them:
+The library is **Celery**, which ships three parts — all three appear in the
+diagram:
 
-1. It knows a job's *name*, not the job. It cannot run one.
-2. It does not wait. A job that takes forty minutes does not delay the next
-   entry by a second.
-3. If every worker is down, the messages queue up and nothing is lost.
+| Celery calls it | What it does | Where |
+| --- | --- | --- |
+| **beat** | the scheduler | §1, this chapter |
+| **broker** | the mailbox between them | §2, Redis |
+| **worker** | does the actual jobs | §3 onward |
 
-That is why the box in the diagram has one arrow out, labelled
-`publishes {task name, args}` — not "runs the job".
+`beat` means scheduler. This chapter says "scheduler" except where the code
+itself uses the word.
 
-## The timetable
+## The list it reads
 
-"The timetable" is this chapter's plain word for **`beat_schedule`** — a single
-block of Python at `app/tasks.py`, line 714. That block is the entire schedule;
-there is no other place a job's timing is set.
-
-It is a lookup table, one row per scheduled job. Each row is four lines:
+One list in `app/tasks.py`, line 714, called `beat_schedule`. It is the entire
+schedule — there is nowhere else a job's timing is set. Each entry is four
+lines:
 
 ```python
-# app/tasks.py, line 714
 app.conf.beat_schedule = {
 
     "yfinance-5min": {                        # a name, so logs are readable
@@ -541,12 +523,63 @@ app.conf.beat_schedule = {
 }
 ```
 
-Read aloud, that row says:
+Read aloud: **every 5 minutes, run the thing called `run_fetcher`, and hand it
+the word `yfinance`.**
 
-> **Every 5 minutes, run the thing called `run_fetcher`, and hand it the word
-> `yfinance`.**
+One entry is a **row**. 84 of them, and a row is the only way anything gets
+scheduled — no row, never runs.
 
-### Why the function is written as text
+Nobody typed 84 rows:
+
+```
+      31   typed by hand      14 sources + 17 analysis and housekeeping jobs
+ +    53   written by a loop  one per news site in rss_feeds.json
+ ─────────
+      84   rows
+```
+
+67 of the 84 are sources, one row each. All 67 call the **same** function with
+a different word, which is why adding a source needs no new code — add a news
+site to that JSON file and there is one more row on the next restart.
+
+A **source** is one place data comes from: **core** (14 public APIs giving
+numbers and coordinates — share prices, quake magnitudes, satellite fire
+positions) or **RSS** (53 news sites; RSS is the machine-readable list of
+latest articles a news site publishes).
+
+## How often each row runs
+
+Every one of the 84 rows runs at one of eight speeds. Names are given in
+full — most of these are acronyms of public data projects.
+
+| Speed | Rows | What runs at that speed |
+| --- | ---: | --- |
+| every 5 min | 1 | Yahoo Finance share prices, which move continuously |
+| every 15 min | 2 | the local language model writing a situation summary; the watchdog that notices a source has gone quiet |
+| every 20 min | 1 | the local language model summarising newly grouped stories |
+| every 15 min (4×/hr) | 6 | USGS earthquakes · GDACS, the UN/EU **Global Disaster Alert and Coordination System** · GDELT, the **Global Database of Events, Language and Tone** · two abuse.ch cyber-threat feeds · fetching real hazard outlines for the map |
+| every 30 min (2×/hr) | 7 | grouping headlines into stories · checking a claimed event against a physical sensor reading · measuring how differently countries word the same story · grading how harmful a headline is · resolving place names · NASA EONET, the **Earth Observatory Natural Event Tracker** · Polymarket prediction-market odds |
+| every 5 min, offset (12×/hr) | 1 | fetching article titles for GDELT rows |
+| hourly | 58 | the 53 RSS news feeds · ACLED, the **Armed Conflict Location & Event Data Project** · NASA FIRMS, the **Fire Information for Resource Management System** (satellite fire detections) · OpenSky aircraft positions · the **composite index** and the **CII (Country Instability Index)**, both scores this project computes itself rather than downloads |
+| daily / weekly | 8 | FRED, **Federal Reserve Economic Data** · EM-DAT, the international disaster database · UK police crime records · the prediction journal · claim extraction · deleting expired rows · the nightly data check · the Monday briefing |
+
+```
+   1 + 2 + 1 + 6 + 7 + 1 + 58 + 8  =  84
+```
+
+Cadence is set by how fast the **source** changes, not by how often the data
+would be nice to have. Sampling faster than the source publishes adds no
+information and costs a request. The code states this where it applies:
+
+```python
+# OpenSky ADS-B is aggregated to one row per country per hour (#496), and
+# the hour-keyed upsert means extra polls within an hour only refresh the
+# same rows. Polling every 2 min bought nothing but CPU, so: hourly.
+```
+
+<details>
+<summary><b>Why the job's name travels as text, not as code</b></summary>
+<br>
 
 **The scheduler and the worker are two separate programs**, running at the same
 time in different containers. Celery calls the scheduler `beat`, which is why
@@ -581,39 +614,17 @@ function — only told which one, and a name is text.
 Like texting someone "call the plumber": it works because they already have a
 phone and know what a plumber is. You send the instruction, not the plumber.
 
-### Why it lives in a file
+#### Why the list lives in a file
 
 The timetable is a `.py` file tracked in git, so changing how often a source is
 sampled is a commit — a diff, an author, a date, a reason — rather than a
 number typed into a server that nobody can account for six months later.
 
-## The rows
+</details>
 
-A **source** is one place data comes from. Two kinds: **core** (14 public APIs
-giving numbers and coordinates — share prices, quake magnitudes, satellite fire
-positions) and **RSS** (53 news sites; RSS is the machine-readable list of
-latest articles a news site publishes).
-
-A **row** is one entry in the list — the `"yfinance-5min"` block above.
-84 of them. A row is the only way anything gets scheduled: no row, never runs.
-
-Nobody typed 84 rows:
-
-```
-      31   typed by hand      14 core sources + 17 analysis jobs
- +    53   written by a loop  one per news site in rss_feeds.json
- ─────────
-      84   rows
-```
-
-Add a news site to that JSON file and there is one more row on the next
-restart, with no Python edited.
-
-67 of the 84 rows are sources — one row each. The other 17 are the analysis and
-housekeeping jobs. All 67 source rows call the **same** function, `run_fetcher`,
-with a different word each time, which is why adding a source needs no new code.
-
-## Cron notation
+<details>
+<summary><b>How the timing is written — cron, UTC, and staggering</b></summary>
+<br>
 
 `cron` describes *when* by pattern-matching the current time, rather than by
 counting sleep intervals.
@@ -632,8 +643,6 @@ interval between observations is not the interval you declared. Cron pins the
 observation to the wall clock, so **the time index stays evenly spaced** and a
 per-hour or per-day aggregate is comparable to the one before it.
 
-## Why UTC
-
 ```python
 # app/celery_app.py
 app.conf.update(
@@ -651,56 +660,6 @@ Why not the alternatives:
 | Local time | Daylight saving gives one night two 02:30s and another none, so a nightly job runs twice and then not at all |
 | Each source's own timezone | Two sources cannot be compared without converting at every query |
 | Unix epoch numbers | No daylight-saving problem either, but nobody can read a column of them |
-
-## How often each row runs
-
-Every one of the 84 rows runs at one of eight speeds. Names are given in
-full — most of these are acronyms of public data projects.
-
-| Speed | Rows | What runs at that speed |
-| --- | ---: | --- |
-| every 5 min | 1 | Yahoo Finance share prices, which move continuously |
-| every 15 min | 2 | the local language model writing a situation summary; the watchdog that notices a source has gone quiet |
-| every 20 min | 1 | the local language model summarising newly grouped stories |
-| every 15 min (4×/hr) | 6 | USGS earthquakes · GDACS, the UN/EU **Global Disaster Alert and Coordination System** · GDELT, the **Global Database of Events, Language and Tone** · two abuse.ch cyber-threat feeds · fetching real hazard outlines for the map |
-| every 30 min (2×/hr) | 7 | grouping headlines into stories · checking a claimed event against a physical sensor reading · measuring how differently countries word the same story · grading how harmful a headline is · resolving place names · NASA EONET, the **Earth Observatory Natural Event Tracker** · Polymarket prediction-market odds |
-| every 5 min, offset (12×/hr) | 1 | fetching article titles for GDELT rows |
-| hourly | 58 | the 53 RSS news feeds · ACLED, the **Armed Conflict Location & Event Data Project** · NASA FIRMS, the **Fire Information for Resource Management System** (satellite fire detections) · OpenSky aircraft positions · the **composite index** and the **CII (Country Instability Index)**, both scores this project computes itself rather than downloads |
-| daily / weekly | 8 | FRED, **Federal Reserve Economic Data** · EM-DAT, the international disaster database · UK police crime records · the prediction journal · claim extraction · deleting expired rows · the nightly data check · the Monday briefing |
-
-```
-   1 + 2 + 1 + 6 + 7 + 1 + 58 + 8  =  84
-```
-
-Cadence is set by how fast the **source** changes, not by how often the data
-would be nice to have. Sampling faster than the source publishes adds no
-information and costs a request. The code states this where it applies:
-
-```python
-# OpenSky ADS-B is aggregated to one row per country per hour (#496), and
-# the hour-keyed upsert means extra polls within an hour only refresh the
-# same rows. Polling every 2 min bought nothing but CPU, so: hourly.
-```
-
-## What it costs to run
-
-Simulated against the real schedule objects over one UTC day:
-
-```
-messages published in one UTC day:  3,151
-
-  288/day   yfinance-5min
-  288/day   gdelt-titles-5min
-   96/day   gdelt-15min
-    1/day   fred-daily-7am-utc
-    0/day   briefing-weekly        (Mondays only)
-```
-
-3,151 messages a day from a process measured at **72 MB** of memory. It is the
-cheapest component in the system, which is the design goal — a scheduler that
-did real work would be a scheduler you could not restart casually.
-
-## Staggering
 
 Two entries, three minutes apart on purpose:
 
@@ -734,7 +693,27 @@ feed 0 at :10, feed 1 at :12, feed 2 at :14. Without it, 53 outbound requests
 leave in the same second every hour, which is a load spike aimed at other
 people's servers.
 
-## How it remembers across a restart
+</details>
+
+<details>
+<summary><b>Running it — cost, restarts, and what breaks</b></summary>
+<br>
+
+Simulated against the real schedule objects over one UTC day:
+
+```
+messages published in one UTC day:  3,151
+
+  288/day   yfinance-5min
+  288/day   gdelt-titles-5min
+   96/day   gdelt-15min
+    1/day   fred-daily-7am-utc
+    0/day   briefing-weekly        (Mondays only)
+```
+
+3,151 messages a day from a process measured at **72 MB** of memory. It is the
+cheapest component in the system, which is the design goal — a scheduler that
+did real work would be a scheduler you could not restart casually.
 
 ```
 command: ["celery", "-A", "app.celery_app", "beat",
@@ -758,8 +737,6 @@ holds either way.
 
 The file is git-ignored. The timetable is committed; the record of what has
 already run is not.
-
-## Failure modes
 
 | Failure | Effect | Handled |
 | --- | --- | --- |
@@ -792,8 +769,6 @@ ask:
 The 15-minute threshold was measured on a healthy stack, not guessed. A tighter
 one would restart-loop a working scheduler.
 
-## Why not plain cron
-
 Unix `cron` runs a command on one machine. It has no queue, so no second
 machine can take the work; no retry policy, where these tasks declare
 `autoretry_for`, `retry_backoff` and `max_retries`; no routing, where §2 sends
@@ -801,7 +776,11 @@ machine can take the work; no retry policy, where these tasks declare
 overlap protection, so a slow run starts on top of itself. Its timetable also
 lives on a host rather than in a reviewed file.
 
-## One problem in this stage
+</details>
+
+<details>
+<summary><b>One problem found in this stage</b></summary>
+<br>
 
 The cadences are written down twice — once in `beat_schedule`, and again by
 hand in `app/watchdog.py`:
@@ -829,5 +808,7 @@ Recorded here as a finding. Not changed.
 ---
 
 <a href="#map-1">↑ back to §1 in the diagram</a>
+
+</details>
 
 </details>
