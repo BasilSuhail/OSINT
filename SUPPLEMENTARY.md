@@ -1,718 +1,833 @@
 # Supplementary material
 
-Everything produced by the work that does not belong in the main text: the
-dataset, the full result tables, the hand-checked audit sheets, and the
-annotated code behind each method.
+The whole system drawn once, then one chapter per stage of the drawing.
 
-Nothing here re-explains method choices — that argument belongs in the main
-document. This is the evidence that the work was done, in a form a reader can
-open, run and check.
+Read the diagram downward. Every stage carries a § number. A stage whose
+chapter is written is a link — click it and the chapter opens below. The arrow
+at the foot of each chapter brings you back to the same box. Stages that are
+still plain text do not have a chapter yet.
 
-## What you have been given
-
-| | |
-| --- | --- |
-| This document | Eight appendices, each pointing at files below |
-| `results/data/` | The analysis panel (31,637 rows) and the coverage table, as CSV |
-| `results/reports/` | Nine result sets, each as machine-readable JSON and a rendered table |
-| `results/audit-sheets/` | Four sheets a person filled in by hand |
-
-Everything else — the running system, its console, its operational detail —
-lives in the repository and is not needed to read this:
-**<https://github.com/BasilSuhail/OSINT>**
-
-Code references below are links into that repository. The `results/` files
-travel with this document and open without it.
-
-## How the implementation was produced
-
-The code in this repository was written with heavy assistance from a large
-language model, used as a coding tool throughout.
-
-What that assistance did **not** decide is the part this document is evidence
-for: which methods to use, what each threshold should be, what counts as a
-positive label, which baselines a result must beat, when a protocol is frozen,
-and whether a result is reported as a success or a failure. Those choices are
-recorded here with the measurement that drove each one — including the ten in
-Appendix H that ended a chosen approach.
-
-Every method carries a frozen version string, every result is regenerable from
-the commands listed beside it, and every figure states the date it was measured.
-The intention is that nothing in this document has to be taken on trust.
+Counts in the diagram are read from the code on this branch, not from the
+design documents. Where the two disagree, the code is right.
 
 ---
 
-## Contents
+<pre>
+════════════════════════════════ PART I — INGEST ════════════════════════════════
 
-| Appendix | What is in it |
-| --- | --- |
-| [A — The dataset](#appendix-a--the-dataset) | The analysis panel, its schema, how to open it |
-| [B — Results](#appendix-b--results) | Every result file, with the headline tables reproduced |
-| [C — Data cleaning and validation](#appendix-c--data-cleaning-and-validation) | Annotated code for every rule that rejects or repairs a row |
-| [D — Natural language processing](#appendix-d--natural-language-processing) | Vectorisation, word embeddings, translation, classification — annotated |
-| [E — Database design](#appendix-e--database-design) | Tables, keys, relationships, and the storage rules |
-| [F — Bias measurements](#appendix-f--bias-measurements) | The measured composition of every input |
-| [G — Human audit sheets](#appendix-g--human-audit-sheets) | The rows a person checked by hand, and the agreement they produced |
-| [H — What was tried and rejected](#appendix-h--what-was-tried-and-rejected) | Approaches abandoned, and the measurement that ended each one |
+                     ╔═══════════════════════════════════════╗
+                     ║ <a id="map-1" href="#ch-1">§1  THE CLOCK</a>                         ║
+                     ║ app/tasks.py :: beat_schedule         ║
+                     ║ 84 entries, cron-style, all UTC       ║
+                     ║ */5min ─ 15min ─ hourly ─ nightly ─ wk ║
+                     ╚════════════════════╦══════════════════╝
+                                          │ publishes {task name, args}
+                                          ▼
+                     ╔═══════════════════════════════════════╗
+                     ║ §2  THE BROKER — Redis                ║
+                     ╠══════════════════╤════════════════════╣
+                     ║ queue "celery"   │ queue "analytics"  ║
+                     ║ concurrency 4    │ concurrency 1      ║
+                     ║ 67 fetchers      │ 15 heavy jobs      ║
+                     ║ I/O-bound, small │ one at a time, so  ║
+                     ║                  │ peak RAM = max(1)  ║
+                     ╚═════════╤════════╧═══════════╤════════╝
+                               │                    │
+                               │                    └──────────────┐
+                               ▼                                   │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §3  THE SOURCES — app/fetcher_registry.py             │       │
+   ├───────────────────────────────────────────────────────┤       │
+   │ 14 core fetchers                                      │       │
+   │   market      yfinance · fred                         │       │
+   │   geopolitical gdelt · acled                          │       │
+   │   hazard      usgs-quake · gdacs · eonet · emdat      │       │
+   │   wildfire    nasa-firms                              │       │
+   │   presence    opensky-adsb                            │       │
+   │   other       uk-police · polymarket ·                │       │
+   │               abuse-ch-urlhaus · abuse-ch-feodo       │       │
+   │                                                       │       │
+   │ 55 RSS feeds declared in app/sources/rss_feeds.json   │       │
+   │   53 enabled and scheduled · 2 parked (enabled=false) │       │
+   │   classes: 24 regional · 16 mainstream ·              │       │
+   │            8 state · 7 independent                    │       │
+   │   each becomes a named RssNewsFetcher subclass,       │       │
+   │   staggered by index so they never all hit at once    │       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼                                      │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §4  THE REST GATE — app/ingest/quarantine.py          │       │
+   │ a source that failed repeatedly is resting            │       │
+   │  ├─ resting  → return {"skipped", reason}  ── 1 query │       │
+   │  └─ awake    → continue                               │       │
+   │ a 404 from a time-addressed URL is not death: GDELT   │       │
+   │ names its window in the filename (stable_urls=False)  │       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼                                      │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §5  fetch() — app/sources/base.py                     │       │
+   │ pure HTTP. no database, no Redis, no Celery.          │       │
+   │ returns list[Event] | FetchBatch(events, unchanged)   │       │
+   │        ┌──────────────┬──────────────┬─────────────┐  │       │
+   │  raises│Misconfigured │ Exception    │ returns ok  │  │       │
+   │        ▼              ▼              ▼             │  │       │
+   │  state=misconfig  record_failure   carry on        │  │       │
+   │  (local config)   → quarantine     to §6           │  │       │
+   │                   NOT re-raised: 5 retries on a       │       │
+   │                   403 cost 420 requests in a week     │       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼   (RSS rows only)                    │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §6  INLINE ENRICHMENT — app/sources/rss_news_fetcher  │       │
+   │ order is load-bearing, one arrow at a time:           │       │
+   │                                                       │       │
+   │  title ─▶ translation.apply()   non-English → English │       │
+   │            original kept verbatim in payload          │       │
+   │        ─▶ resolve_geo()         country + lat/lon +   │       │
+   │            GEO_METHOD_VERSION   provenance of guess   │       │
+   │        ─▶ ner extract           named places/orgs     │       │
+   │        ─▶ score_text()          sentiment             │       │
+   │        ─▶ keyword_verdict()     provisional severity  │       │
+   │                                                       │       │
+   │ translation runs FIRST because the severity keywords, │       │
+   │ the geocoder and the clustering tokeniser all read    │       │
+   │ English words. Skip it and a foreign feed scores flat.│       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼                                      │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §7  PUBLICATION-TIME REPAIR — ingest/publication_time │       │
+   │ nothing is published in the future. shift or clamp.   │       │
+   │ runs BEFORE §8: the old order threw away real news    │       │
+   │ over a timezone label.                                │       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼                                      │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §8  FRESHNESS GATE — app/ingest/freshness.py          │       │
+   │  fresh ──▶ §9        stale ──▶ counted + retained as  │       │
+   │                                IngestFailureRow       │       │
+   │ live path only. Backfills call upsert_events direct.  │       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼                                      │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §9  UPSERT AND DEDUP — app/persistence.py             │       │
+   │ ON CONFLICT (source, source_event_id) DO UPDATE       │       │
+   │  ├ identity cols  source, source_event_id, category   │       │
+   │  │                never updated                       │       │
+   │  ├ refresh cols   an ongoing cyclone must not freeze  │       │
+   │  │                at first-seen state                 │       │
+   │  ├ geo cols       RSS replaces (resolver is           │       │
+   │  │                authoritative); others keep nulls   │       │
+   │  │                so post-ingest geo survives         │       │
+   │  └ ENRICHMENT_PAYLOAD_KEYS — listed explicitly and    │       │
+   │    walked by a test, because a 15-minute GDACS        │       │
+   │    refresh silently deleted the map's real geometry   │       │
+   │    for weeks                                          │       │
+   │ 1000 rows per statement · 12 000 bound params         │       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼                                      │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §10  OUTCOME CLASSIFICATION — app/ingest/outcome.py   │       │
+   │ HTTP 200 with no usable row is NOT a success.         │       │
+   │   new_data | unchanged → success_n                    │       │
+   │   empty                → empty_n                      │       │
+   │   misconfigured        → misconfigured_n              │       │
+   │   failed               → failure_n                    │       │
+   │ this is how a dead feed stops looking healthy.        │       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼                                      │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §11  THE FAILURE LEDGER                               │       │
+   │  ingest_health      per source-day counters           │       │
+   │  ingest_failures    error class + message             │       │
+   │  source_quarantine  resting until, and why            │       │
+   │  dead_letter_queue  work that exhausted its retries   │       │
+   │  app/watchdog.py    every 15 min: which source has    │       │
+   │                     gone quiet against its own cadence│       │
+   └────────────────────────┬──────────────────────────────┘       │
+                            ▼                                      │
+        ╔══════════════════════════════════════════════════════╗   │
+        ║ §12  events — THE CANONICAL TABLE                    ║   │
+        ║ app/db_models.py · one row shape for every source    ║   │
+        ╟──────────────────────────────────────────────────────╢   │
+        ║ id · source · source_event_id  ← UNIQUE together     ║   │
+        ║ category · title · severity    ← source-relative     ║   │
+        ║ occurred_at   when the world moved                   ║   │
+        ║ fetched_at    when this system learned of it         ║   │
+        ║               (both kept: the gap is reporting delay ║   │
+        ║                and it is a measured bias)            ║   │
+        ║ country · lat · lon            ← nullable. unknown   ║   │
+        ║                                  is a valid answer   ║   │
+        ║ payload JSONB                  ← source-specific     ║   │
+        ║                                  detail + enrichment ║   │
+        ╚═══════════╤══════════════════════════════════╤═══════╝   │
+                    │                                  │           │
+                    │                          ┌───────┘           │
+                    │                          ▼                   │
+                    │   ┌──────────────────────────────────────┐   │
+                    │   │ §13  POST-INGEST ENRICHMENT BEATS    │◀──┤
+                    │   │ the only paths that MUTATE a row     │   │
+                    │   ├──────────────────────────────────────┤   │
+                    │   │ enrich_footprints    15min           │   │
+                    │   │   real hazard geometry from USGS     │   │
+                    │   │   ShakeMap / GDACS; refetched when   │   │
+                    │   │   the episode URL moves              │   │
+                    │   │ enrich_news_places   30min           │   │
+                    │   │   named buildings/streets via cache  │   │
+                    │   │ enrich_gdelt_titles  ~5min           │   │
+                    │   │   offset from the export download    │   │
+                    │   │ grade_news_severity  30min  → §21    │   │
+                    │   └──────────────────────────────────────┘   │
+                    │                                              │
+                    ▼                                              │
+   ┌───────────────────────────────────────────────────────┐       │
+   │ §14  RETENTION AND CAP — app/housekeeping.py  03:00   │◀──────┤
+   │  ~30 days everywhere, per source, env-overridable     │       │
+   │  exempt: fred, emdat — history that cannot be rebuilt │       │
+   │  uk-police pruned by INGEST time, not occurrence:     │       │
+   │    it publishes two months in arrears, so every row   │       │
+   │    was 68 days old on arrival and deleted on landing  │       │
+   │  hard cap STORAGE_CAP_GB (default 30): delete oldest  │       │
+   │    whole event-days, never below the recent floor     │       │
+   │  then VACUUM                                          │       │
+   │  ⚠ this is why §15 exists — the analysis must outlive │       │
+   │    the rows it was computed from                      │       │
+   └───────────────────────────────────────────────────────┘       │
+                                                                   │
+═══════════════════════════ PART II — ANALYSIS ═════════════════════│══════════
+                                                                   │
+   everything below reads `events` and is published to the         │
+   "analytics" queue: one consumer, strictly one job at a time ◀───┘
 
-Every file referenced is in [`results/`](results/) and every path links to the
-code that produced it.
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │ §15  THE COMPOSITE INDEX — app/composite/*        hourly at :10     │
+   ├─────────────────────────────────────────────────────────────────────┤
+   │ (a) aggregation.py    24-month lookback, streamed 10 000 rows at a  │
+   │                       time. four domains:                           │
+   │       market       strongest event in the month                     │
+   │       geopolitical log-scaled COUNT, not severity — every stored    │
+   │                    GDELT row is escalatory so severity said the     │
+   │                    same thing everywhere (sd 0.0523 → 0.797)        │
+   │       hazard       discrete casualty-bearing events                 │
+   │       wildfire     total FRP — FIRMS left `hazard` because the      │
+   │                    stored value is detection CONFIDENCE, not        │
+   │                    intensity, and is non-monotonic against power    │
+   │ (b) history.py        merge with composite_signals — the aggregate  │
+   │                       that survives §14's deletion of the events    │
+   │ (c) normalization.py  rolling z-score, 12-month window              │
+   │       MIN_HISTORY = 3        fewer points → emit 0.0, not a z       │
+   │       STD_TOLERANCE = 1e-9   a constant history would otherwise     │
+   │                              produce a sub-1e-15 sd and a huge z    │
+   │ (d) scoring.py        weights 0.25 each, normalised to sum 1        │
+   │       ABSENT DOMAINS ARE DROPPED and the rest renormalised.         │
+   │       entering z=0 asserts "exactly average", which is a different  │
+   │       claim from "we do not know" — and it pulled every score to    │
+   │       0.5 hardest for the countries with least data                 │
+   │       value = sigmoid(Σ renormalised_weight × z)                    │
+   │       components{} records which domains were present, so a stored  │
+   │       score is auditable without re-deriving it                     │
+   │ (e) degeneracy.py     top_share &gt; 0.90 → this is one number with    │
+   │                       noise on it. exact flatness was the old test  │
+   │                       and 1 101 forecasts of a constant walked      │
+   │                       through it                                    │
+   │ method_version v3.0 stamped on every row — never an in-place edit   │
+   └───────────────┬─────────────────────────────────────────────────────┘
+                   ▼
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │ §16  CII — app/cii/*                              hourly at :25     │
+   │ country instability index, cii.v1.2                                 │
+   │ 0.40 × baseline + 0.60 × events, over four components:              │
+   │   unrest 0.25 · conflict 0.30 · security 0.20 · information 0.25    │
+   └───────────────┬─────────────────────────────────────────────────────┘
+                   ▼
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │ §17  STORIES — app/stories/*                      every 30min :07   │
+   │ classical, deterministic, no model:                                 │
+   │   tokenize()    lowercase, stopwords, drop calendar words and       │
+   │                 bare years, min length 3                            │
+   │   build_idf()   inverse document frequency over the window          │
+   │   vectorize()   TF-IDF sparse dict                                  │
+   │   cosine()      similarity                                          │
+   │ join if cosine ≥ 0.35 AND ≥ 2 shared content tokens AND no place    │
+   │ conflict (a place named by ≥ 30% of one story's members bars a      │
+   │ merge with a story about somewhere else)                            │
+   │ → stories · story_members                    stories-v1.0           │
+   └───────┬────────────────┬─────────────────┬──────────────────────────┘
+           ▼                ▼                 ▼
+   ┌───────────────┐ ┌─────────────────┐ ┌─────────────────────────────┐
+   │ §18 CORROB-   │ │ §19 DISAGREE-   │ │ §20 VALIDATOR               │
+   │ ORATION +     │ │ MENT            │ │ app/validator/*  nightly    │
+   │ SENSOR CHECKS │ │ app/disagree-   │ │ 02:45                       │
+   │ 30min :17     │ │ ment/* :22      │ │ local LLM extracts factual  │
+   │               │ │                 │ │ claims from headlines       │
+   │ how many      │ │ how differently │ │ → story_claims              │
+   │ INDEPENDENT   │ │ blocs word the  │ │ → story_reviews             │
+   │ owners tell   │ │ same story      │ │ claims-qwen3.5-4b-q4_K_M-p1 │
+   │ it —          │ │                 │ │                             │
+   │ an unmapped   │ │ divergence/     │ │ gated by a hand-filled      │
+   │ slug must NOT │ │ scoring.py:     │ │ audit sheet, not by         │
+   │ count as      │ │ rolling z,      │ │ assertion                   │
+   │ independent   │ │ ±21-day TWO-    │ │                             │
+   │ (10 unmapped  │ │ SIDED lead      │ │                             │
+   │ sources would │ │ search — one-   │ │                             │
+   │ have produced │ │ sided makes a   │ │                             │
+   │ 0.998         │ │ positive lead   │ │                             │
+   │ confidence)   │ │ the only        │ │                             │
+   │               │ │ possible finding│ │                             │
+   │ claim vs      │ │                 │ │                             │
+   │ physical      │ │ → story_disagr- │ │                             │
+   │ sensor:       │ │   eement        │ │                             │
+   │ does a quake  │ │ → disagreement_ │ │                             │
+   │ story have a  │ │   pairs         │ │                             │
+   │ quake under it│ │ disagreement-   │ │                             │
+   │ → story_      │ │ v1.0            │ │                             │
+   │   sensor_     │ │                 │ │                             │
+   │   checks      │ │                 │ │                             │
+   └───────┬───────┘ └────────┬────────┘ └──────────────┬──────────────┘
+           └────────────────┬─┴─────────────────────────┘
+                            ▼
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │ §21  SEVERITY GRADING — app/severity/*             30min :14/:44    │
+   │ a local model grades harm-to-people per headline, with a written    │
+   │ reason. keyword grading was retired when a strike and a bombing     │
+   │ scored identically and 42 of 50 audit findings traced to one        │
+   │ function.                                                           │
+   │   scale.py   bands · LETHAL_FLOOR 0.60 · MASS_CASUALTY_FLOOR 0.80   │
+   │              euphemism_in() rejects a soft rationale on a hard      │
+   │              number                                                 │
+   │   news-llm-v1, falling back to news-keyword-v2                      │
+   │ capacity ≈ 2 400 headlines/day against ≈ 863 arriving, so a         │
+   │ backlog drains and the pass idles. without the beat the grade only  │
+   │ exists where someone ran it by hand — and §14 deletes it in 30 days │
+   └───────────────┬─────────────────────────────────────────────────────┘
+                   ▼
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │ §22  THE BRAIN — app/brain/*                    local Ollama only   │
+   ├─────────────────────────────────────────────────────────────────────┤
+   │ gate.py      refuses to run when RAM is short or a heavy job holds  │
+   │              the box. the model is evicted after use (keep_alive=0) │
+   │ narrate      every 15min → brain_narrative, the situation summary   │
+   │ enrich       every 20min → story_gist (≤240 chars) + tags,          │
+   │              enrich-v1.1 / enrich-prompt-v1.0, categories fixed to  │
+   │              conflict·economy·disaster·politics·other               │
+   │ embeddings   nomic-embed-text → story_embeddings, embed-v1.0        │
+   │ qa.py        the ask box, 1 516 lines, the longest module here:     │
+   │   question ─▶ term + country-code extraction                        │
+   │            ─▶ semantic retrieval over story_embeddings (cosine)     │
+   │            ─▶ sensors.py pulls physical readings for the named      │
+   │               place and hazard kind, 72h window                     │
+   │            ─▶ coverage_bias built for the answer                    │
+   │            ─▶ generate → de-echo → de-refuse → check answer         │
+   │            ─▶ answer + (source) chips + (thinking) annotations      │
+   │ served two ways: POST /brain/ask and an SSE /brain/ask/stream       │
+   └───────────────┬─────────────────────────────────────────────────────┘
+                   ▼
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │ §23  THE PREDICTION JOURNAL — app/journal/*     nightly 02:15       │
+   │ emit.py    horizons k = 1, 3, 6 months from the composite scores    │
+   │            a window overlapping the KNOWN PAST is skipped — grading  │
+   │            it would fake a record                                   │
+   │            predictions is append-only: ON CONFLICT DO NOTHING, so    │
+   │            an issued forecast can never be rewritten. that           │
+   │            immutability is the journal's entire integrity claim      │
+   │ grade.py   resolve outcome once the horizon closes                  │
+   │ scoreboard issued vs graded, per source and method version          │
+   └─────────────────────────────────────────────────────────────────────┘
+
+════════════════ PART III — THE OFFLINE EVALUATION TRACK ════════════════════
+
+   run by hand from the Makefile. reads a separate ground truth. never
+   touches the live 30-day database, which is exactly why it can span
+   thirty years.
+
+   ┌──────────────────────────┐
+   │ §24  GROUND TRUTH        │   ACLED weekly aggregates (xlsx)
+   │ app/labels/*             │   ─▶ acled_loader.py
+   │ make labels              │   ─▶ rules.py  labels-v1.1
+   │                          │      P1 political violence
+   │                          │      P2 demonstrations
+   │                          │      P3 fatality escalation against the
+   │                          │         prior month, floor + multiplier;
+   │                          │         a country's first observed month
+   │                          │         is never labelled — no prior
+   │                          │   ─▶ labels table, NEVER joined into
+   │                          │      events — inputs and ground truth
+   │                          │      must not share a lineage or an
+   │                          │      evaluation grades a signal against
+   │                          │      itself
+   └────────────┬─────────────┘
+                ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ §25  THE PANEL — app/panel/*            make panel               │
+   │ spine.py     country × month grid over the coverage window       │
+   │ assemble.py  attach label_p1/p2/p3 + market/geopolitical/hazard  │
+   │ export.py    → results/data/panel.csv                            │
+   │ measured: 31 637 rows · 200 countries · 1996-12 → 2026-06        │
+   │           label_any 7 088 · score_rows 17 367 · method v1.0      │
+   └────────────┬─────────────────────────────────────────────────────┘
+                ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ §26  THE EXAMS                                                   │
+   │ make baselines        B0 random · B1 persistence · B2 base rate  │
+   │                       B3/B4/B5 single-domain · B6 composite      │
+   │                       metrics.py auroc · aupr · brier            │
+   │                       verdict.py decides — a person does not     │
+   │ make within-eval      within-country concordance, 1 000          │
+   │                       bootstrap resamples OVER COUNTRIES because │
+   │                       the country is the unit of independence.   │
+   │                       pooled AUROC was retired: 60% of countries │
+   │                       are constants, so it rewarded telling a    │
+   │                       calm country from a war                    │
+   │ make onset-eval       the pre-registered onset exam              │
+   │ make indicator-ranking every dashboard indicator ranked by       │
+   │                       measured predictive value                  │
+   │ make coverage         coverage-bias table                        │
+   │ make journal          emit + grade + scoreboard, offline         │
+   │ make disagreement · sensor-checks · stories · validator          │
+   │ → results/reports/*.json  (artefact of record)                   │
+   │ → results/reports/*.md    (rendered view of the json)            │
+   └────────────┬─────────────────────────────────────────────────────┘
+                ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ §27  THE HUMAN AUDIT SHEETS — results/audit-sheets/              │
+   │ model output is not evidence until a person has checked a sample │
+   │ severity-audit-sheet   gates the published 0.860 agreement       │
+   │ severity-model-bench   same headlines through five candidates    │
+   │ validator-audit-sheet  claims checked against their article      │
+   │ stories-audit          are these articles really one story       │
+   │ one rater · not chance-corrected · no kappa taken yet            │
+   └──────────────────────────────────────────────────────────────────┘
+
+═════════════════════════ PART IV — SERVING ═════════════════════════════════
+
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ §28  THE API — app/api.py, FastAPI, 31 routes                    │
+   ├──────────────────────────────────────────────────────────────────┤
+   │ /events            the map query — bbox, window, category,       │
+   │                    readable_only (a row with no readable claim   │
+   │                    is excluded from the default response, not    │
+   │                    deleted, and returns with readable_only=false)│
+   │ /events/stats · /events/coverage · /search · /geo/place          │
+   │ /scores · /composite/movers · /journal/monthly · /journal/score- │
+   │   board                                                          │
+   │ /stories/top · /for-events · /developing · /{id}/members ·       │
+   │   /{id}/detail · POST /{id}/deep-read                            │
+   │ /disagreement/top                                                │
+   │ /brain/narrative/latest · POST /brain/ask · POST /brain/ask/     │
+   │   stream (SSE, heartbeat-kept-alive)                             │
+   │ /presence/aircraft · /vessels · /upcoming                        │
+   │ /ingest-health · /ingest/quarantine · /console/health ·          │
+   │   /jobs/recent · /audit/latest · /health                         │
+   │ /analytics/baselines · /analytics/coverage  ← serves §26's files │
+   │ /stream            SSE, fed by Redis pub/sub on "events:new"     │
+   └────────────┬─────────────────────────────────────────────────────┘
+                ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ §29  THE CONSOLE — osint-frontend/, Next.js + React              │
+   ├──────────────────────────────────────────────────────────────────┤
+   │ SplitLayout            the shell: map pane + floating card deck  │
+   │ MapPane                MapLibre, dynamically imported (no SSR)   │
+   │ EventBuffer            lib/realtime.ts — in-memory ring buffer   │
+   │                        over an EventSource on /stream, with a    │
+   │                        poll armed on stream error                │
+   │ 12 zustand stores      filter · place · leftPane · rightPaneMode │
+   │                        storyDetail · eventDetail · mapFocus ·    │
+   │                        worldDetail · imagery · presence ·        │
+   │                        deckExpand · panelLayout                  │
+   │ 39 components          Situation · Stories · Trust · Coverage ·  │
+   │                        Scoreboard · Briefing · Place · Selection │
+   │                        · WorldStatus · SystemMonitor · AskDock   │
+   │ 54 lib modules         markers · footprints · hazardSymbols ·    │
+   │                        precision · locationProvenance ·          │
+   │                        translationNotice · verdicts · …          │
+   └──────────────────────────────────────────────────────────────────┘
+
+═════════════════════════ PART V — WHAT COMES OUT ═══════════════════════════
+
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ §30  THE ARTEFACTS                                               │
+   │ results/data/          panel.csv · coverage-bias.csv · meta      │
+   │ results/reports/       9 result sets, json + rendered md         │
+   │ results/audit-sheets/  4 hand-filled sheets                      │
+   │ docs/supplementary/    figures, hand-written SVG                 │
+   │ app/briefing/          the weekly briefing, Monday 06:30 UTC     │
+   │ THIS DOCUMENT          every appendix below cites one of the     │
+   │                        files above, by path                      │
+   └──────────────────────────────────────────────────────────────────┘
+
+═════════════════════════ WHAT KEEPS IT HONEST ══════════════════════════════
+
+   these run across every stage above and are the reason a number here
+   can be checked rather than believed:
+
+   ─ 30 Alembic migrations, 28 tables — the schema has a written history
+   ─ 237 test modules; the enrichment-key list in §9 is walked by one of
+     them, so a refresh that starts clobbering enrichment fails the suite
+     instead of quietly emptying the map
+   ─ every method carries a frozen version string (v3.0 · cii.v1.2 ·
+     stories-v1.0 · labels-v1.1 · disagreement-v1.0 · enrich-v1.1 ·
+     embed-v1.0 · news-llm-v1) — a change bumps it, never edits in place
+   ─ app/audit/* runs nightly at 03:40, AFTER the retention prune, so its
+     findings describe the table as it stands rather than counting rows
+     about to be deleted
+   ─ every result file names the command that regenerates it</pre>
 
 ---
 
-# Appendix A — The dataset
+# Chapters
 
-## A.1 The analysis panel
+One per stage of the diagram. Click a heading to open it, or click the stage
+in the drawing above.
 
-**[`results/data/panel.csv`](results/data/panel.csv)** — 2.3 MB, one row per
-country-month.
+<details id="ch-1">
+<summary><b>§1 &nbsp; The clock</b> &nbsp;—&nbsp; the scheduler. 84 timetable entries, cron-style, all UTC</summary>
+<br>
 
-| Property | Value |
-| --- | ---: |
-| Rows | 31,637 |
-| Countries | 200 |
-| Span | 1996-12 → 2026-06 |
-| Positive `label_any` | 7,088 |
-| Rows carrying a composite score | 17,367 |
+**`app/tasks.py` → `beat_schedule`**
 
-Built by [`app/panel/run.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/panel/run.py); metadata in
-[`results/data/panel-meta.json`](results/data/panel-meta.json). CSV only — a
-Parquet copy was described here before one existed, and the claim is removed
-rather than left standing.
+## The words first
 
-### Schema
+**Celery** is the Python library this project uses to run jobs in the
+background. It has three parts, and all three appear in the diagram:
 
-| Column | Type | Meaning |
+| Celery's name | What it does | Where it is here |
 | --- | --- | --- |
-| `country` | ISO-2 | The unit of observation |
-| `month` | timestamp | Month start, UTC |
-| `label_p1` | 0/1 | Armed conflict onset that month |
-| `label_p2` | 0/1 | Mass protest escalation |
-| `label_p3` | 0/1 | State-based violence intensification |
-| `label_any` | 0/1 | Union of the three — the primary target |
-| `magnitude_p1..p3` | int, nullable | Event magnitude behind each label |
-| `signal_market` | float | Market-domain z-score, within country |
-| `signal_geopolitical` | float | Geopolitical z-score, within country |
-| `signal_hazard` | float | Hazard z-score, within country |
-| `composite_score` | float ∈ [0,1] | The combined index |
-| `method_version` | string | Frozen method identifier |
+| **beat** | the scheduler — decides *when* | §1, this chapter |
+| **broker** | the mailbox between the two | §2, Redis |
+| **worker** | does the actual jobs | §3 onward |
 
-### Opening it
+**beat means scheduler.** It is a product name, chosen because it keeps steady
+time like a drumbeat. This chapter says "scheduler" throughout, and "beat" only
+where the code itself uses the word — `beat_schedule`, the `beat` container,
+the `celerybeat-schedule` file. Same thing every time.
+
+## What it is
+
+**A program** — not a file, and not a cron job. It runs non-stop in its own
+container, reads a list written in a Python file, and does one thing: look at
+the clock and publish a job's name when that job is due.
+
+It does no work. It never reads the database, never downloads anything, never
+computes a score. In sampling terms it is the part of the system that sets the
+**sampling rate** for every data source, and nothing else.
+
+Three properties follow, and everything downstream depends on them:
+
+1. It knows a job's *name*, not the job. It cannot run one.
+2. It does not wait. A job that takes forty minutes does not delay the next
+   entry by a second.
+3. If every worker is down, the messages queue up and nothing is lost.
+
+That is why the box in the diagram has one arrow out, labelled
+`publishes {task name, args}` — not "runs the job".
+
+## The timetable
+
+"The timetable" is this chapter's plain word for **`beat_schedule`** — a single
+block of Python at `app/tasks.py`, line 714. That block is the entire schedule;
+there is no other place a job's timing is set.
+
+It is a lookup table, one row per scheduled job. Each row is four lines:
 
 ```python
-import pandas as pd
-panel = pd.read_csv("results/data/panel.csv", parse_dates=["month"])
+# app/tasks.py, line 714
+app.conf.beat_schedule = {
 
-panel.groupby("country")["label_any"].mean().sort_values(ascending=False).head(10)
-panel[["signal_market", "signal_geopolitical", "signal_hazard"]].describe()
-panel.groupby(panel.month.dt.year)["label_any"].mean()
+    "yfinance-5min": {                        # a name, so logs are readable
+        "task": "app.tasks.run_fetcher",      # which function
+        "args": ["yfinance"],                 # what to give it
+        "schedule": crontab(minute="*/5"),    # when
+    },
+    ...
+}
 ```
 
-### The shape of the target, and why it matters
+Read aloud, that row says:
 
-The positive rate is **26.53%** on the training span and **21.83%** on the
-held-out span — but it is not spread evenly. Of the **197** countries the panel
-carries between 2015-01 and 2022-12, **91 are never labelled** and **16 are
-labelled in at least 90% of their months**. That is **107 of 197, or 54%,
-constant either way.** Over the whole span the same count is 80 never, 11
-always, 91 of 200.
+> **Every 5 minutes, run the thing called `run_fetcher`, and hand it the word
+> `yfinance`.**
 
-An earlier revision of this appendix gave 238, 133 and 10 here. Those figures
-counted countries in the label source rather than rows in the panel, which is a
-different population from the one every result is computed on. The numbers
-above are recomputed from `panel.csv` itself with the snippet below.
+### Why the function is written as text
 
-That single fact is why a pooled metric over this panel is misleading, and it
-is visible directly in the CSV:
+**The scheduler and the worker are two separate programs**, running at the same
+time in different containers. Celery calls the scheduler `beat`, which is why
+the container is named that:
 
-```python
-rate = panel.groupby("country")["label_any"].mean()
-(rate == 0).sum(), (rate >= 0.9).sum()
+```yaml
+# docker-compose.yml
+beat:    image: osint-backend:local    # the scheduler
+worker:  image: osint-backend:local    # does the actual jobs
 ```
 
-## A.2 The coverage table
-
-**[`results/data/coverage-bias.csv`](results/data/coverage-bias.csv)** —
-per-country attention baselines over the label source.
-
-| Property | Value |
-| --- | ---: |
-| Countries | 200 |
-| Total events measured | 3,080,334 |
-| Share held by the top 5 | 30.25% |
-| Share held by the top 10 | 47.68% |
-| Share held by the top 20 | 65.28% |
-
-Columns: `country`, `coverage_months`, `observed_months`, `total_events`,
-`events_per_month`, `global_share`, `fatalities_per_event`, `baseline_std`.
-
-Produced by [`app/coverage/run.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/coverage/run.py).
-
-## A.3 Redistribution note
-
-These are **derived aggregates** — monthly indicators, z-scores, binary labels
-and country-level summary statistics computed by this project. No upstream
-provider's rows are reproduced. Anyone re-running the pipeline fetches the
-source data themselves, under their own agreement with each provider; see
-[`NOTICE.md`](https://github.com/BasilSuhail/OSINT/blob/main/NOTICE.md).
-
----
-
-# Appendix B — Results
-
-Every file below is machine-generated and regenerable. The `.md` is a rendered
-view of the `.json` beside it; the JSON is the artefact of record.
-
-| Result | Files | Produced by |
-| --- | --- | --- |
-| Baseline head-to-head | [`baselines-report.json`](results/reports/baselines-report.json) · [`.md`](results/reports/baselines-report.md) | `make baselines` |
-| Onset evaluation | [`onset-eval-report.json`](results/reports/onset-eval-report.json) · [`.md`](results/reports/onset-eval-report.md) | `make onset-eval` |
-| Within-country evaluation | [`within-country-eval.json`](results/reports/within-country-eval.json) · [`.md`](results/reports/within-country-eval.md) | `make within-eval` |
-| Indicator ranking | [`indicator-ranking.json`](results/reports/indicator-ranking.json) · [`.md`](results/reports/indicator-ranking.md) | `make indicator-ranking` |
-| Narrative divergence | [`disagreement-report.json`](results/reports/disagreement-report.json) · [`.md`](results/reports/disagreement-report.md) | `make disagreement` |
-| Sensor cross-checks | [`sensor-checks-report.json`](results/reports/sensor-checks-report.json) · [`.md`](results/reports/sensor-checks-report.md) | `make sensor-checks` |
-| Story clustering | [`stories-report.json`](results/reports/stories-report.json) · [`.md`](results/reports/stories-report.md) | `make stories` |
-| Claim validator | [`validator-report.json`](results/reports/validator-report.json) · [`.md`](results/reports/validator-report.md) | `make validator` |
-| Forward prediction journal | [`prediction-journal.json`](results/reports/prediction-journal.json) · [`.md`](results/reports/prediction-journal.md) | `make journal` |
-
-## B.1 The head-to-head, both windows
-
-The declared bar: the composite must strictly dominate each single-domain
-baseline on **AUROC and AUPR**. Strict common support; seed 20260703.
-
-Training span 2015-01 → 2022-12, k = 1, n = 12,618, positive rate 0.2599:
-
-| Contender | AUROC | AUPR | Brier |
-| --- | ---: | ---: | ---: |
-| B0 random | 0.5040 | 0.2624 | 0.3301 |
-| B1 persistence | 0.8697 | 0.7250 | 0.0999 |
-| B2 base rate | **0.9290** | **0.8346** | 0.0962 |
-| B3 geopolitical only | 0.5029 | 0.2619 | 2.0893 |
-| B4 market only | 0.4930 | 0.2929 | 0.3982 |
-| B5 hazard only | 0.4794 | 0.2755 | 0.6281 |
-| **B6 composite** | **0.5016** | **0.2741** | 0.2605 |
-
-Held-out span 2023-01 → 2024-12, opened 2026-08-10, k = 1, n = 4,593,
-positive rate 0.2151:
-
-| Contender | AUROC | AUPR | Brier |
-| --- | ---: | ---: | ---: |
-| B0 random | 0.5032 | 0.2207 | 0.3295 |
-| B1 persistence | 0.8895 | 0.7478 | 0.0742 |
-| B2 base rate | **0.9495** | **0.8413** | 0.0731 |
-| B3 geopolitical only | 0.5060 | 0.2249 | 1.8270 |
-| B4 market only | 0.4950 | 0.2533 | 0.2815 |
-| B5 hazard only | 0.4778 | 0.2411 | 0.7069 |
-| **B6 composite** | **0.4983** | **0.2351** | 0.2618 |
-
-Machine verdict, identical at every horizon in both windows:
-
-```json
-{"passed": false, "beaten": [],
- "lost_to": ["B3 geopolitical only", "B4 market only", "B5 hazard only"],
- "summary": "FAIL — the composite does not beat B3, B4, B5"}
-```
-
-Two things a reader should not skim past. **B3's Brier exceeds 1.0** — a Brier
-score is bounded by 1 for genuine probabilities, so those values are direct
-evidence the single-domain scores are not probabilities and that column is
-meaningless for them. And **B2 reaching 0.9495 is not a rival worth admiring**:
-it predicts each country's own history, which is what a 0.93 base rate rewards.
-
-## B.2 Within-country concordance, with uncertainty
-
-Pairs drawn within a single country; 1,000 bootstrap resamples **over
-countries**, because the country is the unit of independence.
+Two separate programs cannot hand each other Python objects. A function lives
+inside one program's memory and the other cannot reach in. The only thing they
+both touch is Redis, and Redis holds text.
 
 ```text
-Within-country concordance | 12-month calm | 1,000 bootstrap resamples
-                     0.10      0.30          0.50 │ 0.55       0.70
-                       |---------|-------------|--┼--|-----------|
-  k=1  B0 random             [-----------*----|----:]           0.449
-       B1 persistence               [-*---]:                    0.502
-       B2 base rate   [-----------*-------------] │    :        0.304
-     > B6 composite         [-----------*|----:------]          0.489
-  k=3  B0 random             [------*--|---]:                   0.470
-       B1 persistence               [-*--] :                    0.501
-       B2 base rate   [------------*-------------] │    :       0.302
-     > B6 composite           [------|-*--:---]                 0.516
-  k=6  B0 random             [-----*---|-]  :                   0.460
-       B1 persistence               [-|*-] :                    0.506
-       B2 base rate  [-------------*--------------] │   :       0.286
-     > B6 composite            [--|--*-:--]                     0.531
+   SCHEDULER                 REDIS                    WORKER
+                            (mailbox)
 
-  * point estimate   [---] 95% bootstrap CI   > the contender under test
+   09:05 — this is due
+   writes a note  ──────▶  "run_fetcher"
+                           "yfinance"     ──────▶  reads the note
+                                                   looks up "run_fetcher"
+                                                     in its own code
+                                                   runs it on "yfinance"
 ```
 
-Best composite result **0.531** at k = 6, CI **[0.474, 0.582]**. The declared
-threshold was 0.55 with a CI excluding 0.5. **Neither condition met at any
-horizon.** Verdict computed by `_verdict()`, not by reading the table.
+The worker already has the code. Both containers are built from the same image,
+so both already contain `run_fetcher`. The worker does not need to be sent the
+function — only told which one, and a name is text.
 
-One result the protocol did not anticipate: B2 did not merely collapse toward
-0.5, it **inverted** — 0.286 to 0.324 across every cell, consistently below
-chance. No mechanism is asserted. It is recorded because suppressing it would
-be selective reporting.
+Like texting someone "call the plumber": it works because they already have a
+phone and know what a plumber is. You send the instruction, not the plumber.
 
-## B.3 Forward predictions
+### Why it lives in a file
 
-**[`results/reports/prediction-journal.json`](results/reports/prediction-journal.json)**
+The timetable is a `.py` file tracked in git, so changing how often a source is
+sampled is a commit — a diff, an author, a date, a reason — rather than a
+number typed into a server that nobody can account for six months later.
 
-| Source | Method version | Issued | Graded |
-| --- | --- | ---: | ---: |
-| composite | v1.0 | 501 | **0** |
-| composite | v3.0 | 1,035 | **0** |
-| disagreement | disagreement-v1.0 | 159 | **0** |
-| **Total** | | **1,695** | **0** |
+## The rows
 
-The forward journal is the only out-of-sample evidence available and it has
-produced no graded result yet. Every prediction is still pending. Stated
-plainly so nobody mistakes an empty column for a favourable one.
+A **source** is one place data comes from. Two kinds: **core** (14 public APIs
+giving numbers and coordinates — share prices, quake magnitudes, satellite fire
+positions) and **RSS** (53 news sites; RSS is the machine-readable list of
+latest articles a news site publishes).
 
----
+A **row** is one entry in the list — the `"yfinance-5min"` block above.
+84 of them. A row is the only way anything gets scheduled: no row, never runs.
 
-# Appendix C — Data cleaning and validation
+Nobody typed 84 rows:
 
-Every rule that rejects, repairs or de-duplicates a row, with the code that
-does it.
-
-## C.1 Rejection at write time
-
-A row that asserts something happened must be able to say *what*. Rows with no
-readable claim are excluded from the default response rather than deleted, and
-remain reachable with `readable_only=false`:
-
-```python
-# app/api.py — events()
-if readable_only:
-    stmt = stmt.where(has_readable_claim())
+```
+      31   typed by hand      14 core sources + 17 analysis jobs
+ +    53   written by a loop  one per news site in rss_feeds.json
+ ─────────
+      84   rows
 ```
 
-## C.2 Deduplication by stable identity
+Add a news site to that JSON file and there is one more row on the next
+restart, with no Python edited.
 
-Upsert on a stable per-source identity, so re-fetching the same window cannot
-create duplicates and a corrected upstream row updates rather than doubles:
+67 of the 84 rows are sources — one row each. The other 17 are the analysis and
+housekeeping jobs. All 67 source rows call the **same** function, `run_fetcher`,
+with a different word each time, which is why adding a source needs no new code.
+
+## Cron notation
+
+`cron` describes *when* by pattern-matching the current time, rather than by
+counting sleep intervals.
+
+| Written as | Fires |
+| --- | --- |
+| `crontab(minute="*/5")` | every minute divisible by 5 — 288×/day |
+| `crontab(minute="0,15,30,45")` | those four minutes each hour — 96×/day |
+| `crontab(hour="*/1", minute=10)` | ten past every hour — 24×/day |
+| `crontab(hour=7, minute=0)` | 07:00 — 1×/day |
+| `crontab(day_of_week=1, hour=6, minute=30)` | Monday 06:30 — 1×/week |
+
+The reason to prefer this over `sleep(300)` is drift. A sleep loop that spends
+three seconds working per cycle slides progressively off the hour, so the
+interval between observations is not the interval you declared. Cron pins the
+observation to the wall clock, so **the time index stays evenly spaced** and a
+per-hour or per-day aggregate is comparable to the one before it.
+
+## Why UTC
 
 ```python
-# app/persistence.py
-ENRICHMENT_PAYLOAD_KEYS: Final = (
-    "footprint_geojson",      # real hazard geometry, written after ingestion
-    "footprint_checked_at",   # cooldown for hazards with no upstream geometry
-    ...
+# app/celery_app.py
+app.conf.update(
+    timezone="UTC",
+    enable_utc=True,
 )
 ```
 
-Enrichment keys are listed explicitly because a snapshot refresh must never
-overwrite work that was computed after ingestion. Without that list, every
-refresh silently discarded the geometry, place resolution and scores attached
-to a row.
+**One clock for everything, so every timestamp means the same thing.**
 
-## C.3 Outcome classification, not success/failure
+Why not the alternatives:
 
-A fetch that returns HTTP 200 and produces no usable row is **not** a success.
-Recording it as one is how a dead feed looks healthy for weeks:
+| Instead | Why not |
+| --- | --- |
+| Local time | Daylight saving gives one night two 02:30s and another none, so a nightly job runs twice and then not at all |
+| Each source's own timezone | Two sources cannot be compared without converting at every query |
+| Unix epoch numbers | No daylight-saving problem either, but nobody can read a column of them |
 
-```python
-# app/tasks.py — _record_outcome()
-if result.state in ("new_data", "unchanged"):
-    row.success_n = (row.success_n or 0) + 1
-elif result.state == "empty":
-    row.empty_n = (row.empty_n or 0) + 1
-elif result.state == "misconfigured":
-    row.misconfigured_n = (row.misconfigured_n or 0) + 1
-elif result.state == "failed":
-    row.failure_n = (row.failure_n or 0) + 1
+## How often each row runs
+
+Every one of the 84 rows runs at one of eight speeds. Names are given in
+full — most of these are acronyms of public data projects.
+
+| Speed | Rows | What runs at that speed |
+| --- | ---: | --- |
+| every 5 min | 1 | Yahoo Finance share prices, which move continuously |
+| every 15 min | 2 | the local language model writing a situation summary; the watchdog that notices a source has gone quiet |
+| every 20 min | 1 | the local language model summarising newly grouped stories |
+| every 15 min (4×/hr) | 6 | USGS earthquakes · GDACS, the UN/EU **Global Disaster Alert and Coordination System** · GDELT, the **Global Database of Events, Language and Tone** · two abuse.ch cyber-threat feeds · fetching real hazard outlines for the map |
+| every 30 min (2×/hr) | 7 | grouping headlines into stories · checking a claimed event against a physical sensor reading · measuring how differently countries word the same story · grading how harmful a headline is · resolving place names · NASA EONET, the **Earth Observatory Natural Event Tracker** · Polymarket prediction-market odds |
+| every 5 min, offset (12×/hr) | 1 | fetching article titles for GDELT rows |
+| hourly | 58 | the 53 RSS news feeds · ACLED, the **Armed Conflict Location & Event Data Project** · NASA FIRMS, the **Fire Information for Resource Management System** (satellite fire detections) · OpenSky aircraft positions · the **composite index** and the **CII (Country Instability Index)**, both scores this project computes itself rather than downloads |
+| daily / weekly | 8 | FRED, **Federal Reserve Economic Data** · EM-DAT, the international disaster database · UK police crime records · the prediction journal · claim extraction · deleting expired rows · the nightly data check · the Monday briefing |
+
+```
+   1 + 2 + 1 + 6 + 7 + 1 + 58 + 8  =  84
 ```
 
-## C.4 Cleaning the numeric inputs
-
-Two guards in the normaliser, each protecting against a distinct failure:
-
-```python
-# app/composite/normalization.py
-MIN_HISTORY: int = 3        # fewer observations → emit 0.0, not a z-score
-STD_TOLERANCE: float = 1e-9 # constant history → emit 0.0, not a huge z
-```
-
-Without the second, a constant series such as `[0.1] * 12` produces a
-sub-1e-15 standard deviation and therefore a meaningless enormous z-score.
-
-## C.5 Refusing to impute
-
-A domain that is absent is excluded and the remaining weights renormalised. It
-is **not** entered as zero:
+Cadence is set by how fast the **source** changes, not by how often the data
+would be nice to have. Sampling faster than the source publishes adds no
+information and costs a request. The code states this where it applies:
 
 ```python
-# app/composite/scoring.py
-present = {d: w for d, w in weight_dict.items() if d in domain_z}
-weight_total = sum(present.values())
-if not present or weight_total <= 0.0:
-    continue          # no known domain — refuse to compute rather than invent
+# OpenSky ADS-B is aggregated to one row per country per hour (#496), and
+# the hour-keyed upsert means extra polls within an hour only refresh the
+# same rows. Polling every 2 min bought nothing but CPU, so: hourly.
 ```
 
-Entering an absent domain as z = 0 asserts "exactly average", which is a
-different claim from "we do not know". Every imputed zero pulled the score
-toward 0.5, hardest for the countries missing the most data — the quiet ones
-the index most needs to separate.
+## What it costs to run
 
-## C.6 Refusing to record a constant as a forecast
+Simulated against the real schedule objects over one UTC day:
 
-A predictor returning the same number for every country is not predicting.
-Exact flatness was the original test and the data walked straight through it:
-the live score took seven distinct values across 519 rows, **98.8% of them
-exactly 0.5**, so `min != max` held and 1,101 forecasts of a constant were
-recorded as forecasts. The test is now **concentration** — the share of
-observations taking the single most common value
-([`app/composite/degeneracy.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/composite/degeneracy.py)).
+```
+messages published in one UTC day:  3,151
 
-## C.7 Refusing to grade the past as a forecast
+  288/day   yfinance-5min
+  288/day   gdelt-titles-5min
+   96/day   gdelt-15min
+    1/day   fred-daily-7am-utc
+    0/day   briefing-weekly        (Mondays only)
+```
+
+3,151 messages a day from a process measured at **72 MB** of memory. It is the
+cheapest component in the system, which is the design goal — a scheduler that
+did real work would be a scheduler you could not restart casually.
+
+## Staggering
+
+Two entries, three minutes apart on purpose:
 
 ```python
-# app/journal/emit.py
-if _month_start(score["bucket_start"]) < current_month:
-    continue    # window overlaps the known past — grading it fakes a record
+"gdelt-15min":        crontab(minute="0,15,30,45"),
+"gdelt-titles-5min":  crontab(minute="3,8,13,18,23,28,33,38,43,48,53,58"),
 ```
-
----
-
-# Appendix D — Natural language processing
-
-Four NLP stages run over the text. Two are classical and deterministic; two use
-a local neural model. All four are annotated below.
-
-## D.1 Tokenisation and TF-IDF vectorisation
-
-The clustering and divergence measures share one vectoriser
-([`app/stories/vectorize.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/stories/vectorize.py)):
 
 ```python
-def tokenize(title: str) -> list[str]:
-    """Lowercase alphanumeric tokens; stopwords, calendar words and short
-    tokens dropped."""
-
-def build_idf(documents) -> dict[str, float]:
-    """Smoothed idf: ln(N / df) + 1 over tokenized documents."""
-
-def vectorize(tokens, idf) -> dict[str, float]:
-    """tf-idf sparse vector; unseen tokens get idf 1.0 (neutral)."""
-
-def cosine(a, b) -> float:
-    """Cosine similarity between sparse vectors; 0.0 when either is empty."""
+#: Offset from the fetcher's :00/:15/:30/:45 so a batch of outbound
+#: article requests never lands in the same minute as the export
+#: download (#788).
 ```
 
-Sparse dictionaries rather than dense matrices, because the vocabulary is the
-union of a few thousand headlines and most entries are zero.
-
-**Where it is used.** Story clustering groups articles describing one event.
-Narrative divergence measures how differently country blocs word the same
-story: build a TF-IDF centroid per outlet-origin country, then take the mean
-pairwise cosine distance.
-
-**What it cannot do.** TF-IDF cosine cannot see that *militant* and *fighter*
-denote the same person. That substitution is exactly the divergence the measure
-is meant to catch, and it is caught only because the surface words differ — not
-because the method understands them. This is the ceiling that motivated D.2.
-
-## D.2 Word embeddings — dense semantic retrieval
-
-Where TF-IDF compares words, the embedder compares meaning
-([`app/brain/embeddings.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/brain/embeddings.py), `embed-v1.0`):
+The same idea, at scale, for the news feeds. The 53 RSS rows are not typed out
+— they are generated:
 
 ```python
-def story_embed_text(*, title: str, gist: str | None, keywords: list[str]) -> str:
-    """One string per story — title, gist and top member keywords — so a
-    story is embedded once rather than per member article."""
+**{
+    f"{slug}-hourly": {
+        "task": "app.tasks.run_fetcher",
+        "args": [slug],
+        "schedule": crontab(hour="*/1", minute=(10 + idx * 2) % 60),
+    }
+    for idx, slug in enumerate(feed_cadence_map().keys())
+},
 ```
 
-Each story is embedded once by a small local embedding model and the vector is
-stored in `story_embeddings`. Question-time retrieval ranks candidate stories by
-cosine similarity against the question's vector, so a question worded nothing
-like the headline can still reach it — the case that keyword retrieval fails.
+`(10 + idx * 2) % 60` spreads the feeds two minutes apart around the hour —
+feed 0 at :10, feed 1 at :12, feed 2 at :14. Without it, 53 outbound requests
+leave in the same second every hour, which is a load spike aimed at other
+people's servers.
 
-**Design choice worth stating.** Embeddings serve *retrieval*, not *scoring*.
-No published number in Appendix B depends on them. A retrieval mistake surfaces
-the wrong story to a reader who can see it is wrong; a scoring mistake would
-propagate silently into an index.
+## How it remembers across a restart
 
-## D.3 Translation before analysis
-
-Non-English headlines are translated *before* anything reads the words, because
-the severity keywords, the geographic resolver and the story tokeniser are all
-English. Skipping this was measurable: an Arabic desk resolved **0 of 25 rows**
-to a country and produced one constant severity value.
-
-Failure is recorded rather than hidden — verified with the model unreachable:
-
-```python
-{'title': 'مرحبا بالعالم',
- 'title_translation': {'status': 'failed', 'model': 'llama3.2:3b',
-                       'method_version': 'translate.v1.0',
-                       'attempted_at': '2026-08-16T18:16:09Z'}}
+```
+command: ["celery", "-A", "app.celery_app", "beat",
+          "--loglevel", "INFO", "--schedule", "/data/celerybeat-schedule"]
 ```
 
-The original is always kept verbatim. A desk that silently stopped translating
-is visible in the data rather than merely quiet.
+A small SQLite file holding the last-run time per entry:
 
-## D.4 Severity classification
+```
+celerybeat-schedule: SQLite 3.x database
+celerybeat-schedule-wal
+celerybeat-schedule-shm
+```
 
-Three generations, each replaced for a measured reason:
+It lives on the mounted volume rather than inside the container. The compose
+file states the reason: *"Schedule state lives on the mounted data volume so a
+recreated container does not re-fire every cron entry it thinks it missed."*
+The exact blank-start behaviour — fire at once, or wait one full cadence —
+depends on library internals and has not been tested here; the mitigation
+holds either way.
 
-| Version | Method | Why replaced |
+The file is git-ignored. The timetable is committed; the record of what has
+already run is not.
+
+## Failure modes
+
+| Failure | Effect | Handled |
 | --- | --- | --- |
-| v1 | six-keyword substring match | `Workers strike over pay` and `50 killed in market bombing` scored identically; `crash` matched a car, a share index and an aircraft. Produced **42 of 50** findings in the source audit |
-| `keyword-v2` | graded rule — fatal / violent / disruptive / none | Discriminates better, still a word rule. **Retained** as the instant fallback at ingest so a model outage cannot stall the pipeline |
-| LLM grading | local model reads the headline, returns a score **and a written reason** | Current. Measured **0.860 agreement** with a human rater, 0 floor violations. Five smaller models tested against the same rater; none matched |
+| Two schedulers running | every job fires twice; there is no leader election | one `beat` service is defined, so structurally |
+| The scheduler dies | nothing is published. No errors appear anywhere, because errors come from jobs and no job starts — **silence is indistinguishable from health** | container healthcheck |
+| Workers die, scheduler lives | messages accumulate and run late | by design |
+| A job fails every time | the scheduler neither knows nor cares | `ingest_watchdog`, §11 |
+| Host clock skew | cron matching goes wrong | not handled in code |
 
-The written reason is the point: a number nobody can interrogate is the failure
-this layer exists to prevent.
-
-**Honest limits.** 0.860 is agreement with *one* rater and is **not
-chance-corrected** — no kappa has been computed, and on a three-level scale a
-share of that agreement is chance. Inter-rater reliability across several raters
-has not been measured. The audit sheet is in Appendix G.
-
-## D.5 What is not used
-
-**Knowledge graphs — not attempted.** Entity-relationship extraction across
-articles would be the natural next step for linking a concept in one story to
-the same concept in another. Story clustering currently does that job at the
-document level rather than the entity level. Recorded as an option not taken,
-not as a gap that was missed.
-
-**Sentiment as a scored input — deliberately excluded.** Sentiment is computed
-and displayed, and it is not permitted into any published index. It is a noisy
-annotator over headlines, and the composite already has enough unvalidated
-inputs.
-
----
-
-# Appendix E — Database design
-
-One PostgreSQL instance, one schema, no sharding. Every table below is created
-by an Alembic migration in [`migrations/`](https://github.com/BasilSuhail/OSINT/tree/main/migrations/); the ORM definitions
-are in [`app/db_models.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/db_models.py).
-
-## E.1 The core
+No message expiry or time limit is set anywhere:
 
 ```
-                    ┌──────────────┐
-                    │    events    │  canonical row from any source
-                    │──────────────│  PK id
-                    │ source       │  UNIQUE (source, source_event_id)
-                    │ occurred_at  │  ← when it happened
-                    │ fetched_at   │  ← when we saw it   (both kept: the gap
-                    │ country      │     is reporting delay, and it matters)
-                    │ lat / lon    │  nullable — unknown is a valid answer
-                    │ severity     │  source-relative, never cross-comparable
-                    │ payload      │  JSONB — source-specific detail
-                    └──────┬───────┘
-                           │
-          ┌────────────────┼───────────────────┐
-          │                │                   │
-   ┌──────▼──────┐  ┌──────▼───────┐   ┌───────▼────────┐
-   │story_members│  │ composite_   │   │ ingest_health  │
-   │ story_id ───┼─┐│  signals     │   │ per source-day │
-   │ event_id    │ ││ country      │   │ counters +     │
-   └─────────────┘ ││ bucket_start │   │ last state     │
-                   ││ domain,value │   └────────────────┘
-        ┌──────────▼┴─────┐    │
-        │     stories     │    │ monthly aggregate, kept
-        │ PK id           │    │ after the events expire
-        │ title, last_seen│    ▼
-        └────┬─────┬──────┘  ┌──────────┐    ┌─────────────┐
-             │     │         │  scores  │───▶│ predictions │
-   ┌─────────▼┐ ┌──▼──────┐  │ country  │    │ immutable   │
-   │story_    │ │story_   │  │ bucket   │    │ ON CONFLICT │
-   │corrobora-│ │disagree-│  │ value    │    │ DO NOTHING  │
-   │tion      │ │ment     │  └──────────┘    └─────────────┘
-   └──────────┘ └─────────┘        ▲
-   ┌──────────┐ ┌─────────┐        │         ┌─────────────┐
-   │story_    │ │story_   │        └─────────│   labels    │
-   │embeddings│ │gist     │      evaluated   │ ground truth│
-   └──────────┘ └─────────┘        against   │ kept apart  │
-                                             └─────────────┘
+grep "expires|task_time_limit|soft_time_limit" app/tasks.py app/celery_app.py
+→ no matches
 ```
 
-## E.2 Why it is shaped this way
+So a two-day outage leaves roughly **6,300 queued messages** for the workers to
+drain on return. Not a crash, but a startup surge, and currently unbounded.
 
-**One canonical row shape for every source.** A satellite fire pixel, a market
-drawdown and a headline all become one `events` row. Sources differ in what
-they carry, so the differences live in a JSONB `payload` rather than in fifteen
-source-specific tables. One map query, one retention rule, one index.
+The liveness check is inferred rather than asked, because there is no way to
+ask:
 
-**Two timestamps, always.** `occurred_at` is when the world moved;
-`fetched_at` is when this system learned of it. Collapsing them into one column
-destroys the ability to measure reporting delay, which is a documented bias in
-this data.
+```
+# Beat has no `inspect`, so liveness is inferred from it still writing its
+# schedule. The threshold is deliberately generous, and measured (#569):
+# on a healthy stack `celerybeat-schedule` itself was 15 MINUTES stale
+# (SQLite WAL mode leaves the main file alone)...
+```
 
-**Labels are a separate table, never joined into `events`.** Ground truth and
-inputs must not share a lineage, or an evaluation silently grades a signal
-against itself.
+The 15-minute threshold was measured on a healthy stack, not guessed. A tighter
+one would restart-loop a working scheduler.
 
-**`composite_signals` exists because retention deletes history.** The events
-table holds ~30 days. The rolling z-score needs three prior monthly
-observations. Persisting one small aggregate row per country-month-domain — a
-few thousand rows a year against a 30 GB cap — lets the analysis outlive the
-events it came from.
+## Why not plain cron
 
-**`predictions` is append-only.** `ON CONFLICT DO NOTHING` on the forecast key,
-so an issued prediction can never be rewritten even if the score is later
-revised. That immutability is the journal's entire integrity claim.
+Unix `cron` runs a command on one machine. It has no queue, so no second
+machine can take the work; no retry policy, where these tasks declare
+`autoretry_for`, `retry_backoff` and `max_retries`; no routing, where §2 sends
+15 of these tasks to a different queue with a different concurrency; and no
+overlap protection, so a slow run starts on top of itself. Its timetable also
+lives on a host rather than in a reviewed file.
 
-## E.3 Retention and size
+## One problem in this stage
 
-| Rule | Value |
-| --- | --- |
-| Default event retention | ~30 days |
-| Exempt from pruning | market and disaster-archive rows, whose history cannot be cheaply recreated |
-| Pruned by ingest time, not occurrence | one source whose publisher releases old months — pruning by occurrence would delete every row on arrival |
-| Hard size cap | `STORAGE_CAP_GB`, default 30 |
-| Cap behaviour | delete oldest whole event-days, never below the recent floor, never exempt sources |
-
-Measured live: **3.17 GB, 2,483,259 rows** at 30-day retention.
-
-## E.4 Full table list
-
-| Table | Purpose |
-| --- | --- |
-| `events` | Canonical source rows |
-| `stories`, `story_members` | News clusters and membership |
-| `story_corroboration` | Independent-teller confidence and its components |
-| `story_disagreement`, `disagreement_pairs` | Narrative divergence, and per-country-pair detail |
-| `story_sensor_checks` | Physical-sensor comparisons against claims |
-| `story_claims`, `story_reviews` | Extracted claims and their reviews |
-| `story_gist`, `story_embeddings` | Summaries and retrieval vectors |
-| `composite_signals` | Per country-month-domain aggregates that outlive retention |
-| `scores` | Composite and country-index results |
-| `labels` | Ground-truth outcome labels |
-| `predictions` | Immutable forecasts and later outcomes |
-| `ingest_health`, `ingest_failures` | Per-source daily outcome counters and failure detail |
-| `dead_letter_queue`, `source_quarantine` | Exhausted work; sources resting after repeated failure |
-| `housekeeping_runs` | Retention and cap actions taken |
-| `place_lookups` | Cached place resolutions |
-| `brain_narrative` | Generated situation summaries |
-| `gdelt_daily_volume`, `gdelt_archive_day` | Compact historical aggregates and fetch checkpoints |
-| `notifications` | Deduplicated alert sends |
-
----
-
-# Appendix F — Bias measurements
-
-Measured, not asserted. Reproduce with the commands in each subsection.
-
-## F.1 The news registry
+The cadences are written down twice — once in `beat_schedule`, and again by
+hand in `app/watchdog.py`:
 
 ```python
-from app.sources.rss_registry import outlet_country_map, content_owner_map
-import collections
-m, o = outlet_country_map(), content_owner_map()
-print(len(m), len(set(m.values())), collections.Counter(m.values()).most_common())
+#: Cadence in minutes per scheduled job, mirroring `beat_schedule` in
+#: ``app/tasks.py``. Editing one without the other is a bug — same contract as
+#: ``CORE_SOURCE_CADENCE_MIN`` above.
+JOB_CADENCE_MIN: dict[str, int] = {
+    "brain-narrate": 15,
+    "brain-enrich": 20,
+    ...
+}
 ```
 
-| Property | Value |
-| --- | ---: |
-| Registered feeds | 55 |
-| Publishing in English | **54** |
-| Publishing in any other language | **1** (Arabic) |
-| Distinct outlet-origin countries | 28 |
-| Feeds originating in the UK or US | **18 of 55** |
-| Distinct content owners | 49 |
+The comment names the hazard and then relies on a person to avoid it. The
+watchdog needs each job's cadence to decide what "late" means, but it could
+derive those values from `beat_schedule` instead of restating them. As written,
+changing a cadence in one file and not the other makes the watchdog quietly
+wrong about lateness — and the watchdog is the component whose entire purpose
+is noticing silence.
 
-Every narrative measurement in this work is computed over that sample. When the
-divergence score reports how differently countries word a story, it is in
-practice reporting how differently **mostly Anglophone outlets** word it.
-
-## F.2 Row composition — what the database is actually made of
-
-Measured 2026-08-12, 2,259,582 rows:
-
-```text
-FIRMS   satellite fire pixels     1,947,913  86.21%  ████████████████████████████████████████████
-GDELT   machine-coded events        149,619   6.62%  ███
-OPENSKY aircraft positions           82,448   3.65%  ██
-NEWS    all 55 RSS feeds             48,289   2.14%  █
-ABUSE   cyber indicators             17,104   0.76%  ▍
-POLICE  crime records                10,504   0.46%  ▏
-OTHER   everything else               3,705   0.16%  ▏
-```
-
-**Two automated instruments produce 90% of every row.** The human-written
-record — every headline from all 55 feeds — is **2.14%**. A raw row count
-measures sensor sampling, not how much happened in the world.
-
-## F.3 One country traced end to end
-
-Iran, measured 2026-08-12 against the live database:
-
-| Property | Value |
-| --- | ---: |
-| Total stored rows | 19,486 |
-| Carrying coordinates | 18,411 (94.5%) |
-| Span | 2026-07-13 → 2026-08-12 (the retention window, not the subject's age) |
-| Hazard rows | 11,245 (57.7%) |
-| Geopolitical rows | 6,877 (35.3%) |
-| News rows | 1,334 (6.8%) |
-| Distinct news feeds contributing | 35 |
-| **Feeds originating in Iran** | **0** |
-
-Ninety-three percent is satellite detections and machine-coded records, not
-journalism. The human-written record is 1,334 rows, and **not one of the 35
-feeds behind it is Iranian**. No weighting scheme recovers a viewpoint that was
-never collected.
-
-For contrast, the historical label panel records 41,630 events for Iran across
-127 months — 1.35% of global recorded events, 21st of 200 countries.
-
-**What this supports:** that a set of mostly non-Iranian, almost entirely
-English-language outlets published a certain volume; that named blocs worded a
-story differently by a measurable amount; that satellites recorded thermal
-anomalies at coordinates.
-
-**What it cannot support:** any claim about what is happening inside Iran that
-is not visible from outside it, and any reading of low reported volume as low
-activity.
+Recorded here as a finding. Not changed.
 
 ---
 
-# Appendix G — Human audit sheets
+<a href="#map-1">↑ back to §1 in the diagram</a>
 
-Model output is not evidence until a person has checked a sample of it. These
-are those checks.
-
-| Sheet | What was checked |
-| --- | --- |
-| [`severity-audit-sheet.md`](results/audit-sheets/severity-audit-sheet.md) | Headlines graded by hand against the model's score and its written reason |
-| [`severity-model-bench.md`](results/audit-sheets/severity-model-bench.md) | The same headlines replayed through five candidate models |
-| [`validator-audit-sheet.md`](results/audit-sheets/validator-audit-sheet.md) | Extracted claims checked against the article they came from |
-| [`stories-audit.md`](results/audit-sheets/stories-audit.md) | Clustering decisions checked by hand — are these articles one story |
-
-The severity sheet is the one that gates a published number: it produced the
-**0.860** agreement figure, and it is the reason the model replaced the keyword
-rule rather than being trusted on assertion.
-
-**What these sheets do not establish.** Agreement with one rater is not
-accuracy, and none of these figures is chance-corrected. A kappa across
-multiple raters is the obvious next measurement and has not been taken.
-
----
-
-# Appendix H — What was tried and rejected
-
-Each entry ended with a measurement, not an opinion.
-
-| Approach | Why it ended |
-| --- | --- |
-| **Severity by keyword** | A strike and a bombing scored identically; 42 of 50 audit findings traced to one function |
-| **Grading conflict by severity** | Escalatory-only filtering meant every stored row scored ≥ 0.700 — mean 0.9863, sd 0.0523 across 168 countries, which z-scores to nothing. Replaced by **log-scaled counts**, sd 0.797, fifteen times the spread |
-| **Fire radiative power as hazard severity** | The stored value is detection *confidence*, not intensity — non-monotonic against actual radiative power. Moved to its own domain, aggregated by total FRP |
-| **Imputing absent domains as z = 0** | Pulled every score toward 0.5, hardest for the countries with least data — the ones the index most needs to separate |
-| **Rebuilding history from the events table** | Retention holds 30 days; the z-score needs 3 monthly observations. 183 of 184 countries sat below the threshold and every live score was exactly 0.5 |
-| **Exact flatness as the degeneracy test** | 519 rows, seven distinct values, 98.8% of them 0.5 — `min != max` passed and 1,101 forecasts of a constant were recorded. Replaced by a concentration threshold |
-| **Owner count falling back to the source slug** | Read absence of an ownership record as evidence of independence. Ten unrecorded sources would have produced a 0.998 confidence score |
-| **Pooled AUROC as the headline metric** | 60% of countries are constants, so it rewarded separating a calm country from a war. Replaced by within-country concordance |
-| **One-sided lead-time search** | Searching only backwards makes a positive lead the only possible finding. Replaced by a ±21-day two-sided search |
-| **Knowledge-graph entity linking** | Not attempted. Recorded as an option not taken |
-
----
-
-*Files referenced live in [`results/`](results/). Code paths link to the
-repository. Every figure carries the date and the command that produced it.*
+</details>
