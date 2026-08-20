@@ -218,6 +218,22 @@ class ServeRefused(RuntimeError):  # noqa: N818 - named for what it does, not wh
     """Serve mode will not start, and the message says what to do about it."""
 
 
+def require_api_token(api_token: str) -> None:
+    """The one precondition of serve mode that costs nothing to check.
+
+    Split out of `serve_env` so the command-line path can ask it *before*
+    `tailnet_identity` shells out to Tailscale. A board with Tailscale down and
+    an empty token used to be told only about Tailscale, fix that, run again,
+    and meet the second refusal — two round trips for two facts that were both
+    knowable at the start. This one needs no subprocess, so it goes first.
+    """
+    if not api_token.strip():
+        raise ServeRefused(
+            "serve mode needs API_AUTH_TOKEN set — it is the only thing between "
+            "a device on the tailnet and an endpoint that spends model inference"
+        )
+
+
 def _tailscale_status() -> dict:
     """`tailscale status --json`, parsed. Seam for the tests."""
     try:
@@ -251,7 +267,39 @@ def tailnet_identity() -> tuple[str, str]:
     addresses = [str(a) for a in (myself.get("TailscaleIPs") or []) if ":" not in str(a)]
     if not host or not addresses:
         raise ServeRefused("the tailnet did not say what this machine is called — is it up?")
+    _require_magic_dns(status, host)
     return host, addresses[0]
+
+
+def _require_magic_dns(status: dict, host: str) -> None:
+    """Refuse unless the tailnet will actually resolve the name being compiled in.
+
+    `Self.DNSName` is populated whether or not MagicDNS is switched on — it is
+    the name the node *would* answer to. With MagicDNS off, nothing resolves
+    it, and every step of serve mode still succeeds: the build finishes, the
+    unit installs, the service starts, and the phone gets NXDOMAIN after the
+    reboot with nothing anywhere saying why.
+
+    That makes this the worst precondition in the mode to leave unchecked. The
+    name is compiled into the bundle, so the fix is `make serve-build` again —
+    minutes on a small board — where every other failure here is a restart. So
+    it is checked before the name is handed back, and the message names the
+    setting and the rebuild.
+
+    A tailnet that reports nothing about MagicDNS is refused too, rather than
+    assumed good. Refusing on a field that did not arrive costs the operator
+    one look at the admin console; assuming it costs a build, a reboot and a
+    console that loads nothing.
+    """
+    tailnet = status.get("CurrentTailnet") or {}
+    if tailnet.get("MagicDNSEnabled"):
+        return
+    raise ServeRefused(
+        f"MagicDNS is off for this tailnet, so nothing can resolve {host} — the phone "
+        "would get a name that does not exist. Turn MagicDNS on in the Tailscale admin "
+        "console (DNS → MagicDNS), then run `make serve-build` again: the name is "
+        "compiled into the bundle, so a restart will not pick it up"
+    )
 
 
 def serve_env(
@@ -269,11 +317,7 @@ def serve_env(
     load-bearing: the bundle must name what the *phone* resolves, and the bind
     must name the interface the tailnet is on.
     """
-    if not api_token.strip():
-        raise ServeRefused(
-            "serve mode needs API_AUTH_TOKEN set — it is the only thing between "
-            "a device on the tailnet and an endpoint that spends model inference"
-        )
+    require_api_token(api_token)
     name = _validated(host)
     try:
         bind = ipaddress.IPv4Address(address.strip())
@@ -354,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
     if mode == "serve":
         try:
             pinned = _env("OSINT_PUBLIC_HOST").strip()
+            #: Cheapest refusal first: this one reads an environment variable,
+            #: the next one shells out to Tailscale. Asked the other way round,
+            #: a board with neither gets told about one of them per attempt.
+            require_api_token(_env("API_AUTH_TOKEN"))
             host, address = tailnet_identity()
             env = serve_env(
                 pinned or host,

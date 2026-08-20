@@ -483,7 +483,11 @@ class TestReadingTheTailnet:
         "Self": {
             "DNSName": "board.example-tailnet.ts.net.",
             "TailscaleIPs": ["100.100.100.100", "fd7a:1::1"],
-        }
+        },
+        "CurrentTailnet": {
+            "MagicDNSEnabled": True,
+            "MagicDNSSuffix": "example-tailnet.ts.net",
+        },
     }
 
     def test_it_reads_the_name_and_the_address(self, monkeypatch) -> None:
@@ -517,6 +521,104 @@ class TestReadingTheTailnet:
         monkeypatch.setattr(lan_share, "_tailscale_status", absent)
         with pytest.raises(ServeRefused):
             lan_share.tailnet_identity()
+
+
+class TestMagicDNSIsAPrecondition:
+    """The name in the bundle has to be one the phone can actually resolve.
+
+    `Self.DNSName` is populated whether or not MagicDNS is on — it is the name
+    the node *would* answer to. With it off, every step of serve mode succeeds
+    and the phone gets NXDOMAIN after the reboot. And because the name is
+    compiled into the bundle, the fix is another build, not a restart: the one
+    precondition here whose cost is minutes rather than seconds, and the only
+    one that was not checked.
+    """
+
+    OFF: ClassVar[dict] = {
+        "Self": {
+            "DNSName": "board.example-tailnet.ts.net.",
+            "TailscaleIPs": ["100.100.100.100"],
+        },
+        "CurrentTailnet": {"MagicDNSEnabled": False, "MagicDNSSuffix": ""},
+    }
+
+    #: The passing case. Everything else in `TestReadingTheTailnet` rests on
+    #: this too, since its fixture carries the field — stated once here so the
+    #: check has a test that fails if it starts refusing a healthy tailnet.
+    def test_a_tailnet_with_magic_dns_on_is_read_normally(self, monkeypatch) -> None:
+        monkeypatch.setattr(lan_share, "_tailscale_status", lambda: TestReadingTheTailnet.STATUS)
+        assert lan_share.tailnet_identity() == (SERVE_HOST, SERVE_ADDRESS)
+
+    def test_it_refuses_when_magic_dns_is_off(self, monkeypatch) -> None:
+        monkeypatch.setattr(lan_share, "_tailscale_status", lambda: self.OFF)
+        with pytest.raises(ServeRefused) as raised:
+            lan_share.tailnet_identity()
+        assert "MagicDNS" in str(raised.value)
+
+    #: A refusal that does not name the fix is a refusal the operator has to
+    #: go and research. This one costs a rebuild, so it says so.
+    def test_the_refusal_names_the_rebuild_and_not_a_restart(self, monkeypatch) -> None:
+        monkeypatch.setattr(lan_share, "_tailscale_status", lambda: self.OFF)
+        with pytest.raises(ServeRefused) as raised:
+            lan_share.tailnet_identity()
+        message = str(raised.value)
+        assert "make serve-build" in message
+        assert "admin console" in message
+
+    #: Not assumed good. A tailnet that says nothing about MagicDNS costs one
+    #: look at the admin console to clear; assuming it costs a build, a reboot
+    #: and a console that loads nothing.
+    @pytest.mark.parametrize(
+        "status",
+        [
+            {
+                "Self": {
+                    "DNSName": "board.example-tailnet.ts.net.",
+                    "TailscaleIPs": ["100.100.100.100"],
+                }
+            },
+            {
+                "Self": {
+                    "DNSName": "board.example-tailnet.ts.net.",
+                    "TailscaleIPs": ["100.100.100.100"],
+                },
+                "CurrentTailnet": {},
+            },
+        ],
+    )
+    def test_it_refuses_when_the_tailnet_says_nothing_about_magic_dns(
+        self, monkeypatch, status
+    ) -> None:
+        monkeypatch.setattr(lan_share, "_tailscale_status", lambda: status)
+        with pytest.raises(ServeRefused):
+            lan_share.tailnet_identity()
+
+
+class TestOneRoundTripPerAttempt:
+    """Both preconditions a board can fail at once are asked in cost order.
+
+    Tailscale down *and* no token is the state a board is genuinely in the
+    first time serve mode is run on it. Asking the tailnet first told the
+    operator about Tailscale alone; the token refusal waited for the next
+    attempt. The token is an environment variable and needs no subprocess, so
+    it goes first and the cheap answer is never the second one.
+    """
+
+    def test_the_token_is_refused_before_tailscale_is_asked(self, monkeypatch, capsys) -> None:
+        def unreachable() -> dict:
+            raise AssertionError("the tailnet was asked before the token was checked")
+
+        monkeypatch.setattr(lan_share, "tailnet_identity", unreachable)
+        monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
+        assert lan_share.main(["serve"]) == 1
+        assert "API_AUTH_TOKEN" in capsys.readouterr().err
+
+    #: A refusal prints no exports: the caller evals this output.
+    def test_the_refusal_emits_nothing_to_eval(self, monkeypatch, capsys) -> None:
+        monkeypatch.setattr(lan_share, "tailnet_identity", lambda: (SERVE_HOST, SERVE_ADDRESS))
+        monkeypatch.setenv("API_AUTH_TOKEN", "")
+        assert lan_share.main(["serve"]) == 1
+        assert capsys.readouterr().out == ""
 
 
 def _serve_script() -> str:

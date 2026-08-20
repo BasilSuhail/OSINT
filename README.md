@@ -500,6 +500,12 @@ tailscale status
 Nothing below asks you to type that name in — it's found automatically — but
 it's what you'll open in a browser at the end.
 
+That name only resolves if **MagicDNS** is on for your tailnet — it's on by
+default, and it's a switch in the Tailscale admin console under DNS. The build
+below refuses to run without it rather than letting you find out after the
+reboot, because the name gets compiled into the console and turning MagicDNS
+on afterwards means building again.
+
 `API_AUTH_TOKEN` has to be set in `.env` before any of this starts. It is the
 only thing standing between a device on the tailnet and an endpoint that
 spends model inference on every call, and serve mode refuses to start without
