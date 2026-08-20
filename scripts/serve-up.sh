@@ -146,22 +146,32 @@ sys.stdout.write(stack_unit_text(working_dir=working_dir, bind=bind, environment
 PY
 }
 
+#: What `next start` reads at run time, which turns out to be very nearly
+#: nothing.
+#:
+#: This file used to carry every NEXT_PUBLIC_* key and the two OSINT_SERVE_*
+#: values, on the stated reasoning that the console needed them to run. It did
+#: not. Next inlines NEXT_PUBLIC_* into the bundle at build time — literal text
+#: substitution, not a lookup — so the console's copy of NEXT_PUBLIC_API_TOKEN
+#: is already inside the JavaScript the phone downloaded, and a second copy
+#: here was read by nobody. OSINT_SERVE_HOST and OSINT_SERVE_URL were this
+#: script's own bookkeeping; nothing in the console has ever read either.
+#:
+#: What the file is for now is the unit's one route for a value that has to
+#: reach the running console rather than the build — and that must not sit in
+#: a world-readable unit. Today that is NODE_ENV alone. It is kept, rather than
+#: deleted with its contents, because deleting it takes `EnvironmentFile=` out
+#: of the unit and with it the split the whole design rests on, which the first
+#: runtime secret would have to put straight back.
 render_env_file() {
   local python
   python="$(serve_python)"
   "$python" - <<'PY'
-import os
 import sys
 
 from app.devx.console_unit import env_file_text
 
-#: Only what the console needs to run. The whole environment would carry
-#: every secret this shell has ever seen into a file on disk.
-keys = [k for k in os.environ if k.startswith("NEXT_PUBLIC_")]
-keys += ["OSINT_SERVE_HOST", "OSINT_SERVE_URL"]
-env = {k: os.environ[k] for k in keys if os.environ.get(k)}
-env["NODE_ENV"] = "production"
-sys.stdout.write(env_file_text(env))
+sys.stdout.write(env_file_text({"NODE_ENV": "production"}))
 PY
 }
 
@@ -195,11 +205,11 @@ cmd_install() {
     exit 1
   fi
   apply_serve_mode
-  #: The installed service reads the env file rendered below, not this
-  #: shell — so `.env`'s NEXT_PUBLIC_* keys have to be loaded before that
-  #: file is rendered, or the service starts as unable to authenticate as
-  #: the build was.
-  load_frontend_public_env
+  #: No `load_frontend_public_env` here, unlike `cmd_build`. Nothing this
+  #: function renders reads a NEXT_PUBLIC_* value: the bundle already carries
+  #: them, compiled in by the build, and the environment file below carries
+  #: only what `next start` reads at run time. Loading them would be loading
+  #: them for nobody.
 
   local tmp
   tmp="$(mktemp -d)"
@@ -227,9 +237,11 @@ cmd_install() {
       ;;
   esac
 
-  #: 0600 because it carries NEXT_PUBLIC_API_TOKEN. The units beside it are
-  #: 0644 and hold no secret, which is the whole reason they are separate
-  #: files.
+  #: 0600 and 0644, which is the split rather than a reaction to what is in
+  #: them today: nothing in the environment file is currently a secret, and
+  #: the point of it being root-only is that the first thing that is can go
+  #: there without anyone having to remember why. Unit files are world-readable
+  #: and cannot hold one at all.
   sudo install -m 0600 "$tmp/console.env" "$ENV_PATH"
   sudo install -m 0644 "$tmp/$STACK_UNIT" "$STACK_UNIT_PATH"
   sudo install -m 0644 "$tmp/$UNIT" "$UNIT_PATH"

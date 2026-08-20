@@ -787,11 +787,26 @@ def test_the_install_shows_the_boot_time_unit_before_writing_it() -> None:
     assert install_body.index('cat "$tmp/$STACK_UNIT"') < install_body.index("sudo install")
 
 
-#: The installed service runs from the env file rendered here, not from the
-#: shell that installed it, so the same `.env` values the build needed have
-#: to be loaded before that file is rendered — or the service starts unable
-#: to authenticate for the same reason the build would have been.
-def test_the_install_loads_dot_env_before_rendering_the_env_file() -> None:
+#: This once asserted that the install loads `.env`'s NEXT_PUBLIC_* keys
+#: before rendering the environment file, on the reasoning that the service
+#: would otherwise start unable to authenticate. The reasoning was wrong. Next
+#: inlines NEXT_PUBLIC_* into the bundle at build time — literal text
+#: substitution, not a lookup — so the token is already in the JavaScript the
+#: phone downloads, and the copy in the environment file was read by nothing.
+#: A test that pins an ordering to a false reason keeps the reason alive.
+#:
+#: What is true, and worth pinning, is the other half: the build genuinely does
+#: need them, and only the build.
+def test_the_environment_file_carries_nothing_the_bundle_already_has() -> None:
     script = _serve_script()
-    install_body = script.split("cmd_install() {", 1)[1]
-    assert install_body.index("load_frontend_public_env") < install_body.index("render_env_file")
+    env_body = script.split("render_env_file() {", 1)[1].split("\n}", 1)[0]
+    assert "NEXT_PUBLIC_" not in env_body
+    assert "OSINT_SERVE_HOST" not in env_body
+    assert "NODE_ENV" in env_body
+
+
+#: Loading them in the install would be loading them for nobody — nothing it
+#: renders reads one.
+def test_the_install_does_not_load_what_only_the_build_needs() -> None:
+    install_body = _serve_script().split("cmd_install() {", 1)[1]
+    assert "\n  load_frontend_public_env\n" not in install_body

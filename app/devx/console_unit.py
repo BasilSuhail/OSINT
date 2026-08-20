@@ -9,9 +9,17 @@ So it is text this module produces and `scripts/serve-up.sh` writes, which is
 also what makes it testable: the failures worth catching are all failures of
 the text. Starting before the tailnet is up binds an address that does not
 exist yet. Not restarting turns one crash into a dark console until somebody
-notices. Writing the token into the unit publishes it to every account on the
-machine, because unit files are world-readable and the environment file beside
-them is not.
+notices. A secret in a unit is published to every account on the machine,
+because unit files are world-readable — which is why anything that has to
+reach the running process goes in the environment file beside it, which is
+not.
+
+That environment file carries no secret today, and saying otherwise was a
+mistake worth naming here: `NEXT_PUBLIC_*` values are inlined into the bundle
+by the build, so the console's API token travels inside the JavaScript the
+phone downloads and a copy in a file on the board is read by nobody. The file
+is the route for a value the *running* console reads, and so far that is
+`NODE_ENV`.
 """
 
 from __future__ import annotations

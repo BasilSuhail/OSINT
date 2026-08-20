@@ -532,8 +532,12 @@ It asks for `sudo`. Before writing anything it prints both systemd units in
 full and asks you to confirm; answer yes and it writes
 `/etc/systemd/system/osint-stack.service` and
 `/etc/systemd/system/osint-console.service`, and `/etc/osint-console.env`
-beside them, readable by root alone because that second file carries the API
-token the bundle needs to authenticate.
+beside them. That last file holds the settings `next start` reads while it is
+running, which is almost nothing — the API token and the API URL are compiled
+into the console by `make serve-build`, not read from a file at startup, which
+is the same reason changing the tailnet name means building again. It is
+root-only anyway, so that the first setting that *is* a secret has somewhere to
+go.
 
 Two services, because a reboot has two halves to get right.
 `osint-console.service` is the console process itself. `osint-stack.service`
