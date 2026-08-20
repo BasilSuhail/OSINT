@@ -682,6 +682,57 @@ def test_the_build_loads_dot_env_before_building() -> None:
     assert build_body.index("load_frontend_public_env") < build_body.index("pnpm build")
 
 
+class TestTheLaptopCommandIsNotRunAccidentallyOnTheBoard:
+    """`make up` is destructive on a serving board, and silently so.
+
+    `dev-up.sh` exports `API_BIND=127.0.0.1`. With the console's service
+    installed, that recreates the api container on loopback while the service
+    carries on serving the tailnet address — no port clash, so nothing
+    complains, and every request from the phone is refused. `make down`
+    compounds it: the containers stop, the service stays up, and the phone
+    still gets a page.
+
+    Asked rather than refused. A hard refusal in the laptop's own start script
+    is a cost paid by every machine to protect one, and a loopback stack on a
+    board is a thing an operator can legitimately want. Printed and confirmed,
+    rather than printed alone, because a warning inside a wall of start-up
+    output is a warning nobody reads.
+    """
+
+    def test_the_start_script_notices_an_enabled_console_service(self) -> None:
+        script = DEV_UP.read_text()
+        assert "osint-console.service" in script
+        assert "systemctl is-enabled" in script
+
+    #: Before anything is exported or started, or the warning describes a thing
+    #: that has already happened.
+    def test_it_asks_before_the_bind_is_chosen(self) -> None:
+        script = DEV_UP.read_text()
+        assert script.index("\nrefuse_if_serving\n") < script.index("\napply_network_mode\n")
+
+    #: A warning that does not name the right command leaves the operator to
+    #: guess at one.
+    def test_it_names_the_command_for_this_machine(self) -> None:
+        script = DEV_UP.read_text()
+        body = script.split("refuse_if_serving() {", 1)[1]
+        assert "make serve" in body
+        assert "read -r -p" in body
+
+    #: With nothing reading the question, the destructive answer must not be
+    #: the default. The override is named in the refusal.
+    def test_it_refuses_rather_than_assumes_when_nothing_can_answer(self) -> None:
+        body = DEV_UP.read_text().split("refuse_if_serving() {", 1)[1]
+        assert "-t 0" in body
+        assert "OSINT_IGNORE_SERVING" in body
+
+    #: Stopping a system service is not what a developer's stop command was
+    #: asked to do — so `make down` does not, and says what it left running.
+    def test_the_stop_script_says_the_service_is_still_up(self) -> None:
+        script = (ROOT / "scripts" / "dev-down.sh").read_text()
+        assert "osint-console.service" in script
+        assert "systemctl stop osint-console" in script
+
+
 #: The board has no bind-mount over the image — `docker-compose.dev.yml` is
 #: deliberately not passed here, because the board runs what was built rather
 #: than what is on disk. That leaves the build as the only route a backend

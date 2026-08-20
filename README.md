@@ -555,8 +555,21 @@ make serve
 ```
 
 This brings the containers up with the API published on the tailnet address
-only, then restarts the console's service so it is serving the build from
-above.
+only, rebuilds the backend image from whatever you have pulled, then restarts
+the console's service so it is serving the build from above. It is the command
+to run after every pull — and if the console is older than the backend it now
+says so, because rebuilding the console is a separate `make serve-build`.
+
+From here on, **`make serve` is this board's command and `make up` is not.**
+`make up` is the laptop's: it republishes the API on `127.0.0.1` while the
+console's service carries on serving the tailnet address. Nothing clashes and
+nothing complains, and every request from the phone is refused, because the API
+the bundle calls is no longer published where the bundle is looking. `make up`
+notices the service is installed and asks before doing it, so this is a
+mistake you get one chance to catch rather than a silent one — but the command
+you want is `make serve`. `make down` is the same shape: it stops the
+containers and leaves the service running, which from the phone looks
+identical, and it says so when it does.
 
 Reboot the board, then open the console from the phone. That is the actual
 test, and it is the only one that proves it:

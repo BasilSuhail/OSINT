@@ -10,6 +10,72 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 mkdir -p logs
 
+#: Whether this machine is a board that serves, rather than a desk that
+#: develops. Enabled, not merely present: an installed unit that was disabled
+#: on purpose is a machine whose operator has already decided.
+serving_as_a_service() {
+  command -v systemctl >/dev/null 2>&1 || return 1
+  systemctl is-enabled --quiet osint-console.service 2>/dev/null
+}
+
+#: `make up` is destructive on a serving board, and silently so.
+#:
+#: This script exports API_BIND=127.0.0.1. On a board with the console's
+#: service installed, that recreates the api container on loopback while
+#: osint-console.service carries on serving the tailnet address. Nothing
+#: clashes, so nothing complains — and every request from the phone is
+#: refused, because the API the bundle calls is no longer published where the
+#: bundle is looking. `make down` afterwards stops the containers and leaves
+#: the service up, which looks identical.
+#:
+#: Asked rather than refused. A hard refusal in the laptop's own start script
+#: is a cost paid on every machine to protect one, and there are real reasons
+#: to want a loopback stack on a board — reproducing something the tailnet is
+#: not involved in, most obviously. But it is not asked quietly either: a
+#: warning printed into a wall of start-up output is a warning nobody reads,
+#: and the confirmation is what makes it a decision. On a laptop the unit does
+#: not exist and none of this runs.
+refuse_if_serving() {
+  serving_as_a_service || return 0
+  if [ "${OSINT_IGNORE_SERVING:-0}" = "1" ]; then
+    echo "→ this machine serves the console; continuing anyway (OSINT_IGNORE_SERVING=1)" >&2
+    return 0
+  fi
+
+  cat >&2 <<'SERVING'
+
+This machine serves the console as a service, and `make up` is not its command.
+
+  `make up` republishes the API on 127.0.0.1. osint-console.service keeps
+  running on the tailnet address, so no port clashes and nothing complains —
+  and every request from the phone is refused, because the API the bundle
+  calls is no longer published where the bundle is looking. `make down`
+  afterwards stops the containers and leaves the service up, which from the
+  phone looks exactly the same.
+
+  `make serve` is this machine's command: it publishes the API on the tailnet
+  address and restarts the console on the build it finds.
+
+SERVING
+
+  #: Nothing is reading the question, so the destructive answer must not be
+  #: the default one. The escape hatch is named in the message.
+  if [ ! -t 0 ]; then
+    echo "Refusing: no terminal to ask. Run \`make serve\`, or set OSINT_IGNORE_SERVING=1." >&2
+    exit 1
+  fi
+
+  read -r -p "Start on 127.0.0.1 anyway, taking the console off the tailnet? [y/N] " answer
+  case "$answer" in
+    y | Y) echo "  continuing — \`make serve\` puts it back" >&2 ;;
+    *)
+      echo "  nothing started" >&2
+      exit 0
+      ;;
+  esac
+}
+refuse_if_serving
+
 # Settings first (#957). A key missing from .env is a feature silently off and
 # a typed key name loads as nothing, so both are worth a sentence before
 # anything starts. Never fatal: a warning about a key nobody uses must not stop
