@@ -682,6 +682,40 @@ def test_the_build_loads_dot_env_before_building() -> None:
     assert build_body.index("load_frontend_public_env") < build_body.index("pnpm build")
 
 
+#: The board has no bind-mount over the image — `docker-compose.dev.yml` is
+#: deliberately not passed here, because the board runs what was built rather
+#: than what is on disk. That leaves the build as the only route a backend
+#: source change can take, so the start has to take it every time. Without it
+#: the README's "run this after every pull" serves the old code indefinitely.
+def test_the_start_rebuilds_the_backend() -> None:
+    start_body = _serve_script().split("cmd_start() {", 1)[1]
+    assert "up -d --build" in start_body
+    #: The overlay itself stays out — named in a comment explaining why, never
+    #: passed to compose.
+    assert "-f docker-compose.dev.yml" not in _serve_script()
+
+
+#: The stores are pinned to 127.0.0.1 in docker-compose.yml and stay there in
+#: every mode. Announcing them as published on the tailnet address describes
+#: an exposure that does not exist.
+def test_the_start_says_what_is_actually_published() -> None:
+    start_body = _serve_script().split("cmd_start() {", 1)[1]
+    assert "stores and backend, published" not in start_body
+    assert "stores on 127.0.0.1" in start_body
+
+
+#: The backend is rebuilt by the command; the console is not, and a pull does
+#: not touch it. One line for each, and a warning when they have drifted —
+#: a single "build" line naming only the console actively suggested the board
+#: was current when the backend had moved on.
+def test_the_start_names_both_builds_and_notices_when_they_differ() -> None:
+    start_body = _serve_script().split("cmd_start() {", 1)[1]
+    assert "rev-parse --short HEAD" in start_body
+    assert "backend:" in start_body
+    assert "console:" in start_body
+    assert "serve-build" in start_body
+
+
 #: The console alone is half a reboot. The API is published on the tailnet
 #: address in this mode, and that address does not exist until tailscaled has
 #: configured it — so the containers need a unit that waits for it, and that

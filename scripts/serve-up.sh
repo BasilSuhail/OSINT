@@ -248,13 +248,39 @@ cmd_start() {
     echo "No console build yet. Run \`make serve-build\` first." >&2
     exit 1
   fi
-  echo "→ stores and backend, published on $API_BIND"
-  COMPOSE_PROFILES=app docker compose up -d
+  #: Only the API is published on the tailnet. The stores are pinned to
+  #: 127.0.0.1 in docker-compose.yml and stay there in every mode — saying
+  #: they are on $API_BIND would describe an exposure that does not exist and
+  #: would be the wrong thing to reassure anyone about.
+  echo "→ stores on 127.0.0.1; API published on $API_BIND"
+
+  #: --build, because there is no other route for a backend source change to
+  #: reach this board. `dev-up.sh` gets away without one on a laptop: it
+  #: passes docker-compose.dev.yml, whose bind-mount of app/ puts the working
+  #: tree over the image. That overlay is deliberately not passed here — the
+  #: board runs what was built, not what is on disk — which leaves the build
+  #: as the only route, and it has to be taken every time. Without it the
+  #: operator pulls a fix, runs this, and the API serves the old code with
+  #: nothing anywhere saying so.
+  COMPOSE_PROFILES=app docker compose up -d --build
+
+  #: Two builds, two lines, because they go stale independently and only one
+  #: of them is rebuilt above. The backend is whatever the working tree is, as
+  #: of the command that just ran. The console is whatever `make serve-build`
+  #: last compiled, and a pull does not touch it.
+  local head console
+  head="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  console="$(cat "$COMMIT_FILE")"
+  echo "  backend: $head, rebuilt from the working tree just now"
   if [ -f "$UNIT_PATH" ]; then
     sudo systemctl restart "$UNIT"
-    echo "→ console restarted (build $(cat "$COMMIT_FILE"))"
+    echo "  console: $console"
   else
-    echo "→ the console's service is not installed — run \`make serve-install\`" >&2
+    echo "  console: $console (its service is not installed — run \`make serve-install\`)" >&2
+  fi
+  if [ "$console" != "$head" ]; then
+    echo "  the console is not this commit. Run \`make serve-build\` to rebuild it —" >&2
+    echo "  the tailnet name and the API URL are compiled in, so a restart will not do." >&2
   fi
   echo "  open $OSINT_SERVE_URL"
 }
