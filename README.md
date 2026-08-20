@@ -552,6 +552,14 @@ address to actually appear on an interface and then brings the containers up.
 It is also why the console is ordered behind it: the console binds the same
 address and would race the same way.
 
+Run `make serve-install` as yourself and let it ask for `sudo` — it refuses if
+you run the whole thing under `sudo`. The console's service runs as the account
+you install it from, because it writes its build cache inside your checkout and
+a root service would leave you a directory you can no longer write to, which
+surfaces as the *next* `make serve-build` failing on a permission error in your
+own files. The container start does run as root, because talking to the Docker
+socket is root either way.
+
 Start it:
 
 ```bash

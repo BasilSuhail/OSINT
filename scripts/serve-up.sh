@@ -103,7 +103,7 @@ import sys
 
 from app.devx.console_unit import unit_text
 
-working_dir, env_file, bind, port, commit_file = sys.argv[1:6]
+working_dir, env_file, bind, port, commit_file, user, group = sys.argv[1:8]
 sys.stdout.write(
     unit_text(
         working_dir=working_dir,
@@ -111,9 +111,22 @@ sys.stdout.write(
         bind=bind,
         port=int(port),
         commit_file=commit_file,
+        user=user,
+        group=group,
     )
 )
 PY
+}
+
+#: Who the console should run as: the account that owns this checkout, which
+#: is the account running this command. `SUDO_USER` first, so that reaching for
+#: sudo out of habit does not quietly install a root service.
+#:
+#: `next start` writes .next/cache in the checkout, so a service running as
+#: root leaves a root-owned directory inside a tree the operator owns, and
+#: their next non-root `make serve-build` fails on EACCES in their own files.
+installing_account() {
+  echo "${SUDO_USER:-$(id -un)}"
 }
 
 #: The unit that starts the containers at boot, once the tailnet address is
@@ -204,6 +217,19 @@ cmd_install() {
     echo "Run this on the board itself." >&2
     exit 1
   fi
+  #: Running the whole script as root would make root the answer below, which
+  #: is the state this is here to avoid. It is not needed: sudo is reached for
+  #: on the three lines that write, and nowhere else.
+  local account group
+  account="$(installing_account)"
+  if [ "$account" = "root" ]; then
+    echo "Run this as the account that owns this checkout, not as root." >&2
+    echo "It asks for sudo on the lines that need it. A console service running" >&2
+    echo "as root leaves a root-owned .next/cache, and the next build fails on it." >&2
+    exit 1
+  fi
+  group="$(id -gn "$account")"
+
   apply_serve_mode
   #: No `load_frontend_public_env` here, unlike `cmd_build`. Nothing this
   #: function renders reads a NEXT_PUBLIC_* value: the bundle already carries
@@ -217,10 +243,13 @@ cmd_install() {
   render_env_file >"$tmp/console.env"
   render_unit \
     "$PWD/osint-frontend" "$ENV_PATH" "$FRONTEND_BIND" "${FRONTEND_PORT:-3000}" "$COMMIT_FILE" \
+    "$account" "$group" \
     >"$tmp/$UNIT"
   render_stack_unit "$PWD" "$API_BIND" >"$tmp/$STACK_UNIT"
 
   echo "→ these are the two services that would be installed:"
+  echo "  the console runs as $account:$group; the container start runs as root,"
+  echo "  because talking to the Docker socket is root either way."
   echo
   echo "--- $STACK_UNIT_PATH"
   cat "$tmp/$STACK_UNIT"

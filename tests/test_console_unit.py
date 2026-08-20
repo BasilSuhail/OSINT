@@ -33,6 +33,8 @@ def _unit() -> str:
         bind="100.100.100.100",
         port=3000,
         commit_file="/home/board/OSINT/osint-frontend/.next/BUILD_COMMIT",
+        user="board",
+        group="board",
     )
 
 
@@ -247,3 +249,51 @@ class TestTheContainersComeBackAfterAReboot:
 
     def test_it_is_enabled_at_boot(self) -> None:
         assert "WantedBy=multi-user.target" in _stack()
+
+
+class TestTheConsoleDoesNotRunAsRoot:
+    """The branch's safety argument is about the network. This one is not.
+
+    Nothing in `next start` needs privilege: it reads a build and answers HTTP.
+    And the cost of root arrives before any attacker does — `next start` writes
+    `.next/cache` inside the checkout, so a root service turns a directory the
+    operator owns into one they do not, and their next non-root
+    `make serve-build` fails on `EACCES` in their own files.
+    """
+
+    def test_it_runs_as_the_account_that_installed_it(self) -> None:
+        unit = _unit()
+        assert "User=board" in unit
+        assert "Group=board" in unit
+
+    #: Each of these holds for a process that reads a build and answers HTTP.
+    @pytest.mark.parametrize(
+        "directive",
+        [
+            "NoNewPrivileges=yes",
+            "PrivateTmp=yes",
+            "PrivateDevices=yes",
+            "ProtectKernelTunables=yes",
+            "ProtectControlGroups=yes",
+            "RestrictSUIDSGID=yes",
+        ],
+    )
+    def test_it_gives_up_what_it_does_not_need(self, directive: str) -> None:
+        assert directive in _unit()
+
+    #: `strict` makes the working directory read-only as well, and `next start`
+    #: writes .next/cache there — hardening that stops the service starting is
+    #: not hardening, it is an outage with a good reason.
+    def test_the_filesystem_is_protected_only_as_far_as_the_build_allows(self) -> None:
+        unit = _unit()
+        assert "ProtectSystem=full" in unit
+        assert "ProtectSystem=strict" not in unit
+
+    #: The checkout is under the operator's home. Protecting home puts the
+    #: build the service exists to serve out of its reach.
+    def test_home_is_not_protected_because_the_build_lives_there(self) -> None:
+        #: Directive lines only — the comment above it names the setting in
+        #: order to explain why it is absent, and that explanation is the
+        #: reason the line must stay absent.
+        directives = [line for line in _unit().splitlines() if not line.startswith("#")]
+        assert not any(line.startswith("ProtectHome=") for line in directives)

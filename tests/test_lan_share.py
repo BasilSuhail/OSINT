@@ -660,14 +660,16 @@ def test_the_build_records_the_commit_it_built() -> None:
 #: The install prints the unit before writing it. A file installed into
 #: /etc without being shown is a file nobody reviewed. Presence alone would
 #: pass even if the reveal came after the write, so this pins `cat` (or
-#: `printf`) ahead of the first `sudo` that actually writes something.
+#: `printf`) ahead of the first command that actually writes something —
+#: `sudo install`, named exactly, because the word `sudo` also appears in
+#: prose the install prints.
 def test_the_install_shows_the_unit_before_writing_it() -> None:
     script = _serve_script()
-    assert "sudo" in script
+    assert "sudo install" in script
     assert "cat" in script or "printf" in script
     install_body = script.split("cmd_install() {", 1)[1]
     reveal = "cat" if "cat" in install_body else "printf"
-    assert install_body.index(reveal) < install_body.index("sudo")
+    assert install_body.index(reveal) < install_body.index("sudo install")
 
 
 #: `pnpm build` compiles NEXT_PUBLIC_* into the bundle from this shell's
@@ -765,6 +767,26 @@ def test_the_start_names_both_builds_and_notices_when_they_differ() -> None:
     assert "backend:" in start_body
     assert "console:" in start_body
     assert "serve-build" in start_body
+
+
+#: A console service running as root leaves a root-owned .next/cache inside a
+#: checkout the operator owns, and their next non-root build fails on it. The
+#: install is the one place that knows which account that is.
+def test_the_install_names_the_account_the_console_runs_as() -> None:
+    script = _serve_script()
+    assert "SUDO_USER" in script
+    install_body = script.split("cmd_install() {", 1)[1]
+    assert "installing_account" in install_body
+    assert "id -gn" in install_body
+
+
+#: Reaching for sudo out of habit would otherwise make root the answer, which
+#: is the state this exists to avoid. sudo is used on the lines that write.
+def test_the_install_refuses_to_run_as_root() -> None:
+    install_body = _serve_script().split("cmd_install() {", 1)[1]
+    guard = install_body.split('if [ "$account" = "root" ]', 1)
+    assert len(guard) == 2
+    assert "exit 1" in guard[1][:400]
 
 
 #: The console alone is half a reboot. The API is published on the tailnet

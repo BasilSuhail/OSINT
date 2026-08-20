@@ -85,8 +85,36 @@ def unit_text(
     bind: str,
     port: int,
     commit_file: str,
+    user: str,
+    group: str,
 ) -> str:
-    """The service that keeps the console up."""
+    """The service that keeps the console up.
+
+    ## Why it names an account
+
+    A unit with no `User=` runs as root, and the branch's safety argument is a
+    network one — the tailnet is the boundary — which says nothing at all about
+    local privilege. `next start` needs none of it.
+
+    The practical bite arrives before any attacker does. `next start` writes to
+    `.next/cache` in the working directory, so a root service turns a directory
+    the operator owns into one they do not, and their next non-root
+    `make serve-build` fails on `EACCES` inside their own checkout. The account
+    that installs is the account that owns the checkout, which is the account
+    this should run as, and `serve-install` knows which one that is.
+
+    ## Which hardening, and which deliberately not
+
+    `NoNewPrivileges=`, `PrivateTmp=`, `PrivateDevices=`, `ProtectKernelTunables=`,
+    `ProtectControlGroups=` and `RestrictSUIDSGID=` all hold for a Node process
+    that reads a build and answers HTTP.
+
+    `ProtectSystem=full` — /usr, /boot and /etc read-only — and not `strict`,
+    which would make the working directory read-only too and stop `next start`
+    writing its cache. `ProtectHome=` is left off entirely for the same reason:
+    the checkout is under the operator's home, and protecting it would put the
+    build out of the service's reach.
+    """
     return f"""[Unit]
 Description=OSINT console
 # `After=` only orders two units that are already starting; it does not pull
@@ -98,6 +126,11 @@ Wants=network-online.target tailscaled.service
 
 [Service]
 Type=simple
+# The account that installed this, which is the account that owns the checkout.
+# Without it the service is root, and root writing `.next/cache` is what makes
+# the operator's own next build fail on EACCES inside their own directory.
+User={user}
+Group={group}
 WorkingDirectory={working_dir}
 # systemd units run with a minimal built-in PATH and never source a login
 # shell, so an inherited PATH cannot be relied on to contain `pnpm`.
@@ -110,6 +143,17 @@ ExecStartPre=/bin/sh -c 'echo "console build: $(cat {commit_file} 2>/dev/null ||
 ExecStart=/usr/bin/env pnpm exec next start -H {bind} -p {port}
 Restart=always
 RestartSec=5
+# A build server answering HTTP needs none of this, so it does not get it.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+# `full`, not `strict`: strict makes the working directory read-only too, and
+# `next start` writes .next/cache. ProtectHome= is absent for the same reason —
+# the checkout lives under the operator's home.
+ProtectSystem=full
 
 [Install]
 WantedBy=multi-user.target
@@ -155,6 +199,15 @@ def stack_unit_text(
     an interface, therefore a bind will succeed. It also repairs the case where
     dockerd already tried and failed, which ordering alone cannot — `up -d`
     starts a container that exists and is not running.
+
+    ## Why this one does stay root
+
+    The console's unit names an account; this one does not, and should not. Its
+    whole body is a `docker compose` call, and access to the Docker socket is
+    root-equivalent by construction — an unprivileged account that could make
+    it would be root wearing a different name. It writes nothing into the
+    checkout, so it does not carry the ownership problem that made root wrong
+    for the console.
 
     `Before=` the console rather than the console waiting on its own: the
     console binds the same address and has the same race, and ordering it after
