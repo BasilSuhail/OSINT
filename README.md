@@ -528,11 +528,25 @@ Install the service — Linux only, and it refuses outright on anything else:
 make serve-install
 ```
 
-It asks for `sudo`. Before writing anything it prints the systemd unit in
+It asks for `sudo`. Before writing anything it prints both systemd units in
 full and asks you to confirm; answer yes and it writes
+`/etc/systemd/system/osint-stack.service` and
 `/etc/systemd/system/osint-console.service`, and `/etc/osint-console.env`
-beside it, readable by root alone because that second file carries the API
+beside them, readable by root alone because that second file carries the API
 token the bundle needs to authenticate.
+
+Two services, because a reboot has two halves to get right.
+`osint-console.service` is the console process itself. `osint-stack.service`
+is the containers, and it exists for one specific reason: in this mode the API
+is published on the board's *tailnet* address, and that address does not exist
+until Tailscale has configured it. Docker starts at boot with no ordering
+against Tailscale whatsoever, so left alone it can try to publish the API
+before the address is there, fail with `cannot assign requested address`, and
+then never try again — failing to *start* is not the same as *exiting*, and
+only the second one triggers a container restart. The unit waits for the
+address to actually appear on an interface and then brings the containers up.
+It is also why the console is ordered behind it: the console binds the same
+address and would race the same way.
 
 Start it:
 
@@ -551,10 +565,14 @@ test, and it is the only one that proves it:
 sudo reboot
 ```
 
-If it does not come back: `systemctl status osint-console` for whether the
-service is running at all, `journalctl -u osint-console -n 50` for why it is
-not, and — since an old build serving quietly looks the same as a working one
-— the line the unit logs at every start naming which build it is serving.
+If it does not come back, the symptom says which half to look at. A page that
+does not load at all is the console: `systemctl status osint-console` for
+whether it is running, `journalctl -u osint-console -n 50` for why it is not.
+A page that loads with every panel empty is the containers: `systemctl status
+osint-stack`, which says plainly if it gave up waiting for the tailnet
+address, and then `docker compose ps`. And since an old build serving quietly
+looks the same as a working one, the console's unit logs the commit it is
+serving at every start.
 
 One thing this is not. The console has no login, and the bundle it serves
 carries the API token to whoever downloads it — anyone reaching the tailnet

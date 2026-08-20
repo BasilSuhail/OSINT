@@ -682,6 +682,26 @@ def test_the_build_loads_dot_env_before_building() -> None:
     assert build_body.index("load_frontend_public_env") < build_body.index("pnpm build")
 
 
+#: The console alone is half a reboot. The API is published on the tailnet
+#: address in this mode, and that address does not exist until tailscaled has
+#: configured it — so the containers need a unit that waits for it, and that
+#: unit is no use uninstalled.
+def test_the_install_puts_the_boot_time_container_start_in_place_too() -> None:
+    script = _serve_script()
+    assert "osint-stack.service" in script
+    install_body = script.split("cmd_install() {", 1)[1]
+    assert "render_stack_unit" in install_body
+    assert 'systemctl enable --now "$STACK_UNIT"' in install_body
+
+
+#: Shown before it is written, on the same argument as the console's: a file
+#: installed into /etc without being printed is a file nobody reviewed.
+def test_the_install_shows_the_boot_time_unit_before_writing_it() -> None:
+    install_body = _serve_script().split("cmd_install() {", 1)[1]
+    assert install_body.index("render_stack_unit") < install_body.index("sudo install")
+    assert install_body.index('cat "$tmp/$STACK_UNIT"') < install_body.index("sudo install")
+
+
 #: The installed service runs from the env file rendered here, not from the
 #: shell that installed it, so the same `.env` values the build needed have
 #: to be loaded before that file is rendered — or the service starts unable

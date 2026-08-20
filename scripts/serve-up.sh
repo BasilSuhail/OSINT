@@ -11,6 +11,8 @@ cd "$(dirname "$0")/.."
 
 UNIT=osint-console.service
 UNIT_PATH=/etc/systemd/system/$UNIT
+STACK_UNIT=osint-stack.service
+STACK_UNIT_PATH=/etc/systemd/system/$STACK_UNIT
 ENV_PATH=/etc/osint-console.env
 COMMIT_FILE="$PWD/osint-frontend/.next/BUILD_COMMIT"
 
@@ -114,6 +116,36 @@ sys.stdout.write(
 PY
 }
 
+#: The unit that starts the containers at boot, once the tailnet address is
+#: actually on an interface. See `stack_unit_text` for why ordering docker
+#: after tailscaled is not the same question.
+render_stack_unit() {
+  local python
+  python="$(serve_python)"
+  "$python" - "$@" <<'PY'
+import os
+import sys
+
+from app.devx.console_unit import stack_unit_text
+
+working_dir, bind = sys.argv[1:3]
+
+#: What compose cannot get from `.env`. `API_BIND` and the origin list are
+#: *derived* by serve mode and exist only in the shell that derived them, and
+#: compose substitutes from the process environment in preference to `.env` —
+#: so this is the only route they take into a start that systemd runs rather
+#: than the operator. Everything else compose reads from `.env` itself,
+#: `API_AUTH_TOKEN` above all: a secret has no business in a unit file, which
+#: is world-readable.
+env = {"COMPOSE_PROFILES": "app", "API_BIND": bind}
+for key in ("API_CORS_ORIGINS", "API_PORT"):
+    if os.environ.get(key):
+        env[key] = os.environ[key]
+
+sys.stdout.write(stack_unit_text(working_dir=working_dir, bind=bind, environment=env))
+PY
+}
+
 render_env_file() {
   local python
   python="$(serve_python)"
@@ -176,13 +208,17 @@ cmd_install() {
   render_unit \
     "$PWD/osint-frontend" "$ENV_PATH" "$FRONTEND_BIND" "${FRONTEND_PORT:-3000}" "$COMMIT_FILE" \
     >"$tmp/$UNIT"
+  render_stack_unit "$PWD" "$API_BIND" >"$tmp/$STACK_UNIT"
 
-  echo "→ this is the service that would be installed at $UNIT_PATH:"
+  echo "→ these are the two services that would be installed:"
   echo
+  echo "--- $STACK_UNIT_PATH"
+  cat "$tmp/$STACK_UNIT"
+  echo "--- $UNIT_PATH"
   cat "$tmp/$UNIT"
   echo
   echo "  and $ENV_PATH, readable by root only, carrying the console's settings."
-  read -r -p "Install and enable it? [y/N] " answer
+  read -r -p "Install and enable them? [y/N] " answer
   case "$answer" in
     y | Y) ;;
     *)
@@ -191,13 +227,18 @@ cmd_install() {
       ;;
   esac
 
-  #: 0600 because it carries NEXT_PUBLIC_API_TOKEN. The unit beside it is
-  #: 0644 and holds no secret, which is the whole reason the two are separate.
+  #: 0600 because it carries NEXT_PUBLIC_API_TOKEN. The units beside it are
+  #: 0644 and hold no secret, which is the whole reason they are separate
+  #: files.
   sudo install -m 0600 "$tmp/console.env" "$ENV_PATH"
+  sudo install -m 0644 "$tmp/$STACK_UNIT" "$STACK_UNIT_PATH"
   sudo install -m 0644 "$tmp/$UNIT" "$UNIT_PATH"
   sudo systemctl daemon-reload
+  #: The stack first, and `--now` on it, so the containers are reconciled onto
+  #: the tailnet bind before the console starts answering for them.
+  sudo systemctl enable --now "$STACK_UNIT"
   sudo systemctl enable --now "$UNIT"
-  sudo systemctl status "$UNIT" --no-pager || true
+  sudo systemctl status "$STACK_UNIT" "$UNIT" --no-pager || true
   echo "  open $OSINT_SERVE_URL"
 }
 
