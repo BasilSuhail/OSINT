@@ -627,23 +627,37 @@ collected — if it is not in this table, the project has never seen it.
 The last column is the one that matters: **which score, if any, this source
 ends up inside.**
 
-| Source | What it gives | Fetched | Feeds |
-| --- | --- | ---: | --- |
-| `yfinance` | share prices, indices, currencies | 288/day | composite → market |
-| `fred` | economic series — inflation, unemployment, yields | 1/day | composite → market |
-| `gdelt` | machine-coded world events | 96/day | composite → geopolitical · CII |
-| `acled` | recorded conflict events | 24/day | composite → geopolitical · **and the labels in §24** |
-| `usgs-quake` | earthquakes | 96/day | composite → hazard · CII |
-| `gdacs` | disaster alerts (cyclone, flood, drought) | 96/day | composite → hazard · CII |
-| `eonet` | ongoing natural events | 48/day | composite → hazard · CII |
-| `emdat` | historical disaster archive | 1/day | composite → hazard |
-| `nasa-firms` | satellite fire detections | 24/day | composite → wildfire |
-| `uk-police` | recorded crimes, 6 UK cities | 1/day | CII only |
-| 53 news sites | headlines | 24/day each | CII · stories §17 · disagreement §19 · severity §21 |
-| `opensky-adsb` | aircraft positions | 24/day | **nothing scored** — map only |
-| `abuse-ch-urlhaus` | malicious URLs | 96/day | **nothing scored** — map only |
-| `abuse-ch-feodo` | botnet servers | 96/day | **nothing scored** — map only |
-| `polymarket` | prediction-market odds | 48/day | **nothing scored** — map only |
+| Source | What it gives | Where it is pulled from | Fetched | Feeds |
+| --- | --- | --- | ---: | --- |
+| `yfinance` | share prices, indices, currencies | `yf.Ticker(sym).history(...)` | 288/day | composite → market |
+| `fred` | inflation, unemployment, yields | `fred.stlouisfed.org` API | 1/day | composite → market |
+| `gdelt` | machine-coded world events | `data.gdeltproject.org/gdeltv2/lastupdate.txt` | 96/day | composite → geopolitical · CII |
+| `acled` | recorded conflict events | `acleddata.com/api/acled/read`, or local `.csv`/`.xlsx` | 24/day | composite → geopolitical · **labels §24** |
+| `usgs-quake` | earthquakes | `earthquake.usgs.gov/.../4.5_day.geojson` | 96/day | composite → hazard · CII |
+| `gdacs` | cyclone, flood, drought alerts | `gdacs.org/xml/rss.xml` | 96/day | composite → hazard · CII |
+| `eonet` | ongoing natural events | `eonet.gsfc.nasa.gov/api/v3/events` | 48/day | composite → hazard · CII |
+| `emdat` | historical disaster archive | a local file, `EMDAT_CSV_PATH` | 1/day | composite → hazard |
+| `nasa-firms` | satellite fire detections | `firms.modaps.eosdis.nasa.gov/api/area/csv/` | 24/day | composite → wildfire |
+| `uk-police` | recorded crimes, 6 UK cities | `data.police.uk/api` | 1/day | CII only |
+| 53 news sites | headlines | each site's RSS URL, listed in `rss_feeds.json` | 24/day each | CII · §17 · §19 · §21 |
+| `opensky-adsb` | aircraft positions | `opensky-network.org/api/states/all` | 24/day | **nothing scored** — map only |
+| `abuse-ch-urlhaus` | malicious URLs | `urlhaus.abuse.ch/downloads/csv_recent/` | 96/day | **nothing scored** — map only |
+| `abuse-ch-feodo` | botnet servers | `feodotracker.abuse.ch/downloads/ipblocklist.csv` | 96/day | **nothing scored** — map only |
+| `polymarket` | prediction-market odds | `gamma-api.polymarket.com/markets` | 48/day | **nothing scored** — map only |
+
+One news site, as it is written in `rss_feeds.json`:
+
+```json
+{
+  "source": "rss-bbc-world",
+  "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+  "pretty_name": "BBC World",
+  "cadence_min": 60,
+  "owner": "bbc",
+  "country": "GB",
+  "class": "mainstream"
+}
+```
 
 Two things fall out of the last column.
 
