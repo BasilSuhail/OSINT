@@ -35,7 +35,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §4  THE REST GATE                                                      │
+   │ <a id="map-4" href="#ch-4">§4  THE REST GATE</a>                                                      │
    │    a source that keeps failing is left alone for a while               │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -684,5 +684,89 @@ re-weighted into existence.
 ---
 
 <a href="#ch-3">▲ top of §3</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-3">↑ back to §3 in the diagram</a>
+
+</details>
+
+<details id="ch-4">
+<summary><b>§4 &nbsp; The rest gate</b> &nbsp;—&nbsp; a source that keeps failing is left alone for a while</summary>
+<br>
+
+**`app/ingest/quarantine.py`**
+
+## What it is
+
+Before any download starts, one question: **is this source resting?**
+
+A source that has failed repeatedly is put to sleep for a while. When its turn
+comes round again, the job returns immediately instead of making the request.
+
+```
+   timetable row fires
+        │
+        ▼
+   is this source resting?
+        │
+        ├── yes ──▶ stop. one database query, no request made
+        │
+        └── no  ──▶ download (§5)
+```
+
+Without it, a feed that has been dead for a week is still asked every hour,
+forever. One dead feed cost **420 requests in a week** before this existed.
+
+## What counts as a failure worth resting for
+
+Not everything. Only what the server actually said:
+
+| Server replies | Meaning | Result |
+| --- | --- | --- |
+| `401` unauthorised | you may not have this | **permanent** rest |
+| `403` forbidden | you may not have this | **permanent** rest |
+| `404` not found | nothing is here | **permanent** rest — *usually, see below* |
+| `410` gone | nothing is here, ever | **permanent** rest |
+| `429` too many requests | slow down | **throttled** rest |
+| anything else | timeout, network blip, 500 | no rest — try again next time |
+
+## How long it rests
+
+Each consecutive failure makes the nap longer:
+
+| Failure | `permanent` waits | `throttled` waits |
+| ---: | --- | --- |
+| 1st | 1 hour | 15 minutes |
+| 2nd | 6 hours | 1 hour |
+| 3rd | 1 day | 6 hours |
+| 4th | 3 days | 1 day |
+| 5th+ | 7 days | 1 day |
+
+Capped at **7 days**. One success wipes the record clean.
+
+Throttled recovers faster on purpose — `429` means *later*, not *never*.
+
+## The one exception
+
+A `404` normally means "this is not here and will not be". That is true when a
+URL names the same thing every time — `bbc.co.uk/rss.xml` is the same document
+tomorrow.
+
+**GDELT is different.** Its URL names the fifteen-minute window it covers, so
+every fetch asks for a *different* file. A `404` there means **not published
+yet** — a fact about this minute, not about the source.
+
+Each fetcher declares which kind it is:
+
+```python
+stable_urls: bool = True     # same URL, same resource → 404 is permanent
+```
+
+GDELT sets it `False`. Without that flag, a `404` parked the largest feed in
+the system for an hour, over a file that answered normally 200 minutes later.
+
+`401` and `403` stay permanent either way — being forbidden is a fact about the
+resource however it is addressed.
+
+---
+
+<a href="#ch-4">▲ top of §4</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-4">↑ back to §4 in the diagram</a>
 
 </details>
