@@ -1113,83 +1113,33 @@ a clock.
 
 ## What it is
 
-The system claims to show **current** events. Nothing enforced the *current*
-part — a feed could hand over anything and it was stored.
+Drop rows that are too old to count as current. One rule, one age limit —
+except the limit is **different for each source**, and that is the only
+interesting part of the stage.
 
-One news feed was serving evergreen promotional entries dated 2021. **79% of
-its rows were more than a thousand days old** when they arrived.
+## How old is too old
 
-This gate drops rows that are too old to belong in a live window.
-
-## Why a single cut-off does not work
-
-Sources age differently, so one number would be wrong for most of them.
-Measured lag at ingest, per source:
-
-| Source | Typical age on arrival | So the bound is |
+| Source | Typical age on arrival | Limit |
 | --- | --- | --- |
-| `yfinance` | 7 days of history | **none** |
-| `fred` | up to 385 days | **none** |
-| `uk-police` | a month or more — published in monthly releases | **none** |
-| `abuse-ch-*` | p99 **30.3 days** — republishes a rolling window | **45 days** |
-| news, hazard | usually hours | **30 days** |
+| news, hazard | hours | **30 days** |
+| `abuse-ch-*` | 30 days — republishes a rolling window | **45 days** |
+| `yfinance`, `fred`, `emdat`, `acled`, `polymarket` | months to years | **none** |
+| `uk-police` | a month, always — released monthly | **none** |
 
-Two different reasons for "no bound":
+Two different reasons a source has no limit:
 
-- **history is the point.** Market and economic series exist to be long. Cutting
-  them off would defeat the source.
-- **the publisher is slow.** Crime data is released monthly, so every row is a
-  month old before anyone could fetch it.
+- **the history is the point** — a market or economic series exists to be long
+- **the publisher is slow** — crime data is released monthly, so every row is
+  already a month old when it becomes available
 
-## Where the 30 days comes from
+## Where the 30 comes from
 
-Not a guess. **Retention deletes rows after 30 days** (§14), so the rule is:
+Not chosen. Retention deletes rows at 30 days (§14), so the rule is: **do not
+store what the next cleanup would delete anyway.**
 
-> do not store what housekeeping would delete on its next pass.
-
-Before this existed, that loop ran openly: housekeeping deleted the same 23 old
-rows on three consecutive days while the hourly fetch put them back. Retention
-could never win — the feed re-supplied junk faster than the daily prune removed
-it. **The boundary is the only place that loop can be broken.**
-
-## Why not something stricter
-
-A 7-day rule looks tidier and would have thrown away real news. Measured p99
-lag on legitimate feeds:
-
-```
-   rss-jpost-world               19.3 days
-   rss-responsible-statecraft    12.0 days
-   rss-guardian-world             9.6 days
-```
-
-Slow publishing is normal. **Being too strict silently deletes real data, which
-is a worse failure than the one being fixed** — the deletion leaves no trace,
-while the junk it was meant to remove is at least visible.
-
-## Two refusals
-
-**A row with no date is kept.** A missing timestamp is a parser problem, not a
-freshness one, and dropping on a missing field would lose real news quietly.
-
-**A future-dated row is rejected** if it is more than 2 hours ahead — §7 has
-already had its chance to repair it, so anything still in the future is a defect
-worth surfacing rather than storing.
-
-## What happens to a rejected row
-
-It is **counted and explained**, not silently dropped:
-
-```
-   "1,204 days old at ingest, limit 30 days"
-   "dated 3 days in the future (2026-08-23)"
-```
-
-Those counts land in `ingest_failures`, so a feed serving mostly stale rows is
-visible as a number rather than as a vague sense that something is wrong.
-
-This runs on the **live path only**. Backfills insert old rows deliberately and
-never pass through here.
+Stricter would be worse. Legitimate news feeds routinely run 10–20 days behind,
+and dropping real news leaves no trace — while the stale rows it removes are at
+least visible in the data.
 
 ---
 
