@@ -1071,17 +1071,25 @@ Three things break if that reaches the database:
 
 ## The two repairs
 
-Same four rows both ways, with `now = 14:06`. The last two lines are the
-difference.
+Worked on a real case: **four articles from one feed's front page**, read at
+`14:06 UTC`. The feed says three of them were published at `16:25`, `16:17` and
+`15:43` — all still in the future — and one at `13:57`, which is fine.
 
 | | **shift** | **clamp** |
 | --- | --- | --- |
-| **When it is used** | 3 or more rows are ahead, and at least a quarter of the batch — so it looks like the feed is wrong, not one row | that test fails, so nothing can be proved |
-| **How far to move** | biggest lead is 139 min, round up to whole hours → **3 hours** | — |
+| **What the word means** | move **every** row back by the **same** amount | force each future row to **now** |
+| **When it is used** | 3+ rows ahead, and at least a quarter of the batch — so it looks like the feed is wrong, not one row | that test fails, so no pattern can be proved |
+| **How far to move** | biggest lead is 139 min → round up to whole hours → **3 hours** | not a distance — every future row becomes `14:06` |
 | **Which rows change** | **all** of them, even ones already in the past | **only** the ones dated ahead |
-| **The rows** | `16:25` → `13:25`<br>`16:17` → `13:17`<br>`15:43` → `12:43`<br>`13:57` → `10:57` | `16:25` → `14:06`<br>`16:17` → `14:06`<br>`15:43` → `14:06`<br>`13:57` → `13:57` |
-| **Gaps before** | `8` · `34` · `106` min | `8` · `34` · `106` min |
-| **Gaps after** | `8` · `34` · `106` min — **kept** | `0` · `0` · `106` min — **lost** |
+| **What the feed said → what gets stored** | `16:25` → `13:25`<br>`16:17` → `13:17`<br>`15:43` → `12:43`<br>`13:57` → `10:57` | `16:25` → `14:06`<br>`16:17` → `14:06`<br>`15:43` → `14:06`<br>`13:57` → `13:57` |
+| **Minutes between one article and the next — before** | `8` · `34` · `106` | `8` · `34` · `106` |
+| **…and after** | `8` · `34` · `106` — **identical** | `0` · `0` · `106` — three articles now share one timestamp |
+| **PRO** | the feed's publishing rhythm is preserved exactly; only the label was wrong | always works, needs nothing proved |
+| **CON** | assumes the whole batch shares one offset — a feed mixing timezones would have correct rows moved wrongly | the spacing is destroyed; three separate articles become simultaneous |
+| **What is done about the CON** | the thresholds must pass first, and the original timestamp is stored beside the corrected one, so any wrong shift is reversible | same — the original is kept, and clamps are counted separately from shifts, so a feed that is *always* clamped is identifiable as genuinely broken rather than merely mislabelled |
+
+Nothing automatic acts on a feed that is always clamped. It is recorded so it
+can be found, and that is all — noted as a gap.
 
 ## Two things worth knowing
 
