@@ -1071,38 +1071,23 @@ Three things break if that reaches the database:
 
 ## The two repairs
 
-| | What it does | Cost |
+Same four rows in both columns, with `now = 14:06`. Watch the gaps at the
+bottom — that is the whole difference.
+
+| | **shift** | **clamp** |
 | --- | --- | --- |
-| **shift** | the batch proves a whole-hour offset — subtract it from every row | none: the gaps between articles survive |
-| **clamp** | no offset can be proved — set the offending rows to now | the gaps are lost |
+| **Used when** | the batch proves a whole-hour offset: **≥3 rows ahead** *and* **≥25% of the batch**, covered by a whole number of hours ≤ 14 | no offset can be proved |
+| **The offset** | `(139 min ÷ 60, rounded down) + 1` = **3 hours** | — |
+| **Which rows move** | **every row**, including ones already in the past | **only** the rows dated ahead |
+| **The rows** | `16:25` → `13:25`<br>`16:17` → `13:17`<br>`15:43` → `12:43`<br>`13:57` → `10:57` | `16:25` → `14:06`<br>`16:17` → `14:06`<br>`15:43` → `14:06`<br>`13:57` → `13:57` |
+| **Gaps before** | `8` · `34` · `106` min | `8` · `34` · `106` min |
+| **Gaps after** | `8` · `34` · `106` min — **unchanged** | `0` · `0` · `106` min — **collapsed** |
+| **Cost** | none | the feed's publishing rhythm is destroyed |
 
-The offset is proved from the batch, not assumed. One row ahead is a bad row;
-several rows ahead by similar amounts is a bad label. Worked on the real case:
-
-```
-   now = 14:06        16:25  ahead 139 min      8 of 12 rows ahead
-                      16:17  ahead 131 min      → enough to be a pattern
-                      15:43  ahead  97 min
-                      13:57  behind  8 min
-
-   offset = (139 ÷ 60 rounded down) + 1 = 3 hours
-```
-
-Then **every** row moves, including the one already in the past — that is what
-keeps the spacing:
-
-```
-   before   16:25   16:17   15:43   13:57
-   gaps          8min    34min   106min
-
-   after    13:25   13:17   12:43   10:57
-   gaps          8min    34min   106min     ← unchanged
-```
-
-Clamping instead would set the three offending rows all to `14:06`, collapsing
-those gaps to zero. That is why shift is preferred: subtracting a constant
-preserves the **intervals** between articles, so the feed's publishing rhythm
-survives. Clamping flattens it, and is used only when no offset can be proved.
+Shift moves the whole batch as a block, so subtracting a constant leaves every
+interval intact. Clamp piles the future rows onto a single instant. Clamp is
+only used when the batch cannot prove a pattern — one row ahead is a bad row,
+several rows ahead by similar amounts is a bad timezone label.
 
 ## Two things worth knowing
 
