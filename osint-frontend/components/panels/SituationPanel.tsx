@@ -49,9 +49,11 @@ const DEVELOPING_FETCH = 10
 const CHAT_STORAGE_KEY = "brain-chat-v1"
 
 /**
- * The pinned slot (#449): multi-day international stories still gathering
- * coverage. Nothing qualifying → nothing rendered, because an empty slot is
- * itself the finding. Corroboration shows on the row and never gates the pin.
+ * The pinned slot (#449): multi-day stories carried by three or more
+ * independent tellers and still gathering coverage (#1031). Nothing
+ * qualifying → nothing rendered, because an empty slot is itself the finding.
+ * The corroboration score shows on the row and never gates the pin; the owner
+ * count behind it is what earns the slot.
  */
 function DevelopingBlock({
   stories,

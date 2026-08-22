@@ -19,6 +19,7 @@ def _story(
     age_hours: int = 48,
     last_seen_hours: int = 1,
     outlet_count: int = 5,
+    owner_count: int | None = None,
 ) -> int:
     story = StoryRow(
         title=title,
@@ -26,7 +27,7 @@ def _story(
         last_seen=NOW - timedelta(hours=last_seen_hours),
         member_count=outlet_count,
         outlet_count=outlet_count,
-        owner_count=outlet_count,
+        owner_count=outlet_count if owner_count is None else owner_count,
         method_version="stories-v1.0",
     )
     session.add(story)
@@ -65,7 +66,7 @@ def _member(
 
 
 def _qualifying(session: Session, title: str = "widening exchange", **kw) -> int:
-    """A story that clears every gate: 0.6 severity, 3 countries, fresh members."""
+    """A story that clears every gate: 0.6 severity, 3 owners, fresh members."""
     sid = _story(session, title=title, **kw)
     for country in ("IR", "UA", "RO"):
         _member(session, sid, severity=0.6, country=country)
@@ -91,9 +92,40 @@ def test_low_severity_rejected(db_session: Session) -> None:
     assert select_developing(db_session, now=NOW) == []
 
 
-def test_two_countries_rejected(db_session: Session) -> None:
-    sid = _story(db_session, title="domestic protest")
-    for i, country in enumerate(("IN", "IN", "LK")):
+def test_single_country_story_with_three_owners_is_pinned(db_session: Session) -> None:
+    """The case the change exists for (#1031). One place, three independent
+    tellers. The old gate counted the countries a story is *about*, so this
+    story could be carried by every newsroom on the board and still never pin."""
+    sid = _story(db_session, title="one place, three tellers", outlet_count=3)
+    for i in range(3):
+        _member(db_session, sid, severity=0.8, country="XA", added_hours=2 + i)
+    rows = select_developing(db_session, now=NOW)
+    assert [r["story_id"] for r in rows] == [sid]
+    assert rows[0]["pin_reasons"]["countries"] == 1
+
+
+def test_three_countries_one_owner_rejected(db_session: Session) -> None:
+    """Spread is not independence. One teller filing from three places is one
+    teller, and under the old gate it pinned."""
+    sid = _story(db_session, title="one teller, three datelines", outlet_count=1)
+    for i, country in enumerate(("XA", "XB", "XC")):
+        _member(db_session, sid, severity=0.8, country=country, added_hours=2 + i)
+    assert select_developing(db_session, now=NOW) == []
+
+
+def test_two_owners_rejected(db_session: Session) -> None:
+    """Two is corroboration, not "the world is telling it"."""
+    sid = _story(db_session, title="two tellers", outlet_count=2)
+    for i, country in enumerate(("XA", "XB", "XC")):
+        _member(db_session, sid, severity=0.8, country=country, added_hours=2 + i)
+    assert select_developing(db_session, now=NOW) == []
+
+
+def test_many_outlets_under_two_owners_rejected(db_session: Session) -> None:
+    """Outlets must not stand in for owners: ten feeds under two parents are two
+    tellers (`app/stories/independence.py`), and the gate reads the owners."""
+    sid = _story(db_session, title="ten feeds, two parents", outlet_count=10, owner_count=2)
+    for i, country in enumerate(("XA", "XB", "XC")):
         _member(db_session, sid, severity=0.8, country=country, added_hours=2 + i)
     assert select_developing(db_session, now=NOW) == []
 
@@ -121,7 +153,9 @@ def test_stale_story_rejected(db_session: Session) -> None:
 def test_ranks_by_velocity_then_spread_then_outlets(db_session: Session) -> None:
     # Test primary sort (velocity): both stories have 4 members in 12h window
     # First story: 4 members across 4 distinct countries
-    vel4_country4 = _story(db_session, title="vel4_country4", outlet_count=2)
+    # owner_count is held at the gate here so that outlet_count stays free to
+    # vary as the tie-break under test.
+    vel4_country4 = _story(db_session, title="vel4_country4", outlet_count=2, owner_count=3)
     for i, country in enumerate(("IR", "UA", "RO", "PL")):
         _member(db_session, vel4_country4, severity=0.6, country=country, added_hours=1 + i)
 
@@ -196,12 +230,16 @@ def test_missing_severity_does_not_qualify(db_session: Session) -> None:
     assert select_developing(db_session, now=NOW) == []
 
 
-def test_null_country_not_counted_as_spread(db_session: Session) -> None:
-    sid = _story(db_session, title="two known countries plus unknowns")
-    _member(db_session, sid, severity=0.7, country="IR")
-    _member(db_session, sid, severity=0.7, country="UA")
-    _member(db_session, sid, severity=0.7, country=None)
-    assert select_developing(db_session, now=NOW) == []
+def test_null_country_not_counted_in_reported_spread(db_session: Session) -> None:
+    """Country is reported, not gated (#1031). The story pins on its owners, and
+    the spread it reports counts only the members that resolved to a place."""
+    sid = _story(db_session, title="two known countries plus unknowns", outlet_count=3)
+    _member(db_session, sid, severity=0.7, country="XA")
+    _member(db_session, sid, severity=0.7, country="XB", added_hours=3)
+    _member(db_session, sid, severity=0.7, country=None, added_hours=4)
+    rows = select_developing(db_session, now=NOW)
+    assert [r["story_id"] for r in rows] == [sid]
+    assert rows[0]["pin_reasons"]["countries"] == 2
 
 
 def test_as_utc_tags_naive_datetime_unchanged() -> None:
