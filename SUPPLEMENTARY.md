@@ -551,14 +551,24 @@ One worker means jobs run one after another, never side by side. So the whole
 stage rests on a single question: **can the worker clear a job before the next
 one arrives?**
 
-556 jobs spread across the 1,440 minutes in a day means one lands roughly
-**every 2.6 minutes**. That is the worker's window.
+§2's heavy tray takes 556 jobs a day, and a day is 1,440 minutes. One division,
+read two ways:
 
-| If a job takes | it clears this many per minute | jobs arrive at | **arrive ÷ clear** | what that means | after 100 jobs |
+```
+     556 jobs  ÷  1,440 minutes   =   0.39 jobs arriving per minute
+   1,440 minutes  ÷  556 jobs     =   one arriving every 2.6 minutes
+```
+
+0.39 and 2.6 are the same fact. **2.6 minutes is the worker's window.**
+
+Now try three job durations. Every number below is worked out in the cell, so
+nothing has to be taken on trust:
+
+| If a job takes | it clears<br>**1 ÷ job time** per min | jobs arrive at<br>**556 ÷ 1440** | **arrive ÷ clear** | what that means | after 100 jobs |
 | --- | ---: | ---: | ---: | --- | --- |
-| 1.0 min | 1.00 | 0.39 | 0.39 ÷ 1.00 = **0.39** | clearing faster than they arrive | queue still empty |
-| 2.6 min | 0.385 | 0.39 | 0.39 ÷ 0.385 = **1.01** | exactly on the line | empty, but no slack at all |
-| 4.0 min | 0.25 | 0.39 | 0.39 ÷ 0.25 = **1.56** | **arriving faster than they leave** | **140 minutes behind** |
+| 1.0 min | 1 ÷ 1.0 = **1.00** | 0.39 | 0.39 ÷ 1.00 = **0.39** | clearing faster than they arrive | queue still empty |
+| 2.6 min | 1 ÷ 2.6 = **0.385** | 0.39 | 0.39 ÷ 0.385 = **1.01** | exactly on the line | empty, but no slack at all |
+| 4.0 min | 1 ÷ 4.0 = **0.25** | 0.39 | 0.39 ÷ 0.25 = **1.56** | **arriving faster than they leave** | **140 minutes behind** |
 
 That fourth column is the whole test, and it is worth being clear about what is
 being divided. It is **not** anything over 1. It is *how fast work arrives*
