@@ -684,85 +684,26 @@ people's servers.
 </details>
 
 <details>
-<summary><b>Running it — cost, restarts, and what breaks</b></summary>
+<summary><b>What it costs, and what puts gaps in the data</b></summary>
 <br>
 
-Simulated against the real schedule objects over one UTC day:
+**Cost.** 3,151 messages a day, from a process using 72 MB. The scheduler is
+the cheapest part of the system, which is the point — one that did real work
+could not be restarted casually.
 
-```
-messages published in one UTC day:  3,151
+**Restarts.** It records what already ran in a small file on disk, so a restart
+picks up where it left off instead of re-firing everything.
 
-  288/day   yfinance-5min
-  288/day   gdelt-titles-5min
-   96/day   gdelt-15min
-    1/day   fred-daily-7am-utc
-    0/day   briefing-weekly        (Mondays only)
-```
+**Three failures, and what each does to the data:**
 
-3,151 messages a day from a process measured at **72 MB** of memory. It is the
-cheapest component in the system, which is the design goal — a scheduler that
-did real work would be a scheduler you could not restart casually.
+| Failure | Effect on the data |
+| --- | --- |
+| The scheduler dies | nothing is sampled at all, and **no error appears anywhere** — no job started, so nothing failed. Silence looks exactly like health. |
+| Workers die, scheduler lives | messages queue up and run late, so rows arrive bunched instead of evenly spaced |
+| A job fails every run | the scheduler neither knows nor cares; the watchdog in §11 is what catches it |
 
-```
-command: ["celery", "-A", "app.celery_app", "beat",
-          "--loglevel", "INFO", "--schedule", "/data/celerybeat-schedule"]
-```
-
-A small SQLite file holding the last-run time per entry:
-
-```
-celerybeat-schedule: SQLite 3.x database
-celerybeat-schedule-wal
-celerybeat-schedule-shm
-```
-
-It lives on the mounted volume rather than inside the container. The compose
-file states the reason: *"Schedule state lives on the mounted data volume so a
-recreated container does not re-fire every cron entry it thinks it missed."*
-The exact blank-start behaviour — fire at once, or wait one full cadence —
-depends on library internals and has not been tested here; the mitigation
-holds either way.
-
-The file is git-ignored. The timetable is committed; the record of what has
-already run is not.
-
-| Failure | Effect | Handled |
-| --- | --- | --- |
-| Two schedulers running | every job fires twice; there is no leader election | one `beat` service is defined, so structurally |
-| The scheduler dies | nothing is published. No errors appear anywhere, because errors come from jobs and no job starts — **silence is indistinguishable from health** | container healthcheck |
-| Workers die, scheduler lives | messages accumulate and run late | by design |
-| A job fails every time | the scheduler neither knows nor cares | `ingest_watchdog`, §11 |
-| Host clock skew | cron matching goes wrong | not handled in code |
-
-No message expiry or time limit is set anywhere:
-
-```
-grep "expires|task_time_limit|soft_time_limit" app/tasks.py app/celery_app.py
-→ no matches
-```
-
-So a two-day outage leaves roughly **6,300 queued messages** for the workers to
-drain on return. Not a crash, but a startup surge, and currently unbounded.
-
-The liveness check is inferred rather than asked, because there is no way to
-ask:
-
-```
-# Beat has no `inspect`, so liveness is inferred from it still writing its
-# schedule. The threshold is deliberately generous, and measured (#569):
-# on a healthy stack `celerybeat-schedule` itself was 15 MINUTES stale
-# (SQLite WAL mode leaves the main file alone)...
-```
-
-The 15-minute threshold was measured on a healthy stack, not guessed. A tighter
-one would restart-loop a working scheduler.
-
-Unix `cron` runs a command on one machine. It has no queue, so no second
-machine can take the work; no retry policy, where these tasks declare
-`autoretry_for`, `retry_backoff` and `max_retries`; no routing, where §2 sends
-15 of these tasks to a different queue with a different concurrency; and no
-overlap protection, so a slow run starts on top of itself. Its timetable also
-lives on a host rather than in a reviewed file.
+Nothing sets an expiry on a queued message, so a two-day outage leaves roughly
+6,300 of them to drain at once on return.
 
 </details>
 
@@ -771,31 +712,11 @@ lives on a host rather than in a reviewed file.
 <br>
 
 The cadences are written down twice — once in `beat_schedule`, and again by
-hand in `app/watchdog.py`:
+hand in `app/watchdog.py`. The watchdog uses its own copy to decide what "late"
+means, so changing one file and not the other makes it quietly wrong about
+lateness — in the one component whose whole purpose is noticing silence.
 
-```python
-#: Cadence in minutes per scheduled job, mirroring `beat_schedule` in
-#: ``app/tasks.py``. Editing one without the other is a bug — same contract as
-#: ``CORE_SOURCE_CADENCE_MIN`` above.
-JOB_CADENCE_MIN: dict[str, int] = {
-    "brain-narrate": 15,
-    "brain-enrich": 20,
-    ...
-}
-```
-
-The comment names the hazard and then relies on a person to avoid it. The
-watchdog needs each job's cadence to decide what "late" means, but it could
-derive those values from `beat_schedule` instead of restating them. As written,
-changing a cadence in one file and not the other makes the watchdog quietly
-wrong about lateness — and the watchdog is the component whose entire purpose
-is noticing silence.
-
-Recorded here as a finding. Not changed.
-
----
-
-<a href="#map-1">↑ back to §1 in the diagram</a>
+Recorded as a finding. Not changed.
 
 </details>
 
