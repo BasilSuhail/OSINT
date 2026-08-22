@@ -1071,23 +1071,17 @@ Three things break if that reaches the database:
 
 ## The two repairs
 
-Same four rows in both columns, with `now = 14:06`. Watch the gaps at the
-bottom — that is the whole difference.
+Same four rows both ways, with `now = 14:06`. The last two lines are the
+difference.
 
 | | **shift** | **clamp** |
 | --- | --- | --- |
-| **Used when** | the batch proves a whole-hour offset: **≥3 rows ahead** *and* **≥25% of the batch**, covered by a whole number of hours ≤ 14 | no offset can be proved |
-| **The offset** | `(139 min ÷ 60, rounded down) + 1` = **3 hours** | — |
-| **Which rows move** | **every row**, including ones already in the past | **only** the rows dated ahead |
+| **When it is used** | 3 or more rows are ahead, and at least a quarter of the batch — so it looks like the feed is wrong, not one row | that test fails, so nothing can be proved |
+| **How far to move** | biggest lead is 139 min, round up to whole hours → **3 hours** | — |
+| **Which rows change** | **all** of them, even ones already in the past | **only** the ones dated ahead |
 | **The rows** | `16:25` → `13:25`<br>`16:17` → `13:17`<br>`15:43` → `12:43`<br>`13:57` → `10:57` | `16:25` → `14:06`<br>`16:17` → `14:06`<br>`15:43` → `14:06`<br>`13:57` → `13:57` |
 | **Gaps before** | `8` · `34` · `106` min | `8` · `34` · `106` min |
-| **Gaps after** | `8` · `34` · `106` min — **unchanged** | `0` · `0` · `106` min — **collapsed** |
-| **Cost** | none | the feed's publishing rhythm is destroyed |
-
-Shift moves the whole batch as a block, so subtracting a constant leaves every
-interval intact. Clamp piles the future rows onto a single instant. Clamp is
-only used when the batch cannot prove a pattern — one row ahead is a bad row,
-several rows ahead by similar amounts is a bad timezone label.
+| **Gaps after** | `8` · `34` · `106` min — **kept** | `0` · `0` · `106` min — **lost** |
 
 ## Two things worth knowing
 
