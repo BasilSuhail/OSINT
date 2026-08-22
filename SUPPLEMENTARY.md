@@ -465,12 +465,52 @@ queue.
 
 Nothing decides anything here. It stores notes and hands them out in order.
 
-## Two mailboxes, not one
+## Two trays, not one
 
-| Mailbox | Workers taking from it | Notes per day | What goes in |
-| --- | ---: | ---: | --- |
-| `celery` | **4** at a time | 2,595 (82%) | the 67 fetches — small, mostly sitting waiting for a website to answer |
-| `analytics` | **1** at a time | 556 (18%) | the 15 heavy jobs — scoring, clustering, the local language model |
+The two names in the code — `celery` and `analytics` — are labels somebody
+typed, like marking two trays IN and URGENT. `celery` is simply the name the
+library gives a queue when nobody picks one, which unhelpfully matches the
+library's own name. Read them as **the fast tray** and **the heavy tray**.
+
+```
+   TRAY 1 — the fast one                TRAY 2 — the heavy one
+   (code name: celery)                  (code name: analytics)
+   ─────────────────────────────        ─────────────────────────────
+   4 workers pulling from it            1 worker pulling from it
+   2,595 notes/day          82%           556 notes/day          18%
+   the 67 downloads, plus two           scoring, grouping headlines,
+   light jobs                           running the local model
+   small — mostly sitting idle          big — holds a lot of memory
+   waiting for a website to reply       for as long as it runs
+```
+
+82% + 18% = 100% of the 3,151 notes a day from §1. Not a running total.
+
+**What is in the heavy tray**, every job and how often:
+
+| Heavy job | Per day | What it does |
+| --- | ---: | --- |
+| `enrich_footprints` | 96 | fetch the real outline of a hazard for the map |
+| `brain_narrate` | 96 | local model writes the situation summary |
+| `brain_enrich` | 72 | local model summarises each new story |
+| `enrich_news_places` | 48 | work out which place a headline is about |
+| `cluster_stories` | 48 | group headlines covering the same event |
+| `sensor_check_stories` | 48 | check a story's claim against a sensor reading |
+| `score_disagreement` | 48 | measure how differently countries word a story |
+| `grade_news_severity` | 48 | grade how much harm a headline reports |
+| `compute_composite` | 24 | **the composite index** — the score under test |
+| `compute_cii` | 24 | **the CII** — the same-day stress score |
+| `journal_daily` | 1 | write the day's forecasts down, before the outcome |
+| `extract_claims` | 1 | pull the factual claims out of stories |
+| `run_housekeeping` | 1 | delete rows past 30 days |
+| `data_audit` | 1 | nightly check of the data against itself |
+| `weekly_briefing` | 0 | Mondays only |
+| **15 jobs** | **556** | |
+
+§1 counted **17** jobs that are not downloads. Two of them are light enough to
+stay in the fast tray: `enrich_gdelt_titles` (288/day, fetching article titles)
+and `ingest_watchdog` (96/day, checking whether a source has gone quiet).
+`17 − 2 = 15`.
 
 ## Why the heavy one runs a single job at a time
 
