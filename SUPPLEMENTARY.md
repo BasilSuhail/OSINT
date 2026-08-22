@@ -802,8 +802,18 @@ cannot be mistaken for a dead feed.
 
 ## The one shape everything becomes
 
-67 sources publish 67 different formats — CSV, GeoJSON, RSS, XML, JSON. Every
-one is converted into the same row before it goes anywhere:
+67 sources publish 67 different formats — CSV, GeoJSON, RSS, XML, JSON. Each
+source gets its own small translator, and all 67 produce the same output:
+
+```
+   USGS GeoJSON   ─┐
+   BBC RSS        ─┤
+   NASA CSV       ─┼──▶  67 translators  ──▶  one shape  ──▶  everything else
+   ACLED xlsx     ─┤
+   ...            ─┘
+```
+
+Everything after this stage only ever sees one shape:
 
 ```python
 class Event(BaseModel):
@@ -818,16 +828,38 @@ class Event(BaseModel):
     payload: dict          # the original record, kept whole
 ```
 
-Three choices in that shape do real work later:
+### Two timestamps, always
 
-| Field | Why |
-| --- | --- |
-| `occurred_at` **and** `fetched_at` | the gap between them is reporting delay, which §3 showed is not evenly distributed. Collapse them into one column and that bias becomes unmeasurable. |
-| `country`, `lat`, `lon` nullable | *unknown* is a valid answer. Filling a guess in here would make every downstream count wrong in a way nobody could see. |
-| `payload` keeps the raw record | the conversion is never the only copy. Anything dropped by mistake can be recovered without re-fetching. |
+```
+   occurred_at   when the world moved
+   fetched_at    when this system found out
+```
+
+The gap between them is **reporting delay**. Some sources are fast — USGS
+publishes an earthquake in seconds. Some are slow — UK police publish about two
+months in arrears.
+
+Store only one timestamp and that difference cannot be measured. Not reduced,
+**invisible**: you cannot correct for something you never recorded. §3 already
+showed the sources are not evenly fast, so this is a real bias, not a
+hypothetical one.
+
+### Two smaller ones
+
+**Location can be empty.** `None` means *we do not know*. The alternative —
+filling in the source's home country, or a country's centre point — would make
+every downstream count wrong in a way nobody could see from the outside.
+
+**The original is kept whole.** `payload` holds the source's own record, so the
+translation is never the only copy. A translator bug can be fixed and the rows
+re-derived without asking the source again — which for feeds that only publish
+recent data would be impossible anyway.
+
+### One warning
 
 `severity` is **not** comparable across sources. A 0.8 earthquake and a 0.8
-headline share a scale name and nothing else.
+headline share a column name and a scale, and nothing else. §15 is where that
+had to be dealt with.
 
 ## Three ways a fetch ends
 
