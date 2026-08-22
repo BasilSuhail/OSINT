@@ -465,7 +465,8 @@ when free.
 
 Redis is the program holding the mailbox. It keeps the notes in memory and
 also writes them to disk (`--appendonly yes`), so a restart does not lose the
-queue.
+queue. It also carries the signal that tells the console a new row has landed,
+which is what makes the map in §29 update without a reload.
 
 Nothing decides anything here. It stores notes and hands them out in order.
 
@@ -576,7 +577,9 @@ when the next one lands, so work stacks up and never unstacks. Nothing here
 measures how long a job takes, so which side of the line this sits on is
 unknown — recorded as a gap.
 
-## The issue we hit
+<details>
+<summary><b>The issue we hit</b> &nbsp;—&nbsp; one tray had no worker at all (fixed)</summary>
+<br>
 
 Originally the command had no `-Q` at all:
 
@@ -597,19 +600,8 @@ Nobody ever started a worker with `-Q analytics`.
               (nobody)
 ```
 
-<details>
-<summary><b>What else Redis does here</b></summary>
-<br>
-
-Three jobs, not one:
-
-1. **The queue** — notes waiting for a worker.
-2. **The results store** — where a finished job leaves its answer.
-3. **A broadcast channel** — when new rows land, a message is published on
-   `events:new`, and the console (§29) is listening. That is what makes the map
-   update without the page being reloaded.
-
 </details>
+
 
 
 ---
