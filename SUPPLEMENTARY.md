@@ -876,27 +876,30 @@ had to be dealt with.
      └── returns rows                     →  on to §6
 ```
 
-The middle one is deliberately **not re-raised for retry**. Five automatic
-retries against a URL that just answered `403` is five more wasted requests,
-which is how one dead feed cost 420 in a week.
+## What happens when it fails
 
-## Nothing changed vs nothing there
+**Nothing is stored.** A failed fetch writes no rows at all — there is no half
+a batch. The failure itself is recorded, and what happens next depends on what
+broke:
 
-A source can answer correctly and hand back an empty list. Two very different
-reasons for that:
+| What broke | Recorded as | Retried? | What happens next |
+| --- | --- | --- | --- |
+| Local setup — missing API key, bad file path | `misconfigured` | no | a person has to fix it; the source is asked again on its next turn |
+| Server said `401` `403` `404` `410` `429` | `failed`, with the error text | **no** | §4 puts the source to sleep, 1 hour to 7 days |
+| Timeout, `500`, network blip | `failed`, with the error text | **yes — up to 5 times**, with a growing gap between attempts | if all five fail, the run is given up and the next scheduled turn starts fresh |
 
-- the source genuinely has no new records
-- the fetcher checked and the file is byte-identical to last time
+The difference between the last two rows is the point of §4. A `403` will still
+be a `403` in five seconds, so retrying is five wasted requests — that is how
+one dead feed spent 420 requests in a week. A timeout might not be a timeout in
+five seconds, so it is worth asking again.
 
-An empty list alone cannot tell them apart, so a fetcher that *knows* it is the
-second case says so:
+Two things are always true on failure:
 
-```python
-FetchBatch(events=[], unchanged=True)
-```
-
-That distinction is what stops a healthy static source being counted as a
-failure in §10.
+- **No partial writes.** The database is untouched, so a later run cannot find
+  half-imported data.
+- **The failure is visible.** A counter goes up in `ingest_health` and the full
+  error text is stored in `ingest_failures`, which is what lets §11 say *which*
+  source is broken and *why* rather than just that something is quiet.
 
 ---
 
