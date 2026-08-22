@@ -234,14 +234,70 @@ def require_api_token(api_token: str) -> None:
         )
 
 
+#: How long the tailnet probe waits, in seconds.
+#:
+#: Short on purpose, and shorter than it was. A tailnet that is up answers
+#: `tailscale status --json` in milliseconds, so the extra patience buys
+#: nothing from the case it looks like it is for. What it does buy is a longer
+#: window in which an aborted parent leaves the child running — see
+#: `_tailscale_status`. The failure being waited on here is not a slow tailnet,
+#: it is a CLI with no daemon to answer it, and waiting longer never turns that
+#: into an answer. Same value as `_run` below, which shells out for the same
+#: kind of question.
+TAILSCALE_STATUS_TIMEOUT: int = 5
+
+
+def require_linux() -> None:
+    """Serve mode configures a board, and boards here are Linux.
+
+    Checked before anything else in the mode — before the token, and above all
+    before the tailnet probe — because a platform that cannot use the answer
+    has no business asking the question. Everything serve mode derives is for a
+    machine with systemd: a bind on a tailnet interface, a unit file, a service
+    that survives a reboot. `make serve-install` has always refused where there
+    is no systemd; the module did not, so the mode stayed reachable by hand and
+    the probe with it.
+
+    Only serve mode. Locked and share are the laptop's modes — `scripts/dev-up.sh`
+    derives locked on every `make up` — and a guard reaching them would stop the
+    stack starting on the machine it is developed on.
+    """
+    if not sys.platform.startswith("linux"):
+        raise ServeRefused(
+            f"serve mode configures a board: it binds a tailnet interface and installs "
+            f"systemd units, and this machine is {sys.platform}. Run it on the board "
+            f"itself — `make up` and `make share` are this machine's modes"
+        )
+
+
 def _tailscale_status() -> dict:
-    """`tailscale status --json`, parsed. Seam for the tests."""
+    """`tailscale status --json`, parsed. Seam for the tests.
+
+    This shells out, which is why `require_linux` and `require_api_token` are
+    both asked before it — and why the platform guard, not a cleanup handler,
+    is what closes the failure below.
+
+    A probe started here once outlived the process that started it. The parent
+    was aborted rather than exiting, so nothing Python could have registered
+    ran: no `finally`, no `atexit` — neither fires when the parent is killed —
+    and the child was reparented to init. It should still have exited at the
+    timeout, but the host it ran on had Tailscale installed with its network
+    extension unapproved, leaving the CLI no daemon to talk to and a retry loop
+    rather than a failure. It ran for days and reached tens of gigabytes of
+    memory before anyone noticed.
+
+    That is a property of every subprocess call and cannot be fixed from inside
+    the parent. What can be fixed is the path: the host in question was not a
+    board and could not have used the answer, and now it is refused before this
+    is reached. The timeout is short for the same reason — it bounds the window
+    rather than the tailnet.
+    """
     try:
         raw = subprocess.run(
             ["tailscale", "status", "--json"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=TAILSCALE_STATUS_TIMEOUT,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -397,10 +453,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if mode == "serve":
         try:
+            #: Cheapest refusal first, and in that order: this one reads a
+            #: constant, the next an environment variable, the last shells out
+            #: to Tailscale. Asked the other way round, a board with more than
+            #: one of them wrong gets told about one per attempt — and a
+            #: machine that is not a board at all spawns a probe whose answer
+            #: it could never have used.
+            require_linux()
             pinned = _env("OSINT_PUBLIC_HOST").strip()
-            #: Cheapest refusal first: this one reads an environment variable,
-            #: the next one shells out to Tailscale. Asked the other way round,
-            #: a board with neither gets told about one of them per attempt.
             require_api_token(_env("API_AUTH_TOKEN"))
             host, address = tailnet_identity()
             env = serve_env(

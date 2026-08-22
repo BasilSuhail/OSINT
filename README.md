@@ -483,6 +483,11 @@ server dies with the power. This turns the console into a service
 that starts on its own, and turns the board into something you can reach from
 a phone rather than only from the machine sitting next to it.
 
+Every command below is the board's, and refuses anywhere else: they derive a
+bind for a tailnet interface and install systemd units, neither of which a
+laptop has any use for. Run one there and it stops and says so. `make up` and
+`make share` are the laptop's commands, and they are unaffected.
+
 [Tailscale](https://tailscale.com) makes that reachable-from-a-phone part
 work, and this repository does not install it — follow its own instructions
 for the board and for whatever you'll read the console on, a phone or a

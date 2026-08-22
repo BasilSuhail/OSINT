@@ -27,6 +27,26 @@ serve_python() {
   command -v python3 2>/dev/null || true
 }
 
+#: Serve mode is for a machine with systemd, and refuses everywhere else
+#: before it does anything at all.
+#:
+#: Everything the mode derives is a board's: a bind on a tailnet interface,
+#: unit files, a service that comes back after a reboot. The install has always
+#: refused here — a unit written where nothing reads it, reported as success,
+#: is worse than a refusal — but the build and the start did not, and both call
+#: `apply_serve_mode`, which runs `lan_share serve`, which asks Tailscale for
+#: an identity a laptop has no use for. One such probe outlived the process
+#: that started it and ran for days. So the refusal comes before the
+#: interpreter is even chosen, and `app/devx/lan_share.py` refuses the same way
+#: for anyone reaching the module directly.
+require_a_board() {
+  [ "$(uname -s)" = "Linux" ] && return 0
+  echo "Serve mode configures a board: a tailnet bind and systemd units." >&2
+  echo "This machine is $(uname -s). Run it on the board itself —" >&2
+  echo "\`make up\` and \`make share\` are this machine's commands." >&2
+  exit 1
+}
+
 env_value() { # key — the value in .env, if .env sets one
   [ -f .env ] || return 0
   sed -n "s/^$1=//p" .env | tail -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
@@ -68,6 +88,10 @@ load_frontend_public_env() {
 #: nothing on failure and says why on stderr, so a refusal cannot be evalled
 #: into a half-configured start.
 apply_serve_mode() {
+  #: Ahead of the interpreter, so nothing is spawned on a machine that could
+  #: not use what the spawn would return.
+  require_a_board
+
   local python
   python="$(serve_python)"
   if [ -z "$python" ]; then
@@ -210,13 +234,9 @@ cmd_build() {
 }
 
 cmd_install() {
-  #: systemd is Linux's. Writing a unit anywhere else produces a file nothing
-  #: reads, and reporting success for it is worse than refusing.
-  if [ "$(uname -s)" != "Linux" ]; then
-    echo "The console's service is systemd, which is Linux. This machine is $(uname -s)." >&2
-    echo "Run this on the board itself." >&2
-    exit 1
-  fi
+  #: Before the account question, and long before the first unit is written:
+  #: a unit installed where nothing reads it is a file installed for nobody.
+  require_a_board
   #: Running the whole script as root would make root the answer below, which
   #: is the state this is here to avoid. It is not needed: sudo is reached for
   #: on the three lines that write, and nowhere else.

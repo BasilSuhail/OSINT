@@ -25,6 +25,7 @@ network, and nothing under test cares which range the address is from.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import ClassVar
 
@@ -608,6 +609,9 @@ class TestOneRoundTripPerAttempt:
         def unreachable() -> dict:
             raise AssertionError("the tailnet was asked before the token was checked")
 
+        #: Serve mode is the board's, and the board is Linux — say so, or this
+        #: reads the platform refusal that now comes before either of these.
+        monkeypatch.setattr("sys.platform", "linux")
         monkeypatch.setattr(lan_share, "tailnet_identity", unreachable)
         monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
         assert lan_share.main(["serve"]) == 1
@@ -615,10 +619,131 @@ class TestOneRoundTripPerAttempt:
 
     #: A refusal prints no exports: the caller evals this output.
     def test_the_refusal_emits_nothing_to_eval(self, monkeypatch, capsys) -> None:
+        monkeypatch.setattr("sys.platform", "linux")
         monkeypatch.setattr(lan_share, "tailnet_identity", lambda: (SERVE_HOST, SERVE_ADDRESS))
         monkeypatch.setenv("API_AUTH_TOKEN", "")
         assert lan_share.main(["serve"]) == 1
         assert capsys.readouterr().out == ""
+
+
+class TestServeModeRefusesOffTheBoard:
+    """Serve mode is for a machine with systemd, and asks nothing anywhere else.
+
+    The mode derives a bind for a tailnet interface and renders systemd units,
+    and `make serve-install` has always refused where there is no systemd. The
+    module did not, so `python -m app.devx.lan_share serve` on a laptop still
+    reached `tailscale status` — a subprocess whose result that machine had no
+    use for.
+
+    That probe outlived its parent. The parent was killed rather than exiting,
+    so no `finally` and no `atexit` ran; the child was reparented and, on a
+    host whose Tailscale had no running daemon to answer it, retried instead of
+    failing. It was still there days later, holding tens of gigabytes.
+
+    No cleanup handler inside Python closes that — none of them run when the
+    parent is killed. What closes it is not spawning on a platform that cannot
+    use the answer, which is what these pin: the refusal comes first, and the
+    probe is never reached.
+    """
+
+    @staticmethod
+    def _never_probed() -> dict:
+        raise AssertionError("tailscale was asked on a platform that cannot use the answer")
+
+    @pytest.mark.parametrize("platform", ["darwin", "win32"])
+    def test_it_refuses_without_spawning_anything(self, monkeypatch, capsys, platform) -> None:
+        monkeypatch.setattr("sys.platform", platform)
+        monkeypatch.setattr(lan_share, "_tailscale_status", self._never_probed)
+        monkeypatch.setenv("API_AUTH_TOKEN", "a-token")
+        assert lan_share.main(["serve"]) == 1
+        assert "cannot serve" in capsys.readouterr().err
+
+    #: An operator on a laptop sent to `tailscale up` fixes a tailnet that was
+    #: never broken and arrives back here. The refusal has to name the platform.
+    def test_the_refusal_names_the_platform_not_a_missing_tailnet(
+        self, monkeypatch, capsys
+    ) -> None:
+        monkeypatch.setattr("sys.platform", "darwin")
+        monkeypatch.setattr(lan_share, "_tailscale_status", self._never_probed)
+        monkeypatch.setenv("API_AUTH_TOKEN", "a-token")
+        lan_share.main(["serve"])
+        message = capsys.readouterr().err
+        assert "tailscale up" not in message
+        assert "systemd" in message
+        assert "darwin" in message
+        assert "board" in message
+
+    #: Ahead of the token check too. Nothing should be read, and nothing
+    #: spawned, on a platform whose answer is refusal either way.
+    def test_the_platform_is_refused_before_the_token(self, monkeypatch, capsys) -> None:
+        monkeypatch.setattr("sys.platform", "darwin")
+        monkeypatch.setattr(lan_share, "_tailscale_status", self._never_probed)
+        monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
+        assert lan_share.main(["serve"]) == 1
+        assert "API_AUTH_TOKEN" not in capsys.readouterr().err
+
+    #: The caller evals this output, so a refusal prints no exports.
+    def test_the_refusal_emits_nothing_to_eval(self, monkeypatch, capsys) -> None:
+        monkeypatch.setattr("sys.platform", "darwin")
+        monkeypatch.setattr(lan_share, "_tailscale_status", self._never_probed)
+        monkeypatch.setenv("API_AUTH_TOKEN", "a-token")
+        lan_share.main(["serve"])
+        assert capsys.readouterr().out == ""
+
+    #: The passing case, so the guard has a test that fails if it starts
+    #: refusing the machine the mode exists for.
+    def test_serve_still_works_on_the_board(self, monkeypatch, capsys) -> None:
+        monkeypatch.setattr("sys.platform", "linux")
+        monkeypatch.setattr(lan_share, "tailnet_identity", lambda: (SERVE_HOST, SERVE_ADDRESS))
+        monkeypatch.setenv("API_AUTH_TOKEN", "a-token")
+        monkeypatch.delenv("OSINT_PUBLIC_HOST", raising=False)
+        assert lan_share.main(["serve"]) == 0
+        exported = capsys.readouterr().out
+        assert f"export API_BIND={SERVE_ADDRESS}" in exported
+        assert SERVE_HOST in exported
+
+    #: Every platform keeps the laptop's two modes. `scripts/dev-up.sh` runs
+    #: locked on every `make up`, so a guard that reached them would stop the
+    #: stack starting on the machine it is developed on.
+    @pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+    def test_locked_is_unaffected_everywhere(self, monkeypatch, capsys, platform) -> None:
+        monkeypatch.setattr("sys.platform", platform)
+        assert lan_share.main(["locked"]) == 0
+        assert f"export API_BIND={LOOPBACK}" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+    def test_share_is_unaffected_everywhere(self, monkeypatch, capsys, platform) -> None:
+        monkeypatch.setattr("sys.platform", platform)
+        monkeypatch.setattr(lan_share, "detect_lan_ip", lambda: "203.0.113.42")
+        monkeypatch.delenv("OSINT_PUBLIC_HOST", raising=False)
+        assert lan_share.main(["share"]) == 0
+        assert f"export API_BIND={ALL_INTERFACES}" in capsys.readouterr().out
+
+
+class TestTheTailnetProbeWaitsBriefly:
+    """Ten seconds of patience bought nothing and cost a stranded child.
+
+    A tailnet that is up answers `tailscale status --json` in milliseconds. The
+    failure the timeout guards is not a slow tailnet, it is a CLI with no
+    daemon to talk to — and every second of it is a second in which an aborted
+    parent can leave the probe behind.
+    """
+
+    def test_the_wait_is_short(self) -> None:
+        assert lan_share.TAILSCALE_STATUS_TIMEOUT == 5
+
+    def test_the_probe_actually_passes_it(self, monkeypatch) -> None:
+        seen: dict = {}
+
+        def record(command, **kwargs):
+            seen.update(kwargs)
+            seen["command"] = command
+            return subprocess.CompletedProcess(command, 0, stdout="{}", stderr="")
+
+        monkeypatch.setattr(lan_share.subprocess, "run", record)
+        assert lan_share._tailscale_status() == {}
+        assert seen["timeout"] == lan_share.TAILSCALE_STATUS_TIMEOUT
+        assert seen["command"][0] == "tailscale"
 
 
 def _serve_script() -> str:
@@ -640,7 +765,33 @@ def test_installing_the_unit_refuses_where_there_is_no_systemd() -> None:
     assert "uname" in script
     assert "systemctl" in script
     install_body = script.split("cmd_install() {", 1)[1]
-    assert install_body.index("uname") < install_body.index("systemctl")
+    assert install_body.index("require_a_board") < install_body.index("systemctl")
+
+
+#: The build and the start refuse there too, which they did not.
+#:
+#: Both call `apply_serve_mode`, which runs `lan_share serve`, which asks
+#: Tailscale for an identity a machine without systemd cannot use. The install
+#: was guarded and these two were not, so the probe stayed reachable from a
+#: laptop — and one such probe outlived the process that started it. The
+#: refusal goes ahead of the interpreter, so nothing is spawned at all.
+def test_deriving_serve_mode_refuses_before_it_spawns_anything() -> None:
+    script = _serve_script()
+    body = script.split("apply_serve_mode() {", 1)[1].split("\n}", 1)[0]
+    assert body.index("require_a_board") < body.index("serve_python")
+    assert body.index("require_a_board") < body.index("lan_share serve")
+
+
+#: Both reach the guard through `apply_serve_mode`, and both must reach it
+#: before the work they do — a build that refuses after `pnpm install` has
+#: already spent the minutes it was refusing to be worth.
+@pytest.mark.parametrize(
+    ("command", "work"),
+    [("cmd_build() {", "pnpm"), ("cmd_start() {", "docker compose")],
+)
+def test_the_board_check_comes_before_the_work(command: str, work: str) -> None:
+    body = _serve_script().split(command, 1)[1].split("\n}", 1)[0]
+    assert body.index("apply_serve_mode") < body.index(work)
 
 
 #: The build bakes NEXT_PUBLIC_* into the bundle, so it must run with serve
