@@ -1076,9 +1076,33 @@ Three things break if that reaches the database:
 | **shift** | the batch proves a whole-hour offset — subtract it from every row | none: the gaps between articles survive |
 | **clamp** | no offset can be proved — set the offending rows to now | the gaps are lost |
 
-Shift is preferred for a reason that matters if the timing is ever modelled:
-subtracting a constant preserves the **intervals** between articles, so the
-feed's publishing rhythm is intact. Clamping flattens them.
+The offset is proved from the batch, not assumed. One row ahead is a bad row;
+several rows ahead by similar amounts is a bad label. Worked on the real case:
+
+```
+   now = 14:06        16:25  ahead 139 min      8 of 12 rows ahead
+                      16:17  ahead 131 min      → enough to be a pattern
+                      15:43  ahead  97 min
+                      13:57  behind  8 min
+
+   offset = (139 ÷ 60 rounded down) + 1 = 3 hours
+```
+
+Then **every** row moves, including the one already in the past — that is what
+keeps the spacing:
+
+```
+   before   16:25   16:17   15:43   13:57
+   gaps          8min    34min   106min
+
+   after    13:25   13:17   12:43   10:57
+   gaps          8min    34min   106min     ← unchanged
+```
+
+Clamping instead would set the three offending rows all to `14:06`, collapsing
+those gaps to zero. That is why shift is preferred: subtracting a constant
+preserves the **intervals** between articles, so the feed's publishing rhythm
+survives. Clamping flattens it, and is used only when no offset can be proved.
 
 ## Two things worth knowing
 
