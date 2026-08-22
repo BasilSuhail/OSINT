@@ -576,26 +576,26 @@ when the next one lands, so work stacks up and never unstacks. Nothing here
 measures how long a job takes, so which side of the line this sits on is
 unknown — recorded as a gap.
 
-<details>
-<summary><b>The failure this design already had</b></summary>
-<br>
+## The issue we hit
 
-The worker names its queue explicitly:
+Originally the command had no `-Q` at all:
 
 ```
-["celery", "-A", "app.celery_app", "worker", "-Q", "celery", ...]
+celery -A app.celery_app worker
 ```
 
-Before that `-Q` was written, the worker took only the default queue, **nothing
-consumed `analytics` at all**, and every heavy job was published into a mailbox
-no one emptied.
+When `-Q` is missing, Celery falls back to a default tray — the one named
+`celery`. So the worker went to tray 1 and started emptying it.
 
-Nothing raised an error. The scheduler published correctly. Redis accepted the
-notes correctly. The jobs simply never ran — the same shape as §1's dead
-scheduler: **silence is not distinguishable from health.** A queue with no
-consumer looks exactly like a queue with nothing to do.
+Nobody ever started a worker with `-Q analytics`.
 
-</details>
+```
+   BEFORE                                AFTER
+
+   tray 1 ──▶ worker ✅                  tray 1 ──▶ worker  (-Q celery)     ✅
+   tray 2 ──▶  ???                       tray 2 ──▶ worker  (-Q analytics)  ✅
+              (nobody)
+```
 
 <details>
 <summary><b>What else Redis does here</b></summary>
