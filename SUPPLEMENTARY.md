@@ -226,8 +226,23 @@ never runs. The 84 rows are not all written out one by one:
 ```
    84 rows
    ├── 31  written in the code
-   │   ├── 14  data sources
-   │   └── 17  analysis and cleanup jobs
+   │   ├── 14  data sources ─── the APIs and news feeds listed in §3
+   │   └── 17  jobs that run on what those sources brought in:
+   │           ├─ 3  scoring ......  the composite index · the CII ·
+   │           │                     writing the day's forecasts down
+   │           ├─ 5  story work ...  group headlines into stories ·
+   │           │                     check a claim against a sensor ·
+   │           │                     measure how differently countries
+   │           │                     tell it · pull out the factual
+   │           │                     claims · grade how harmful it is
+   │           ├─ 2  local model ..  write the situation summary ·
+   │           │                     summarise each new story
+   │           ├─ 3  filling gaps .  hazard outlines · place names ·
+   │           │                     article titles
+   │           ├─ 3  self-checks ..  watchdog for silent sources ·
+   │           │                     delete rows past 30 days ·
+   │           │                     nightly audit of the data itself
+   │           └─ 1  output ......   the weekly briefing
    └── 53  built from the news-site list
 ```
 
