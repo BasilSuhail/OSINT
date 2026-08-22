@@ -40,7 +40,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §5  FETCH                                                              │
+   │ <a id="map-5" href="#ch-5">§5  FETCH</a>                                                              │
    │    download only — no database, no scoring, no side effects            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -768,5 +768,106 @@ resource however it is addressed.
 ---
 
 <a href="#ch-4">▲ top of §4</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-4">↑ back to §4 in the diagram</a>
+
+</details>
+
+<details id="ch-5">
+<summary><b>§5 &nbsp; Fetch</b> &nbsp;—&nbsp; download only, and turn 67 different shapes into one</summary>
+<br>
+
+**`app/sources/base.py` · `app/models.py`**
+
+## What it is
+
+Download the data, convert it, hand it back. Nothing else.
+
+A fetcher **cannot** touch the database, Redis or the scheduler. It is a
+function: URL in, list of rows out. That is enforced by the contract every
+fetcher inherits:
+
+```python
+class Fetcher(ABC):
+    """Pure HTTP-side fetcher. No database, no Redis, no Celery awareness."""
+
+    name: str                      # the source slug, e.g. "gdelt"
+    stable_urls: bool = True       # the §4 flag
+
+    @abstractmethod
+    def fetch(self) -> list[Event] | FetchBatch: ...
+```
+
+Why it matters: a fetcher can be run and tested with no database, no queue and
+no network of its own. Fetching and storing fail separately, so a parsing bug
+cannot be mistaken for a dead feed.
+
+## The one shape everything becomes
+
+67 sources publish 67 different formats — CSV, GeoJSON, RSS, XML, JSON. Every
+one is converted into the same row before it goes anywhere:
+
+```python
+class Event(BaseModel):
+    source: str            # which feed
+    source_event_id: str   # that feed's own ID for this thing
+    occurred_at: datetime  # when it happened
+    fetched_at: datetime   # when we saw it
+    category: Category     # market / geopolitical / hazard / news / cyber / ...
+    severity: float | None # 0-1, and only comparable within one source
+    country: str | None    # ISO code, or None
+    lat / lon: float | None
+    payload: dict          # the original record, kept whole
+```
+
+Three choices in that shape do real work later:
+
+| Field | Why |
+| --- | --- |
+| `occurred_at` **and** `fetched_at` | the gap between them is reporting delay, which §3 showed is not evenly distributed. Collapse them into one column and that bias becomes unmeasurable. |
+| `country`, `lat`, `lon` nullable | *unknown* is a valid answer. Filling a guess in here would make every downstream count wrong in a way nobody could see. |
+| `payload` keeps the raw record | the conversion is never the only copy. Anything dropped by mistake can be recovered without re-fetching. |
+
+`severity` is **not** comparable across sources. A 0.8 earthquake and a 0.8
+headline share a scale name and nothing else.
+
+## Three ways a fetch ends
+
+```
+   fetch()
+     │
+     ├── raises SourceMisconfiguredError  →  local setup is wrong
+     │                                       (missing API key). Not a rest,
+     │                                       not a retry — its own state.
+     │
+     ├── raises anything else             →  record failure, ask §4 whether
+     │                                       this earns a rest
+     │
+     └── returns rows                     →  on to §6
+```
+
+The middle one is deliberately **not re-raised for retry**. Five automatic
+retries against a URL that just answered `403` is five more wasted requests,
+which is how one dead feed cost 420 in a week.
+
+## Nothing changed vs nothing there
+
+A source can answer correctly and hand back an empty list. Two very different
+reasons for that:
+
+- the source genuinely has no new records
+- the fetcher checked and the file is byte-identical to last time
+
+An empty list alone cannot tell them apart, so a fetcher that *knows* it is the
+second case says so:
+
+```python
+FetchBatch(events=[], unchanged=True)
+```
+
+That distinction is what stops a healthy static source being counted as a
+failure in §10.
+
+---
+
+<a href="#ch-5">▲ top of §5</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-5">↑ back to §5 in the diagram</a>
 
 </details>
