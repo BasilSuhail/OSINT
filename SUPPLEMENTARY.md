@@ -45,7 +45,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §6  INLINE ENRICHMENT                                                  │
+   │ <a id="map-6" href="#ch-6">§6  INLINE ENRICHMENT</a>                                                  │
    │    headlines get translated, placed on a map, read for tone            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -904,5 +904,97 @@ Two things are always true on failure:
 ---
 
 <a href="#ch-5">▲ top of §5</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-5">↑ back to §5 in the diagram</a>
+
+</details>
+
+<details id="ch-6">
+<summary><b>§6 &nbsp; Inline enrichment</b> &nbsp;—&nbsp; news headlines only, and the order is the point</summary>
+<br>
+
+**`app/sources/rss_news_fetcher.py` → `entry_to_event()`**
+
+## What it is
+
+A headline arrives as a line of text and nothing else. No country, no
+coordinates, no idea how bad it is. Five steps add that, **while the row is
+still being built** — before it reaches the database.
+
+Only news rows go through this. The other 14 sources already publish structured
+fields.
+
+```
+   "Blast kills 12 in Karachi market"
+        │
+        ├─ 1. translate      → English, if it was not already
+        ├─ 2. severity guess → 0-1, from keywords
+        ├─ 3. locate         → country + lat/lon, or nothing
+        ├─ 4. sentiment      → -1 to +1
+        └─ 5. names          → people, places, organisations
+        │
+        ▼
+   one Event row, ready for §7
+```
+
+## The five steps
+
+| # | Step | Produces | Method |
+| ---: | --- | --- | --- |
+| 1 | **Translate** | English title; original kept | local model, only if the feed declares another language |
+| 2 | **Severity** | `0.0`–`1.0` + a written reason | keyword rules — *provisional*, upgraded later by §21 |
+| 3 | **Locate** | `country`, `lat`, `lon` | scored: country names and demonyms → regions → city gazetteer → the outlet's own desk |
+| 4 | **Sentiment** | `-1` to `+1` | VADER, over title + summary |
+| 5 | **Names** | people, places, organisations | spaCy; returns nothing if the model is not installed |
+
+## Why translate first
+
+This is the one ordering that is load-bearing, and it was learned the hard way.
+
+Steps 2, 3 and 5 all read **English words**. The severity rules match English
+keywords. The locator matches English country names and demonyms. The story
+tokeniser in §17 splits English text.
+
+Run them on an Arabic headline and every one of them finds nothing:
+
+```
+   Arabic desk, before translation was moved first:
+     0 of 25 rows resolved to a country
+     every row scored the same constant severity
+```
+
+A feed can therefore look perfectly healthy — rows arriving, no errors — while
+contributing **nothing** to any measurement. Translation goes first so the four
+steps after it have English to work with.
+
+## Two refusals worth noting
+
+**A story about nowhere gets no country.** The locator scores candidates; a
+headline naming several countries and being about none of them resolves to
+`None` rather than picking the highest score. An unknown location is recorded
+as unknown.
+
+**The severity here is provisional.** Keyword rules are a floor, not an answer —
+they exist so a row is never unscored. §21 replaces the value with a model
+grade, and §27 is where a person checks whether that grade is any good.
+
+## What gets written down
+
+Every enrichment records **which method produced it**, so a value can be traced
+back to the version of the thing that made it:
+
+```python
+"enrichment_meta": {
+    "sentiment_model": SENTIMENT_METHOD_VERSION,
+    "ner_model":       NER_METHOD_VERSION if ner_available() else "none",
+    "geo_model":       GEO_METHOD_VERSION,
+}
+```
+
+`"none"` is stored honestly when a model is missing, rather than the field being
+quietly absent — so a row enriched by nothing is distinguishable from a row
+nothing was found in.
+
+---
+
+<a href="#ch-6">▲ top of §6</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-6">↑ back to §6 in the diagram</a>
 
 </details>
