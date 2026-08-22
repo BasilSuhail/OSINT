@@ -564,13 +564,21 @@ the next.
 
 ### Why that number and not another
 
-Work piles up the moment a job takes longer than the gap between jobs:
+Work piles up the moment a job takes longer than the 2.6-minute gap between
+arrivals. The middle two columns are where the algebra above comes from:
 
-| Job takes | Gap between arrivals | Per job you… | After 100 jobs |
-| --- | --- | --- | --- |
-| 1.0 min | 2.6 min | finish early, idle 1.6 min | still empty |
-| 2.6 min | 2.6 min | exactly break even | still empty, zero slack |
-| 4.0 min | 2.6 min | **fall 1.4 min behind** | **140 min behind** |
+| Job takes<br>**T** | so it finishes<br>**1/T** per min | against **λ = 0.39**<br>arriving per min | Per job you… | After 100 jobs |
+| --- | --- | --- | --- | --- |
+| 1.0 min | 1.00 | 1.00 **>** 0.39 ✓ | finish early, idle 1.6 min | still empty |
+| 2.6 min | 0.385 | 0.385 **≈** 0.39 | exactly break even | still empty, zero slack |
+| 4.0 min | 0.25 | 0.25 **<** 0.39 ✗ | **fall 1.4 min behind** | **140 min behind** |
+
+Read the second column downward: **as T gets bigger, 1/T gets smaller.** Time
+per job and jobs per minute move in opposite directions, and that is the whole
+reason `0.39 < 1/T` turns into `T < 1/0.39` with the sign the other way round.
+
+Both forms say the same thing. Row three fails either test — 0.25 is not above
+0.39, and 4.0 is not below 2.6.
 
 The last row never recovers. Not slow — **divergent**: every job adds more debt
 and, with one worker, there is no idle time to catch up in.
