@@ -1,16 +1,74 @@
 # Supplementary material
 
-The whole system drawn once, then one chapter per stage of the drawing.
+Two diagrams, then one chapter per stage.
 
-Read the diagram downward. Every stage carries a § number. A stage whose
-chapter is written is a link — click it and the chapter opens below. The arrow
-at the foot of each chapter brings you back to the same box. Stages that are
-still plain text do not have a chapter yet.
+**The argument** is below, open. What is measured, how it becomes a score, what
+the score was tested against, and what the test returned. Every number in it is
+regenerable from the files in `results/`.
 
-Counts in the diagram are read from the code on this branch, not from the
-design documents. Where the two disagree, the code is right.
+**The machine** is folded underneath — all thirty stages end to end, from the
+clock that decides when to ask a source to the console that draws the result.
+Stages whose chapter is written are links; the rest are plain text.
+
+Counts are read from the code on this branch, not from the design documents.
+Where the two disagree, the code is right.
 
 ---
+
+<pre>
+   THE ARGUMENT ─ what is claimed, and what was allowed to falsify it
+
+   UNIT      one country × one month          31,637 country-months
+             200 countries, 1996-12 → 2026-06                          §25
+
+   X ── four domain signals per country-month                          §15
+        market · geopolitical (log counts, not severity) · hazard · wildfire
+
+            z_d = (x_d − μ_d) / σ_d      μ, σ from that country's OWN
+                                          previous 12 months, min 3 obs
+
+            S   = σ( Σ_d w_d · z_d )     w_d = 0.25, renormalised over
+                                          the domains actually present
+
+        an absent domain is DROPPED, never entered as z = 0
+        ("exactly average" is a different claim from "we do not know")
+
+   y ── ground truth, in a table never joined to X                     §24
+        ACLED → P1 political violence · P2 protest/riot · P3 fatality
+        escalation vs prior month.     7,088 positive country-months
+
+        ╎ separation is the point: joined, the test grades a signal
+        ╎ against itself
+
+   TEST ── pre-registered. seed 20260703. held-out opened 2026-08-10   §26
+           train 2015-01 → 2022-12      held-out 2023-01 → 2024-12
+           n = 4,593, positive rate 0.2151, strict common support
+
+           BAR, declared before looking:
+           S must beat EVERY single-domain baseline on BOTH AUROC and AUPR
+
+   RESULT ── held-out, k = 1                        AUROC     AUPR
+             B2  base rate (country's own history)  0.9495   0.8413
+             B3  geopolitical only                  0.5060   0.2249
+             B4  market only                        0.4950   0.2533
+             B5  hazard only                        0.4778   0.2411
+          ▸  B6  COMPOSITE                          0.4983   0.2351
+
+             VERDICT (computed by code, not read off):
+             FAIL — B6 beats none of B3, B4, B5
+
+   SECOND TEST ── pooled AUROC is the wrong metric here: ~60% of countries
+   are label-constants, so it rewards telling a calm country from a war.
+   Within-country concordance instead, bootstrapped over COUNTRIES because
+   the country is the unit of independence.
+
+             k=6   0.531   95% CI [0.474, 0.582]
+             bar:  0.55 with CI excluding 0.5   →   NEITHER MET
+</pre>
+
+<details>
+<summary><b>The machine that produces the above</b> &nbsp;—&nbsp; all thirty stages, end to end</summary>
+<br>
 
 <pre>
 ════════════════════════════════ PART I — INGEST ════════════════════════════════
@@ -470,6 +528,9 @@ design documents. Where the two disagree, the code is right.
      findings describe the table as it stands rather than counting rows
      about to be deleted
    ─ every result file names the command that regenerates it</pre>
+
+</details>
+
 
 ---
 
