@@ -445,6 +445,10 @@ Recorded as a finding. Not changed.
 
 </details>
 
+---
+
+<a href="#ch-1">▲ collapse §1</a> &nbsp;·&nbsp; <a href="#map-1">↑ back to §1 in the diagram</a>
+
 </details>
 
 <details id="ch-2">
@@ -615,6 +619,6 @@ Three jobs, not one:
 
 ---
 
-<a href="#map-2">↑ back to §2 in the diagram</a>
+<a href="#ch-2">▲ collapse §2</a> &nbsp;·&nbsp; <a href="#map-2">↑ back to §2 in the diagram</a>
 
 </details>
