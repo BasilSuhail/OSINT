@@ -570,28 +570,11 @@ nothing has to be taken on trust:
 | 2.6 min | 1 ÷ 2.6 = **0.385** | 0.39 | 0.39 ÷ 0.385 = **1.01** | exactly on the line | empty, but no slack at all |
 | 4.0 min | 1 ÷ 4.0 = **0.25** | 0.39 | 0.39 ÷ 0.25 = **1.56** | **arriving faster than they leave** | **140 minutes behind** |
 
-That fourth column is the whole test, and it is worth being clear about what is
-being divided. It is **not** anything over 1. It is *how fast work arrives*
-divided by *how fast this worker actually clears it* — and the bottom half of
-that division changes with the job. A worker taking 4 minutes clears 0.25 a
-minute, so the sum is 0.39 ÷ 0.25 = **1.56**, well above 1.
-
-Below 1, the queue empties. Above 1, it never does. The exact tipping point is
-a job taking 2.56 minutes; above that the column goes over 1 and stays there.
-
-**Under 2.6 minutes** the worker finishes early, waits, and the queue never
-builds. The spare time is what absorbs a job that runs long.
-
-**Over 2.6 minutes** every job leaves a little more work behind than it cleared
-— and there is no spare time left to absorb it. The backlog does not level off;
-it grows for as long as the system keeps running, and every score comes out
-later than the one before it.
-
-That is the difference between a queue that is *slow* and one that is *losing*.
-The third row is losing.
-
-Nothing in this project measures how long a job actually takes, so which side of
-2.6 minutes it sits on is unknown. Recorded as a gap.
+That last column has to stay **below 1**. Below 1 the worker clears each job
+before the next one arrives and is free to take it. Above 1 it is still busy
+when the next one lands, so work stacks up and never unstacks. Nothing here
+measures how long a job takes, so which side of the line this sits on is
+unknown — recorded as a gap.
 
 <details>
 <summary><b>The failure this design already had</b></summary>
