@@ -925,25 +925,74 @@ fields.
 ```
    "Blast kills 12 in Karachi market"
         │
-        ├─ 1. translate      → English, if it was not already
-        ├─ 2. severity guess → 0-1, from keywords
-        ├─ 3. locate         → country + lat/lon, or nothing
-        ├─ 4. sentiment      → -1 to +1
-        └─ 5. names          → people, places, organisations
+        ├─ 1. translate   → English title, original kept in the payload
+        │                   local model, only if the feed declares another language
+        │
+        ├─ 2. severity    → 0.0 - 1.0 plus a written reason
+        │                   keyword rules — provisional, replaced later by §21
+        │
+        ├─ 3. locate      → country + lat/lon, or nothing at all
+        │                   scored: country names and demonyms → regions →
+        │                   city gazetteer → the outlet's own desk
+        │
+        ├─ 4. sentiment   → -1.0 to +1.0
+        │                   VADER, over title + summary
+        │
+        └─ 5. names       → people, places, organisations
+                            spaCy; empty list if the model is not installed
         │
         ▼
    one Event row, ready for §7
 ```
 
-## The five steps
+## What the severity keywords are
 
-| # | Step | Produces | Method |
-| ---: | --- | --- | --- |
-| 1 | **Translate** | English title; original kept | local model, only if the feed declares another language |
-| 2 | **Severity** | `0.0`–`1.0` + a written reason | keyword rules — *provisional*, upgraded later by §21 |
-| 3 | **Locate** | `country`, `lat`, `lon` | scored: country names and demonyms → regions → city gazetteer → the outlet's own desk |
-| 4 | **Sentiment** | `-1` to `+1` | VADER, over title + summary |
-| 5 | **Names** | people, places, organisations | spaCy; returns nothing if the model is not installed |
+Step 2 is a word list, not a model. Three groups, checked hardest-first, each
+with a floor the score cannot fall below:
+
+| Group | Example words | Floor |
+| --- | --- | ---: |
+| **lethal** | killed · dead · died · fatal · fatalities · massacre · murdered · assassinated · executed · beheaded | **0.60** |
+| **mass casualty** | the lethal words *plus* 10 or more deaths, or a massacre | **0.80** |
+| **violent** | attack · explosion · blast · bomb · shooting · strike | below 0.60 |
+
+Those floors land the row in one of five bands, which tile `[0, 1]` with no
+gaps — every score belongs to exactly one:
+
+| Band | Range | Means |
+| --- | --- | --- |
+| `routine` | 0.00 – 0.20 | policy, business, sport — nothing happened to anyone |
+| `tension` | 0.20 – 0.40 | protest, strike, diplomatic rupture — no violence |
+| `violence` | 0.40 – 0.60 | violence without confirmed death, or mass displacement |
+| `grave` | 0.60 – 0.80 | confirmed deaths (1–9), or serious armed attack |
+| `mass_casualty` | 0.80 – 1.00 | 10+ dead, massacre, mass-fatality disaster |
+
+The example headline hits `kills` → lethal → floor `0.60`, and `12` deaths →
+mass casualty → floor `0.80`. It lands in `mass_casualty`.
+
+**Why a word list at all**, given §21 replaces it with a model: so no row is
+ever unscored. A model needs a running local LLM and a spare few seconds; the
+word list needs neither, and gives every row a defensible floor the moment it
+arrives.
+
+## What the sentiment number is
+
+Step 4 is **VADER** — also a word list, scored and combined into one number
+between `-1` and `+1` called the *compound* score.
+
+| Compound | Label | Reading |
+| --- | --- | --- |
+| `≥ +0.05` | positive | |
+| `-0.05` to `+0.05` | neutral | most factual headlines land here |
+| `≤ -0.05` | negative | |
+
+Two cautions, because this number is easy to over-read:
+
+- It measures the **tone of the words**, not whether the event was good or bad.
+  "Aid reaches survivors" scores positive; the event behind it is a disaster.
+- The cut-offs are **VADER's own published defaults**, not tuned on this data,
+  and the label exists so the console can colour a chip. Nothing scored is
+  decided by it.
 
 ## Why translate first
 
