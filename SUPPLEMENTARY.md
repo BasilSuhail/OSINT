@@ -60,7 +60,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §9  UPSERT AND DEDUP                                                   │
+   │ <a id="map-9" href="#ch-9">§9  UPSERT AND DEDUP</a>                                                   │
    │    one row per source event — re-fetching updates, never doubles       │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1154,5 +1154,129 @@ and the justification goes with it.
 ---
 
 <a href="#ch-8">▲ top of §8</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-8">↑ back to §8 in the diagram</a>
+
+</details>
+
+<details id="ch-9">
+<summary><b>§9 &nbsp; Upsert and dedup</b> &nbsp;—&nbsp; one row per real event, however many times it arrives</summary>
+<br>
+
+**`app/persistence.py`**
+
+## The two words
+
+| Word | Short for | Means |
+| --- | --- | --- |
+| **upsert** | *update* + *insert* | if this row is new, insert it; if it already exists, update the one that is there |
+| **dedup** | *deduplicate* | make sure the same real-world event never becomes two rows |
+
+## Why this stage exists at all
+
+The same event arrives **again and again**. That is normal, not a bug:
+
+- a news feed keeps a story on its front page for hours; every hourly fetch sees it
+- a hazard feed re-publishes every *active* cyclone on every 15-minute fetch
+- a fetch is retried after a timeout and pulls the same batch twice
+
+Without this stage, one cyclone becomes **96 rows a day**.
+
+**Why that is fatal, in data terms:** §15 scores a country by counting events
+per month. A duplicated event is a **fabricated observation** — the count goes
+up, the z-score goes up, the score goes up, and nothing in the data reveals it.
+Deduplication is not tidiness. It is the difference between counting events and
+counting fetches.
+
+## How a duplicate is recognised
+
+Every row carries the source's **own** identifier for the thing:
+
+```python
+source            = "gdacs"
+source_event_id   = "CY-1001234"     # GDACS's ID, not one we invented
+```
+
+The pair `(source, source_event_id)` is declared unique in the database. Two
+rows with the same pair are, by definition, the same event.
+
+Using **the source's own ID** matters. Anything we invented — a hash of the
+title, say — would break the moment the source edited a typo in that title, and
+the same event would become two.
+
+## What happens on a repeat
+
+```sql
+INSERT ... ON CONFLICT (source, source_event_id) DO UPDATE
+```
+
+Plain English: *try to insert; if that pair already exists, update the existing
+row instead.* The database does this in one operation, so there is no gap where
+a second process could insert a duplicate.
+
+But **not every column is updated**, and that split is the substance of the
+stage:
+
+| Column group | On a repeat | Why |
+| --- | --- | --- |
+| **identity** — `source`, `source_event_id`, `category` | **never touched** | these define which row it is; changing them would make it a different event |
+| **live values** — `occurred_at`, `fetched_at`, `severity`, `confidence`, `keywords` | **replaced** | an ongoing cyclone must not freeze at its first-seen state and drop out of the live window |
+| **location** — `country`, `lat`, `lon` | **depends on the source** | see below |
+| **enrichment inside `payload`** | **protected** | see below |
+
+## Location: who owns the answer
+
+News rows and everything else are treated differently, and both rules are
+defensible:
+
+- **News (`rss-*`)**: the incoming value **replaces** what is stored, even if it
+  is empty. The news locator (§6) has already read the latest text and reached a
+  verdict — an empty answer means *the text no longer supports that country*,
+  which is a real withdrawal, not a missing field.
+- **Everything else**: an empty incoming value **keeps** what is stored. These
+  sources can gain a location *after* ingestion, from §13. An empty field here
+  means "not supplied", not "not there".
+
+## The bug this stage already had
+
+Some values are written **after** a row lands — real hazard outlines, resolved
+place names, sentiment, extracted entities. The original fetcher does not know
+those exist and will never send them again.
+
+A naive refresh overwrites the whole payload, and they are gone.
+
+That is exactly what happened. A hazard feed re-published every active event
+every 15 minutes, and **each refresh deleted the real map geometry** that had
+been fetched separately. It hid for weeks, because nothing errored — the map
+just quietly showed circles instead of real shapes.
+
+The fix is an explicit list of protected keys:
+
+```python
+ENRICHMENT_PAYLOAD_KEYS = (
+    "footprint_geojson", "place_name", "sentiment", "entities", ...
+)
+```
+
+The incoming payload is **merged over** the stored one rather than replacing it,
+and these keys survive. A test walks this list, so a refresh that starts
+destroying enrichment fails the suite instead of silently emptying the map.
+
+## Duplicates inside one batch
+
+A single fetch can contain the same ID twice. The database cannot update the
+same key twice in one statement, so duplicates are collapsed **before** the
+write — keeping the newest by `fetched_at`, then `occurred_at`.
+
+Rows with **no** ID are passed through untouched: they cannot collide with
+anything, and dropping them would lose real events.
+
+## Scale
+
+Written **1,000 rows per statement** — 12 columns × 1,000 = 12,000 bound
+parameters, well under the database's 65,535 limit, with headroom for more
+columns later.
+
+---
+
+<a href="#ch-9">▲ top of §9</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-9">↑ back to §9 in the diagram</a>
 
 </details>
