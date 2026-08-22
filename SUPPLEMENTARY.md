@@ -30,7 +30,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §3  THE SOURCES                                                        │
+   │ <a id="map-3" href="#ch-3">§3  THE SOURCES</a>                                                        │
    │    67 places data comes from — 14 public APIs, 53 news sites           │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -607,5 +607,83 @@ Nobody ever started a worker with `-Q analytics`.
 ---
 
 <a href="#ch-2">▲ top of §2</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-2">↑ back to §2 in the diagram</a>
+
+</details>
+
+<details id="ch-3">
+<summary><b>§3 &nbsp; The sources</b> &nbsp;—&nbsp; the 67 places data comes from, and what each one feeds</summary>
+<br>
+
+**`app/fetcher_registry.py` · `app/sources/rss_feeds.json`**
+
+## What it is
+
+A **source** is one website or one public API this project downloads from.
+There are 67, each with one row in the timetable from §1. Nothing else is
+collected — if it is not in this table, the project has never seen it.
+
+## All 67
+
+The last column is the one that matters: **which score, if any, this source
+ends up inside.**
+
+| Source | What it gives | Fetched | Feeds |
+| --- | --- | ---: | --- |
+| `yfinance` | share prices, indices, currencies | 288/day | composite → market |
+| `fred` | economic series — inflation, unemployment, yields | 1/day | composite → market |
+| `gdelt` | machine-coded world events | 96/day | composite → geopolitical · CII |
+| `acled` | recorded conflict events | 24/day | composite → geopolitical · **and the labels in §24** |
+| `usgs-quake` | earthquakes | 96/day | composite → hazard · CII |
+| `gdacs` | disaster alerts (cyclone, flood, drought) | 96/day | composite → hazard · CII |
+| `eonet` | ongoing natural events | 48/day | composite → hazard · CII |
+| `emdat` | historical disaster archive | 1/day | composite → hazard |
+| `nasa-firms` | satellite fire detections | 24/day | composite → wildfire |
+| `uk-police` | recorded crimes, 6 UK cities | 1/day | CII only |
+| 53 news sites | headlines | 24/day each | CII · stories §17 · disagreement §19 · severity §21 |
+| `opensky-adsb` | aircraft positions | 24/day | **nothing scored** — map only |
+| `abuse-ch-urlhaus` | malicious URLs | 96/day | **nothing scored** — map only |
+| `abuse-ch-feodo` | botnet servers | 96/day | **nothing scored** — map only |
+| `polymarket` | prediction-market odds | 48/day | **nothing scored** — map only |
+
+Two things fall out of the last column.
+
+**Four sources feed no score at all.** Aircraft, two cyber feeds and prediction
+markets are collected, stored and drawn on the map, and no number in this
+project depends on them.
+
+**News does not enter the composite index.** News rows are stored with category
+`NEWS`, and the composite only reads `market`, `geopolitical` and `hazard`. So
+the 53 news sites — half of all traffic in §2's fast tray — feed the story and
+disagreement work, and the CII, but **not the score that gets tested in §26.**
+
+## What the 53 news sites are
+
+| | |
+| --- | ---: |
+| Declared in `rss_feeds.json` | 55 |
+| Switched on | **53** (2 parked as dead URLs) |
+| Publishing in English | **54 of 55** |
+| Publishing in any other language | **1** (Arabic) |
+| Countries the outlets are based in | 28 |
+| Based in the UK or US | **18 of 55** |
+| Distinct owners | 49 |
+
+By type: 24 regional · 16 mainstream · 8 state-owned · 7 independent.
+
+## What that costs a claim
+
+The news sample is **almost entirely English-language**, and a third of it is
+UK- or US-based. Every narrative measurement in this project is computed over
+that sample.
+
+So when §19 reports how differently countries word a story, it is in practice
+reporting how differently **mostly Anglophone outlets** word it. That is a
+narrower claim than "how the world reports this", and the difference is not
+recoverable by weighting — a viewpoint that was never collected cannot be
+re-weighted into existence.
+
+---
+
+<a href="#ch-3">▲ top of §3</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-3">↑ back to §3 in the diagram</a>
 
 </details>
