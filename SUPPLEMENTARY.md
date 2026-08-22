@@ -1082,10 +1082,9 @@ Worked on a real case: **four articles from one feed's front page**, read at
 | **How far to move** | biggest lead is 139 min → round up to whole hours → **3 hours** | not a distance — every future row becomes `14:06` |
 | **Which rows change** | **all** of them, even ones already in the past | **only** the ones dated ahead |
 | **What the feed said → what gets stored** | `16:25` → `13:25`<br>`16:17` → `13:17`<br>`15:43` → `12:43`<br>`13:57` → `10:57` | `16:25` → `14:06`<br>`16:17` → `14:06`<br>`15:43` → `14:06`<br>`13:57` → `13:57` |
-| **Minutes between one article and the next — before** | `8` · `34` · `106` | `8` · `34` · `106` |
-| **…and after** | `8` · `34` · `106` — **identical**, because subtracting the same number from every time leaves the differences alone | `0` · `0` · `9` — three articles now share one timestamp, and the last gap collapses from 106 minutes to 9 |
-| **PRO** | the feed's publishing rhythm is preserved exactly; only the label was wrong | always works, needs nothing proved |
-| **CON** | assumes the whole batch shares one offset — a feed mixing timezones would have correct rows moved wrongly | the spacing is destroyed; three separate articles become simultaneous |
+| **What ends up stored** | the **real publication time** — only the label was wrong | the time **we happened to look**; `occurred_at` becomes `fetched_at` |
+| **PRO** | the stored time is true, so everything computed from it is too | always works, nothing has to be proved |
+| **CON** | assumes the whole batch shares one offset — a feed mixing timezones would have correct rows moved wrongly | the true time is lost. A row really published `31 Jan 23:40` and clamped to `1 Feb 00:10` is counted in the wrong **month** by §15, and a row stamped *now* never looks old enough for §8 to reject |
 | **What is done about the CON** | the thresholds must pass first, and the original timestamp is stored beside the corrected one, so any wrong shift is reversible | same — the original is kept, and clamps are counted separately from shifts, so a feed that is *always* clamped is identifiable as genuinely broken rather than merely mislabelled |
 
 Nothing automatic acts on a feed that is always clamped. It is recorded so it
