@@ -554,11 +554,20 @@ one arrives?**
 556 jobs spread across the 1,440 minutes in a day means one lands roughly
 **every 2.6 minutes**. That is the worker's window.
 
-| If a job takes | it clears this many per minute | jobs arrive at | what that means | after 100 jobs |
-| --- | ---: | ---: | --- | --- |
-| 1.0 min | 1.00 | 0.39 | clearing them faster than they arrive | queue still empty |
-| 2.6 min | 0.385 | 0.39 | exactly keeping up | empty, but no slack at all |
-| 4.0 min | 0.25 | 0.39 | **arriving faster than they leave** | **140 minutes behind** |
+| If a job takes | it clears this many per minute | jobs arrive at | **arrive ÷ clear** | what that means | after 100 jobs |
+| --- | ---: | ---: | ---: | --- | --- |
+| 1.0 min | 1.00 | 0.39 | 0.39 ÷ 1.00 = **0.39** | clearing faster than they arrive | queue still empty |
+| 2.6 min | 0.385 | 0.39 | 0.39 ÷ 0.385 = **1.01** | exactly on the line | empty, but no slack at all |
+| 4.0 min | 0.25 | 0.39 | 0.39 ÷ 0.25 = **1.56** | **arriving faster than they leave** | **140 minutes behind** |
+
+That fourth column is the whole test, and it is worth being clear about what is
+being divided. It is **not** anything over 1. It is *how fast work arrives*
+divided by *how fast this worker actually clears it* — and the bottom half of
+that division changes with the job. A worker taking 4 minutes clears 0.25 a
+minute, so the sum is 0.39 ÷ 0.25 = **1.56**, well above 1.
+
+Below 1, the queue empties. Above 1, it never does. The exact tipping point is
+a job taking 2.56 minutes; above that the column goes over 1 and stays there.
 
 **Under 2.6 minutes** the worker finishes early, waits, and the queue never
 builds. The spare time is what absorbs a job that runs long.
