@@ -50,7 +50,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §7  PUBLICATION-TIME REPAIR                                            │
+   │ <a id="map-7" href="#ch-7">§7  PUBLICATION-TIME REPAIR</a>                                            │
    │    nothing may claim it happened in the future                         │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1045,5 +1045,106 @@ nothing was found in.
 ---
 
 <a href="#ch-6">▲ top of §6</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-6">↑ back to §6 in the diagram</a>
+
+</details>
+
+<details id="ch-7">
+<summary><b>§7 &nbsp; Publication-time repair</b> &nbsp;—&nbsp; nothing is allowed to claim it happened in the future</summary>
+<br>
+
+**`app/ingest/publication_time.py`**
+
+## What it is
+
+Some feeds stamp their articles with a time that is **ahead of the clock**. A
+row dated in the future sorts above real news, and it breaks every measurement
+that compares a row against *now* — how fresh the data is, how old the latest
+information is, what order the map shows things in.
+
+This stage moves those rows back to a time the system can vouch for.
+
+## The real case that produced it
+
+One feed's front page, measured while writing this:
+
+```
+   now (UTC):  2026-08-08 14:06
+
+   'Sat, 08 Aug 2026 16:25 GMT'   ahead 139 min
+   'Sat, 08 Aug 2026 16:17 GMT'   ahead 131 min
+   'Sat, 08 Aug 2026 15:43 GMT'   ahead  97 min
+   'Sat, 08 Aug 2026 13:57 GMT'   behind   8 min
+```
+
+Eight of twelve items ahead — and **none beyond 180 minutes**.
+
+That ceiling is the whole finding. **A broken clock scatters. A mislabelled
+timezone does not.** This feed stamps Israel local time and writes `GMT` on it,
+so every row is exactly three hours out.
+
+## Two repairs, and how it picks
+
+```
+   rows arrive
+        │
+        ▼
+   any row more than 2 minutes ahead?
+        │
+        ├── no ──▶ leave everything alone
+        │
+        └── yes ─▶ is this a whole-hour offset the batch can prove?
+                        │
+                        ├── yes ──▶ SHIFT   subtract N hours from every row
+                        │                   gaps between rows are preserved
+                        │
+                        └── no  ──▶ CLAMP   set the offending rows to now
+                                            gaps are lost, but nothing lies
+```
+
+**Shift** is the good outcome. Subtracting a constant keeps the spacing between
+articles intact, so the feed's real publishing rhythm survives.
+
+**Clamp** is the fallback. It destroys the spacing, so it is only used when no
+offset can be proved.
+
+## What "proved" means
+
+An offset is only believed when the batch itself demonstrates it:
+
+| Test | Threshold | Why |
+| --- | ---: | --- |
+| Enough rows ahead | **≥ 3** | one stray row is a row, not a pattern |
+| A big enough share | **≥ 25%** | one in a hundred is noise |
+| Offset is a whole number of hours | — | timezones are whole hours; drift is not |
+| Offset is believable | **≤ 14 hours** | beyond that the timestamps are wrong in a way this cannot diagnose |
+| Ignore tiny disagreement | **± 2 min** | every clock on earth differs by seconds |
+
+Fail any of these and it clamps instead. The rule throughout is: **prove it
+from the batch, or do the blunt safe thing.**
+
+## Why it runs before §8
+
+§8 throws away rows that are too old. If it ran first, a feed labelled three
+hours ahead would have its whole batch judged on a timestamp that is simply
+wrong — real news discarded to fix a clock.
+
+Repair the clock, then judge the freshness.
+
+## What is recorded
+
+Every adjusted row keeps its original timestamp and the reason it moved:
+
+```python
+_with_time(event, raw - timedelta(hours=offset), reason="feed-offset", ...)
+_with_time(event, now,                           reason="future-clamped", ...)
+```
+
+So a row can always be traced back to what the feed actually said, and the two
+kinds of repair can be counted separately — a feed that is always shifted is
+mislabelled, a feed that is always clamped is broken.
+
+---
+
+<a href="#ch-7">▲ top of §7</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-7">↑ back to §7 in the diagram</a>
 
 </details>
