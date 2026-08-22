@@ -487,49 +487,31 @@ in the drawing above.
 ## What it is
 
 **A custom program.** Not a file, not a cron job. It runs non-stop in its own
-container and does one thing: watch the clock, and when a job is due, publish
-that job's *name* to Redis for a worker to pick up.
+container, watches the clock, and when a job is due it publishes that job's
+*name* to Redis for a worker to run. It does no work itself — no database, no
+downloads, no scoring.
 
-It never does the work itself. It never touches the database, downloads
-nothing, computes nothing.
-
-The library is **Celery**, which ships three parts — all three appear in the
-diagram:
-
-| Celery calls it | What it does | Where |
-| --- | --- | --- |
-| **beat** | the scheduler | §1, this chapter |
-| **broker** | the mailbox between them | §2, Redis |
-| **worker** | does the actual jobs | §3 onward |
-
-`beat` means scheduler. This chapter says "scheduler" except where the code
-itself uses the word.
+The library is **Celery**. Its three parts are all in the diagram: **beat** is
+this scheduler, **broker** is Redis (§2), **worker** does the jobs (§3 onward).
+`beat` means scheduler.
 
 ## The list it reads
 
-One list in `app/tasks.py`, line 714, called `beat_schedule`. It is the entire
-schedule — there is nowhere else a job's timing is set. Each entry is four
-lines:
+`beat_schedule`, in `app/tasks.py`. That list is the whole schedule — nowhere
+else sets a job's timing. One entry looks like this:
 
 ```python
-app.conf.beat_schedule = {
-
-    "yfinance-5min": {                        # a name, so logs are readable
-        "task": "app.tasks.run_fetcher",      # which function
-        "args": ["yfinance"],                 # what to give it
-        "schedule": crontab(minute="*/5"),    # when
-    },
-    ...
-}
+"yfinance-5min": {                        # a name, for logs
+    "task": "app.tasks.run_fetcher",      # which function
+    "args": ["yfinance"],                 # what to give it
+    "schedule": crontab(minute="*/5"),    # when
+},
 ```
 
-Read aloud: **every 5 minutes, run the thing called `run_fetcher`, and hand it
-the word `yfinance`.**
+> **Every 5 minutes, run `run_fetcher`, and hand it the word `yfinance`.**
 
-One entry is a **row**. 84 of them, and a row is the only way anything gets
-scheduled — no row, never runs.
-
-Nobody typed 84 rows:
+One entry is a **row**. A row is the only way anything gets scheduled — no row,
+never runs. Nobody typed all 84:
 
 ```
       31   typed by hand      14 sources + 17 analysis and housekeeping jobs
@@ -538,34 +520,33 @@ Nobody typed 84 rows:
       84   rows
 ```
 
-67 of the 84 are sources, one row each. All 67 call the **same** function with
-a different word, which is why adding a source needs no new code — add a news
-site to that JSON file and there is one more row on the next restart.
-
-A **source** is one place data comes from: **core** (14 public APIs giving
-numbers and coordinates — share prices, quake magnitudes, satellite fire
-positions) or **RSS** (53 news sites; RSS is the machine-readable list of
-latest articles a news site publishes).
+67 of those rows are sources. A **source** is one place data comes from: 14
+**core** public APIs (share prices, quake magnitudes, satellite fire positions)
+and 53 **RSS** news sites, RSS being the machine-readable list of latest
+articles a site publishes. All 67 call the *same* function with a different
+word, so adding a source needs no new code — add it to the JSON file and there
+is one more row on the next restart.
 
 ## How often each row runs
-
-Every one of the 84 rows runs at one of eight speeds. Names are given in
-full — most of these are acronyms of public data projects.
-
-| Speed | Rows | What runs at that speed |
-| --- | ---: | --- |
-| every 5 min | 1 | Yahoo Finance share prices, which move continuously |
-| every 15 min | 2 | the local language model writing a situation summary; the watchdog that notices a source has gone quiet |
-| every 20 min | 1 | the local language model summarising newly grouped stories |
-| every 15 min (4×/hr) | 6 | USGS earthquakes · GDACS, the UN/EU **Global Disaster Alert and Coordination System** · GDELT, the **Global Database of Events, Language and Tone** · two abuse.ch cyber-threat feeds · fetching real hazard outlines for the map |
-| every 30 min (2×/hr) | 7 | grouping headlines into stories · checking a claimed event against a physical sensor reading · measuring how differently countries word the same story · grading how harmful a headline is · resolving place names · NASA EONET, the **Earth Observatory Natural Event Tracker** · Polymarket prediction-market odds |
-| every 5 min, offset (12×/hr) | 1 | fetching article titles for GDELT rows |
-| hourly | 58 | the 53 RSS news feeds · ACLED, the **Armed Conflict Location & Event Data Project** · NASA FIRMS, the **Fire Information for Resource Management System** (satellite fire detections) · OpenSky aircraft positions · the **composite index** and the **CII (Country Instability Index)**, both scores this project computes itself rather than downloads |
-| daily / weekly | 8 | FRED, **Federal Reserve Economic Data** · EM-DAT, the international disaster database · UK police crime records · the prediction journal · claim extraction · deleting expired rows · the nightly data check · the Monday briefing |
 
 ```
    1 + 2 + 1 + 6 + 7 + 1 + 58 + 8  =  84
 ```
+
+| Speed | Rows | What runs at that speed |
+| --- | ---: | --- |
+| every 5 min | 1 | Yahoo Finance share prices |
+| every 15 min | 2 | the local language model writing a situation summary; the watchdog that notices a source has gone quiet |
+| every 20 min | 1 | the local language model summarising new stories |
+| every 15 min | 6 | USGS earthquakes · GDACS, the UN/EU **Global Disaster Alert and Coordination System** · GDELT, the **Global Database of Events, Language and Tone** · two abuse.ch cyber-threat feeds · hazard outlines for the map |
+| every 30 min | 7 | grouping headlines into stories · checking a claim against a physical sensor reading · measuring how differently countries word a story · grading how harmful a headline is · resolving place names · NASA EONET, the **Earth Observatory Natural Event Tracker** · Polymarket odds |
+| every 5 min | 1 | article titles for GDELT rows |
+| hourly | 58 | the 53 RSS news sites · ACLED, the **Armed Conflict Location & Event Data Project** · NASA FIRMS, the **Fire Information for Resource Management System** · OpenSky aircraft positions · the **composite index** and the **CII (Country Instability Index)**, both computed here rather than downloaded |
+| daily / weekly | 8 | FRED, **Federal Reserve Economic Data** · EM-DAT, the international disaster database · UK police crime records · the prediction journal · claim extraction · deleting expired rows · the nightly data check · the Monday briefing |
+
+<details>
+<summary><b>Why each speed is what it is</b></summary>
+<br>
 
 Cadence is set by how fast the **source** changes, not by how often the data
 would be nice to have. Sampling faster than the source publishes adds no
@@ -576,6 +557,8 @@ information and costs a request. The code states this where it applies:
 # the hour-keyed upsert means extra polls within an hour only refresh the
 # same rows. Polling every 2 min bought nothing but CPU, so: hourly.
 ```
+
+</details>
 
 <details>
 <summary><b>Why the job's name travels as text, not as code</b></summary>
