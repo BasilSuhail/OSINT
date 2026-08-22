@@ -447,7 +447,7 @@ Recorded as a finding. Not changed.
 
 ---
 
-<a href="#ch-1">▲ collapse §1</a> &nbsp;·&nbsp; <a href="#map-1">↑ back to §1 in the diagram</a>
+<a href="#ch-1">▲ top of §1</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-1">↑ back to §1 in the diagram</a>
 
 </details>
 
@@ -606,6 +606,6 @@ Nobody ever started a worker with `-Q analytics`.
 
 ---
 
-<a href="#ch-2">▲ collapse §2</a> &nbsp;·&nbsp; <a href="#map-2">↑ back to §2 in the diagram</a>
+<a href="#ch-2">▲ top of §2</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-2">↑ back to §2 in the diagram</a>
 
 </details>
