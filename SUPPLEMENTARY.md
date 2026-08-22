@@ -511,14 +511,19 @@ else sets a job's timing. One entry looks like this:
 > **Every 5 minutes, run `run_fetcher`, and hand it the word `yfinance`.**
 
 One entry is a **row**. A row is the only way anything gets scheduled — no row,
-never runs. Nobody typed all 84:
+never runs. The 84 rows are not all written out one by one:
 
 ```
-      31   typed by hand      14 sources + 17 analysis and housekeeping jobs
- +    53   written by a loop  one per news site in rss_feeds.json
- ─────────
-      84   rows
+   84 rows
+   ├── 31  written in the code
+   │   ├── 14  data sources
+   │   └── 17  analysis and cleanup jobs
+   └── 53  built from the news-site list
 ```
+
+The 53 news rows are identical apart from the site name, so the code builds
+them from a list of sites in `app/sources/rss_feeds.json` each time it starts.
+The other 31 are all different from each other, so they are written out.
 
 67 of those rows are sources. A **source** is one place data comes from: 14
 **core** public APIs (share prices, quake magnitudes, satellite fire positions)
