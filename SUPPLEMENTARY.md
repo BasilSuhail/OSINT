@@ -541,28 +541,41 @@ stay in the fast tray: `enrich_gdelt_titles` (288/day, fetching article titles)
 and `ingest_watchdog` (96/day, checking whether a source has gone quiet).
 `17 − 2 = 15`.
 
-## Why one at a time, and what it costs
+## The speed limit
+
+One worker means jobs run in single file, so the queue only survives if jobs
+finish faster than they arrive.
 
 ```
-   4 at once     →   peak memory  =  sum of everything running
-   1 at a time   →   peak memory  =  the biggest single job
+   λ  (arrivals)  =  556 jobs ÷ 1440 min  =  0.39 jobs per minute
+   μ  (finishes)  =  1 ÷ (how long one job takes)
+
+   ρ  =  λ / μ   must stay below 1        arrive slower than you finish
+
+        0.39  <  1/T      →      T  <  1/0.39      →      T  <  2.6 min
 ```
 
-One of these jobs measured **655 MB**; the container is capped at **1500 MB**.
-Four will not fit, and a container over its cap is killed, not slowed. Running
-single-file is what turns peak memory from a sum into a maximum.
+2.6 minutes is simply **1 ÷ λ** — the average gap between one job arriving and
+the next.
 
-The price is a speed limit:
+### Why that number and not another
 
-```
-   556 jobs/day ÷ 1440 min  =  one arriving every 2.6 minutes
+Work piles up the moment a job takes longer than the gap between jobs:
 
-   ρ = λ / μ  must stay below 1      λ = arrivals, μ = jobs finished
-```
+| Job takes | Gap between arrivals | Per job you… | After 100 jobs |
+| --- | --- | --- | --- |
+| 1.0 min | 2.6 min | finish early, idle 1.6 min | still empty |
+| 2.6 min | 2.6 min | exactly break even | still empty, zero slack |
+| 4.0 min | 2.6 min | **fall 1.4 min behind** | **140 min behind** |
 
-**The average job must finish inside 2.6 minutes.** Above that the queue never
-catches up and every score arrives later than the last. Nothing here measures
-job duration, so whether that holds is unknown — recorded as a gap.
+The last row never recovers. Not slow — **divergent**: every job adds more debt
+and, with one worker, there is no idle time to catch up in.
+
+ρ < 1 is only the survival condition, not the target. Waiting already grows
+sharply as ρ approaches 1.
+
+Nothing in this project measures how long a job takes, so whether ρ < 1 holds
+is unknown. Recorded as a gap.
 
 <details>
 <summary><b>The failure this design already had</b></summary>
