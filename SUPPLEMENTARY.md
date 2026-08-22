@@ -639,25 +639,11 @@ ends up inside.**
 | `emdat` | historical disaster archive | a local file, `EMDAT_CSV_PATH` | 1/day | composite → hazard |
 | `nasa-firms` | satellite fire detections | `firms.modaps.eosdis.nasa.gov/api/area/csv/` | 24/day | composite → wildfire |
 | `uk-police` | recorded crimes, 6 UK cities | `data.police.uk/api` | 1/day | CII only |
-| 53 news sites | headlines | each site's RSS URL, listed in `rss_feeds.json` | 24/day each | CII · §17 · §19 · §21 |
+| 53 news sites | headlines | each site's RSS URL, one entry per site in `rss_feeds.json`:<br><br>`{`<br>&nbsp;&nbsp;`"source": "rss-bbc-world",`<br>&nbsp;&nbsp;`"url": "https://feeds.bbci.co.uk/news/world/rss.xml",`<br>&nbsp;&nbsp;`"pretty_name": "BBC World",`<br>&nbsp;&nbsp;`"cadence_min": 60,`<br>&nbsp;&nbsp;`"owner": "bbc",`<br>&nbsp;&nbsp;`"country": "GB",`<br>&nbsp;&nbsp;`"class": "mainstream"`<br>`}` | 24/day each | CII · §17 · §19 · §21 |
 | `opensky-adsb` | aircraft positions | `opensky-network.org/api/states/all` | 24/day | **nothing scored** — map only |
 | `abuse-ch-urlhaus` | malicious URLs | `urlhaus.abuse.ch/downloads/csv_recent/` | 96/day | **nothing scored** — map only |
 | `abuse-ch-feodo` | botnet servers | `feodotracker.abuse.ch/downloads/ipblocklist.csv` | 96/day | **nothing scored** — map only |
 | `polymarket` | prediction-market odds | `gamma-api.polymarket.com/markets` | 48/day | **nothing scored** — map only |
-
-One news site, as it is written in `rss_feeds.json`:
-
-```json
-{
-  "source": "rss-bbc-world",
-  "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
-  "pretty_name": "BBC World",
-  "cadence_min": 60,
-  "owner": "bbc",
-  "country": "GB",
-  "class": "mainstream"
-}
-```
 
 Two things fall out of the last column.
 
@@ -672,17 +658,16 @@ disagreement work, and the CII, but **not the score that gets tested in §26.**
 
 ## What the 53 news sites are
 
-| | |
-| --- | ---: |
-| Declared in `rss_feeds.json` | 55 |
-| Switched on | **53** (2 parked as dead URLs) |
-| Publishing in English | **54 of 55** |
-| Publishing in any other language | **1** (Arabic) |
-| Countries the outlets are based in | 28 |
-| Based in the UK or US | **18 of 55** |
-| Distinct owners | 49 |
-
-By type: 24 regional · 16 mainstream · 8 state-owned · 7 independent.
+| Property | Count | What is actually in it |
+| --- | ---: | --- |
+| Declared in `rss_feeds.json` | 55 | every feed the project knows about, on or off |
+| Switched on | **53** | the 2 off are `rss-nhk-world` and `rss-rt-news`, parked as dead URLs |
+| Publishing in English | **54 of 55** | everything except one |
+| Publishing in another language | **1** | `rss-aljazeera-arabic` — Arabic |
+| Countries the outlets sit in | **28** | GB×12 · US×6 · PK×4 · KE×3 · QA, FR, RU, IN, IL, NL ×2 each · then DE, JP, CA, AU, NZ, SG, SA, UA, ZA, EG, UY, MX, BR, KR, HK, ID, VN, TR with one apiece |
+| Based in the UK or US | **18 of 55** | the GB×12 and US×6 above — a third of the sample from two countries |
+| Distinct owners | **49** | 55 feeds, 49 owners: `bbc` and `reach` own 3 each, `aljazeera` and `russian-state` own 2 each, the other 45 own one apiece |
+| By type | **4 groups** | 24 regional (Dawn, Geo, Times of India) · 16 mainstream (BBC, Reuters, Guardian) · 8 state-owned (RT, TASS, Arab News, SABC) · 7 independent (The Intercept, Middle East Eye, Antiwar.com) |
 
 ## What that costs a claim
 
