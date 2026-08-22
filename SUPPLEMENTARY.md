@@ -1141,6 +1141,16 @@ Stricter would be worse. Legitimate news feeds routinely run 10–20 days behind
 and dropping real news leaves no trace — while the stale rows it removes are at
 least visible in the data.
 
+**Worth stating plainly:** the 30 days and the 30 GB ceiling are *settings*
+(`RETENTION_*_DAYS`, `STORAGE_CAP_GB`), not limits the hardware imposes — the
+machine this runs on has several times that free. So the number is a policy
+choice, and this gate inherits it rather than deriving one of its own.
+
+That matters for reading any result built on the live window. Change the
+retention policy and this bound should be revisited with it, because its only
+justification is *"do not store what the cleanup deletes"* — remove the cleanup
+and the justification goes with it.
+
 ---
 
 <a href="#ch-8">▲ top of §8</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-8">↑ back to §8 in the diagram</a>
