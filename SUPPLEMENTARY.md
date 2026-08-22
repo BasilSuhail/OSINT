@@ -547,47 +547,32 @@ and `ingest_watchdog` (96/day, checking whether a source has gone quiet).
 
 ## The speed limit
 
-One worker means jobs run in single file, so the queue only survives if jobs
-finish faster than they arrive.
+One worker means jobs run one after another, never side by side. So the whole
+stage rests on a single question: **can the worker clear a job before the next
+one arrives?**
 
-```
-   λ  (arrivals)  =  556 jobs ÷ 1440 min  =  0.39 jobs per minute
-   μ  (finishes)  =  1 ÷ (how long one job takes)
+556 jobs spread across the 1,440 minutes in a day means one lands roughly
+**every 2.6 minutes**. That is the worker's window.
 
-   ρ  =  λ / μ   must stay below 1        arrive slower than you finish
+| If a job takes | it clears this many per minute | jobs arrive at | what that means | after 100 jobs |
+| --- | ---: | ---: | --- | --- |
+| 1.0 min | 1.00 | 0.39 | clearing them faster than they arrive | queue still empty |
+| 2.6 min | 0.385 | 0.39 | exactly keeping up | empty, but no slack at all |
+| 4.0 min | 0.25 | 0.39 | **arriving faster than they leave** | **140 minutes behind** |
 
-        0.39  <  1/T      →      T  <  1/0.39      →      T  <  2.6 min
-```
+**Under 2.6 minutes** the worker finishes early, waits, and the queue never
+builds. The spare time is what absorbs a job that runs long.
 
-2.6 minutes is simply **1 ÷ λ** — the average gap between one job arriving and
-the next.
+**Over 2.6 minutes** every job leaves a little more work behind than it cleared
+— and there is no spare time left to absorb it. The backlog does not level off;
+it grows for as long as the system keeps running, and every score comes out
+later than the one before it.
 
-### Why that number and not another
+That is the difference between a queue that is *slow* and one that is *losing*.
+The third row is losing.
 
-Work piles up the moment a job takes longer than the 2.6-minute gap between
-arrivals. The middle two columns are where the algebra above comes from:
-
-| Job takes<br>**T** | so it finishes<br>**1/T** per min | against **λ = 0.39**<br>arriving per min | Per job you… | After 100 jobs |
-| --- | --- | --- | --- | --- |
-| 1.0 min | 1.00 | 1.00 **>** 0.39 ✓ | finish early, idle 1.6 min | still empty |
-| 2.6 min | 0.385 | 0.385 **≈** 0.39 | exactly break even | still empty, zero slack |
-| 4.0 min | 0.25 | 0.25 **<** 0.39 ✗ | **fall 1.4 min behind** | **140 min behind** |
-
-Read the second column downward: **as T gets bigger, 1/T gets smaller.** Time
-per job and jobs per minute move in opposite directions, and that is the whole
-reason `0.39 < 1/T` turns into `T < 1/0.39` with the sign the other way round.
-
-Both forms say the same thing. Row three fails either test — 0.25 is not above
-0.39, and 4.0 is not below 2.6.
-
-The last row never recovers. Not slow — **divergent**: every job adds more debt
-and, with one worker, there is no idle time to catch up in.
-
-ρ < 1 is only the survival condition, not the target. Waiting already grows
-sharply as ρ approaches 1.
-
-Nothing in this project measures how long a job takes, so whether ρ < 1 holds
-is unknown. Recorded as a gap.
+Nothing in this project measures how long a job actually takes, so which side of
+2.6 minutes it sits on is unknown. Recorded as a gap.
 
 <details>
 <summary><b>The failure this design already had</b></summary>
