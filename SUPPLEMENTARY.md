@@ -486,6 +486,35 @@ library's own name. Read them as **the fast tray** and **the heavy tray**.
 
 82% + 18% = 100% of the 3,151 notes a day from §1. Not a running total.
 
+**What is in the fast tray.** Almost all of it is downloading — 67 sources,
+one row each, plus two jobs light enough not to need the slow lane. What each
+source actually is belongs to §3; here it is only how much traffic it makes.
+
+| Fast-tray job | Per day | Kind of data |
+| --- | ---: | --- |
+| the 53 news sites, one row each | 1,272 | headlines |
+| `yfinance` | 288 | market prices |
+| `gdelt` | 96 | machine-coded world events |
+| `usgs-quake` | 96 | earthquakes |
+| `gdacs` | 96 | disaster alerts |
+| `abuse-ch-urlhaus` | 96 | cyber indicators |
+| `abuse-ch-feodo` | 96 | cyber indicators |
+| `eonet` | 48 | natural events |
+| `polymarket` | 48 | prediction-market odds |
+| `acled` | 24 | conflict records |
+| `nasa-firms` | 24 | satellite fire detections |
+| `opensky-adsb` | 24 | aircraft positions |
+| `fred` | 1 | economic series |
+| `emdat` | 1 | disaster archive |
+| `uk-police` | 1 | crime records |
+| `enrich_gdelt_titles` | 288 | *light job* — fetch article titles |
+| `ingest_watchdog` | 96 | *light job* — has a source gone quiet |
+| **67 sources + 2 jobs** | **2,595** | |
+
+Just under half of that traffic — 1,272 of 2,595 — is the news sites. None of it holds much memory: a
+download is mostly a program waiting for a website to reply, which is why four
+can run at once without competing for anything.
+
 **What is in the heavy tray**, every job and how often:
 
 | Heavy job | Per day | What it does |
