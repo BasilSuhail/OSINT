@@ -25,7 +25,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §2  THE BROKER                                                         │
+   │ <a id="map-2" href="#ch-2">§2  THE BROKER</a>                                                         │
    │    a Redis mailbox holding jobs until a worker takes one               │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -444,5 +444,119 @@ lateness — in the one component whose whole purpose is noticing silence.
 Recorded as a finding. Not changed.
 
 </details>
+
+</details>
+
+<details id="ch-2">
+<summary><b>§2 &nbsp; The broker</b> &nbsp;—&nbsp; the mailbox jobs wait in, and why one queue is deliberately slow</summary>
+<br>
+
+**Redis · two queues · `app/celery_app.py`**
+
+## What it is
+
+A **mailbox**. §1 left off with two separate programs that cannot hand each
+other anything, so the scheduler drops a note here and a worker collects it
+when free.
+
+Redis is the program holding the mailbox. It keeps the notes in memory and
+also writes them to disk (`--appendonly yes`), so a restart does not lose the
+queue.
+
+Nothing decides anything here. It stores notes and hands them out in order.
+
+## Two mailboxes, not one
+
+| Mailbox | Workers taking from it | Notes per day | What goes in |
+| --- | ---: | ---: | --- |
+| `celery` | **4** at a time | 2,595 (82%) | the 67 fetches — small, mostly sitting waiting for a website to answer |
+| `analytics` | **1** at a time | 556 (18%) | the 15 heavy jobs — scoring, clustering, the local language model |
+
+## Why the heavy one runs a single job at a time
+
+Memory. Four heavy jobs at once means four jobs' worth of memory at once:
+
+```
+   4 at a time   →   peak memory  =  sum of everything running
+   1 at a time   →   peak memory  =  the largest single job
+```
+
+One of these jobs was measured at **655 MB**; the container is capped at
+**1500 MB**. Four at once does not fit, and a container that exceeds its cap is
+killed rather than slowed.
+
+So the queue is not slow by accident. Running one at a time is what makes peak
+memory a **maximum** instead of a **sum**.
+
+## What that costs — a speed limit, in numbers
+
+One worker means jobs run in single file. Notes arrive at:
+
+```
+   556 notes/day  ÷  1440 min  =  0.39 notes per minute
+                               =  one every 2.6 minutes
+```
+
+A single-server queue only stays bounded while
+
+```
+   ρ  =  λ / μ  <  1        λ = arrival rate, μ = service rate
+```
+
+Put plainly: **the average job must finish in under 2.6 minutes.** Above that,
+ρ ≥ 1 and the backlog grows without limit — the queue never catches up, and
+every score arrives later than the one before it.
+
+Nothing in this project measures mean job duration against that ceiling, so
+whether ρ < 1 holds is currently unknown. Recorded as a gap.
+
+<details>
+<summary><b>The failure this design already had</b></summary>
+<br>
+
+The worker names its queue explicitly:
+
+```
+["celery", "-A", "app.celery_app", "worker", "-Q", "celery", ...]
+```
+
+Before that `-Q` was written, the worker took only the default queue, **nothing
+consumed `analytics` at all**, and every heavy job was published into a mailbox
+no one emptied.
+
+Nothing raised an error. The scheduler published correctly. Redis accepted the
+notes correctly. The jobs simply never ran — the same shape as §1's dead
+scheduler: **silence is not distinguishable from health.** A queue with no
+consumer looks exactly like a queue with nothing to do.
+
+</details>
+
+<details>
+<summary><b>What else Redis does here</b></summary>
+<br>
+
+Three jobs, not one:
+
+1. **The queue** — notes waiting for a worker.
+2. **The results store** — where a finished job leaves its answer.
+3. **A broadcast channel** — when new rows land, a message is published on
+   `events:new`, and the console (§29) is listening. That is what makes the map
+   update without the page being reloaded.
+
+</details>
+
+<details>
+<summary><b>Threads, not separate processes</b></summary>
+<br>
+
+`--pool threads` rather than the usual `prefork`, because forking segfaults
+under macOS fork-safety rules. Concurrency also stays low deliberately, to
+leave headroom on small hardware sharing memory with a local language model.
+
+</details>
+
+---
+
+<a href="#map-2">↑ back to §2 in the diagram</a>
 
 </details>
