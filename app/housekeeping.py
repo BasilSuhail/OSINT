@@ -56,8 +56,12 @@ def retention_days() -> dict[str, int | None]:
         "abuse-ch-urlhaus": hazard,
         "abuse-ch-feodo": hazard,
         "polymarket": hazard,
-        "uk-police": 30,
-        "yfinance": 30,
+        # Neither is news nor machine-coded, so both follow the hazard window
+        # like every other instrument and market feed above. `uk-police` is a
+        # lagged monthly archive and is pruned on ingest (see PRUNE_ON_INGEST),
+        # which is what makes a window shorter than its publication lag safe.
+        "uk-police": hazard,
+        "yfinance": hazard,
         "fred": None,
     }
 

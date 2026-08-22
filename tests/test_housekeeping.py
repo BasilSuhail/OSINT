@@ -251,3 +251,13 @@ def test_keep_forever_source_never_drops_rows(db_session: Session) -> None:
         db_session.execute(select(EventRow).where(EventRow.source == "fred")).scalars().all()
     )
     assert len(remaining) == 1
+
+
+def test_lagged_and_market_sources_read_settings_too(monkeypatch):
+    # `uk-police` (a lagged monthly archive, pruned on ingest) and `yfinance`
+    # held literal 30s while every neighbour read a setting, so a longer
+    # collection window silently skipped them.
+    monkeypatch.setattr("app.housekeeping.settings.retention_hazard_days", 365)
+    rd = retention_days()
+    assert rd["uk-police"] == 365
+    assert rd["yfinance"] == 365

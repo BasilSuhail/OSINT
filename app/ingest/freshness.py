@@ -12,9 +12,9 @@ FRED history reaches 385 days at ingest and yfinance 7; historical depth is the
 entire point of those sources, so they are unbounded. urlhaus publishes a
 rolling window measured at p99 30.3 days, so it needs headroom above that.
 
-**The bound is 30 days for news and hazard because retention is 30 days.** The
-rule becomes "do not ingest what retention would immediately delete", which is
-defensible where an arbitrary number is not — and that was literally happening.
+**The bound for news and hazard is whatever retention is.** The rule becomes
+"do not ingest what retention would immediately delete", which is defensible
+where an arbitrary number is not — and that was literally happening.
 Housekeeping deleted the same 23 rss-cnn-world rows on three consecutive days
 while the hourly fetch re-inserted them, an endless churn that retention could
 never win because the feed re-supplied the junk faster than the daily prune
@@ -25,6 +25,13 @@ rss-jpost-world 19.3 days, rss-responsible-statecraft 12.0, rss-guardian-world
 9.6 — all legitimate slow publishing. Being too strict silently deletes real
 news, which is a worse failure than the one being fixed.
 
+A rule survives a settings change; a number does not. Retention is
+env-overridable and a board with a larger disk raises it — a year rather than a
+month — so the bounds are read from the retention policy rather than restated
+here. Restating it meant the window could only ever fill going forward: the
+prune would keep a year and the gate would still refuse anything over 30 days
+at the door, with nothing on screen saying why.
+
 This applies to the live fetch path only. Backfills legitimately insert old
 rows and never pass through here.
 """
@@ -34,11 +41,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from app.housekeeping import retention_days
 from app.models import Event
-
-#: News and hazard: matches the retention window, so nothing is stored that
-#: housekeeping would delete on its next pass.
-RETENTION_ALIGNED_MAX_AGE: timedelta = timedelta(days=30)
+from app.settings import settings
 
 #: Sources whose value IS their history. Bounding these would defeat them.
 UNBOUNDED_SOURCES: frozenset[str] = frozenset(
@@ -54,9 +59,13 @@ UNBOUNDED_SOURCES: frozenset[str] = frozenset(
     }
 )
 
-#: Cyber feeds republish a rolling window of older indicators. urlhaus measured
-#: p99 30.3 days at ingest, so the bound sits clear of it.
-CYBER_MAX_AGE: timedelta = timedelta(days=45)
+#: Cyber feeds republish a rolling window of older indicators, so their bound
+#: is the retention window plus this. urlhaus measured p99 30.3 days at ingest
+#: against a 30-day window, and the headroom is what puts the bound clear of
+#: that republished tail — 45 days at the default. It is a property of the
+#: feed's behaviour rather than of the window, so it stays a constant while the
+#: window moves, and stays named so the measurement behind it is still legible.
+CYBER_REPUBLISH_HEADROOM: timedelta = timedelta(days=15)
 _CYBER_PREFIX = "abuse-ch-"
 
 #: Feeds disagree with our clock by minutes routinely. Beyond this, a future
@@ -75,14 +84,35 @@ class Rejection:
     reason: str
 
 
+def retention_aligned_max_age(source: str) -> timedelta:
+    """How long `source` is kept, as the age bound the gate applies to it.
+
+    `retention_days()` is the authority on what housekeeping deletes, so it is
+    asked rather than mirrored: a second copy of the mapping is a second thing
+    to raise, and the one that gets forgotten is the one that silently refuses
+    the news the operator asked to collect.
+
+    A source the policy does not list falls back to the news window, which is
+    what housekeeping's generic `rss-%` rule prunes it on. An unlisted source
+    is also the shape the CNN promo entries arrived in, so the fallback is a
+    bound and never a free pass. Keep-forever sources never reach here — they
+    are answered by UNBOUNDED_SOURCES above.
+    """
+    days = retention_days().get(source)
+    if days is None:
+        days = settings.retention_news_days
+    return timedelta(days=days)
+
+
 def max_age(source: str) -> timedelta | None:
     """The oldest an event from `source` may be, or None for unbounded."""
     slug = (source or "").lower()
     if slug in UNBOUNDED_SOURCES:
         return None
+    window = retention_aligned_max_age(slug)
     if slug.startswith(_CYBER_PREFIX):
-        return CYBER_MAX_AGE
-    return RETENTION_ALIGNED_MAX_AGE
+        return window + CYBER_REPUBLISH_HEADROOM
+    return window
 
 
 def _as_aware(value: datetime) -> datetime:
@@ -100,6 +130,10 @@ def partition(
     now = now or datetime.now(UTC)
     kept: list[Event] = []
     rejected: list[Rejection] = []
+    #: The bound is read from settings now, so it is resolved once per source
+    #: per batch rather than once per event: an ADS-B fetch is tens of
+    #: thousands of rows that all share one source and one answer.
+    bounds: dict[str, timedelta | None] = {}
 
     for event in events:
         occurred_at = getattr(event, "occurred_at", None)
@@ -115,7 +149,9 @@ def partition(
             )
             continue
 
-        bound = max_age(event.source)
+        if event.source not in bounds:
+            bounds[event.source] = max_age(event.source)
+        bound = bounds[event.source]
         if bound is None:
             kept.append(event)
             continue
