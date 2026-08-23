@@ -1292,6 +1292,22 @@ columns later.
 
 **`app/ingest/outcome.py`**
 
+## Concretely, one fetch
+
+```
+§5  download          → 50 raw items
+§6  enrich            → 50 items, now with tone/place
+§7  fix time          → 50 items, sane timestamps
+§8  freshness         → 8 dropped, 42 left
+§9  upsert            → 42 written: 12 new, 30 refreshes
+                        ─────────────────────────────
+§10 look at what just happened → label: "new_data"
+                                 fetched=50 rejected=8 accepted=42 inserted=12
+```
+
+§9 was the last step that touches data. §10 touches **no data at all**. It reads
+the numbers §5–§9 produced and writes a note about them somewhere else.
+
 Every run gets one of **five labels**, decided from counts alone. Two — worked,
 crashed — is not enough, because a source can answer politely and hand over
 nothing, which the old code filed as a success.
