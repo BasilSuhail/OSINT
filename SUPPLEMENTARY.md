@@ -70,7 +70,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §11  events                                                            │
+   │ <a id="map-11" href="#ch-11">§11  events  —  THE DATASET</a>                                            │
    │    the one table every source writes into, whatever it measured        │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1447,5 +1447,123 @@ is what quarantine (§4) solved.
 ---
 
 <a href="#ch-10">▲ top of §10</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-10">↑ back to §10 in the diagram</a>
+
+</details>
+
+<details id="ch-11">
+<summary><b>§11 &nbsp; events</b> &nbsp;—&nbsp; the one table every source writes into, whatever it measured</summary>
+<br>
+
+**`app/db_models.py`**, **`app/models.py`**
+
+Everything before this chapter was collection. This is **the dataset** — the
+thing every later number is computed from.
+
+## The problem
+
+An earthquake, a share price, a headline and a malware address have nothing in
+common. Give each its own table and §14 — *how many events in this country last
+month* — has to join 67 tables with 67 date columns and 67 ideas of location.
+Every new source rewrites every query downstream.
+
+So there is one table, and all 67 conform to it.
+
+## The 12 columns
+
+| Column | Holds | Note |
+| --- | --- | --- |
+| `source` | who reported it | `gdacs`, `rss-bbc` |
+| `source_event_id` | their own id for it | with `source`, unique — §9's key |
+| `occurred_at` | when it **happened** | |
+| `fetched_at` | when **we pulled it** | a different fact, kept separate |
+| `updated_at` | when the row last changed | |
+| `category` | which of ten kinds | `hazard`, `market`, `news`, `cyber`, … |
+| `severity` | how bad, **0…1** | nullable |
+| `confidence` | how sure, **0…1** | nullable |
+| `keywords` | list of words | |
+| `country` | ISO 3166-1 two letters | nullable |
+| `lat`, `lon` | where | nullable |
+| `payload` | the whole original record | JSON |
+
+## The same shape, three different worlds
+
+```
+earthquake   source="usgs-quake"  category="hazard"  severity=0.62
+                                  payload={"magnitude": 6.1, "depth_km": 10}
+
+market move  source="yfinance"    category="market"  severity=0.30
+                                  payload={"ticker": "^VIX", "close": 24.1}
+
+headline     source="rss-bbc"     category="news"    severity=0.45
+                                  payload={"title": "…", "url": "…"}
+```
+
+Nothing downstream asks what kind of thing a row is. It asks *how many rows,
+this country, this month, severity above this* — and the question is written
+once for all 67 sources.
+
+This is **tidy data**: one row is one observation, one column is one variable,
+and a variable means the same thing in every row.
+
+## Two kinds of storage in one row
+
+```
+┌──────────────────────────────────────────┬────────────────────┐
+│  11 fixed columns  —  relational         │  payload  —  JSON  │
+│  the analysis view, same for everyone    │  the raw receipt   │
+│  indexed, constrained, groupable         │  source-specific   │
+└──────────────────────────────────────────┴────────────────────┘
+```
+
+| | Relational columns | JSON bag |
+| --- | --- | --- |
+| shape | fixed, every row identical | free-form, every source different |
+| good at | filtering, grouping, counting | holding whatever arrived |
+| enforced | `severity BETWEEN 0 AND 1` | nothing |
+
+Pure relational would need 67 tables, or one table with three hundred mostly
+empty columns. Pure document storage could not answer *count per country per
+month* without reading every record. The split follows one rule:
+
+> **anything you filter, group or count by is a real column. Everything else
+> goes in the bag.**
+
+`country`, `occurred_at`, `category` and `severity` are columns because §14
+groups by them. `magnitude` and `ticker` are in the bag because nothing does.
+Nothing is discarded in the flattening — if a later analysis wants the depth of
+that quake, it is still there.
+
+## Two decisions a reader should push on
+
+**`severity` is forced onto 0…1 for everything.** A magnitude-6 quake and a
+volatility spike are not comparable in their own units — Richter against index
+points. Mapping both onto one scale is what makes *sum the severity for this
+country* a legal operation at all. That mapping is a modelling choice, not a
+measurement; §20 is where it is made and where it should be challenged.
+
+**Geography is nullable.** A market event has no country, and inventing one
+would be fabricating data. The honest consequence is that *events in country X*
+silently excludes every unplaced row, so a country total is a count of
+**located** events, not of all of them.
+
+## Rules the database itself enforces
+
+```sql
+UNIQUE (source, source_event_id)      -- §9's dedup, enforced rather than trusted
+CHECK  (severity   BETWEEN 0 AND 1)   -- the scale cannot drift
+CHECK  (confidence BETWEEN 0 AND 1)
+```
+
+Five indexes, one per question actually asked: by time, by country and time, by
+category and time, by source and time, by last update.
+
+The constraints live in the database, not only in the Python model, so a
+backfill script or a hand-typed statement cannot write a row that breaks them.
+The guarantee holds at the storage layer, which is why nothing downstream
+re-checks it.
+
+---
+
+<a href="#ch-11">▲ top of §11</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-11">↑ back to §11 in the diagram</a>
 
 </details>
