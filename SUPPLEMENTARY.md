@@ -1245,6 +1245,26 @@ Read it left to right: start from what is stored, let the incoming keys
 overwrite the ones they mention, leave the rest alone. Every other column keeps
 plain `= EXCLUDED.x`, because for those the source is the only writer.
 
+<details>
+<summary>The 22 protected keys, by family</summary>
+<br>
+
+Every one is written *after* the row lands, by a job the fetcher knows nothing
+about. Note the shape: each enrichment stores the **value** and also **who,
+when, how sure** — provenance, so a published number can be traced back to what
+produced it.
+
+| Family | Keys | What they hold |
+| --- | --- | --- |
+| **map shape** (3) | `footprint_geojson`, `footprint_checked_at`, `footprint_source_key` | the real hazard outline instead of a drawn circle; when we last looked, so a source with no geometry is not asked forever; which upstream document it came from |
+| **verified place** (13) | `place_name`, `place_wikidata_id`, `place_description`, `place_locations`, `place_candidate_count`, `place_verified_count`, `place_rejections`, `place_rejected_count`, `place_checked_at`, `place_model`, `place_resolution`, `geo_precision`, `geo_source` | the location label plus an external ID so it is auditable; every point verified for one story; how many names the text proposed, how many survived, and the evidence for each refusal; when, by which model, at what exactness, from which authority |
+| **text read** (4) | `sentiment`, `sentiment_label`, `entities`, `city` | tone as a number in −1…+1 and as a word; names pulled out of the text; city recovered from the headline |
+| **bookkeeping** (2) | `news_scope`, `enrichment_meta` | local / national / international reach; which enricher and model wrote all of the above |
+
+3 + 13 + 4 + 2 = **22**.
+
+</details>
+
 ## Duplicates inside one batch
 
 A single fetch can contain the same ID twice. The database cannot update the
