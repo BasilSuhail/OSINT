@@ -1287,57 +1287,64 @@ columns later.
 
 **`app/ingest/outcome.py`**, **`app/watchdog.py`**
 
-The diary of whether the system was actually working.
+The diary of whether the system was actually working. It writes one word per
+run, and something else reads that diary and shouts when a source has gone
+quiet.
 
-Every hour a source is asked for data. Sometimes 50 events come back. Sometimes
-a polite reply comes back with **nothing inside** — and the old code called that
-a success, because the request went through.
+## One fetch, 10:00
 
-## What it does
+```
+10:00   ask a news feed         → replies with 50 stories
+        §8 checks the dates     → 8 too old, thrown away
+        §9 writes the other 42  → 12 brand new, 30 already stored
+```
 
-After the run, write down what really happened, in one word:
+Four numbers now exist:
 
-| Word | What happened |
-| --- | --- |
-| `new_data` | rows came, some were new |
-| `unchanged` | rows came, all already known — normal for a feed that re-publishes its active events |
-| `empty` | **the request was fine and nothing came** |
-| `misconfigured` | our own setup is broken, not the source's |
-| `failed` | it crashed — timeout, bad status, unreadable body |
+```
+fetched   = 50     handed to us
+rejected  =  8     §8 threw away
+accepted  = 42     §9 wrote
+inserted  = 12     never seen before
+```
 
-That is all. It touches no data. It writes the word next to the source's name,
-with the date, and the counts it was decided from — `fetched`, `rejected` by §8,
-`accepted`, `inserted`.
+Those four are **all §10 works with**. It never looks at the stories themselves.
 
-## The code, three steps
-
-**1. The run hands over what it counted** (`app/tasks.py`, straight after §9
-writes):
+## Step 1 — hand the numbers over
 
 ```python
 result = ingest_outcome.classify(
-    fetched=len(events),            # §5 downloaded
-    accepted=persistence.accepted,  # §9 wrote
-    affected=persistence.affected,  # §9 touched, insert or update
-    inserted=persistence.inserted,  # §9 wrote for the first time
-    rejected=len(stale),            # §8 dropped as too old
+    fetched=50, accepted=42, affected=42, inserted=12, rejected=8
 )
-_record_outcome(session, source=name, result=result)
 ```
 
-**2. The word is chosen — arithmetic, no judgement** (`app/ingest/outcome.py`):
+## Step 2 — pick the word
 
 ```python
-if accepted == 0:
-    state = "empty"        # the request worked and produced nothing usable
-elif inserted > 0:
-    state = "new_data"
-else:
-    state = "unchanged"    # everything in it was already stored
+if accepted == 0:      state = "empty"
+elif inserted > 0:     state = "new_data"
+else:                  state = "unchanged"
 ```
 
+Three questions in order:
+
+| Question | Our fetch | Result |
+| --- | --- | --- |
+| did we write **anything**? | 42 — yes | not `empty` |
+| was any of it **new**? | 12 — yes | → **`new_data`** |
+| otherwise | — | `unchanged` |
+
+A broken hour goes the other way: `fetched = 0, accepted = 0` → `accepted == 0`
+→ **`empty`**. The feed replied and nothing arrived. Recording that as *empty*
+rather than *success* is the entire point of the stage.
+
+Two more words exist for cases the counts cannot describe: `misconfigured` (a
+key or setting of ours is missing — never the source's fault, never a reason to
+quarantine it in §4) and `failed` (the run raised: timeout, bad status,
+unreadable body).
+
 Impossible counts are refused rather than stored, so a bug upstream cannot
-quietly produce a healthy-looking row:
+produce a healthy-looking row:
 
 ```python
 if inserted > affected or affected > accepted:
@@ -1346,73 +1353,79 @@ if accepted + rejected > fetched:
     raise ValueError("accepted and rejected rows cannot exceed fetched rows")
 ```
 
-**3. The clocks are moved — and only one of them is guarded**:
+## Step 3 — write it down
 
 ```python
-row.last_state = result.state
-row.last_checked = now                       # we looked
-if result.state in ("new_data", "unchanged"):
-    row.last_success = now                   # the request worked
-if result.accepted > 0:
-    row.last_output = now                    # usable rows actually arrived
+row.last_state   = "new_data"
+row.last_checked = 10:00      # we looked
+row.last_success = 10:00      # it replied
+row.last_output  = 10:00      # data actually arrived
 ```
 
-Three lines apart, three different claims. A source returning `empty` moves
-`last_checked`, moves neither of the others, and that is what the alarm reads.
+Three separate facts. On a good hour all three read the same time, which is why
+keeping them apart looks pointless — until something breaks.
 
-## Why bother
+## Why three clocks
 
-Because months later something reads:
+The interesting failure is the quiet one: the feed keeps replying, with nothing
+inside.
+
+| Time | Replies? | Rows | `last_checked` | `last_success` | `last_output` |
+| --- | --- | --- | --- | --- | --- |
+| 10:00 | yes | 42 | 10:00 | 10:00 | **10:00** |
+| 11:00 | yes | 0 | 11:00 | 11:00 | 10:00 |
+| 12:00 | yes | 0 | 12:00 | 12:00 | 10:00 |
+| 13:00 | yes | 0 | 13:00 | 13:00 | 10:00 |
+
+The last column is frozen while the other two look perfectly fresh.
+
+- watching `last_success` → *"replied a minute ago, all good"* — the lie
+- watching `last_output` → *"no data for three hours"* — the truth
+
+The alarm reads the frozen one. Two static archives are the exception, judged on
+`last_success`, because they genuinely publish nothing most days.
+
+## How long before shouting
+
+```python
+threshold = cadence_min * 6
+is_stale  = (now - last_output) > threshold
+```
+
+A fixed number of minutes cannot work — sources run at different speeds:
+
+| Source runs every | Silent for | Shout? |
+| --- | --- | --- |
+| 15 min | 90 min (6 × 15) | yes |
+| 60 min | 6 hours | yes |
+| once a day | 6 days | yes |
+
+Six and not one: a single missed run is normal — a slow response, a restart. Six
+in a row is not. Give it six chances before crying wolf.
+
+Each crash also stores one row of evidence — error class, message, request URL,
+response body — so a gap can be explained later instead of guessed at.
+
+## Why any of this matters
+
+Months later something reads:
 
 ```
 country X, March:  0 events
 ```
 
-and the zero has to be read one of two ways:
-
 | The diary says | The zero means |
 | --- | --- |
-| `new_data` all month | we were watching, nothing happened — a real zero |
-| `empty` all month | we were not watching — a fake zero |
+| `new_data` all month | we were watching, nothing happened — a **real** zero |
+| `empty` all month | we were not watching — a **fake** zero |
 
-Same number on screen, opposite meaning, and nothing inside the events table
-separates them. §14 counts events per country per month, so the fake zero
-becomes a published number saying that country was calm.
+Same number, opposite meaning, and nothing inside the events table separates
+them. §14 counts events per country per month, so the fake zero is published as
+*that country was calm*.
 
-**And it is a bias, not noise:** a broken feed is not spread evenly. One feed
-covers one region, so when it breaks that region alone loses events and the
-index reads "improving".
-
-## The trap it closes
-
-A dead source that still replies looks perfectly healthy. So two clocks are kept
-apart:
-
-| Clock | Answers |
-| --- | --- |
-| `last_success` | when did it last **reply**? |
-| `last_output` | when did it last give us **data**? |
-
-The alarm is wired to the second one:
-
-```python
-threshold = cadence_min * 6      # a 15-minute feed is flagged after 90 minutes
-is_stale  = (now - last_output) > threshold
-```
-
-Six of the source's **own** cadences — proportional, so a daily source is not
-paged for being a few hours late. Two static archives are judged on
-`last_success` instead: they legitimately have nothing new most days.
-
-Each failure also stores one row of evidence — error class, message, request
-URL, response body — so a gap can be explained afterwards rather than guessed at.
-
-## In one breath
-
-```
-§5–§9   handle the data
-§10     writes down whether there WAS any data, and shouts when there is not
-```
+**A bias, not noise:** a broken feed is not spread evenly. One feed covers one
+region, so when it breaks that region alone loses events and the index reads
+"improving".
 
 <details>
 <summary><b>Issue</b> &nbsp;—&nbsp; a table nothing writes</summary>
