@@ -65,7 +65,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §10  OUTCOME CLASSIFICATION                                            │
+   │ <a id="map-10" href="#ch-10">§10  OUTCOME CLASSIFICATION  —  JUDGE THE RUN</a>                          │
    │    a fetch returning nothing usable is not a success                   │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1283,5 +1283,67 @@ columns later.
 ---
 
 <a href="#ch-9">▲ top of §9</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-9">↑ back to §9 in the diagram</a>
+
+</details>
+
+<details id="ch-10">
+<summary><b>§10 &nbsp; Outcome classification</b> &nbsp;—&nbsp; a fetch returning nothing usable is not a success</summary>
+<br>
+
+**`app/ingest/outcome.py`**
+
+## What it is
+
+After every fetch, the run is labelled with **one of five states**, from counts
+alone. It replaces the usual two — worked, crashed.
+
+Two is not enough because a feed can answer `200 OK` with an **empty list**,
+every hour, forever. That looks like perfect uptime while the data quietly stops
+arriving. The states below separate three different claims: the request worked,
+something usable came back, some of it was new.
+
+**Why it decides a number later:** §15 counts events per country per month. A
+source returning nothing looks exactly like a country where nothing happened.
+Without this stage there is no way to tell *nothing happened* from *nothing
+arrived* — and the second one is a hole in the dataset, not a calm month.
+
+## The five states
+
+Counts measured on the run: `fetched` (handed to us), `rejected` (dropped by the
+freshness gate, §8), `accepted` (written), `inserted` (new, not a refresh).
+
+| State | Decided when | Counted as | What it tells the operator |
+| --- | --- | --- | --- |
+| `new_data` | `inserted > 0` | success | the source is alive and moving |
+| `unchanged` | `accepted > 0`, `inserted = 0` | success | everything was already stored — normal for a feed that re-publishes its active events every fetch |
+| `empty` | `accepted = 0` | **neither** | the request worked and produced nothing usable. Not a crash, not a success — the state that used to hide |
+| `misconfigured` | a key or setting is missing | **our fault** | never blame the source for it, and never quarantine (§4) over it |
+| `failed` | the run raised | failure | timeout, bad status, unparseable body |
+
+The classifier has no opinion — it is arithmetic, and it refuses impossible
+counts:
+
+```python
+inserted <= affected <= accepted      # a refresh cannot insert more than it wrote
+accepted + rejected <= fetched        # nothing can be written that never arrived
+```
+
+## The line that makes silence visible
+
+Per source, per day, the counts are written to a health row. One field is the
+whole point:
+
+```python
+if result.accepted > 0:
+    row.last_output = now      # moves only when usable rows arrived
+```
+
+`last_success` moves when the *request* worked. `last_output` moves only when
+*data* arrived. A source stuck on `empty` keeps the first fresh and lets the
+second go stale — which is exactly the gap §11 watches for.
+
+---
+
+<a href="#ch-10">▲ top of §10</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-10">↑ back to §10 in the diagram</a>
 
 </details>
