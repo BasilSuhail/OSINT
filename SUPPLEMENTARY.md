@@ -30,37 +30,37 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-3" href="#ch-3">§3  THE SOURCES</a>                                                        │
+   │ <a id="map-3" href="#ch-3">§3  THE SOURCES  —  FIND</a>                                               │
    │    67 places data comes from — 14 public APIs, 53 news sites           │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-4" href="#ch-4">§4  THE REST GATE</a>                                                      │
+   │ <a id="map-4" href="#ch-4">§4  THE REST GATE  —  SKIP BROKEN</a>                                      │
    │    a source that keeps failing is left alone for a while               │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-5" href="#ch-5">§5  FETCH</a>                                                              │
+   │ <a id="map-5" href="#ch-5">§5  FETCH  —  DOWNLOAD</a>                                                 │
    │    download only — no database, no scoring, no side effects            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-6" href="#ch-6">§6  INLINE ENRICHMENT</a>                                                  │
+   │ <a id="map-6" href="#ch-6">§6  INLINE ENRICHMENT  —  UNDERSTAND</a>                                   │
    │    headlines get translated, placed on a map, read for tone            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-7" href="#ch-7">§7  PUBLICATION-TIME REPAIR</a>                                            │
+   │ <a id="map-7" href="#ch-7">§7  PUBLICATION-TIME REPAIR  —  FIX TIME</a>                               │
    │    nothing may claim it happened in the future                         │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-8" href="#ch-8">§8  FRESHNESS GATE</a>                                                     │
+   │ <a id="map-8" href="#ch-8">§8  FRESHNESS GATE  —  DROP STALE</a>                                      │
    │    rows too old for the live window are counted and dropped            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-9" href="#ch-9">§9  UPSERT AND DEDUP</a>                                                   │
+   │ <a id="map-9" href="#ch-9">§9  UPSERT AND DEDUP  —  SAVE</a>                                          │
    │    one row per source event — re-fetching updates, never doubles       │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
