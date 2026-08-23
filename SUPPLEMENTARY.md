@@ -1292,75 +1292,59 @@ columns later.
 
 **`app/ingest/outcome.py`**
 
-## What it is
+Every run gets one of **five labels**, decided from counts alone. Two — worked,
+crashed — is not enough, because a source can answer politely and hand over
+nothing, which the old code filed as a success.
 
-You ask a source *"any news?"*. Three things can happen:
+## The counts
 
-| What happens | Old code says | Reality |
-| --- | --- | --- |
-| hands you 50 events | worked | fine |
-| **answers politely, hands you nothing** | worked | **broken, and looks fine** |
-| does not answer at all | crashed | fine |
-
-Row two is the problem. The source replied, so the run is ticked off as a
-success — and no data came in. Every hour for a month: the dashboard stays green
-the whole time and the database has a month-shaped hole.
-
-So instead of two verdicts, every run is labelled with one of **five states**,
-from counts alone.
-
-## Why a wrong label ruins a number
-
-§15 counts events per country per month. A month can read:
-
-```
-some country, March:  0 events
-```
-
-Two different worlds produce that same zero:
-
-| Why it is zero | Meaning |
+| Count | Meaning |
 | --- | --- |
-| nothing happened there | real — a calm month |
-| our feed sent nothing all month | fake — we were not looking |
-
-Same number, opposite meaning, and nothing in the data says which. Labelling the
-empty hours as `empty` instead of *success* is what keeps the two apart.
+| `fetched` | rows the source handed us |
+| `rejected` | thrown out by the freshness gate (§8) |
+| `accepted` | survived and written |
+| `affected` | rows the database touched — insert **or** update |
+| `inserted` | genuinely new rows |
 
 ## The five states
 
-Counts measured on the run: `fetched` (handed to us), `rejected` (dropped by the
-freshness gate, §8), `accepted` (written), `inserted` (new, not a refresh).
-
-| State | Decided when | Counted as | What it tells the operator |
+| State | Decided when | Counted as | Meaning |
 | --- | --- | --- | --- |
-| `new_data` | `inserted > 0` | success | the source is alive and moving |
-| `unchanged` | `accepted > 0`, `inserted = 0` | success | everything was already stored — normal for a feed that re-publishes its active events every fetch |
-| `empty` | `accepted = 0` | **neither** | the request worked and produced nothing usable. Not a crash, not a success — the state that used to hide |
-| `misconfigured` | a key or setting is missing | **our fault** | never blame the source for it, and never quarantine (§4) over it |
+| `new_data` | `inserted > 0` | success | alive and moving |
+| `unchanged` | `accepted > 0`, `inserted = 0` | success | all of it was already stored — normal for a feed that re-publishes its active events |
+| `empty` | `accepted = 0` | **neither** | the request worked, nothing usable came back. The state that used to hide |
+| `misconfigured` | a key or setting is missing | **our fault** | never blame the source, never quarantine (§4) over it |
 | `failed` | the run raised | failure | timeout, bad status, unparseable body |
 
-The classifier has no opinion — it is arithmetic, and it refuses impossible
-counts:
+No judgement, only arithmetic — and impossible counts are refused:
 
 ```python
 inserted <= affected <= accepted      # a refresh cannot insert more than it wrote
 accepted + rejected <= fetched        # nothing can be written that never arrived
 ```
 
-## The line that makes silence visible
+## Why the label decides a number
 
-Per source, per day, the counts are written to a health row. One field is the
-whole point:
+§15 counts events per country per month, so a month can read `0 events` for two
+opposite reasons:
+
+| Why it is zero | Meaning |
+| --- | --- |
+| nothing happened there | real — a calm month |
+| the feed sent nothing all month | fake — we were not looking |
+
+Labelling the empty hours `empty` instead of *success* is what keeps those apart.
+
+## The line that makes silence visible
 
 ```python
 if result.accepted > 0:
     row.last_output = now      # moves only when usable rows arrived
 ```
 
-`last_success` moves when the *request* worked. `last_output` moves only when
-*data* arrived. A source stuck on `empty` keeps the first fresh and lets the
-second go stale — which is exactly the gap §11 watches for.
+`last_success` moves when the **request** worked. `last_output` moves only when
+**data** arrived. A source stuck on `empty` keeps the first fresh and lets the
+second go stale — the gap §11 watches for.
 
 ---
 
