@@ -75,7 +75,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §12  POST-INGEST ENRICHMENT                                            │
+   │ <a id="map-12" href="#ch-12">§12  POST-INGEST ENRICHMENT  —  MAKE THE FEATURES</a>                      │
    │    hazard outlines, place names and severity added afterwards          │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1547,5 +1547,90 @@ CHECK  (confidence BETWEEN 0 AND 1)
 ---
 
 <a href="#ch-11">▲ top of §11</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-11">↑ back to §11 in the diagram</a>
+
+</details>
+
+<details id="ch-12">
+<summary><b>§12 &nbsp; Post-ingest enrichment</b> &nbsp;—&nbsp; hazard outlines, place names and severity added afterwards</summary>
+<br>
+
+**`app/enrichment/`**, **`app/tasks.py`**
+
+Raw data is never what an analysis eats. A source hands over a headline; the
+analysis needs a number. Turning *"50 killed in a market bombing"* into
+`severity = 0.85`, or a headline into `country = SD`, is **feature
+engineering** — building the variables that will actually be counted. This is
+where most of this project's features are made.
+
+## Why they are not made during the fetch
+
+A fetch has seconds, and must not make an extra network call per row.
+
+| Feature | Needs | Cost per row |
+| --- | --- | --- |
+| real hazard outline | a second download from upstream | one HTTP call |
+| verified place name | a lookup against an external knowledge base | one HTTP call |
+| severity of a headline | a local language model reading the text | seconds of compute |
+| story gist and embedding | another model pass | seconds of compute |
+
+Inline, one slow lookup would stall a whole batch. So the row lands
+**incomplete** and scheduled jobs come back for it.
+
+## Every job, the same five steps
+
+```
+1. ask the database which rows are still missing this field
+2. take a batch — a limit, never everything
+3. fetch or compute the value
+4. merge it into payload      (never replace — §9's protected keys)
+5. one row fails → leave it, take it again next run
+```
+
+| Job | Runs at | Fills |
+| --- | --- | --- |
+| `enrich_footprints` | :11 :26 :41 :56 | real hazard geometry; without it the map draws a circle |
+| `enrich_news_places` | :13 :43 | verified place name and an external id for it |
+| `enrich_gdelt_titles` | every 5 min | article titles the feed does not ship |
+| `grade_news_severity` | :14 :44 | severity 0–1 for a headline, by local model |
+| `brain_enrich` | every 20 min | story summaries and embeddings |
+
+The minute offsets are deliberate: none of them land in the same minute as the
+fetchers that feed them.
+
+## What this does to the data
+
+**A feature made late is a feature that is partly missing.** Every enriched
+column has a coverage rate below 100%, and blank means *not looked at yet* — not
+*zero*. Reading an ungraded headline as severity 0 is the §10 mistake one level
+up.
+
+**Coverage can correlate with what is being measured.** Each job takes a limited
+batch, so anything beyond capacity waits. If busy days overflow, the busiest
+days end up the least enriched — the feature is weakest exactly when the world
+is loudest. That is why the severity job is sized against arrivals rather than
+left to drift: roughly 2,400 headlines a day of capacity against roughly 863
+arriving, so a backlog drains instead of growing.
+
+**Some columns are estimates wearing the same clothes as observations.**
+
+| Column | Where it comes from | Status |
+| --- | --- | --- |
+| `occurred_at` | the source stated it | observation |
+| `lat`, `lon` on a hazard | the source stated it | observation |
+| `severity` of a headline | a model judged it | **estimate, with error** |
+| `country` of a headline | a locator inferred it | **estimate, with error** |
+
+Nothing in the schema marks which is which. An estimated feature needs an
+accuracy claim attached to it, which is what §20 and §26 are for.
+
+**A feature can expire.** A cyclone's stored outline was true when fetched and
+wrong a day later — GDACS publishes a moving hazard as a numbered series, each
+episode at its own URL, so the stored shape is a photograph of where the storm
+was when first seen. Comparing the stored source key with the event's current
+one costs a single string comparison and refetches only what actually moved.
+
+---
+
+<a href="#ch-12">▲ top of §12</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-12">↑ back to §12 in the diagram</a>
 
 </details>
