@@ -1219,21 +1219,8 @@ stage:
 | --- | --- | --- |
 | **identity** — `source`, `source_event_id`, `category` | **never touched** | these define which row it is; changing them would make it a different event |
 | **live values** — `occurred_at`, `fetched_at`, `severity`, `confidence`, `keywords` | **replaced** | an ongoing cyclone must not freeze at its first-seen state and drop out of the live window |
-| **location** — `country`, `lat`, `lon` | **depends on the source** | see below |
+| **location** — `country`, `lat`, `lon` | **news replaces, others keep** | empty from news is an *answer* — the locator re-read the text and it no longer supports that country; empty from an API is a *gap*, and §13 may fill it later. Never overwrite an answer with a gap |
 | **enrichment inside `payload`** | **protected** | see below |
-
-## Location: who owns the answer
-
-News rows and everything else are treated differently, and both rules are
-defensible:
-
-- **News (`rss-*`)**: the incoming value **replaces** what is stored, even if it
-  is empty. The news locator (§6) has already read the latest text and reached a
-  verdict — an empty answer means *the text no longer supports that country*,
-  which is a real withdrawal, not a missing field.
-- **Everything else**: an empty incoming value **keeps** what is stored. These
-  sources can gain a location *after* ingestion, from §13. An empty field here
-  means "not supplied", not "not there".
 
 ## The bug this stage already had
 
