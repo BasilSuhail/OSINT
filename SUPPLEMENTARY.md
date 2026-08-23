@@ -70,7 +70,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §11  THE FAILURE LEDGER                                                │
+   │ <a id="map-11" href="#ch-11">§11  THE FAILURE LEDGER  —  WRITE IT DOWN</a>                              │
    │    every failure, quarantine and silent source is recorded             │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1376,5 +1376,118 @@ observed* look identical.
 ---
 
 <a href="#ch-10">▲ top of §10</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-10">↑ back to §10 in the diagram</a>
+
+</details>
+
+<details id="ch-11">
+<summary><b>§11 &nbsp; The failure ledger</b> &nbsp;—&nbsp; every failure, quarantine and silent source is recorded</summary>
+<br>
+
+**`app/watchdog.py`**, **`app/console_health.py`**
+
+The events table records **what happened in the world**. This one records **what
+we were able to see** — when we looked, and what came back. A number read
+without it is unreadable: a zero could be a quiet month or a broken feed.
+
+## What flows where
+
+```
+   WRITTEN BY                        TABLE                      READ BY
+   ──────────                        ─────                      ───────
+
+   §10's label + counts   ────►  ingest_health      ────►  watchdog  →  notifications
+   every run, every source       one row per source                     →  push + log
+                                 per day: counters,       ────►  console health panels
+                                 last_success,           ────►  API  /ingest-health (7 d)
+                                 last_output             ────►  brain snapshot, "data as of"
+
+   a crash, or a batch    ────►  ingest_failures    ────►  a person, when debugging
+   rejected by §8                one row per incident:
+   only when it happens          error class, message,
+                                 request URL, response body
+
+   §4's verdict           ────►  quarantine         ────►  console "rested sources"
+                                 one row per source:  ────►  API  /ingest/quarantine
+                                 resting until, strikes
+```
+
+## Every field is measured, none typed
+
+| Field in `ingest_health` | Comes from |
+| --- | --- |
+| `new_data_n`, `unchanged_n`, `empty_n`, `misconfigured_n`, `failure_n` | §10's label for that run |
+| `fetched_rows` | §5 — how many the source handed over |
+| `rejected_rows` | §8 — dropped for being too old |
+| `accepted_rows`, `inserted_rows` | §9 — what the write actually did |
+| `last_success` | the **request** worked |
+| `last_output` | **usable rows** arrived (`accepted > 0`) |
+
+## Three layers, because they answer different questions
+
+| Layer | Table | Grain | Answers |
+| --- | --- | --- | --- |
+| evidence | `ingest_failures` | one incident | *what broke at 04:12, and why* |
+| state | `ingest_health` | source × day | *how has this source behaved lately* |
+| alarm | `notifications` | source × day | *who needs telling, once* |
+
+Raw → aggregated → derived. The trend cannot be rebuilt from incidents, and the
+incident cannot be recovered from counters, so both are kept.
+
+## Noticing silence
+
+```python
+threshold = cadence_min * 6                       # STALE_MULTIPLIER
+freshness = last_output if output_required else last_success
+is_stale  = freshness is None or (now - freshness) > threshold
+```
+
+Two decisions sit in those three lines:
+
+| Decision | Rule | Why |
+| --- | --- | --- |
+| which clock counts as alive | `last_output` for every source, except two static archives judged on `last_success` | a source answering `200 OK` with nothing is dead, not healthy — §10's whole point, cashed in here |
+| how much patience | six of the source's **own** cadences | a 15-minute feed is flagged after 90 minutes, a daily one after six days — proportional, not a fixed hour |
+
+A flagged source writes one notification per day, so an outage pages once rather
+than every sweep.
+
+## Why this decides a published number
+
+§25 builds one row per country per month. A cell reads `0`:
+
+| The ledger says | The zero means |
+| --- | --- |
+| every fetch that month was `new_data` | observed — a quiet month, safe to model |
+| half were `empty`, `last_output` nine days stale | **not observed** — a hole, not calm |
+
+And the reason this is a bias and not noise: collection failures are not spread
+evenly. One feed covers one region, so when it breaks that region alone loses
+events, the index reads "improving", and nothing inside the events table says
+otherwise. Missing data that clusters on the thing being measured moves the
+answer. This ledger is the only place that can prove the gap was ours.
+
+<details>
+<summary><b>Issue</b> &nbsp;—&nbsp; a table nothing writes</summary>
+<br>
+
+`dead_letter_queue` is created by the first migration and described in the
+architecture notes: after five failed retries a job was to be parked there with
+a `replay_after` stamp, and an hourly worker was to re-enqueue it. Nothing
+writes to it, and no such worker exists.
+
+It is a leftover from an **event-driven** design. There, a failed message is
+lost work that must be stored and replayed. Here the scheduler (§1) fires the
+same source again in 5, 15 or 60 minutes anyway — the next run does the same
+job, so there is nothing to replay.
+
+The problem that turned out to be real was the opposite one: a broken source
+being hammered five times a run, forever. That is what quarantine (§4) solved,
+and it left the table with no work to do.
+
+</details>
+
+---
+
+<a href="#ch-11">▲ top of §11</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-11">↑ back to §11 in the diagram</a>
 
 </details>
