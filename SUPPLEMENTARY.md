@@ -1294,18 +1294,38 @@ columns later.
 
 ## What it is
 
-After every fetch, the run is labelled with **one of five states**, from counts
-alone. It replaces the usual two — worked, crashed.
+You ask a source *"any news?"*. Three things can happen:
 
-Two is not enough because a feed can answer `200 OK` with an **empty list**,
-every hour, forever. That looks like perfect uptime while the data quietly stops
-arriving. The states below separate three different claims: the request worked,
-something usable came back, some of it was new.
+| What happens | Old code says | Reality |
+| --- | --- | --- |
+| hands you 50 events | worked | fine |
+| **answers politely, hands you nothing** | worked | **broken, and looks fine** |
+| does not answer at all | crashed | fine |
 
-**Why it decides a number later:** §15 counts events per country per month. A
-source returning nothing looks exactly like a country where nothing happened.
-Without this stage there is no way to tell *nothing happened* from *nothing
-arrived* — and the second one is a hole in the dataset, not a calm month.
+Row two is the problem. The source replied, so the run is ticked off as a
+success — and no data came in. Every hour for a month: the dashboard stays green
+the whole time and the database has a month-shaped hole.
+
+So instead of two verdicts, every run is labelled with one of **five states**,
+from counts alone.
+
+## Why a wrong label ruins a number
+
+§15 counts events per country per month. A month can read:
+
+```
+some country, March:  0 events
+```
+
+Two different worlds produce that same zero:
+
+| Why it is zero | Meaning |
+| --- | --- |
+| nothing happened there | real — a calm month |
+| our feed sent nothing all month | fake — we were not looking |
+
+Same number, opposite meaning, and nothing in the data says which. Labelling the
+empty hours as `empty` instead of *success* is what keeps the two apart.
 
 ## The five states
 
