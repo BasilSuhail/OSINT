@@ -1309,6 +1309,57 @@ That is all. It touches no data. It writes the word next to the source's name,
 with the date, and the counts it was decided from — `fetched`, `rejected` by §8,
 `accepted`, `inserted`.
 
+## The code, three steps
+
+**1. The run hands over what it counted** (`app/tasks.py`, straight after §9
+writes):
+
+```python
+result = ingest_outcome.classify(
+    fetched=len(events),            # §5 downloaded
+    accepted=persistence.accepted,  # §9 wrote
+    affected=persistence.affected,  # §9 touched, insert or update
+    inserted=persistence.inserted,  # §9 wrote for the first time
+    rejected=len(stale),            # §8 dropped as too old
+)
+_record_outcome(session, source=name, result=result)
+```
+
+**2. The word is chosen — arithmetic, no judgement** (`app/ingest/outcome.py`):
+
+```python
+if accepted == 0:
+    state = "empty"        # the request worked and produced nothing usable
+elif inserted > 0:
+    state = "new_data"
+else:
+    state = "unchanged"    # everything in it was already stored
+```
+
+Impossible counts are refused rather than stored, so a bug upstream cannot
+quietly produce a healthy-looking row:
+
+```python
+if inserted > affected or affected > accepted:
+    raise ValueError("inserted <= affected <= accepted must hold")
+if accepted + rejected > fetched:
+    raise ValueError("accepted and rejected rows cannot exceed fetched rows")
+```
+
+**3. The clocks are moved — and only one of them is guarded**:
+
+```python
+row.last_state = result.state
+row.last_checked = now                       # we looked
+if result.state in ("new_data", "unchanged"):
+    row.last_success = now                   # the request worked
+if result.accepted > 0:
+    row.last_output = now                    # usable rows actually arrived
+```
+
+Three lines apart, three different claims. A source returning `empty` moves
+`last_checked`, moves neither of the others, and that is what the alarm reads.
+
 ## Why bother
 
 Because months later something reads:
