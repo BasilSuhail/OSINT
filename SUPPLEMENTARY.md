@@ -65,27 +65,22 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-10" href="#ch-10">§10  OUTCOME CLASSIFICATION  —  JUDGE THE RUN</a>                          │
-   │    a fetch returning nothing usable is not a success                   │
+   │ <a id="map-10" href="#ch-10">§10  DID WE SEE ANYTHING?</a>                                              │
+   │    a run that brings back nothing usable is recorded as such           │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ <a id="map-11" href="#ch-11">§11  THE FAILURE LEDGER  —  WRITE IT DOWN</a>                              │
-   │    every failure, quarantine and silent source is recorded             │
-   └───────────────────────────────────┬────────────────────────────────────┘
-                                       ▼
-   ┌────────────────────────────────────────────────────────────────────────┐
-   │ §12  events                                                            │
+   │ §11  events                                                            │
    │    the one table every source writes into, whatever it measured        │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §13  POST-INGEST ENRICHMENT                                            │
+   │ §12  POST-INGEST ENRICHMENT                                            │
    │    hazard outlines, place names and severity added afterwards          │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §14  RETENTION AND CAP                                                 │
+   │ §13  RETENTION AND CAP                                                 │
    │    rows older than ~30 days are deleted; 30 GB hard ceiling            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -93,47 +88,47 @@ Where the two disagree, the code is right.
 ═══════════════════════════ PART II — ANALYSIS ═══════════════════════════
 
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §15  THE COMPOSITE INDEX                                               │
+   │ §14  THE COMPOSITE INDEX                                               │
    │    four domains, z-scored against a country's own past, into one score │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §16  CII                                                               │
+   │ §15  CII                                                               │
    │    a same-day stress score: fixed country baseline plus today's events │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §17  STORIES                                                           │
+   │ §16  STORIES                                                           │
    │    headlines about the same event grouped by word overlap              │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §18  CORROBORATION + SENSOR CHECKS                                     │
+   │ §17  CORROBORATION + SENSOR CHECKS                                     │
    │    how many independent owners tell it, and whether a sensor agrees    │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §19  DISAGREEMENT                                                      │
+   │ §18  DISAGREEMENT                                                      │
    │    how differently countries word the same story                       │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §20  VALIDATOR                                                         │
+   │ §19  VALIDATOR                                                         │
    │    a local model extracts the factual claims a story makes             │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §21  SEVERITY GRADING                                                  │
+   │ §20  SEVERITY GRADING                                                  │
    │    how much harm to people a headline reports                          │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §22  THE BRAIN                                                         │
+   │ §21  THE BRAIN                                                         │
    │    a local model summarises stored rows and answers questions on them  │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §23  THE PREDICTION JOURNAL                                            │
+   │ §22  THE PREDICTION JOURNAL                                            │
    │    forecasts written down before the outcome, never rewritten          │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -141,22 +136,22 @@ Where the two disagree, the code is right.
 ═════════════════════ PART III — OFFLINE EVALUATION ═════════════════════
 
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §24  GROUND TRUTH                                                      │
+   │ §23  GROUND TRUTH                                                      │
    │    conflict records become the labels, in a table of their own         │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §25  THE PANEL                                                         │
+   │ §24  THE PANEL                                                         │
    │    one row per country per month — 31,637 of them                      │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §26  THE EXAMS                                                         │
+   │ §25  THE EXAMS                                                         │
    │    the score against six baselines; the verdict is computed, not read  │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §27  HUMAN AUDIT SHEETS                                                │
+   │ §26  HUMAN AUDIT SHEETS                                                │
    │    a person hand-checks a sample of every model output                 │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -164,12 +159,12 @@ Where the two disagree, the code is right.
 ═══════════════════════════ PART IV — SERVING ═══════════════════════════
 
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §28  THE API                                                           │
+   │ §27  THE API                                                           │
    │    31 endpoints — the only way anything leaves the database            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §29  THE CONSOLE                                                       │
+   │ §28  THE CONSOLE                                                       │
    │    map, panels and a live stream of arriving rows                      │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -177,7 +172,7 @@ Where the two disagree, the code is right.
 ════════════════════════ PART V — WHAT COMES OUT ════════════════════════
 
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §30  THE ARTEFACTS                                                     │
+   │ §29  THE ARTEFACTS                                                     │
    │    the files under results/ that every published number comes from     │
    └───────────────────────────────────┬────────────────────────────────────┘
                                         
@@ -425,7 +420,7 @@ picks up where it left off instead of re-firing everything.
 | --- | --- |
 | The scheduler dies | nothing is sampled at all, and **no error appears anywhere** — no job started, so nothing failed. Silence looks exactly like health. |
 | Workers die, scheduler lives | messages queue up and run late, so rows arrive bunched instead of evenly spaced |
-| A job fails every run | the scheduler neither knows nor cares; the watchdog in §11 is what catches it |
+| A job fails every run | the scheduler neither knows nor cares; the watchdog in §10 is what catches it |
 
 Nothing sets an expiry on a queued message, so a two-day outage leaves roughly
 6,300 of them to drain at once on return.
@@ -466,7 +461,7 @@ when free.
 Redis is the program holding the mailbox. It keeps the notes in memory and
 also writes them to disk (`--appendonly yes`), so a restart does not lose the
 queue. It also carries the signal that tells the console a new row has landed,
-which is what makes the map in §29 update without a reload.
+which is what makes the map in §28 update without a reload.
 
 Nothing decides anything here. It stores notes and hands them out in order.
 
@@ -632,14 +627,14 @@ ends up inside.**
 | `yfinance` | share prices, indices, currencies | `yf.Ticker(sym).history(...)` | 288/day | composite → market |
 | `fred` | inflation, unemployment, yields | `fred.stlouisfed.org` API | 1/day | composite → market |
 | `gdelt` | machine-coded world events | `data.gdeltproject.org/gdeltv2/lastupdate.txt` | 96/day | composite → geopolitical · CII |
-| `acled` | recorded conflict events | `acleddata.com/api/acled/read`, or local `.csv`/`.xlsx` | 24/day | composite → geopolitical · **labels §24** |
+| `acled` | recorded conflict events | `acleddata.com/api/acled/read`, or local `.csv`/`.xlsx` | 24/day | composite → geopolitical · **labels §23** |
 | `usgs-quake` | earthquakes | `earthquake.usgs.gov/.../4.5_day.geojson` | 96/day | composite → hazard · CII |
 | `gdacs` | cyclone, flood, drought alerts | `gdacs.org/xml/rss.xml` | 96/day | composite → hazard · CII |
 | `eonet` | ongoing natural events | `eonet.gsfc.nasa.gov/api/v3/events` | 48/day | composite → hazard · CII |
 | `emdat` | historical disaster archive | a local file, `EMDAT_CSV_PATH` | 1/day | composite → hazard |
 | `nasa-firms` | satellite fire detections | `firms.modaps.eosdis.nasa.gov/api/area/csv/` | 24/day | composite → wildfire |
 | `uk-police` | recorded crimes, 6 UK cities | `data.police.uk/api` | 1/day | CII only |
-| 53 news sites | headlines | each site's RSS URL, one entry per site in `rss_feeds.json`:<br><br>`{`<br>&nbsp;&nbsp;`"source": "rss-bbc-world",`<br>&nbsp;&nbsp;`"url": "https://feeds.bbci.co.uk/news/world/rss.xml",`<br>&nbsp;&nbsp;`"pretty_name": "BBC World",`<br>&nbsp;&nbsp;`"cadence_min": 60,`<br>&nbsp;&nbsp;`"owner": "bbc",`<br>&nbsp;&nbsp;`"country": "GB",`<br>&nbsp;&nbsp;`"class": "mainstream"`<br>`}` | 24/day each | CII · §17 · §19 · §21 |
+| 53 news sites | headlines | each site's RSS URL, one entry per site in `rss_feeds.json`:<br><br>`{`<br>&nbsp;&nbsp;`"source": "rss-bbc-world",`<br>&nbsp;&nbsp;`"url": "https://feeds.bbci.co.uk/news/world/rss.xml",`<br>&nbsp;&nbsp;`"pretty_name": "BBC World",`<br>&nbsp;&nbsp;`"cadence_min": 60,`<br>&nbsp;&nbsp;`"owner": "bbc",`<br>&nbsp;&nbsp;`"country": "GB",`<br>&nbsp;&nbsp;`"class": "mainstream"`<br>`}` | 24/day each | CII · §16 · §18 · §20 |
 | `opensky-adsb` | aircraft positions | `opensky-network.org/api/states/all` | 24/day | **nothing scored** — map only |
 | `abuse-ch-urlhaus` | URLs currently serving malware — from abuse.ch, a Swiss non-profit publishing free lists of known-bad internet infrastructure | `urlhaus.abuse.ch/downloads/csv_recent/` | 96/day | **nothing scored** — map only |
 | `abuse-ch-feodo` | IP addresses running botnet control servers — same publisher, a blocklist of the kind a firewall loads | `feodotracker.abuse.ch/downloads/ipblocklist.csv` | 96/day | **nothing scored** — map only |
@@ -654,7 +649,7 @@ project depends on them.
 **News does not enter the composite index.** News rows are stored with category
 `NEWS`, and the composite only reads `market`, `geopolitical` and `hazard`. So
 the 53 news sites — half of all traffic in §2's fast tray — feed the story and
-disagreement work, and the CII, but **not the score that gets tested in §26.**
+disagreement work, and the CII, but **not the score that gets tested in §25.**
 
 ## What the 53 news sites are
 
@@ -675,7 +670,7 @@ The news sample is **almost entirely English-language**, and a third of it is
 UK- or US-based. Every narrative measurement in this project is computed over
 that sample.
 
-So when §19 reports how differently countries word a story, it is in practice
+So when §18 reports how differently countries word a story, it is in practice
 reporting how differently **mostly Anglophone outlets** word it. That is a
 narrower claim than "how the world reports this", and the difference is not
 recoverable by weighting — a viewpoint that was never collected cannot be
@@ -858,7 +853,7 @@ recent data would be impossible anyway.
 ### One warning
 
 `severity` is **not** comparable across sources. A 0.8 earthquake and a 0.8
-headline share a column name and a scale, and nothing else. §15 is where that
+headline share a column name and a scale, and nothing else. §14 is where that
 had to be dealt with.
 
 ## Three ways a fetch ends
@@ -898,7 +893,7 @@ Two things are always true on failure:
 - **No partial writes.** The database is untouched, so a later run cannot find
   half-imported data.
 - **The failure is visible.** A counter goes up in `ingest_health` and the full
-  error text is stored in `ingest_failures`, which is what lets §11 say *which*
+  error text is stored in `ingest_failures`, which is what lets §10 say *which*
   source is broken and *why* rather than just that something is quiet.
 
 ---
@@ -929,7 +924,7 @@ fields.
         │                   local model, only if the feed declares another language
         │
         ├─ 2. severity    → 0.0 - 1.0 plus a written reason
-        │                   keyword rules — provisional, replaced later by §21
+        │                   keyword rules — provisional, replaced later by §20
         │
         ├─ 3. locate      → country + lat/lon, or nothing at all
         │                   scored: country names and demonyms → regions →
@@ -970,7 +965,7 @@ gaps — every score belongs to exactly one:
 The example headline hits `kills` → lethal → floor `0.60`, and `12` deaths →
 mass casualty → floor `0.80`. It lands in `mass_casualty`.
 
-**Why a word list at all**, given §21 replaces it with a model: so no row is
+**Why a word list at all**, given §20 replaces it with a model: so no row is
 ever unscored. A model needs a running local LLM and a spare few seconds; the
 word list needs neither, and gives every row a defensible floor the moment it
 arrives.
@@ -1000,7 +995,7 @@ This is the one ordering that is load-bearing, and it was learned the hard way.
 
 Steps 2, 3 and 5 all read **English words**. The severity rules match English
 keywords. The locator matches English country names and demonyms. The story
-tokeniser in §17 splits English text.
+tokeniser in §16 splits English text.
 
 Run them on an Arabic headline and every one of them finds nothing:
 
@@ -1022,8 +1017,8 @@ headline naming several countries and being about none of them resolves to
 as unknown.
 
 **The severity here is provisional.** Keyword rules are a floor, not an answer —
-they exist so a row is never unscored. §21 replaces the value with a model
-grade, and §27 is where a person checks whether that grade is any good.
+they exist so a row is never unscored. §20 replaces the value with a model
+grade, and §26 is where a person checks whether that grade is any good.
 
 ## What gets written down
 
@@ -1084,7 +1079,7 @@ Worked on a real case: **four articles from one feed's front page**, read at
 | **What the feed said → what gets stored** | `16:25` → `13:25`<br>`16:17` → `13:17`<br>`15:43` → `12:43`<br>`13:57` → `10:57` | `16:25` → `14:06`<br>`16:17` → `14:06`<br>`15:43` → `14:06`<br>`13:57` → `13:57` |
 | **What ends up stored** | the **real publication time** — only the label was wrong | the time **we happened to look**; `occurred_at` becomes `fetched_at` |
 | **PRO** | the stored time is true, so everything computed from it is too | always works, nothing has to be proved |
-| **CON** | assumes the whole batch shares one offset — a feed mixing timezones would have correct rows moved wrongly | the true time is lost. A row really published `31 Jan 23:40` and clamped to `1 Feb 00:10` is counted in the wrong **month** by §15, and a row stamped *now* never looks old enough for §8 to reject |
+| **CON** | assumes the whole batch shares one offset — a feed mixing timezones would have correct rows moved wrongly | the true time is lost. A row really published `31 Jan 23:40` and clamped to `1 Feb 00:10` is counted in the wrong **month** by §14, and a row stamped *now* never looks old enough for §8 to reject |
 | **What is done about the CON** | the thresholds must pass first, and the original timestamp is stored beside the corrected one, so any wrong shift is reversible | same — the original is kept, and clamps are counted separately from shifts, so a feed that is *always* clamped is identifiable as genuinely broken rather than merely mislabelled |
 
 Nothing automatic acts on a feed that is always clamped. It is recorded so it
@@ -1134,7 +1129,7 @@ Two different reasons a source has no limit:
 
 ## Where the 30 comes from
 
-Not chosen. Retention deletes rows at 30 days (§14), so the rule is: **do not
+Not chosen. Retention deletes rows at 30 days (§13), so the rule is: **do not
 store what the next cleanup would delete anyway.**
 
 Stricter would be worse. Legitimate news feeds routinely run 10–20 days behind,
@@ -1180,7 +1175,7 @@ The same event arrives **again and again**. That is normal, not a bug:
 
 Without this stage, one cyclone becomes **96 rows a day**.
 
-**Why that is fatal, in data terms:** §15 scores a country by counting events
+**Why that is fatal, in data terms:** §14 scores a country by counting events
 per month. A duplicated event is a **fabricated observation** — the count goes
 up, the z-score goes up, the score goes up, and nothing in the data reveals it.
 Deduplication is not tidiness. It is the difference between counting events and
@@ -1219,7 +1214,7 @@ stage:
 | --- | --- | --- |
 | **identity** — `source`, `source_event_id`, `category` | **never touched** | these define which row it is; changing them would make it a different event |
 | **live values** — `occurred_at`, `fetched_at`, `severity`, `confidence`, `keywords` | **replaced** | an ongoing cyclone must not freeze at its first-seen state and drop out of the live window |
-| **location** — `country`, `lat`, `lon` | **news replaces, others keep** | empty from news is an *answer* — the locator re-read the text and it no longer supports that country; empty from an API is a *gap*, and §13 may fill it later. Never overwrite an answer with a gap |
+| **location** — `country`, `lat`, `lon` | **news replaces, others keep** | empty from news is an *answer* — the locator re-read the text and it no longer supports that country; empty from an API is a *gap*, and §12 may fill it later. Never overwrite an answer with a gap |
 | **enrichment inside `payload`** — the extras *we* added after the row landed: real map outline, place name, sentiment, entity names (22 keys, listed in `ENRICHMENT_PAYLOAD_KEYS`) | **protected** — the incoming payload is *merged over* the stored one, never replaces it | The fetcher never sends these back; it does not know they exist. Replacing the whole payload deletes them — and did: a hazard feed re-published every active event every 15 minutes and each refresh wiped the real map geometry. Silent for weeks — nothing errored, the map just showed circles instead of shapes. A test walks the key list, so a refresh that starts destroying enrichment fails the suite instead of quietly emptying the map |
 
 ### Replace, or merge
@@ -1287,44 +1282,38 @@ columns later.
 </details>
 
 <details id="ch-10">
-<summary><b>§10 &nbsp; Outcome classification</b> &nbsp;—&nbsp; a fetch returning nothing usable is not a success</summary>
+<summary><b>§10 &nbsp; Did we see anything?</b> &nbsp;—&nbsp; a run that brings back nothing usable is recorded as such</summary>
 <br>
 
-**`app/ingest/outcome.py`**
+**`app/ingest/outcome.py`**, **`app/watchdog.py`**
 
-## Concretely, one fetch
+## The problem
 
-```
-§5  download          → 50 raw items
-§6  enrich            → 50 items, now with tone/place
-§7  fix time          → 50 items, sane timestamps
-§8  freshness         → 8 dropped, 42 left
-§9  upsert            → 42 written: 12 new, 30 refreshes
-                        ─────────────────────────────
-§10 look at what just happened → label: "new_data"
-                                 fetched=50 rejected=8 accepted=42 inserted=12
-```
+A source can answer `200 OK` and hand over an empty list, every hour, for a
+month. The request worked, so the old code called it a success — and no data
+arrived. The dashboard stays green while the database grows a month-shaped hole.
 
-§9 was the last step that touches data. §10 touches **no data at all**. It reads
-the numbers §5–§9 produced and writes a note about them somewhere else.
+That hole becomes a number later. §14 counts events per country per month, so a
+cell can read `0` for two opposite reasons:
 
-Every run gets one of **five labels**, decided from counts alone. Two — worked,
-crashed — is not enough, because a source can answer politely and hand over
-nothing, which the old code filed as a success.
-
-## The counts
-
-| Count | Meaning |
+| What was really happening | The zero means |
 | --- | --- |
-| `fetched` | rows the source handed us |
-| `rejected` | thrown out by the freshness gate (§8) |
-| `accepted` | survived and written |
-| `affected` | rows the database touched — insert **or** update |
-| `inserted` | genuinely new rows |
+| we were fetching fine, nothing occurred | observed — a quiet month, safe to model |
+| the feed sent nothing all month | **not observed** — a gap, not calm |
 
-## The five states
+Nothing inside the events table separates those two. This stage is what does.
 
-| State | Decided when | Counted as | Meaning |
+**Why it is a bias, not noise:** a broken feed is not spread evenly. One feed
+covers one region, so when it breaks that region alone loses events and the
+index reads "improving". Missing data that clusters on the thing being measured
+moves the answer instead of blurring it.
+
+## The five labels
+
+Every run is labelled from counts alone — `fetched` (handed over), `rejected`
+(dropped by §8), `accepted` (written), `inserted` (new).
+
+| Label | Decided when | Counted as | Meaning |
 | --- | --- | --- | --- |
 | `new_data` | `inserted > 0` | success | alive and moving |
 | `unchanged` | `accepted > 0`, `inserted = 0` | success | all of it was already stored — normal for a feed that re-publishes its active events |
@@ -1332,162 +1321,50 @@ nothing, which the old code filed as a success.
 | `misconfigured` | a key or setting is missing | **our fault** | never blame the source, never quarantine (§4) over it |
 | `failed` | the run raised | failure | timeout, bad status, unparseable body |
 
-No judgement, only arithmetic — and impossible counts are refused:
+## What is kept, and what watches it
 
-```python
-inserted <= affected <= accepted      # a refresh cannot insert more than it wrote
-accepted + rejected <= fetched        # nothing can be written that never arrived
-```
+One row per source per day counts those labels and holds two clocks:
 
-## Why the label decides a number
-
-§15 counts events per country per month, so a month can read `0 events` for two
-opposite reasons:
-
-| Why it is zero | Meaning |
+| Clock | Moves when |
 | --- | --- |
-| nothing happened there | real — a calm month |
-| the feed sent nothing all month | fake — we were not looking |
-
-Labelling the empty hours `empty` instead of *success* is what keeps those apart.
-
-## The line that makes silence visible
-
-```python
-if result.accepted > 0:
-    row.last_output = now      # moves only when usable rows arrived
-```
-
-`last_success` moves when the **request** worked. `last_output` moves only when
-**data** arrived. A source stuck on `empty` keeps the first fresh and lets the
-second go stale — the gap §11 watches for.
-
-## Where the stage sits
-
-```
-§5–§9  → the data
-§10    → the metadata about how the data was gathered
-§11    → reads that log, shouts when a source goes quiet
-```
-
-Without the middle line a missing value cannot be read: *absent* and *not
-observed* look identical.
-
----
-
-<a href="#ch-10">▲ top of §10</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-10">↑ back to §10 in the diagram</a>
-
-</details>
-
-<details id="ch-11">
-<summary><b>§11 &nbsp; The failure ledger</b> &nbsp;—&nbsp; every failure, quarantine and silent source is recorded</summary>
-<br>
-
-**`app/watchdog.py`**, **`app/console_health.py`**
-
-The events table records **what happened in the world**. This one records **what
-we were able to see** — when we looked, and what came back. A number read
-without it is unreadable: a zero could be a quiet month or a broken feed.
-
-## What flows where
-
-```
-   WRITTEN BY                        TABLE                      READ BY
-   ──────────                        ─────                      ───────
-
-   §10's label + counts   ────►  ingest_health      ────►  watchdog  →  notifications
-   every run, every source       one row per source                     →  push + log
-                                 per day: counters,       ────►  console health panels
-                                 last_success,           ────►  API  /ingest-health (7 d)
-                                 last_output             ────►  brain snapshot, "data as of"
-
-   a crash, or a batch    ────►  ingest_failures    ────►  a person, when debugging
-   rejected by §8                one row per incident:
-   only when it happens          error class, message,
-                                 request URL, response body
-
-   §4's verdict           ────►  quarantine         ────►  console "rested sources"
-                                 one row per source:  ────►  API  /ingest/quarantine
-                                 resting until, strikes
-```
-
-## Every field is measured, none typed
-
-| Field in `ingest_health` | Comes from |
-| --- | --- |
-| `new_data_n`, `unchanged_n`, `empty_n`, `misconfigured_n`, `failure_n` | §10's label for that run |
-| `fetched_rows` | §5 — how many the source handed over |
-| `rejected_rows` | §8 — dropped for being too old |
-| `accepted_rows`, `inserted_rows` | §9 — what the write actually did |
 | `last_success` | the **request** worked |
 | `last_output` | **usable rows** arrived (`accepted > 0`) |
 
-## Three layers, because they answer different questions
-
-| Layer | Table | Grain | Answers |
-| --- | --- | --- | --- |
-| evidence | `ingest_failures` | one incident | *what broke at 04:12, and why* |
-| state | `ingest_health` | source × day | *how has this source behaved lately* |
-| alarm | `notifications` | source × day | *who needs telling, once* |
-
-Raw → aggregated → derived. The trend cannot be rebuilt from incidents, and the
-incident cannot be recovered from counters, so both are kept.
-
-## Noticing silence
+A source stuck on `empty` keeps the first fresh and lets the second go stale.
+The watchdog reads the second, and flags a source once its own cadence has
+passed six times over:
 
 ```python
-threshold = cadence_min * 6                       # STALE_MULTIPLIER
-freshness = last_output if output_required else last_success
-is_stale  = freshness is None or (now - freshness) > threshold
+threshold = cadence_min * 6      # a 15-minute feed is flagged after 90 minutes
+is_stale  = (now - last_output) > threshold
 ```
 
-Two decisions sit in those three lines:
+Two static archives are judged on `last_success` instead — they legitimately
+have nothing new most days. Every other source has to produce rows to count as
+alive.
 
-| Decision | Rule | Why |
-| --- | --- | --- |
-| which clock counts as alive | `last_output` for every source, except two static archives judged on `last_success` | a source answering `200 OK` with nothing is dead, not healthy — §10's whole point, cashed in here |
-| how much patience | six of the source's **own** cadences | a 15-minute feed is flagged after 90 minutes, a daily one after six days — proportional, not a fixed hour |
-
-A flagged source writes one notification per day, so an outage pages once rather
-than every sweep.
-
-## Why this decides a published number
-
-§25 builds one row per country per month. A cell reads `0`:
-
-| The ledger says | The zero means |
-| --- | --- |
-| every fetch that month was `new_data` | observed — a quiet month, safe to model |
-| half were `empty`, `last_output` nine days stale | **not observed** — a hole, not calm |
-
-And the reason this is a bias and not noise: collection failures are not spread
-evenly. One feed covers one region, so when it breaks that region alone loses
-events, the index reads "improving", and nothing inside the events table says
-otherwise. Missing data that clusters on the thing being measured moves the
-answer. This ledger is the only place that can prove the gap was ours.
+Each failure also writes one row of evidence — error class, message, request
+URL, response body — so a gap can be explained rather than guessed at.
 
 <details>
 <summary><b>Issue</b> &nbsp;—&nbsp; a table nothing writes</summary>
 <br>
 
 `dead_letter_queue` is created by the first migration and described in the
-architecture notes: after five failed retries a job was to be parked there with
-a `replay_after` stamp, and an hourly worker was to re-enqueue it. Nothing
-writes to it, and no such worker exists.
+architecture notes: after five failed retries a job was to be parked there and
+re-enqueued hourly. Nothing writes to it, and no such worker exists.
 
-It is a leftover from an **event-driven** design. There, a failed message is
-lost work that must be stored and replayed. Here the scheduler (§1) fires the
-same source again in 5, 15 or 60 minutes anyway — the next run does the same
-job, so there is nothing to replay.
-
-The problem that turned out to be real was the opposite one: a broken source
-being hammered five times a run, forever. That is what quarantine (§4) solved,
-and it left the table with no work to do.
+It is a leftover from an **event-driven** design, where a failed message is lost
+work that has to be stored and replayed. Here the scheduler (§1) fires the same
+source again in 5, 15 or 60 minutes anyway — the next run does the same job, so
+there is nothing to replay. The problem that turned out to be real was the
+opposite one, a broken source being hammered five times a run forever, and that
+is what quarantine (§4) solved.
 
 </details>
 
 ---
 
-<a href="#ch-11">▲ top of §11</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-11">↑ back to §11 in the diagram</a>
+<a href="#ch-10">▲ top of §10</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-10">↑ back to §10 in the diagram</a>
 
 </details>
