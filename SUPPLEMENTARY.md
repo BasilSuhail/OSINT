@@ -1220,7 +1220,30 @@ stage:
 | **identity** — `source`, `source_event_id`, `category` | **never touched** | these define which row it is; changing them would make it a different event |
 | **live values** — `occurred_at`, `fetched_at`, `severity`, `confidence`, `keywords` | **replaced** | an ongoing cyclone must not freeze at its first-seen state and drop out of the live window |
 | **location** — `country`, `lat`, `lon` | **news replaces, others keep** | empty from news is an *answer* — the locator re-read the text and it no longer supports that country; empty from an API is a *gap*, and §13 may fill it later. Never overwrite an answer with a gap |
-| **enrichment inside `payload`** — the extras *we* added after the row landed: real map outline, place name, sentiment, entity names (22 keys, listed in `ENRICHMENT_PAYLOAD_KEYS`) | **protected** — the incoming payload is *merged over* the stored one, never replaces it | The fetcher never sends these back; it does not know they exist. A naive replace deletes them — and did: a hazard feed re-published every active event every 15 minutes and each refresh wiped the real map geometry. Silent for weeks — nothing errored, the map just showed circles instead of shapes. A test walks the key list, so a refresh that starts destroying enrichment fails the suite instead of quietly emptying the map |
+| **enrichment inside `payload`** — the extras *we* added after the row landed: real map outline, place name, sentiment, entity names (22 keys, listed in `ENRICHMENT_PAYLOAD_KEYS`) | **protected** — the incoming payload is *merged over* the stored one, never replaces it | The fetcher never sends these back; it does not know they exist. Replacing the whole payload deletes them — and did: a hazard feed re-published every active event every 15 minutes and each refresh wiped the real map geometry. Silent for weeks — nothing errored, the map just showed circles instead of shapes. A test walks the key list, so a refresh that starts destroying enrichment fails the suite instead of quietly emptying the map |
+
+### Replace, or merge
+
+`payload` is the only column with **two writers** — the fetcher, and our own
+later jobs. Replacing it lets the fetcher speak for both:
+
+```python
+stored   = {"title": "Cyclone Alpha", "footprint_geojson": {...}, "sentiment": -0.4}
+incoming = {"title": "Cyclone Alpha"}      # the fetcher only knows its own half
+
+replace = incoming                 # {"title": ...}      — geometry and sentiment gone
+merge   = {**stored, **incoming}   # keeps both, and upstream still wins on `title`
+```
+
+The database does exactly that merge, one operator:
+
+```sql
+payload = events.payload || EXCLUDED.payload   -- stored first, incoming layered on top
+```
+
+Read it left to right: start from what is stored, let the incoming keys
+overwrite the ones they mention, leave the rest alone. Every other column keeps
+plain `= EXCLUDED.x`, because for those the source is the only writer.
 
 ## Duplicates inside one batch
 
