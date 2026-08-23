@@ -1521,46 +1521,28 @@ and a variable means the same thing in every row.
 | good at | filtering, grouping, counting | holding whatever arrived |
 | enforced | `severity BETWEEN 0 AND 1` | nothing |
 
-Pure relational would need 67 tables, or one table with three hundred mostly
-empty columns. Pure document storage could not answer *count per country per
-month* without reading every record. The split follows one rule:
+One rule decides which side a field lands on:
 
 > **anything you filter, group or count by is a real column. Everything else
 > goes in the bag.**
 
 `country`, `occurred_at`, `category` and `severity` are columns because §14
 groups by them. `magnitude` and `ticker` are in the bag because nothing does.
-Nothing is discarded in the flattening — if a later analysis wants the depth of
-that quake, it is still there.
 
-## Two decisions a reader should push on
+## Two choices a reader should push on
 
-**`severity` is forced onto 0…1 for everything.** A magnitude-6 quake and a
-volatility spike are not comparable in their own units — Richter against index
-points. Mapping both onto one scale is what makes *sum the severity for this
-country* a legal operation at all. That mapping is a modelling choice, not a
-measurement; §20 is where it is made and where it should be challenged.
+| Choice | What it buys | What it costs |
+| --- | --- | --- |
+| **`severity` forced onto 0…1** for every category | a quake and a volatility spike become addable — *sum the severity for this country* is only legal because of it | the mapping is a modelling choice, not a measurement. §20 is where it is made, and where it should be challenged |
+| **geography allowed to be empty** | a market event has no country, and inventing one would be fabricating data | *events in country X* silently excludes every unplaced row — a country total counts **located** events, not all of them |
 
-**Geography is nullable.** A market event has no country, and inventing one
-would be fabricating data. The honest consequence is that *events in country X*
-silently excludes every unplaced row, so a country total is a count of
-**located** events, not of all of them.
-
-## Rules the database itself enforces
+## Enforced by the database, not by trust
 
 ```sql
-UNIQUE (source, source_event_id)      -- §9's dedup, enforced rather than trusted
+UNIQUE (source, source_event_id)      -- §9's dedup
 CHECK  (severity   BETWEEN 0 AND 1)   -- the scale cannot drift
 CHECK  (confidence BETWEEN 0 AND 1)
 ```
-
-Five indexes, one per question actually asked: by time, by country and time, by
-category and time, by source and time, by last update.
-
-The constraints live in the database, not only in the Python model, so a
-backfill script or a hand-typed statement cannot write a row that breaks them.
-The guarantee holds at the storage layer, which is why nothing downstream
-re-checks it.
 
 ---
 
