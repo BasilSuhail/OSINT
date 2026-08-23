@@ -1480,10 +1480,10 @@ So there is one table, and all 67 conform to it.
 | `category` | which of ten kinds | `hazard`, `market`, `news`, `cyber`, … |
 | `severity` | how bad, **0…1** | nullable |
 | `confidence` | how sure, **0…1** | nullable |
-| `keywords` | list of words | |
-| `country` | ISO 3166-1 two letters | nullable |
+| `keywords` | tags the fetcher attaches | not free text — a short fixed list per source: `["usgs", "earthquake", "m6"]`, `["^VIX", "etf", "drawdown"]`. Search matches on list overlap, so they are filters, not description |
+| `country` | the country **code**, two letters | `GB`, `US`, `SD` — the ISO 3166-1 standard, uppercase enforced. A code and not a name because *UK*, *United Kingdom* and *Britain* would group as three different countries. Nullable |
 | `lat`, `lon` | where | nullable |
-| `payload` | the whole original record | JSON |
+| `payload` | the original record, untouched | JSON. The receipt: everything the source sent, so nothing is lost in flattening and a row can be re-read later. Also where §12's enrichment is stored — the 22 protected keys of §9 |
 
 ## The same shape, three different worlds
 
