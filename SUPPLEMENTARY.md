@@ -1220,32 +1220,7 @@ stage:
 | **identity** — `source`, `source_event_id`, `category` | **never touched** | these define which row it is; changing them would make it a different event |
 | **live values** — `occurred_at`, `fetched_at`, `severity`, `confidence`, `keywords` | **replaced** | an ongoing cyclone must not freeze at its first-seen state and drop out of the live window |
 | **location** — `country`, `lat`, `lon` | **news replaces, others keep** | empty from news is an *answer* — the locator re-read the text and it no longer supports that country; empty from an API is a *gap*, and §13 may fill it later. Never overwrite an answer with a gap |
-| **enrichment inside `payload`** | **protected** | see below |
-
-## The bug this stage already had
-
-Some values are written **after** a row lands — real hazard outlines, resolved
-place names, sentiment, extracted entities. The original fetcher does not know
-those exist and will never send them again.
-
-A naive refresh overwrites the whole payload, and they are gone.
-
-That is exactly what happened. A hazard feed re-published every active event
-every 15 minutes, and **each refresh deleted the real map geometry** that had
-been fetched separately. It hid for weeks, because nothing errored — the map
-just quietly showed circles instead of real shapes.
-
-The fix is an explicit list of protected keys:
-
-```python
-ENRICHMENT_PAYLOAD_KEYS = (
-    "footprint_geojson", "place_name", "sentiment", "entities", ...
-)
-```
-
-The incoming payload is **merged over** the stored one rather than replacing it,
-and these keys survive. A test walks this list, so a refresh that starts
-destroying enrichment fails the suite instead of silently emptying the map.
+| **enrichment inside `payload`** — the extras *we* added after the row landed: real map outline, place name, sentiment, entity names (22 keys, listed in `ENRICHMENT_PAYLOAD_KEYS`) | **protected** — the incoming payload is *merged over* the stored one, never replaces it | The fetcher never sends these back; it does not know they exist. A naive replace deletes them — and did: a hazard feed re-published every active event every 15 minutes and each refresh wiped the real map geometry. Silent for weeks — nothing errored, the map just showed circles instead of shapes. A test walks the key list, so a refresh that starts destroying enrichment fails the suite instead of quietly emptying the map |
 
 ## Duplicates inside one batch
 
