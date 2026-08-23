@@ -1287,64 +1287,81 @@ columns later.
 
 **`app/ingest/outcome.py`**, **`app/watchdog.py`**
 
-## The problem
+The diary of whether the system was actually working.
 
-A source can answer `200 OK` and hand over an empty list, every hour, for a
-month. The request worked, so the old code called it a success — and no data
-arrived. The dashboard stays green while the database grows a month-shaped hole.
+Every hour a source is asked for data. Sometimes 50 events come back. Sometimes
+a polite reply comes back with **nothing inside** — and the old code called that
+a success, because the request went through.
 
-That hole becomes a number later. §14 counts events per country per month, so a
-cell can read `0` for two opposite reasons:
+## What it does
 
-| What was really happening | The zero means |
+After the run, write down what really happened, in one word:
+
+| Word | What happened |
 | --- | --- |
-| we were fetching fine, nothing occurred | observed — a quiet month, safe to model |
-| the feed sent nothing all month | **not observed** — a gap, not calm |
+| `new_data` | rows came, some were new |
+| `unchanged` | rows came, all already known — normal for a feed that re-publishes its active events |
+| `empty` | **the request was fine and nothing came** |
+| `misconfigured` | our own setup is broken, not the source's |
+| `failed` | it crashed — timeout, bad status, unreadable body |
 
-Nothing inside the events table separates those two. This stage is what does.
+That is all. It touches no data. It writes the word next to the source's name,
+with the date, and the counts it was decided from — `fetched`, `rejected` by §8,
+`accepted`, `inserted`.
 
-**Why it is a bias, not noise:** a broken feed is not spread evenly. One feed
+## Why bother
+
+Because months later something reads:
+
+```
+country X, March:  0 events
+```
+
+and the zero has to be read one of two ways:
+
+| The diary says | The zero means |
+| --- | --- |
+| `new_data` all month | we were watching, nothing happened — a real zero |
+| `empty` all month | we were not watching — a fake zero |
+
+Same number on screen, opposite meaning, and nothing inside the events table
+separates them. §14 counts events per country per month, so the fake zero
+becomes a published number saying that country was calm.
+
+**And it is a bias, not noise:** a broken feed is not spread evenly. One feed
 covers one region, so when it breaks that region alone loses events and the
-index reads "improving". Missing data that clusters on the thing being measured
-moves the answer instead of blurring it.
+index reads "improving".
 
-## The five labels
+## The trap it closes
 
-Every run is labelled from counts alone — `fetched` (handed over), `rejected`
-(dropped by §8), `accepted` (written), `inserted` (new).
+A dead source that still replies looks perfectly healthy. So two clocks are kept
+apart:
 
-| Label | Decided when | Counted as | Meaning |
-| --- | --- | --- | --- |
-| `new_data` | `inserted > 0` | success | alive and moving |
-| `unchanged` | `accepted > 0`, `inserted = 0` | success | all of it was already stored — normal for a feed that re-publishes its active events |
-| `empty` | `accepted = 0` | **neither** | the request worked, nothing usable came back. The state that used to hide |
-| `misconfigured` | a key or setting is missing | **our fault** | never blame the source, never quarantine (§4) over it |
-| `failed` | the run raised | failure | timeout, bad status, unparseable body |
-
-## What is kept, and what watches it
-
-One row per source per day counts those labels and holds two clocks:
-
-| Clock | Moves when |
+| Clock | Answers |
 | --- | --- |
-| `last_success` | the **request** worked |
-| `last_output` | **usable rows** arrived (`accepted > 0`) |
+| `last_success` | when did it last **reply**? |
+| `last_output` | when did it last give us **data**? |
 
-A source stuck on `empty` keeps the first fresh and lets the second go stale.
-The watchdog reads the second, and flags a source once its own cadence has
-passed six times over:
+The alarm is wired to the second one:
 
 ```python
 threshold = cadence_min * 6      # a 15-minute feed is flagged after 90 minutes
 is_stale  = (now - last_output) > threshold
 ```
 
-Two static archives are judged on `last_success` instead — they legitimately
-have nothing new most days. Every other source has to produce rows to count as
-alive.
+Six of the source's **own** cadences — proportional, so a daily source is not
+paged for being a few hours late. Two static archives are judged on
+`last_success` instead: they legitimately have nothing new most days.
 
-Each failure also writes one row of evidence — error class, message, request
-URL, response body — so a gap can be explained rather than guessed at.
+Each failure also stores one row of evidence — error class, message, request
+URL, response body — so a gap can be explained afterwards rather than guessed at.
+
+## In one breath
+
+```
+§5–§9   handle the data
+§10     writes down whether there WAS any data, and shouts when there is not
+```
 
 <details>
 <summary><b>Issue</b> &nbsp;—&nbsp; a table nothing writes</summary>
