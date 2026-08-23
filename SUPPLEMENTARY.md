@@ -1362,6 +1362,17 @@ if result.accepted > 0:
 **data** arrived. A source stuck on `empty` keeps the first fresh and lets the
 second go stale — the gap §11 watches for.
 
+## Where the stage sits
+
+```
+§5–§9  → the data
+§10    → the metadata about how the data was gathered
+§11    → reads that log, shouts when a source goes quiet
+```
+
+Without the middle line a missing value cannot be read: *absent* and *not
+observed* look identical.
+
 ---
 
 <a href="#ch-10">▲ top of §10</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-10">↑ back to §10 in the diagram</a>
