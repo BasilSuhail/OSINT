@@ -475,141 +475,150 @@ version this project pins; a different one resolves the lockfile differently.
 <details>
 <summary><b>Run it as a server</b> — the console as a service, reachable from a phone</summary>
 
-Everything above gets a console running on the machine you typed it into. The
-backend side mostly survives a reboot already — the containers restart
-themselves, though in this mode they need a hand with the timing, below — but
-`make up` runs the console itself as a development server, and a development
-server dies with the power. This turns the console into a service
-that starts on its own, and turns the board into something you can reach from
-a phone rather than only from the machine sitting next to it.
+Everything above gets a console running on the machine you typed it into, but
+`make up` runs that console as a development server, and a development server
+dies with the power. This turns it into a service that starts on its own, and
+turns the board into something you can reach from a phone.
 
-Every command below is the board's, and refuses anywhere else: they derive a
-bind for a tailnet interface and install systemd units, neither of which a
-laptop has any use for. Run one there and it stops and says so. `make up` and
-`make share` are the laptop's commands, and they are unaffected.
+**Every command here is the board's.** They derive a tailnet bind and install
+systemd units, so they refuse anywhere else and say so. `make up` and `make
+share` stay the laptop's commands and are unaffected.
 
-[Tailscale](https://tailscale.com) makes that reachable-from-a-phone part
-work, and this repository does not install it — follow its own instructions
-for the board and for whatever you'll read the console on, a phone or a
-laptop. Then bring it up on the board:
+### Before you start
+
+Three things, each of which will otherwise stop you later:
+
+- **Tailscale**, on the board and on whatever you'll read the console from.
+  This repository does not install it — follow [its own
+  instructions](https://tailscale.com).
+- **MagicDNS on** for your tailnet — a switch under DNS in the admin console,
+  on by default. The name gets compiled in, so the build refuses without it
+  rather than letting you discover it after the reboot.
+- **`API_AUTH_TOKEN` set in `.env`.** It is the only thing between a device on
+  the tailnet and an endpoint that spends model inference per call, and serve
+  mode refuses to start without it.
 
 ```bash
 sudo tailscale up
-```
-
-and find the name the board answers to on the tailnet:
-
-```bash
 tailscale status
 ```
 
-Nothing below asks you to type that name in — it's found automatically — but
-it's what you'll open in a browser at the end.
+`tailscale status` shows the name the board answers to. Nothing below asks you
+to type it — it is found automatically — but it is what you will open in a
+browser at the end.
 
-That name only resolves if **MagicDNS** is on for your tailnet — it's on by
-default, and it's a switch in the Tailscale admin console under DNS. The build
-below refuses to run without it rather than letting you find out after the
-reboot, because the name gets compiled into the console and turning MagicDNS
-on afterwards means building again.
-
-`API_AUTH_TOKEN` has to be set in `.env` before any of this starts. It is the
-only thing standing between a device on the tailnet and an endpoint that
-spends model inference on every call, and serve mode refuses to start without
-it.
-
-Build the console for the tailnet it finds:
+### 1. Build the console
 
 ```bash
 make serve-build
 ```
 
-A few minutes. It prints the console URL and the API URL it is baking in —
-worth reading, because this is the sharp part: both are compiled into the
-bundle, not read again at startup. Change the tailnet name later and the fix
-is building again, not restarting.
+A few minutes. It prints the console URL and the API URL it is baking in, and
+those are worth reading, because this is the sharp part: **both are compiled
+into the bundle, not read again at startup.** Change the tailnet name later and
+the fix is building again, not restarting.
 
-Install the service — Linux only, and it refuses outright on anything else:
+### 2. Install the service
 
 ```bash
 make serve-install
 ```
 
-Run it as yourself and let it ask for `sudo`; it refuses if you run the whole
-thing under `sudo`, for a reason two paragraphs down. Before writing anything
-it prints both systemd units in full and asks you to confirm; answer yes and it writes
-`/etc/systemd/system/osint-stack.service` and
-`/etc/systemd/system/osint-console.service`, and `/etc/osint-console.env`
-beside them. That last file holds the settings `next start` reads while it is
-running, which is almost nothing — the API token and the API URL are compiled
-into the console by `make serve-build`, not read from a file at startup, which
-is the same reason changing the tailnet name means building again. It is
-root-only anyway, so that the first setting that *is* a secret has somewhere to
-go.
+Linux only. Run it as yourself and let it ask for `sudo` — it refuses if you
+run the whole thing under `sudo`. It prints both units in full and asks you to
+confirm before writing anything, then installs:
 
-Two services, because a reboot has two halves to get right.
-`osint-console.service` is the console process itself. `osint-stack.service`
-is the containers, and it exists for one specific reason: in this mode the API
-is published on the board's *tailnet* address, and that address does not exist
-until Tailscale has configured it. Docker starts at boot with no ordering
-against Tailscale whatsoever, so left alone it can try to publish the API
-before the address is there, fail with `cannot assign requested address`, and
-then never try again — failing to *start* is not the same as *exiting*, and
-only the second one triggers a container restart. The unit waits for the
-address to actually appear on an interface and then brings the containers up.
-It is also why the console is ordered behind it: the console binds the same
+| Path | What it is |
+|---|---|
+| `/etc/systemd/system/osint-console.service` | the console process |
+| `/etc/systemd/system/osint-stack.service` | the containers |
+| `/etc/osint-console.env` | root-only, nearly empty — the token and API URL are compiled in, not read here |
+
+**Two services, because a reboot has two halves to get right.** In this mode
+the API is published on the board's *tailnet* address, and that address does
+not exist until Tailscale has configured it. Docker starts at boot with no
+ordering against Tailscale, so left alone it can try to publish before the
+address is there, fail with `cannot assign requested address`, and never try
+again — failing to *start* is not *exiting*, and only exiting triggers a
+restart. `osint-stack` waits for the address to appear, then brings the
+containers up. The console is ordered behind it because it binds the same
 address and would race the same way.
 
-And that is why it wants you rather than root: the console's service runs as
-the account you install it from, because it writes its build cache inside your
-checkout. A root service would leave you a directory you can no longer write
-to, which surfaces as the *next* `make serve-build` failing on a permission
-error in your own files. The container start does run as root, because talking to the Docker
-socket is root either way.
+**Why it wants you rather than root:** the console runs as the account you
+install it from, because it writes its build cache inside your checkout. A root
+service leaves you a directory you can no longer write to, which surfaces as
+the *next* `make serve-build` failing on a permission error in your own files.
+The container start does run as root — talking to the Docker socket is root
+either way.
 
-Start it:
+### 3. Start it
 
 ```bash
 make serve
 ```
 
-This brings the containers up with the API published on the tailnet address
-only, rebuilds the backend image from whatever you have pulled, then restarts
-the console's service so it is serving the build from above. It is the command
-to run after every pull — and if the console is older than the backend it now
-says so, because rebuilding the console is a separate `make serve-build`.
+Brings the containers up with the API published on the tailnet address only,
+rebuilds the backend image from whatever you have pulled, then restarts the
+console's service.
 
-From here on, **`make serve` is this board's command and `make up` is not.**
-`make up` is the laptop's: it republishes the API on `127.0.0.1` while the
-console's service carries on serving the tailnet address. Nothing clashes and
-nothing complains, and every request from the phone is refused, because the API
-the bundle calls is no longer published where the bundle is looking. `make up`
-notices the service is installed and asks before doing it, so this is a
-mistake you get one chance to catch rather than a silent one — but the command
-you want is `make serve`. `make down` is the same shape: it stops the
-containers and leaves the service running, which from the phone looks
-identical, and it says so when it does.
-
-Reboot the board, then open the console from the phone. That is the actual
-test, and it is the only one that proves it:
+### 4. Prove it
 
 ```bash
 sudo reboot
 ```
 
-If it does not come back, the symptom says which half to look at. A page that
-does not load at all is the console: `systemctl status osint-console` for
-whether it is running, `journalctl -u osint-console -n 50` for why it is not.
-A page that loads with every panel empty is the containers: `systemctl status
-osint-stack`, which says plainly if it gave up waiting for the tailnet
-address, and then `docker compose ps`. And since an old build serving quietly
-looks the same as a working one, the console's unit logs the commit it is
-serving at every start.
+Then open the console from your phone. That is the actual test, and the only
+one that proves it.
 
-One thing this is not. The console has no login, and the bundle it serves
-carries the API token to whoever downloads it — anyone reaching the tailnet
-address can use it. The tailnet is the entire boundary. Do not port-forward
-the console beyond it: a URL reachable from the open internet needs an
-identity layer in front of it, and that is separate work, not a setting here.
+### Everyday, on the board
+
+| Command | When |
+|---|---|
+| `make serve` | start or restart — **after every pull** |
+| `make serve-build` | after every pull too, and after changing the token, the tailnet name, or any `NEXT_PUBLIC_*` |
+| `make down` | stop the containers — the console's service keeps running, and it says so |
+| `make logs` | watch what the stack is doing |
+| *after a reboot* | nothing — both units are enabled and come back on their own |
+
+After a pull, both, in this order:
+
+```bash
+git pull
+make serve-build
+make serve
+```
+
+`make serve` rebuilds the backend but **not** the console — that is
+`make serve-build`'s job. If the console is older than the backend, `make
+serve` says so rather than serving a stale build quietly.
+
+**From here on, `make serve` is this board's command and `make up` is not.**
+`make up` republishes the API on `127.0.0.1` while the console's service
+carries on serving the tailnet address. Nothing clashes and nothing complains,
+and every request from the phone is refused, because the API the bundle calls
+is no longer published where the bundle is looking. `make up` notices the
+service is installed and asks first, so it is a mistake you get one chance to
+catch — but the command you want is `make serve`.
+
+### If it does not come back
+
+The symptom says which half to look at:
+
+| Symptom | Look at |
+|---|---|
+| page does not load at all | the console — `systemctl status osint-console`, then `journalctl -u osint-console -n 50` |
+| page loads, every panel empty | the containers — `systemctl status osint-stack` (it says plainly if it gave up waiting for the tailnet address), then `docker compose ps` |
+
+An old build serving quietly looks the same as a working one, so the console's
+unit logs the commit it is serving at every start.
+
+### One thing this is not
+
+The console has no login, and the bundle it serves carries the API token to
+whoever downloads it — anyone reaching the tailnet address can use it. **The
+tailnet is the entire boundary.** Do not port-forward the console beyond it: a
+URL reachable from the open internet needs an identity layer in front of it,
+and that is separate work, not a setting here.
 
 </details>
 
