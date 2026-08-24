@@ -88,7 +88,7 @@ Where the two disagree, the code is right.
 ═══════════════════════════ PART II — ANALYSIS ═══════════════════════════
 
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §14  THE COMPOSITE INDEX                                               │
+   │ <a id="map-14" href="#ch-14">§14  THE COMPOSITE INDEX</a>                                               │
    │    four domains, z-scored against a country's own past, into one score │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1680,5 +1680,113 @@ says otherwise.
 ---
 
 <a href="#ch-13">▲ top of §13</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-13">↑ back to §13 in the diagram</a>
+
+</details>
+
+<details id="ch-14">
+<summary><b>§14 &nbsp; The composite index</b> &nbsp;—&nbsp; four topics, scored against a country's own past, into one number</summary>
+<br>
+
+**`app/composite/`**
+
+One number per country per month, 0 to 1: **how unusual is this country this
+month, compared with its own past?**
+
+## First, where this actually runs
+
+The formula needs **12 months** of a country's past. The live table keeps
+**30 days** (§13). So live it has nothing to compare against, and returns 0.5
+for every country.
+
+Where it does work is `app/composite/backfill.py`, which builds 2015→2024
+history **in memory** — the rows never touch the events table, so retention
+cannot eat them — and then runs the exact same pipeline. That is what feeds
+`results/data/panel.csv` and the exams in Part III.
+
+So the composite is an **offline evaluation instrument, not a live dashboard
+number.**
+
+## Step 1 — one number per month
+
+Forget everything else. Pick one country. Count how much bad stuff happened,
+each month:
+
+```
+Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec  |  NOW
+ 18  22  20  19  21  20  22  18  20  21  19  20  |   35
+```
+
+Normal for this country is about **20**. It bounces by about **5** either way.
+
+This month is **35**.
+
+## Step 2 — the z-score = "how many wobbles above normal?"
+
+```
+z = (this month − normal) ÷ wobble
+z = (35 − 20) ÷ 5
+z = 3
+```
+
+Three wobbles above its own normal. That's it. That's the whole z-score.
+
+- `z = 0` → totally normal month
+- `z = 1` → a bit high
+- `z = 3` → very unusual
+- `z = −2` → unusually quiet
+
+> **The wobble** is the standard deviation — the usual size of a month's swing
+> away from normal, worked out from that country's own last 12 months.
+
+**Why divide by the wobble at all?** Because "15 above normal" means nothing on
+its own. For a country that normally swings by 15 that is a boring month; for
+one that normally swings by 5 it is alarming. Dividing asks *is this big **for
+them***.
+
+## Step 3 — four scores → one score
+
+You do that same sum four times — markets, conflict, disasters, fires. You get
+four z-scores. Then just average them:
+
+```
+markets   z = 0
+conflict  z = 3
+disasters z = 1
+fires     z = 0
+
+average = (0 + 3 + 1 + 0) ÷ 4 = 1
+```
+
+The `0.25 ×` in the code is the ÷ 4. Each of the four counts equally.
+
+## Step 4 — squash it into 0–1
+
+Average z can be anything — could be −6, could be +9. Ugly to display. So
+`sigmoid` bends any number onto a 0-to-1 line:
+
+```
+average z:   -3     -2     -1      0      1      2      3      5
+score:      0.05   0.12   0.27   0.50   0.73   0.88   0.95   0.99
+                                   ▲                    └──────┘
+                                 normal             barely moves
+```
+
+Normal month → **0.5**. Bad month → toward **1**. Quiet month → toward **0**.
+
+Our example: average z = 1 → score **0.73**.
+
+**One catch.** Past about z = 3 the score stops moving: 3 gives 0.95 and 5
+gives 0.99. A disaster and a much worse disaster come out looking the same.
+That is the price of a tidy 0-to-1 number.
+
+## Whole thing in one breath
+
+> Take a country's last 12 months. Work out its normal and its wobble. Ask how
+> many wobbles off normal this month is. Do that for four topics, average the
+> four, squash to 0–1.
+
+---
+
+<a href="#ch-14">▲ top of §14</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-14">↑ back to §14 in the diagram</a>
 
 </details>
