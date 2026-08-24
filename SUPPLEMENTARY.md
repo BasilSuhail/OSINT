@@ -1713,20 +1713,40 @@ each month:
 
 ```
 Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec  |  NOW
- 18  22  20  19  21  20  22  18  20  21  19  20  |   35
+ 17  24  15  21  28  16  23  12  25  19  26  14  |   35
 ```
 
-Normal for this country is about **20**. It bounces by about **5** either way.
+Two numbers come out of that row, and **neither is chosen — both are
+calculated from the row itself.**
 
-This month is **35**.
+**Its normal** — the average:
+
+```
+17+24+15+21+28+16+23+12+25+19+26+14 = 240
+240 ÷ 12 = 20                       ← normal
+```
+
+**Its wobble** — how far a typical month sits away from 20:
+
+```
+distances from 20:  3  4  5  1  8  4  3  8  5  1  6  6
+54 ÷ 12 = 4.5                       ← wobble, call it 5
+```
+
+So this country's normal month is **20**, and it usually swings about **5**
+either way. This month is **35**.
 
 ## Step 2 — the z-score = "how many wobbles above normal?"
 
 ```
 z = (this month − normal) ÷ wobble
-z = (35 − 20) ÷ 5
+z = (35        − 20    ) ÷ 5
+z = 15 ÷ 5
 z = 3
 ```
+
+`35 − 20 = 15` — fifteen above normal. A typical swing is only 5, so fifteen is
+**three typical swings**.
 
 Three wobbles above its own normal. That's it. That's the whole z-score.
 
@@ -1735,13 +1755,15 @@ Three wobbles above its own normal. That's it. That's the whole z-score.
 - `z = 3` → very unusual
 - `z = −2` → unusually quiet
 
-> **The wobble** is the standard deviation — the usual size of a month's swing
-> away from normal, worked out from that country's own last 12 months.
+> **The wobble** is the standard deviation. The textbook recipe squares the
+> distances before averaging and square-roots at the end — 5.02 for the row
+> above — but *"how far a typical month sits from normal"* is the right picture
+> and lands in the same place.
 
 **Why divide by the wobble at all?** Because "15 above normal" means nothing on
-its own. For a country that normally swings by 15 that is a boring month; for
-one that normally swings by 5 it is alarming. Dividing asks *is this big **for
-them***.
+its own. Another country could also be 15 above normal, but if *its* typical
+swing is 15, that is a Tuesday — `z = 1`. Same gap, completely different
+meaning. Dividing asks *is this big **for them***.
 
 ## Step 3 — four scores → one score
 
