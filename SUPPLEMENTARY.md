@@ -80,7 +80,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §13  RETENTION AND CAP                                                 │
+   │ <a id="map-13" href="#ch-13">§13  RETENTION AND CAP</a>                                                 │
    │    rows older than ~30 days are deleted; 30 GB hard ceiling            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1632,5 +1632,53 @@ one costs a single string comparison and refetches only what actually moved.
 ---
 
 <a href="#ch-12">▲ top of §12</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-12">↑ back to §12 in the diagram</a>
+
+</details>
+
+<details id="ch-13">
+<summary><b>§13 &nbsp; Retention and the cap</b> &nbsp;—&nbsp; old rows are deleted, so the dataset is a window and not an archive</summary>
+<br>
+
+**`app/housekeeping.py`**
+
+Every stage before this one adds rows. This one deletes them — which makes the
+dataset **a rolling window of the last 30 days**, not everything ever collected.
+
+One job, nightly at 03:00 UTC, two rules:
+
+```python
+delete_rows_older_than(30, "days")        # rule 1 — age
+if db_size > 30_GB:                       # rule 2 — size
+    delete_oldest_whole_days_until_it_fits()
+```
+
+## What is kept, and for how long
+
+| Data | Kept | Why |
+| --- | --- | --- |
+| news, GDELT, hazard, cyber, aviation, live markets | 30 days | a feed — a deleted row comes back on the next poll |
+| FRED macro, EM-DAT disasters | **forever** | history — a deleted year does not come back |
+
+## What that does to your numbers
+
+| | |
+| --- | --- |
+| **Short memory** | *"how did this change over the past year?"* cannot be answered from `events`. The year is not in there — which is why Part III builds its own tables (§23, §24) |
+| **Deleting a row deletes its labels** | a severity score (§12) is stored inside the row it describes, so a batch graded by hand today is gone in a month |
+| **A falling count may be a delete** | not a quieter world. `housekeeping_runs` records what each night removed |
+
+## It is a setting, not a fact
+
+30 days and 30 GB are configuration (`RETENTION_*_DAYS`, `STORAGE_CAP_GB`),
+picked for a small disk. **The deployment that runs all the time is not using
+them** — it is set to a much longer window, so it is building a real long-term
+series rather than a rolling month. Same code, two different datasets.
+
+So **every count in this document is a count inside a 30-day window** unless it
+says otherwise.
+
+---
+
+<a href="#ch-13">▲ top of §13</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-13">↑ back to §13 in the diagram</a>
 
 </details>
