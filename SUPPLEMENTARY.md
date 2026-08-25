@@ -1858,9 +1858,18 @@ DEFAULT_CII_BASELINE = CiiBaseline(15.0, 1.0)   # anywhere else
 ```
 
 Scoring Ukraine reads `CII_BASELINES["UA"]` and gets 46 — the same 46 today,
-tomorrow and next year. Someone judged Ukraine to sit near 46 on a 0–50
-fragility scale and wrote it down. The code's own word for these is
-*editorial defaults*.
+tomorrow and next year.
+
+**So where did 46 actually come from?** A number like this has three
+legitimate origins: **fitted** from data, **cited** from a published source,
+or **elicited** from experts under a recorded protocol. This is none of them.
+The issue that specified the formula named the countries but no values; the
+values first appear in the code that implemented it, with no derivation
+recorded anywhere, and the published index this formula follows lists
+different figures. The code's own word for them is *editorial defaults*.
+
+The correct name for that in a model is an **unvalidated prior** — and it
+carries 40% of every score.
 
 **event_score** is today — four counts from the last 24 hours, weighted:
 
@@ -1929,13 +1938,12 @@ unrest, 400 for conflict.
 
 ## What that 0.61 does not tell you
 
-**A country cannot score low.** 40% of the score is that fixed baseline, so
-before any event arrives Ukraine already sits at `0.40 × 46 ÷ 100` =
-**0.184**. Part of what the number measures is **the dict, not the world**.
+**A country cannot score low.** Ukraine sits at `0.40 × 46 ÷ 100` = **0.184**
+before any event arrives, so part of what the number measures is **the dict,
+not the world**. And CII appears in no accuracy test in Part III.
 
-Nothing in it was fitted, and it appears in no accuracy test in Part III. §14
-is a measured instrument that cannot run live; CII is a live instrument that
-has never been checked.
+§14 is a measured instrument that cannot run live; CII is a live instrument
+that has never been checked.
 
 ---
 
