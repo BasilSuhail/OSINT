@@ -93,7 +93,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §15  CII                                                               │
+   │ <a id="map-15" href="#ch-15">§15  CII</a>                                                               │
    │    a same-day stress score: fixed country baseline plus today's events │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -1817,5 +1817,87 @@ number.
 ---
 
 <a href="#ch-14">▲ top of §14</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-14">↑ back to §14 in the diagram</a>
+
+</details>
+
+<details id="ch-15">
+<summary><b>§15 &nbsp; CII</b> &nbsp;—&nbsp; a same-day stress score: fixed country baseline plus today's events</summary>
+<br>
+
+**`app/cii/`** — CII is the **Country Instability Index**.
+
+One number per country per day, 0 to 1: **how stressed is this country
+today?**
+
+## Where it lives and when it runs
+
+| | |
+|---|---|
+| formula | `app/cii/scoring.py` — pure maths, no database |
+| baseline table | `app/cii/config.py` — 31 hand-typed countries |
+| the job | `app/cii/task.py`, fired hourly by Celery beat |
+| window | the **last 24 hours** of the events table |
+| output | a row in the `scores` table, `score_name = "cii_v1"` |
+
+Unlike §14 it needs no history, so it runs on the live box every hour and
+produces a real number.
+
+## The formula
+
+```python
+CII = 0.40 * baseline + 0.60 * todays_events
+```
+
+**baseline** — one hand-typed number per country. Never changes, never
+measured:
+
+```
+UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
+```
+
+**today's events** — four counts from the last 24 hours, weighted:
+
+| part | what it counts | weight |
+|---|---|---|
+| unrest | serious news rows | 0.25 |
+| conflict | GDELT fight / attack events | 0.30 |
+| security | big quakes, hazard alerts | 0.20 |
+| information | how much news there was at all | 0.25 |
+
+Each is squashed to 0–100 with a log, so one huge count cannot drown the
+other three. Then a per-country multiplier is applied (UA ×1.25, US ×0.60) —
+200 news rows is a quiet day in the US, not stress.
+
+## §14 and §15 side by side
+
+| | §14 composite | §15 CII |
+|---|---|---|
+| asks | unusual **for this country**? | bad **today**? |
+| window | 1 month | 24 hours |
+| needs history | 12 months | none |
+| runs live | no | yes |
+
+## The catch
+
+Same day, same events, two countries — and then a day where **nothing at all
+happens**:
+
+```
+                 same events     nothing happens
+UA                  0.566            0.184
+GB                  0.379            0.056
+```
+
+A country can never score low. The baseline is 40% of the score no matter
+what, so CII is partly measuring **the table, not the world**.
+
+Nothing in it is fitted — baselines, multipliers and weights are all typed by
+hand — and it appears in no accuracy test in Part III. §14 is a measured
+instrument that cannot run live; CII is a live instrument that has never been
+checked.
+
+---
+
+<a href="#ch-15">▲ top of §15</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-15">↑ back to §15 in the diagram</a>
 
 </details>
