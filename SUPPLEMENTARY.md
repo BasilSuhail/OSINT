@@ -1869,9 +1869,23 @@ tomorrow and next year.
 | security | big quakes, hazard alerts | 0.20 |
 | information | how much news there was at all | 0.25 |
 
+Nothing before this chapter computes those four. Earlier stages only build
+the rows they count: <a href="#ch-11">§11</a> is the table itself,
+<a href="#ch-12">§12</a> is where a headline's `severity` comes from, and
+<a href="#ch-5">§5</a> is where the GDELT, USGS, GDACS and EONET rows arrive.
+§15 is the first place anything is counted. It takes 24 hours of that table
+and asks four questions of it:
+
+| part | the filter | example count |
+|---|---|---|
+| unrest | news rows with `severity ≥ 0.6` | 18 |
+| conflict | GDELT rows with CAMEO code 18, 19 or 20 | 52 |
+| security | M5+ quakes, GDACS orange/red, EONET active | 0 / 1 / 3 |
+| information | every news row | 140 |
+
 Each count is scaled by that country's `multiplier` from the same dict — 200
-news rows is a quiet day in the US, not stress — then squashed onto 0–100
-with a log so one huge count cannot drown the other three.
+news rows is a quiet day in the US, not stress — then turned into a 0–100
+number so one huge count cannot drown the other three.
 
 ## A real output
 
@@ -1898,8 +1912,16 @@ that day:
 log(1 + 175) ÷ log(1 + 300) × 100     = 5.17 ÷ 5.71 × 100 = 90.6
 ```
 
-The 300 is the ceiling — the count that would read as fully saturated. Every
-part works this way with its own ceiling: 60 unrest, 400 conflict.
+The 300 is the ceiling — the count that would read as fully saturated.
+`unrest` and `conflict` work the same way with their own ceilings, 60 and
+400.
+
+`security` is the odd one out: it is flat points, no log. Six per M5+ quake,
+twelve per GDACS orange/red alert, four per EONET event, each capped.
+
+```
+0 quakes(×6) + 1 alert(×12) + 3 events(×4) = 24   ×1.25 = 30.0
+```
 
 Weight the four and add them, then blend with the fixed 46 and divide by 100:
 
