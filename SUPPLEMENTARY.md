@@ -1869,12 +1869,11 @@ tomorrow and next year.
 | security | big quakes, hazard alerts | 0.20 |
 | information | how much news there was at all | 0.25 |
 
-Nothing before this chapter computes those four. Earlier stages only build
-the rows they count: <a href="#ch-11">§11</a> is the table itself,
-<a href="#ch-12">§12</a> is where a headline's `severity` comes from, and
-<a href="#ch-5">§5</a> is where the GDELT, USGS, GDACS and EONET rows arrive.
-§15 is the first place anything is counted. It takes 24 hours of that table
-and asks four questions of it:
+Nothing earlier in this document counts anything — <a href="#ch-11">§11</a>
+builds the table, <a href="#ch-12">§12</a> fills in a headline's `severity`,
+<a href="#ch-5">§5</a> brings in the GDELT, USGS, GDACS and EONET rows. §15 is
+the first place a count happens. It takes 24 hours of that table and asks
+four questions of it:
 
 | part | the filter | example count |
 |---|---|---|
@@ -1889,46 +1888,84 @@ number so one huge count cannot drown the other three.
 
 ## A real output
 
-One country, one day, straight out of the scoring module:
+One country, one day, straight out of the scoring module. Two of these are
+looked up, the rest are built:
 
 ```json
 {
-  "baseline":    46.0,
-  "unrest":      88.8,
+  "baseline":    46.0,      ← looked up
+  "multiplier":  1.25,      ← looked up
+
+  "unrest":      88.8,      ← from today's counts
   "conflict":    69.9,
   "security":    30.0,
   "information": 90.6,
-  "event_score": 71.82,
-  "total":       0.61,
-  "multiplier":  1.25
+
+  "event_score": 71.82,     ← those four, weighted
+  "total":       0.61       ← 46 and 71.82, blended, ÷ 100
 }
 ```
 
-Each part is a count put through one formula. `information` was 140 news rows
-that day:
+## How a count becomes a 0–100 number
+
+The question each part answers is **how full is the tank** — 0 means nothing
+happened, 100 means as bad as this thing gets. So you need a "full" mark. For
+news it is **300 rows a day**. Someone picked that, the same way someone
+picked the 46.
+
+A plain percentage would treat every row as equal — 0 → 10 rows moves you 3%,
+and so does 290 → 300. But no headlines to ten headlines is enormous; 290 to
+300 is nothing, it was already chaos. A `log` fixes exactly that: **early rows
+count for a lot, later ones for almost nothing**.
 
 ```
-140 rows × 1.25 multiplier            = 175
-log(1 + 175) ÷ log(1 + 300) × 100     = 5.17 ÷ 5.71 × 100 = 90.6
+rows      plain %     log %
+   0         0%         0
+  10         3%        42%    ← ten headlines already means something
+  50        17%        69%
+ 175        58%        91%
+ 300       100%       100%    ← the ceiling
+ 600       200%       100%    ← capped, cannot go past full
 ```
 
-The 300 is the ceiling — the count that would read as fully saturated.
-`unrest` and `conflict` work the same way with their own ceilings, 60 and
-400.
+The log column is the one used. For your day:
 
-`security` is the odd one out: it is flat points, no log. Six per M5+ quake,
-twelve per GDACS orange/red alert, four per EONET event, each capped.
+```
+140 news rows × 1.25 multiplier   = 175     ← scale for this country
+log(1 + 175) = 5.17                         ← how full, squashed
+log(1 + 300) = 5.71                         ← completely full, squashed
+5.17 ÷ 5.71 × 100                 = 90.6    ← 91% full
+```
+
+The `1 +` is only there so a count of 0 gives log(1) = 0 instead of breaking.
+
+`unrest` and `conflict` do the same with their own full marks, **60** and
+**400** — a low ceiling fills fast.
+
+`security` is the odd one out — flat points, no log. Six per M5+ quake,
+twelve per GDACS orange/red alert, four per EONET event, each capped:
 
 ```
 0 quakes(×6) + 1 alert(×12) + 3 events(×4) = 24   ×1.25 = 30.0
 ```
 
-Weight the four and add them, then blend with the fixed 46 and divide by 100:
+## And then the last two lines
+
+Weight the four and add them. The weights total 1, so this is a weighted
+average:
 
 ```
 0.25(88.8) + 0.30(69.9) + 0.20(30.0) + 0.25(90.6) = 71.82   ← event_score
-0.40(46)   + 0.60(71.82)             = 61.49   ÷ 100 = 0.61 ← total
 ```
+
+Blend that with the country's fixed 46 — 40% country, 60% today — then ÷ 100
+to land between 0 and 1:
+
+```
+0.40(46) + 0.60(71.82) = 61.49   →   ÷ 100   →   0.61       ← total
+```
+
+`0.61` is the number the dashboard shows.
 
 ## §14 and §15 side by side
 
