@@ -1838,14 +1838,14 @@ CII = 0.40 * baseline + 0.60 * event_score
 They add to 1.00, so read it as a split: **40% is what kind of country this
 is, 60% is what happened there today.**
 
-**Where do 0.40 and 0.60 come from?** Not from our data. They are taken from
-an existing published instability index that this module re-implements — as
-are the four weights below. Checking that source against the code: the two
-sets of weights match it exactly.
+**baseline** is the country's **starting score, before any news arrives** —
+how rough a place it is in general. Not the CII itself, just the first
+ingredient of it. Ukraine starts at 46, the UK starts at 14, so the same
+day's news lands them in different places.
 
-**baseline** is not calculated at all — it is **looked up**. A table of 31
-countries sits in the code, typed by hand, one 0–50 number each for how
-fragile the country is. Ukraine's 46 was written there; nothing measured it.
+It is not calculated. It is **looked up** from a table of 31 countries typed
+into the code, 0–50 each, which never updates. Anywhere not on the list
+starts at 15.
 
 ```
 UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
