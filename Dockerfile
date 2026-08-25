@@ -45,6 +45,11 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY --chown=osint:osint alembic.ini ./
 COPY --chown=osint:osint migrations ./migrations
 COPY --chown=osint:osint app ./app
+# The maintenance scripts — backfills, repairs, the history merge — run against
+# the database the containers own, so `docker compose run ... python -m
+# scripts.<name>` is how an operator reaches it. Left out of the image, every
+# one of them fails with "No module named 'scripts'" at the moment it is needed.
+COPY --chown=osint:osint scripts ./scripts
 
 # Install the project itself now that its source is present.
 RUN uv sync --frozen --no-dev
