@@ -198,6 +198,30 @@ class TestBoundsFollowRetention:
         for source in ("fred", "yfinance", "emdat", "acled", "polymarket", "uk-police"):
             assert freshness.max_age(source) is None, source
 
+    def test_a_window_of_zero_removes_the_bound_rather_than_setting_it_to_nothing(
+        self, monkeypatch
+    ) -> None:
+        # Zero is the off switch. Read literally it would refuse every event
+        # ever published, which is the opposite of "keep everything".
+        monkeypatch.setattr("app.settings.settings.retention_news_days", 0)
+        monkeypatch.setattr("app.settings.settings.retention_hazard_days", 0)
+        monkeypatch.setattr("app.settings.settings.retention_gdelt_days", 0)
+        assert freshness.max_age("rss-bbc-world") is None
+        assert freshness.max_age("usgs-quake") is None
+        assert freshness.max_age("gdelt") is None
+        assert freshness.max_age("abuse-ch-urlhaus") is None
+        # And an unlisted source, which falls back to the news window.
+        assert freshness.max_age("rss-not-in-policy") is None
+
+    def test_a_decade_old_event_is_collected_once_the_clock_is_off(self, monkeypatch) -> None:
+        decade = _event("rss-bbc-world", NOW - timedelta(days=3650), "ten years back")
+        assert freshness.partition([decade], now=NOW)[0] == []
+
+        monkeypatch.setattr("app.settings.settings.retention_news_days", 0)
+        kept, rejected = freshness.partition([decade], now=NOW)
+        assert [e.payload["title"] for e in kept] == ["ten years back"]
+        assert rejected == []
+
     def test_the_future_skew_rule_is_untouched_by_a_raised_window(self, monkeypatch) -> None:
         # A future date is a parsing defect at any retention setting.
         monkeypatch.setattr("app.settings.settings.retention_news_days", 365)

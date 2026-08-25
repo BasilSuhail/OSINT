@@ -84,7 +84,7 @@ class Rejection:
     reason: str
 
 
-def retention_aligned_max_age(source: str) -> timedelta:
+def retention_aligned_max_age(source: str) -> timedelta | None:
     """How long `source` is kept, as the age bound the gate applies to it.
 
     `retention_days()` is the authority on what housekeeping deletes, so it is
@@ -97,11 +97,18 @@ def retention_aligned_max_age(source: str) -> timedelta:
     is also the shape the CNN promo entries arrived in, so the fallback is a
     bound and never a free pass. Keep-forever sources never reach here — they
     are answered by UNBOUNDED_SOURCES above.
+
+    `None` when nothing on a clock deletes the source. The rule this gate
+    enforces is "do not ingest what retention would immediately delete"; with
+    no retention window there is no such age, and a bound copied from the news
+    window would refuse history the operator turned the clock off to keep.
     """
-    days = retention_days().get(source)
-    if days is None:
-        days = settings.retention_news_days
-    return timedelta(days=days)
+    policy = retention_days()
+    if source in policy:
+        days = policy[source]
+        return None if days is None else timedelta(days=days)
+    fallback = settings.retention_news_days
+    return timedelta(days=fallback) if fallback > 0 else None
 
 
 def max_age(source: str) -> timedelta | None:
@@ -110,6 +117,8 @@ def max_age(source: str) -> timedelta | None:
     if slug in UNBOUNDED_SOURCES:
         return None
     window = retention_aligned_max_age(slug)
+    if window is None:
+        return None
     if slug.startswith(_CYBER_PREFIX):
         return window + CYBER_REPUBLISH_HEADROOM
     return window

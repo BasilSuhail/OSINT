@@ -162,9 +162,13 @@ class Settings(BaseSettings):
 
     data_dir: str = Field(default="./data")
 
-    retention_gdelt_days: int = Field(default=30)
-    retention_news_days: int = Field(default=30)
-    retention_hazard_days: int = Field(default=30)
+    # Per-source retention windows in days. `0` switches the time rule off for
+    # the sources a window covers, leaving `storage_cap_gb` as the only thing
+    # that deletes an event — what a board with a large disk wants, where the
+    # limit worth having is the disk's and not the calendar's.
+    retention_gdelt_days: int = Field(default=30, ge=0)
+    retention_news_days: int = Field(default=30, ge=0)
+    retention_hazard_days: int = Field(default=30, ge=0)
     # Hard ceiling on DB disk use; oldest event-days are trimmed when exceeded.
     storage_cap_gb: int = Field(default=30)
     # Size-cap enforcement never deletes events newer than this many days.

@@ -4,6 +4,10 @@ Two rules keep the database bounded on a small disk (issue #353):
 
 1. **Time** — keep ~30 days of events per source (env-overridable via
    ``RETENTION_*_DAYS``); FRED/EM-DAT are irreplaceable and never deleted.
+   Setting a window to ``0`` switches the time rule off for the sources it
+   covers, which leaves rule 2 as the only thing that deletes an event. That is
+   the point on a board with a large disk: keep everything until the disk says
+   otherwise, rather than until a calendar does.
 2. **Size** — if the database's disk footprint exceeds ``STORAGE_CAP_GB``,
    trim the oldest whole event-days until the overage is covered
    (``enforce_size_cap``). OpenSky ADS-B alone writes ~1 M rows/day, so this
@@ -28,16 +32,39 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
+#: Sources no rule may delete — not the time windows, and not the size cap.
+#: Market and macro history cannot be re-fetched for a date that has passed, so
+#: losing it to make room is losing it for good.
+#:
+#: Kept apart from a ``None`` window on purpose. Both used to be spelled the
+#: same way, which meant switching a window off also exempted that source from
+#: the size cap — and a database where nothing is size-prunable does not stop
+#: growing at the cap, it stops growing when the disk is full.
+ARCHIVAL_SOURCES: frozenset[str] = frozenset({"emdat", "fred"})
+
+
+def _window(days: int) -> int | None:
+    """A configured window in days, or ``None`` when the time rule is off.
+
+    ``0`` is the off switch rather than a separate setting: a window of zero
+    days is not a policy anyone wants literally applied — it would delete every
+    event on the next pass — so the value is free to mean "do not apply this".
+    """
+    return days if days > 0 else None
+
 
 def retention_days() -> dict[str, int | None]:
-    """Per-source retention windows (days). ``None`` = never delete.
+    """Per-source retention windows (days). ``None`` = no time-based deletion.
 
     Default is ~30 days everywhere. News/hazard/GDELT windows are
-    env-overridable via RETENTION_*_DAYS; market/macro history is irreplaceable
-    so it is exempt.
+    env-overridable via RETENTION_*_DAYS, and any of them set to ``0`` turns
+    the time rule off for the sources it covers.
+
+    ``None`` here says only that the clock will not delete the source. Whether
+    anything may delete it is ``ARCHIVAL_SOURCES``, which the size cap reads.
     """
-    news = settings.retention_news_days
-    hazard = settings.retention_hazard_days
+    news = _window(settings.retention_news_days)
+    hazard = _window(settings.retention_hazard_days)
     return {
         "rss-bbc-world": news,
         "rss-bbc-uk": news,
@@ -49,8 +76,8 @@ def retention_days() -> dict[str, int | None]:
         "usgs-quake": hazard,
         "gdacs": hazard,
         "eonet": hazard,
-        "gdelt": settings.retention_gdelt_days,
-        "acled": settings.retention_gdelt_days,
+        "gdelt": _window(settings.retention_gdelt_days),
+        "acled": _window(settings.retention_gdelt_days),
         "emdat": None,
         "opensky-adsb": hazard,
         "abuse-ch-urlhaus": hazard,
@@ -125,15 +152,15 @@ def prune_events(session: Session, *, now: datetime | None = None) -> dict[str, 
     # the retention policy gets the configured news window — matches the explicit
     # entries above + the dashboard time-range picker's max.
     explicit = set(policy)
-    seen_rss = session.execute(
-        select(EventRow.source).where(EventRow.source.like("rss-%")).distinct()
-    )
-    for (src,) in seen_rss:
-        if src in explicit:
-            continue
-        deleted_by_source[src] = _prune_source(
-            session, source=src, days=settings.retention_news_days, now=now
+    news_window = _window(settings.retention_news_days)
+    if news_window is not None:
+        seen_rss = session.execute(
+            select(EventRow.source).where(EventRow.source.like("rss-%")).distinct()
         )
+        for (src,) in seen_rss:
+            if src in explicit:
+                continue
+            deleted_by_source[src] = _prune_source(session, source=src, days=news_window, now=now)
 
     total_deleted = sum(deleted_by_source.values())
     duration_ms = int((time.monotonic() - started_at) * 1000)
@@ -191,7 +218,10 @@ def enforce_size_cap(
         return {"db_size_bytes": db_size, "cap_bytes": cap_bytes, "deleted": 0, "days_trimmed": 0}
 
     overage = db_size - cap_bytes
-    exempt = [src for src, days in retention_days().items() if days is None]
+    #: Archival sources only. A source whose time window is off is still the
+    #: size cap's to delete — switching the clock off is what makes the cap the
+    #: single rule, not what puts a source beyond every rule.
+    exempt = sorted(ARCHIVAL_SOURCES)
     floor_cutoff = now - timedelta(days=settings.storage_cap_floor_days)
 
     live_rows = session.execute(select(func.count()).select_from(EventRow)).scalar_one()
@@ -249,8 +279,14 @@ def enforce_size_cap(
 
 def prune_brain_narrative(session: Session, *, now: datetime | None = None) -> int:
     """Delete situation narratives older than the news retention window (#409)."""
+    #: Off means off. Read literally a zero-day window deletes everything the
+    #: moment it is written, which is the opposite of what switching retention
+    #: off is asking for.
+    window = _window(settings.retention_news_days)
+    if window is None:
+        return 0
     now = now or datetime.now(UTC)
-    cutoff = now - timedelta(days=settings.retention_news_days)
+    cutoff = now - timedelta(days=window)
     result = session.execute(delete(BrainNarrativeRow).where(BrainNarrativeRow.created_at < cutoff))
     return result.rowcount or 0
 
@@ -259,8 +295,14 @@ def prune_story_gist(session: Session, *, now: datetime | None = None) -> int:
     """Delete story gists older than the news retention window (#413)."""
     from app.db_models import StoryGistRow
 
+    #: Off means off. Read literally a zero-day window deletes everything the
+    #: moment it is written, which is the opposite of what switching retention
+    #: off is asking for.
+    window = _window(settings.retention_news_days)
+    if window is None:
+        return 0
     now = now or datetime.now(UTC)
-    cutoff = now - timedelta(days=settings.retention_news_days)
+    cutoff = now - timedelta(days=window)
     result = session.execute(delete(StoryGistRow).where(StoryGistRow.created_at < cutoff))
     return result.rowcount or 0
 
@@ -269,8 +311,14 @@ def prune_story_embeddings(session: Session, *, now: datetime | None = None) -> 
     """Delete story vectors older than the news retention window (#441)."""
     from app.db_models import StoryEmbeddingRow
 
+    #: Off means off. Read literally a zero-day window deletes everything the
+    #: moment it is written, which is the opposite of what switching retention
+    #: off is asking for.
+    window = _window(settings.retention_news_days)
+    if window is None:
+        return 0
     now = now or datetime.now(UTC)
-    cutoff = now - timedelta(days=settings.retention_news_days)
+    cutoff = now - timedelta(days=window)
     result = session.execute(delete(StoryEmbeddingRow).where(StoryEmbeddingRow.created_at < cutoff))
     return result.rowcount or 0
 

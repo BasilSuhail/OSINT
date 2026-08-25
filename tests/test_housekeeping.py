@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db_models import EventRow, HousekeepingRunRow
 from app.housekeeping import (
     enforce_size_cap,
+    prune_brain_narrative,
     prune_events,
     retention_days,
     run_retention_and_cap,
@@ -261,3 +262,93 @@ def test_lagged_and_market_sources_read_settings_too(monkeypatch):
     rd = retention_days()
     assert rd["uk-police"] == 365
     assert rd["yfinance"] == 365
+
+
+def _windows_off(monkeypatch) -> None:
+    for name in ("retention_news_days", "retention_hazard_days", "retention_gdelt_days"):
+        monkeypatch.setattr(f"app.housekeeping.settings.{name}", 0)
+
+
+def test_zero_window_stops_the_clock_deleting(db_session: Session, monkeypatch) -> None:
+    _windows_off(monkeypatch)
+    now = datetime.now(UTC)
+    ancient = now - timedelta(days=3650)
+    for source in ["opensky-adsb", "gdelt", "rss-bbc-world"]:
+        db_session.add(_make_event_row(source=source, occurred_at=ancient, suffix="decade"))
+    db_session.commit()
+
+    prune_events(db_session, now=now)
+    db_session.commit()
+
+    # Ten-year-old rows, and nothing on a clock may touch them.
+    assert _event_count(db_session) == 3
+
+
+def test_zero_window_leaves_unlisted_rss_alone(db_session: Session, monkeypatch) -> None:
+    _windows_off(monkeypatch)
+    now = datetime.now(UTC)
+    db_session.add(
+        _make_event_row(
+            source="rss-not-in-policy", occurred_at=now - timedelta(days=900), suffix="x"
+        )
+    )
+    db_session.commit()
+
+    prune_events(db_session, now=now)
+    db_session.commit()
+
+    # The generic rss-% rule prunes on the news window, which is off.
+    assert _event_count(db_session) == 1
+
+
+def test_size_cap_still_trims_when_windows_are_off(db_session: Session, monkeypatch) -> None:
+    _windows_off(monkeypatch)
+    monkeypatch.setattr("app.housekeeping.settings.storage_cap_gb", 1)
+    now = datetime.now(UTC)
+    old = now - timedelta(days=100)
+    for source in ["opensky-adsb", "gdelt", "fred"]:
+        db_session.add(_make_event_row(source=source, occurred_at=old, suffix="ancient"))
+    db_session.commit()
+
+    result = enforce_size_cap(db_session, now=now, db_size_bytes=11 * GIB, events_size_bytes=3_000)
+    db_session.commit()
+
+    #: The trap this test exists for: switching a window off used to mark its
+    #: sources keep-forever, which exempted them from the cap as well. With
+    #: every window off nothing was size-prunable, so the cap could free
+    #: nothing and the database grew until the disk stopped it.
+    assert result["deleted"] == 2
+    remaining = {row.source for row in db_session.execute(select(EventRow)).scalars().all()}
+    assert remaining == {"fred"}
+
+
+def test_archival_sources_survive_the_cap_with_windows_off(
+    db_session: Session, monkeypatch
+) -> None:
+    _windows_off(monkeypatch)
+    monkeypatch.setattr("app.housekeeping.settings.storage_cap_gb", 1)
+    now = datetime.now(UTC)
+    old = now - timedelta(days=100)
+    for source in ["fred", "emdat"]:
+        db_session.add(_make_event_row(source=source, occurred_at=old, suffix="ancient"))
+    db_session.commit()
+
+    enforce_size_cap(db_session, now=now, db_size_bytes=11 * GIB, events_size_bytes=3_000)
+    db_session.commit()
+
+    assert _event_count(db_session) == 2
+
+
+def test_zero_window_keeps_derived_rows(db_session: Session, monkeypatch) -> None:
+    _windows_off(monkeypatch)
+    #: Read literally a zero-day window deletes everything ever written, which
+    #: is the opposite of what switching retention off asks for.
+    assert prune_brain_narrative(db_session, now=datetime.now(UTC)) == 0
+
+
+def test_zero_window_reports_no_policy_window(monkeypatch) -> None:
+    _windows_off(monkeypatch)
+    policy = retention_days()
+    assert policy["gdelt"] is None
+    assert policy["rss-bbc-world"] is None
+    assert policy["emdat"] is None
