@@ -1784,22 +1784,29 @@ The `0.25 ×` in the code is the ÷ 4. Each of the four counts equally.
 ## Step 4 — squash it into 0–1
 
 Average z can be anything — could be −6, could be +9. Ugly to display. So
-`sigmoid` bends any number onto a 0-to-1 line:
+divide **1** by **(1 + e^−z)**. That is the whole thing.
+
+`e` is a fixed constant, 2.718…, like π — nothing to choose. All you need to
+know is `e^−z` **shrinks fast** as z grows:
 
 ```
-average z:   -3     -2     -1      0      1      2      3      5
-score:      0.05   0.12   0.27   0.50   0.73   0.88   0.95   0.99
-                                   ▲                    └──────┘
-                                 normal             barely moves
+z = 0     e^-0 = 1.00     1 ÷ (1 + 1.00) = 1 ÷ 2.00  = 0.50
+z = 1     e^-1 = 0.37     1 ÷ (1 + 0.37) = 1 ÷ 1.37  = 0.73
+z = 2     e^-2 = 0.14     1 ÷ (1 + 0.14) = 1 ÷ 1.14  = 0.88
+z = 3     e^-3 = 0.05     1 ÷ (1 + 0.05) = 1 ÷ 1.05  = 0.95
+z = -1    e^1  = 2.72     1 ÷ (1 + 2.72) = 1 ÷ 3.72  = 0.27
 ```
 
 Normal month → **0.5**. Bad month → toward **1**. Quiet month → toward **0**.
-
 Our example: average z = 1 → score **0.73**.
 
-**One catch.** Past about z = 3 the score stops moving: 3 gives 0.95 and 5
-gives 0.99. A disaster and a much worse disaster come out looking the same.
-That is the price of a tidy 0-to-1 number.
+It can never leave 0–1: the bottom of the fraction is always more than 1, so
+the answer is always under 1.
+
+**One catch.** By z = 3 the shrinking number is already 0.05; at z = 5 it is
+0.007. Both are nearly nothing, so the scores land at 0.95 and 0.99. A disaster
+and a much worse disaster look the same. That is the price of a tidy 0-to-1
+number.
 
 ## Whole thing in one breath
 
