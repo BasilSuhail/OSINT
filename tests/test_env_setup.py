@@ -641,7 +641,14 @@ class TestWhoTheContainersRunAs:
 #: The model settings only, with the laptop values the real example ships. The
 #: small-machine profile has to be able to write over exactly these, because
 #: `sync` copies them into `.env` before anything asks whose answer they are.
-PROFILE_EXAMPLE = """BRAIN_MODEL=llama3.2:3b
+#:
+#: The two question keys ship empty, exactly as the real example does, and for
+#: the reason the tests below turn on: empty is on for both the API and the
+#: console, so a laptop is unaffected, while a `true` typed into the file is
+#: unmistakably somebody's answer rather than a copy of the example's own.
+PROFILE_EXAMPLE = """ASK_ENABLED=
+NEXT_PUBLIC_ASK_ENABLED=
+BRAIN_MODEL=llama3.2:3b
 QA_MODEL=qwen3.5:4b-q4_K_M
 SEVERITY_MODEL=qwen3.5:4b-q4_K_M
 OLLAMA_MODEL=qwen3.5:4b-q4_K_M
@@ -755,6 +762,59 @@ class TestTheSmallMachineProfile:
             "QA_MODEL=qwen3.5:4b-q4_K_M\n", "QA_MODEL=qwen3.5:4b-q4_K_M\n", MACHINE, small=True
         )
         assert set(written) == {"QA_MODEL"}
+
+    #: The build this profile now describes. Everything else the board does is
+    #: cheap; a typed question is minutes of a box that has other work, so the
+    #: profile removes that one control rather than tuning it.
+    def test_a_small_board_gets_the_build_without_the_question_box(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert written["ASK_ENABLED"] == "false"
+
+    #: Both halves, because the dashboard is a separate process with its own
+    #: build-time environment. One of the two alone is a console drawing a
+    #: button for an endpoint that refuses, or hiding one that works. The
+    #: profile names only the API key; the console's copy follows because it is
+    #: a mirror, which is also what lets `check` report the two drifting apart.
+    def test_the_dashboard_is_told_the_same_thing(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert written["NEXT_PUBLIC_ASK_ENABLED"] == written["ASK_ENABLED"]
+
+    #: The mirror has to be taken after the profile has spoken, not before. Read
+    #: too early it copies what `.env` said a moment ago — `true` on the board
+    #: that has just turned answering off — and the console compiles in an ask
+    #: control for an endpoint that refuses.
+    def test_the_dashboard_is_told_what_this_run_decided(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
+        assert written["NEXT_PUBLIC_ASK_ENABLED"] == "false"
+
+    #: A laptop keeps the console it has.
+    def test_a_big_machine_keeps_the_question_box(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=False)
+        assert "ASK_ENABLED" not in written
+
+    #: The line the profile must not cross, for this key like every other: an
+    #: operator who wants questions answered on a board has said so, and a
+    #: re-sync is not the place to disagree.
+    #:
+    #: `true` is the word, because `true` is what somebody reading the README
+    #: types. The earlier version of this test used a synonym, and passed for
+    #: the wrong reason: while the example itself said `true`, the operator's
+    #: `true` was indistinguishable from the example's own and was written over
+    #: on the next run. Empty in the example is what makes this the real case.
+    def test_it_leaves_the_question_box_on_where_somebody_turned_it_on(self):
+        env, _ = set_value(PROFILE_EXAMPLE, "ASK_ENABLED", "true")
+        written = originate(PROFILE_EXAMPLE, env, MACHINE, small=True)
+        assert "ASK_ENABLED" not in written
+
+    #: And it stays turned on. One re-sync proving nothing is the failure this
+    #: replaced: the operator's answer has to survive `make env` run again, and
+    #: again, which is what "leaves your answer alone from then on" promises.
+    def test_the_answer_survives_every_resync(self):
+        settled, _ = set_value(PROFILE_EXAMPLE, "ASK_ENABLED", "true")
+        for _ in range(3):
+            for key, value in originate(PROFILE_EXAMPLE, settled, MACHINE, small=True).items():
+                settled, _ = set_value(settled, key, value)
+        assert parse_env(settled)["ASK_ENABLED"] == "true"
 
 
 class TestTheExampleAgreesWithTheCode:

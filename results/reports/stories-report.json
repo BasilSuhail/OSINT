@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-07-09T17:25:36.491153+00:00",
+  "run": {
+    "window_news": 2537,
+    "newly_assigned": 11,
+    "new_stories": 5,
+    "joined_existing": 6
+  },
+  "top_stories_24h": [
+    {
+      "title": "Middle East live: US launches strikes on Iran after ships attacked in Strait of Hormuz",
+      "owners": 11,
+      "outlets": 11,
+      "members": 18
+    },
+    {
+      "title": "Belgium appeals FIFA decision to rescind US striker Balogun's red card",
+      "owners": 8,
+      "outlets": 9,
+      "members": 15
+    },
+    {
+      "title": "Ceasefire with Iran no longer in effect \u2014 Trump",
+      "owners": 7,
+      "outlets": 8,
+      "members": 12
+    },
+    {
+      "title": "Graham Platner likely to quit Maine Senate race after sexual misconduct allegations: Who can replace him?",
+      "owners": 8,
+      "outlets": 8,
+      "members": 11
+    },
+    {
+      "title": "Mass farewell procession for Ali Khamenei begins in Tehran",
+      "owners": 7,
+      "outlets": 7,
+      "members": 15
+    },
+    {
+      "title": "Death toll from Venezuela's earthquakes rises to 3,342",
+      "owners": 6,
+      "outlets": 7,
+      "members": 9
+    },
+    {
+      "title": "Western Europe records its hottest June as heatwaves surge: EU monitor",
+      "owners": 7,
+      "outlets": 7,
+      "members": 7
+    },
+    {
+      "title": "Trump denied latest bid to delay $5.8m judgment payment to E Jean Carroll",
+      "owners": 6,
+      "outlets": 6,
+      "members": 7
+    },
+    {
+      "title": "28 killed as massive fire engulfs China shoe factory",
+      "owners": 6,
+      "outlets": 6,
+      "members": 6
+    },
+    {
+      "title": "Trump Says He Will Grant Ukraine the License to Make Patriot Missiles, a Key Demand",
+      "owners": 5,
+      "outlets": 5,
+      "members": 10
+    },
+    {
+      "title": "Sri Lanka prison riot kills 26, wounds more than 100",
+      "owners": 5,
+      "outlets": 5,
+      "members": 8
+    },
+    {
+      "title": "Bonnie Tyler, 80s pop legend known for Total Eclipse of the Heart and more, dies aged 75",
+      "owners": 5,
+      "outlets": 5,
+      "members": 7
+    },
+    {
+      "title": "French court opens door to possible Le Pen presidential run, with ankle tag",
+      "owners": 5,
+      "outlets": 5,
+      "members": 6
+    },
+    {
+      "title": "Gaza aid worker killed minutes before World Cup screening he organised",
+      "owners": 5,
+      "outlets": 5,
+      "members": 5
+    },
+    {
+      "title": "Trump says peace deal with Iran is over after sides exchange strikes",
+      "owners": 5,
+      "outlets": 5,
+      "members": 5
+    }
+  ]
+}

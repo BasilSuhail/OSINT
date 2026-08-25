@@ -387,10 +387,18 @@ FRONTEND_PORT_DEFAULT=3000
 #: in at start, so a share on one network and a share on the next — same bind,
 #: different address — would reuse a dashboard pointing at an address that no
 #: longer exists, and fail as an empty console rather than as an error.
+#:
+#: `NEXT_PUBLIC_ASK_ENABLED` for the same reason and with a worse ending. It is
+#: compiled in at start too, and it decides whether the console draws the ask
+#: control at all — so without it here, an operator who edits `.env` to turn
+#: questions back on and runs `make up` is told "frontend already running", and
+#: keeps being served a bundle built when the setting said off. The
+#: documentation says to set it and restart; the restart has to actually
+#: happen, or the instruction is one that does not work.
 FRONTEND_MODE_FILE="logs/frontend.mode"
 
 frontend_mode_signature() {
-  printf '%s %s' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}"
+  printf '%s %s %s' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}" "${NEXT_PUBLIC_ASK_ENABLED:-}"
 }
 
 env_value() { # key — the value in .env, if .env sets one

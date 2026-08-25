@@ -68,6 +68,10 @@ def test_ask_empty_question_is_422():
 
 def test_ask_ram_below_floor_returns_busy(monkeypatch):
     client = _client()
+    #: Not already loaded, so the floor decides. Without this the check reaches a
+    #: real Ollama, and the test turns on which model that machine happens to be
+    #: holding — passing today and failing on the machine that has it warm.
+    monkeypatch.setattr(api.gate.client, "model_resident", lambda *a, **k: False)
     monkeypatch.setattr(api.gate, "ram_free_mb", lambda: 100)
     monkeypatch.setattr(api.settings, "qa_min_free_mb", 3800)
     called = {"model": False}
@@ -658,4 +662,62 @@ def test_ask_keeps_echoing_answer_when_retry_fails(monkeypatch):
     ).json()
     # degrade gracefully: an echo beats an error
     assert "third" in body["answer"]
+    app.dependency_overrides.clear()
+
+
+def test_ask_returns_typed_answer_when_disabled(monkeypatch):
+    #: The question path is off on this build (small-board profile). The reply
+    #: is an answer, not an error: the console shows a sentence either way, and
+    #: a 500 here would be read as a broken install rather than a setting.
+    client = _client()
+    monkeypatch.setattr(api.settings, "ask_enabled", False)
+
+    def _boom(*a, **kw):
+        raise AssertionError("no model call may be made when ask is disabled")
+
+    monkeypatch.setattr(api.client, "generate_json", _boom)
+    resp = client.post("/brain/ask", json={"question": "what is loudest?"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["answer"] == api.qa.ASK_DISABLED_ANSWER
+    assert body["sources"] == []
+    assert body["context_digest"] is None
+    app.dependency_overrides.clear()
+
+
+def test_ask_disabled_answer_is_operational():
+    #: Operational messages are not model output, so the claim checks must skip
+    #: it exactly as they skip "brain busy".
+    assert api.qa.ASK_DISABLED_ANSWER in api.qa.OPERATIONAL_ANSWERS
+
+
+def test_ask_disabled_is_checked_before_the_ram_gate(monkeypatch):
+    #: A board with no free memory and ask switched off should say ask is off,
+    #: not "brain busy" — the second sends the operator looking at memory for a
+    #: refusal that has nothing to do with it.
+    client = _client()
+    monkeypatch.setattr(api.settings, "ask_enabled", False)
+    monkeypatch.setattr(api.gate, "qa_ram_blocked", lambda: True)
+    body = client.post("/brain/ask", json={"question": "what is loudest?"}).json()
+    assert body["answer"] == api.qa.ASK_DISABLED_ANSWER
+    app.dependency_overrides.clear()
+
+
+def test_ask_stream_returns_typed_answer_when_disabled(monkeypatch):
+    client = _client()
+    monkeypatch.setattr(api.settings, "ask_enabled", False)
+
+    def _boom(*a, **kw):
+        raise AssertionError("no model call may be made when ask is disabled")
+
+    monkeypatch.setattr(api.client, "generate_text_stream", _boom)
+    resp = client.post("/brain/ask/stream", json={"question": "what is loudest?"})
+    assert resp.status_code == 200
+    finals = [
+        json.loads(line.removeprefix("data: "))
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    answers = [f.get("answer") for f in finals if "answer" in f]
+    assert answers == [api.qa.ASK_DISABLED_ANSWER]
     app.dependency_overrides.clear()

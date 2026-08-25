@@ -259,9 +259,19 @@ def test_dev_up_reuses_the_dashboard_only_when_the_whole_mode_matches() -> None:
     the bundle. Comparing only the bind would reuse a dashboard pointing at an
     address that no longer resolves, which shows up as an empty console rather
     than as an error.
+
+    Every value the bundle is built from belongs here, for the same reason.
+    `NEXT_PUBLIC_ASK_ENABLED` decides whether the console draws the ask control
+    at all, so leaving it out means an operator who edits `.env` to turn
+    questions back on is told the frontend is already running and keeps being
+    served the build without the box — following the documented instruction and
+    watching it do nothing.
     """
     script = DEV_UP.read_text()
-    assert 'printf \'%s %s\' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}"' in script
+    assert (
+        'printf \'%s %s %s\' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}"'
+        ' "${NEXT_PUBLIC_ASK_ENABLED:-}"' in script
+    )
     # The signature must be taken after the .env values are loaded, or the
     # comparison and the recorded value disagree and every run restarts.
     body = script.split("spawn_frontend() {", 1)[1]

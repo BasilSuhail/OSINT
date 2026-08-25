@@ -187,6 +187,20 @@ def main(argv: list[str] | None = None) -> int:
         print(render_score(score_sheet(path.read_text()), source=path.name))
         return 0
 
+    #: The audit drives the real endpoint, which is the point of it — intent
+    #: gate, fallback split, retry chains, exactly what a reader gets. That is
+    #: also why it cannot run on a build with the question path off: every one
+    #: of those answers would be the sentence saying the path is off, and the
+    #: sheet would be a page of identical rows with blank grade cells beside
+    #: them, indistinguishable at a glance from an audit of a model that had
+    #: gone badly. Refusing costs a rerun; writing it costs the trust in every
+    #: sheet in that directory.
+    if not settings.ask_enabled:
+        print("ask is off on this build — ASK_ENABLED=false in .env")
+        print("every answer would be the sentence saying so, which is not an audit")
+        print("set ASK_ENABLED=true, restart the API, and run this again")
+        return 1
+
     from fastapi.testclient import TestClient
 
     from app.api import app

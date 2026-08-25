@@ -59,6 +59,9 @@ def test_heavy_job_active_false_for_done_row():
 
 
 def test_should_run_blocks_when_ram_low(monkeypatch):
+    #: Nothing resident, so the floor is the question. Stated rather than
+    #: left to whether this machine happens to be running Ollama.
+    monkeypatch.setattr(gate.client, "model_resident", lambda *a, **k: False)
     session = _memory_session()
     monkeypatch.setattr(gate, "ram_free_mb", lambda: 500)
     monkeypatch.setattr(gate.settings, "brain_min_free_mb", 1200)
