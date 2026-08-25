@@ -1843,13 +1843,24 @@ how rough a place it is in general. Not the CII itself, just the first
 ingredient of it. Ukraine starts at 46, the UK starts at 14, so the same
 day's news lands them in different places.
 
-It is not calculated. It is **looked up** from a table of 31 countries typed
-into the code, 0–50 each, which never updates. Anywhere not on the list
-starts at 15.
+Where does that 46 come from? A line somebody typed. Nothing calculates it,
+no feed updates it — it is **looked up** out of a dict of 31 countries:
 
+```python
+CII_BASELINES = {
+    "UA": CiiBaseline(baseline=46.0, multiplier=1.25),
+    "SY": CiiBaseline(baseline=48.0, multiplier=1.30),
+    "US": CiiBaseline(baseline=18.0, multiplier=0.60),
+    "GB": CiiBaseline(baseline=14.0, multiplier=0.65),
+    ...                              # 31 countries
+}
+DEFAULT_CII_BASELINE = CiiBaseline(15.0, 1.0)   # anywhere else
 ```
-UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
-```
+
+Scoring Ukraine reads `CII_BASELINES["UA"]` and gets 46 — the same 46 today,
+tomorrow and next year. Someone judged Ukraine to sit near 46 on a 0–50
+fragility scale and wrote it down. The code's own word for these is
+*editorial defaults*.
 
 **event_score** is today — four counts from the last 24 hours, weighted:
 
@@ -1860,8 +1871,8 @@ UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
 | security | big quakes, hazard alerts | 0.20 |
 | information | how much news there was at all | 0.25 |
 
-Each count is scaled by a per-country multiplier (UA ×1.25, US ×0.60 — 200
-news rows is a quiet day in the US, not stress), then squashed onto 0–100
+Each count is scaled by that country's `multiplier` from the same dict — 200
+news rows is a quiet day in the US, not stress — then squashed onto 0–100
 with a log so one huge count cannot drown the other three. Worked below.
 
 ## A real output
@@ -1918,14 +1929,13 @@ unrest, 400 for conflict.
 
 ## What that 0.61 does not tell you
 
-**A country cannot score low.** 40% of the score is fixed, so before any
-event arrives this country already sits at `0.40 × 46 ÷ 100` = **0.184**.
-Part of what the number measures is **the baseline table, not the world**.
+**A country cannot score low.** 40% of the score is that fixed baseline, so
+before any event arrives Ukraine already sits at `0.40 × 46 ÷ 100` =
+**0.184**. Part of what the number measures is **the dict, not the world**.
 
-And nothing in it was fitted — the weights are borrowed, the baselines are
-asserted — while it appears in no accuracy test in Part III. §14 is a measured
-instrument that cannot run live; CII is a live instrument that has never been
-checked.
+Nothing in it was fitted, and it appears in no accuracy test in Part III. §14
+is a measured instrument that cannot run live; CII is a live instrument that
+has never been checked.
 
 ---
 
