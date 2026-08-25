@@ -1891,8 +1891,8 @@ looked up, the rest are built:
   "security":    30.0,
   "information": 90.6,
 
-  "event_score": 71.82,     ← those four, weighted
-  "total":       0.61       ← 46 and 71.82, blended, ÷ 100
+  "event_score": 71.82,     ← 25/30/20/25% of those four, added
+  "total":       0.61       ← 40% of 46 + 60% of 71.82, ÷ 100
 }
 ```
 
@@ -1945,11 +1945,14 @@ average:
 0.25(88.8) + 0.30(69.9) + 0.20(30.0) + 0.25(90.6) = 71.82   ← event_score
 ```
 
-Blend that with the country's fixed 46 — 40% country, 60% today — then ÷ 100
-to land between 0 and 1:
+Then the same move with two numbers instead of four — 40% of the country's
+fixed 46, 60% of today — and ÷ 100 to land between 0 and 1:
 
 ```
-0.40(46) + 0.60(71.82) = 61.49   →   ÷ 100   →   0.61       ← total
+40% of 46     = 18.40
+60% of 71.82  = 43.09
+                -----
+                61.49   →   ÷ 100   →   0.61                ← total
 ```
 
 `0.61` is the number the dashboard shows.
