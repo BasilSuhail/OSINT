@@ -56,6 +56,13 @@ UNBOUNDED_SOURCES: frozenset[str] = frozenset(
         # Published as monthly releases, so an item is routinely a month or
         # more old before it is available at all.
         "uk-police",
+        # Only currently-active hazards are listed at all — the fetcher drops
+        # anything the feed marks not-current before it reaches here — so a
+        # GDACS event's age is its onset, not its staleness. A flood that began
+        # in spring and is still running is the most current thing the feed has
+        # to say, and bounding it on the retention window would refuse to
+        # collect the long-running hazards this source exists to report.
+        "gdacs",
     }
 )
 

@@ -381,12 +381,24 @@ def feature_to_event_api(feature: dict[str, Any], *, fetched_at: datetime) -> Ev
         except (TypeError, ValueError):
             lon = lat = None
 
-    # GDACS only lists currently-active events (the iscurrent guard above), but a
-    # long-running hazard (wildfire / flood / drought) carries an old `fromdate`
-    # onset that falls outside the dashboard's live window and hides it even though
-    # it is active now. Stamp active events at fetch time so they read as current;
-    # the true onset / end / last-update stay in the payload below (#252 follow-up).
-    occurred_at = fetched_at
+    # When the hazard actually began. Stamping the fetch time instead is what an
+    # earlier fix did, so that a long-running wildfire or flood with an old
+    # `fromdate` would not fall outside the live window while it was still
+    # running — but it was applied to every event type, and an earthquake does
+    # not run long. A quake was therefore restamped on every poll that still
+    # found it in the feed, drifting forward day by day, and read on the map as
+    # having happened days after it did.
+    #
+    # The window is no longer the thing that decides whether an active hazard is
+    # visible: the map keeps a GDACS or EONET event drawn for as long as its
+    # feed is still republishing it, whatever its onset (#340). So onset can be
+    # what it says it is, and a hazard that has ended leaves the map three days
+    # after it truly happened rather than three days after we last saw it.
+    #
+    # Falls back to the fetch time when `fromdate` is missing or unparseable:
+    # an event with no usable onset is still a real current hazard, and the
+    # feed's own listing of it is the best evidence of when available.
+    occurred_at = _parse_iso_datetime(props.get("fromdate")) or fetched_at
     iso3 = props.get("iso3")
     country = iso3_to_iso2(iso3)
     affected_countries = _parse_affected_countries(props.get("affectedcountries"))
