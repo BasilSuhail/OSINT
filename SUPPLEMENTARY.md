@@ -1829,6 +1829,10 @@ number.
 One number per country per day, 0 to 1: **how stressed is this country
 today?** It reads the last 24 hours and runs every hour.
 
+Unlike §14 it needs no history, so this is the one that actually reaches the
+screen: the dashboard's top-country tile, its trend chart, and its
+country leaderboard are all reading CII.
+
 ## The formula
 
 ```python
@@ -1838,13 +1842,9 @@ CII = 0.40 * baseline + 0.60 * event_score
 They add to 1.00, so read it as a split: **40% is what kind of country this
 is, 60% is what happened there today.**
 
-**baseline** is the country's **starting score, before any news arrives** —
-how rough a place it is in general. Not the CII itself, just the first
-ingredient of it. Ukraine starts at 46, the UK starts at 14, so the same
-day's news lands them in different places.
-
-Where does that 46 come from? A line somebody typed. Nothing calculates it,
-no feed updates it — it is **looked up** out of a dict of 31 countries:
+**baseline** is the country's **starting score, before any news arrives**.
+Ukraine starts at 46, the UK at 14, so the same day's news lands them in
+different places. It is not calculated — it is **looked up**:
 
 ```python
 CII_BASELINES = {
@@ -1860,17 +1860,6 @@ DEFAULT_CII_BASELINE = CiiBaseline(15.0, 1.0)   # anywhere else
 Scoring Ukraine reads `CII_BASELINES["UA"]` and gets 46 — the same 46 today,
 tomorrow and next year.
 
-**So where did 46 actually come from?** A number like this has three
-legitimate origins: **fitted** from data, **cited** from a published source,
-or **elicited** from experts under a recorded protocol. This is none of them.
-The issue that specified the formula named the countries but no values; the
-values first appear in the code that implemented it, with no derivation
-recorded anywhere, and the published index this formula follows lists
-different figures. The code's own word for them is *editorial defaults*.
-
-The correct name for that in a model is an **unvalidated prior** — and it
-carries 40% of every score.
-
 **event_score** is today — four counts from the last 24 hours, weighted:
 
 | part | what it counts | weight |
@@ -1882,7 +1871,7 @@ carries 40% of every score.
 
 Each count is scaled by that country's `multiplier` from the same dict — 200
 news rows is a quiet day in the US, not stress — then squashed onto 0–100
-with a log so one huge count cannot drown the other three. Worked below.
+with a log so one huge count cannot drown the other three.
 
 ## A real output
 
@@ -1901,31 +1890,23 @@ One country, one day, straight out of the scoring module:
 }
 ```
 
-Read it bottom-up. The four parts came out at 88.8, 69.9, 30.0 and 90.6.
-Weight and add them:
-
-```
-0.25(88.8) + 0.30(69.9) + 0.20(30.0) + 0.25(90.6) = 71.82   ← event_score
-```
-
-Then blend that with the country's fixed 46, and divide by 100 to land in
-0–1:
-
-```
-0.40(46) + 0.60(71.82) = 61.49   →   ÷ 100   →   0.61   ← total
-```
-
-And the four parts are counts put through one formula. `information` was 140
-news rows that day:
+Each part is a count put through one formula. `information` was 140 news rows
+that day:
 
 ```
 140 rows × 1.25 multiplier            = 175
 log(1 + 175) ÷ log(1 + 300) × 100     = 5.17 ÷ 5.71 × 100 = 90.6
 ```
 
-The 300 is the ceiling — the row count that would read as fully saturated,
-100 out of 100. Every part works this way, with its own ceiling: 60 for
-unrest, 400 for conflict.
+The 300 is the ceiling — the count that would read as fully saturated. Every
+part works this way with its own ceiling: 60 unrest, 400 conflict.
+
+Weight the four and add them, then blend with the fixed 46 and divide by 100:
+
+```
+0.25(88.8) + 0.30(69.9) + 0.20(30.0) + 0.25(90.6) = 71.82   ← event_score
+0.40(46)   + 0.60(71.82)             = 61.49   ÷ 100 = 0.61 ← total
+```
 
 ## §14 and §15 side by side
 
@@ -1935,15 +1916,38 @@ unrest, 400 for conflict.
 | window | 1 month | 24 hours |
 | needs history | 12 months | none |
 | runs live | no | yes |
+| on screen | no | **yes — it is the dashboard** |
 
-## What that 0.61 does not tell you
+## Limitations
 
-**A country cannot score low.** Ukraine sits at `0.40 × 46 ÷ 100` = **0.184**
-before any event arrives, so part of what the number measures is **the dict,
-not the world**. And CII appears in no accuracy test in Part III.
+Written down as found, not fixed.
 
-§14 is a measured instrument that cannot run live; CII is a live instrument
-that has never been checked.
+**1. Half the score is made up.** 40% of the score is a number someone typed.
+Ukraine 46, UK 14, everyone else 15. Nothing measured it — it is not fitted
+from data, not cited from a source, not elicited from experts.
+*[unvalidated prior]*
+
+**2. Scores cannot go low.** That typed number is always there, so Ukraine
+reads `0.40 × 46 ÷ 100` = **0.184** on a day when nothing happens at all.
+*[floor artefact]*
+
+**3. Country rankings are partly decided in advance.** The typed number
+differs per country and never moves, so Ukraine outranks the UK before any
+news arrives — and the dashboard leaderboard is sorted on exactly this.
+*[a constant driving the between-country comparison]*
+
+**4. The credit is wrong.** The code says the table matches an outside
+published index. The weights do match it (40/60 and 25/30/20/25). The
+per-country numbers do not — six checked, six different — and its
+`multiplier` carries the opposite sense, below 1 for fragile countries where
+ours is above 1. *[miscitation]*
+
+**5. Nobody has tested it.** CII appears in no panel, no journal, no ranking
+and no results file. It has no accuracy number — while being the number the
+whole dashboard is built on. *[no validation]*
+
+§14 is a measured instrument that cannot run live. CII runs live, on screen,
+every hour — and has never been checked.
 
 ---
 
