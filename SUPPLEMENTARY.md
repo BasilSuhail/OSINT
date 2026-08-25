@@ -1827,74 +1827,65 @@ number.
 **`app/cii/`** — CII is the **Country Instability Index**.
 
 One number per country per day, 0 to 1: **how stressed is this country
-today?**
-
-## Where it lives and when it runs
-
-| | |
-|---|---|
-| formula | `app/cii/scoring.py` — pure maths, no database |
-| baseline table | `app/cii/config.py` — 31 hand-typed countries |
-| the job | `app/cii/task.py`, fired hourly by Celery beat |
-| window | the **last 24 hours** of the events table |
-| output | a row in the `scores` table, `score_name = "cii_v1"` |
-
-Unlike §14 it needs no history, so it runs on the live box every hour and
-produces a real number.
+today?** It reads the last 24 hours and runs every hour.
 
 ## The formula
 
 ```python
-CII = 0.40 * baseline + 0.60 * todays_events
+CII = 0.40 * baseline + 0.60 * event_score
+
+event_score = 0.25 * unrest       # serious news rows
+            + 0.30 * conflict     # GDELT fight / attack events
+            + 0.20 * security     # big quakes, hazard alerts
+            + 0.25 * information  # how much news there was at all
 ```
 
-**baseline** — one hand-typed number per country. Never changes, never
-measured:
+Two halves. **baseline** is a hand-typed number per country that never
+changes — UA 46, SY 48, US 18, GB 14, everyone else 15. **event_score** is
+today, built from four counts, each squashed onto 0–100 with a log so one
+huge count cannot drown the other three.
 
-```
-UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
-```
+## A real output
 
-**today's events** — four counts from the last 24 hours, weighted:
+One country, one day, straight out of the scoring module:
 
-| part | what it counts | weight |
-|---|---|---|
-| unrest | serious news rows | 0.25 |
-| conflict | GDELT fight / attack events | 0.30 |
-| security | big quakes, hazard alerts | 0.20 |
-| information | how much news there was at all | 0.25 |
-
-Each is squashed to 0–100 with a log, so one huge count cannot drown the
-other three. Then a per-country multiplier is applied (UA ×1.25, US ×0.60) —
-200 news rows is a quiet day in the US, not stress.
-
-## §14 and §15 side by side
-
-| | §14 composite | §15 CII |
-|---|---|---|
-| asks | unusual **for this country**? | bad **today**? |
-| window | 1 month | 24 hours |
-| needs history | 12 months | none |
-| runs live | no | yes |
-
-## The catch
-
-Same day, same events, two countries — and then a day where **nothing at all
-happens**:
-
-```
-                 same events     nothing happens
-UA                  0.566            0.184
-GB                  0.379            0.056
+```json
+{
+  "baseline":    46.0,
+  "unrest":      88.8,
+  "conflict":    69.9,
+  "security":    30.0,
+  "information": 90.6,
+  "event_score": 71.82,
+  "total":       0.61,
+  "multiplier":  1.25
+}
 ```
 
-A country can never score low. The baseline is 40% of the score no matter
-what, so CII is partly measuring **the table, not the world**.
+Read it bottom-up. The four counts came out at 88.8, 69.9, 30.0 and 90.6.
+Weight and add them:
 
-Nothing in it is fitted — baselines, multipliers and weights are all typed by
-hand — and it appears in no accuracy test in Part III. §14 is a measured
-instrument that cannot run live; CII is a live instrument that has never been
-checked.
+```
+0.25(88.8) + 0.30(69.9) + 0.20(30.0) + 0.25(90.6) = 71.82   ← event_score
+```
+
+Then blend that with the country's fixed 46, and divide by 100 to land in
+0–1:
+
+```
+0.40(46) + 0.60(71.82) = 61.49   →   ÷ 100   →   0.61   ← total
+```
+
+`multiplier` 1.25 is why the counts read high: raw counts are scaled per
+country before the log, because 200 news rows is a busy day in one place and
+a quiet one in another.
+
+## What that 0.61 does not tell you
+
+Run the same country on a day where **nothing at all happens** and it scores
+**0.184** — because `0.40 × 46` is already there before any event arrives. A
+country cannot score low. Part of what this number measures is **the
+baseline table, not the world**, and none of those baselines were measured.
 
 ---
 
