@@ -45,6 +45,22 @@ from app.housekeeping import retention_days
 from app.models import Event
 from app.settings import settings
 
+#: The bound when retention has no window to lend — the storage rule is off and
+#: the disk budget is the only thing deleting anything (`RETENTION_*_DAYS=0`).
+#:
+#: Retention and currency were the same number for as long as retention was
+#: always a number, and switching the storage clock off switched this gate off
+#: with it. That is the wrong consequence: how long an event is *kept* and how
+#: old an event may be to count as *current* are different questions, and only
+#: the first one an operator answers with a disk budget.
+#:
+#: Six months, and the reasoning is the measurement above rather than taste.
+#: The worst legitimate publishing lag measured on any feed here is p99 19.3
+#: days, so this is roughly nine times the slowest real news and cannot be what
+#: refuses a story. It still refuses the evergreen class the module was written
+#: for — promo entries dated years back, republished forever.
+NO_RETENTION_MAX_AGE: timedelta = timedelta(days=180)
+
 #: Sources whose value IS their history. Bounding these would defeat them.
 UNBOUNDED_SOURCES: frozenset[str] = frozenset(
     {
@@ -91,7 +107,7 @@ class Rejection:
     reason: str
 
 
-def retention_aligned_max_age(source: str) -> timedelta | None:
+def retention_aligned_max_age(source: str) -> timedelta:
     """How long `source` is kept, as the age bound the gate applies to it.
 
     `retention_days()` is the authority on what housekeeping deletes, so it is
@@ -105,17 +121,20 @@ def retention_aligned_max_age(source: str) -> timedelta | None:
     bound and never a free pass. Keep-forever sources never reach here — they
     are answered by UNBOUNDED_SOURCES above.
 
-    `None` when nothing on a clock deletes the source. The rule this gate
-    enforces is "do not ingest what retention would immediately delete"; with
-    no retention window there is no such age, and a bound copied from the news
-    window would refuse history the operator turned the clock off to keep.
+    `NO_RETENTION_MAX_AGE` when the storage clock is off. The rule this gate
+    enforces is "do not ingest what retention would immediately delete", and
+    with no retention window there is no such age — but "current" is still a
+    claim this system makes, and a gate that bounds nothing stops making it.
     """
     policy = retention_days()
-    if source in policy:
-        days = policy[source]
-        return None if days is None else timedelta(days=days)
-    fallback = settings.retention_news_days
-    return timedelta(days=fallback) if fallback > 0 else None
+    days = policy[source] if source in policy else _window_or_none(settings.retention_news_days)
+    return NO_RETENTION_MAX_AGE if days is None else timedelta(days=days)
+
+
+def _window_or_none(days: int) -> int | None:
+    """A configured window, or None when it is switched off. Mirrors the same
+    reading in `app.housekeeping`, which is the authority on the policy."""
+    return days if days > 0 else None
 
 
 def max_age(source: str) -> timedelta | None:
@@ -124,8 +143,6 @@ def max_age(source: str) -> timedelta | None:
     if slug in UNBOUNDED_SOURCES:
         return None
     window = retention_aligned_max_age(slug)
-    if window is None:
-        return None
     if slug.startswith(_CYBER_PREFIX):
         return window + CYBER_REPUBLISH_HEADROOM
     return window
