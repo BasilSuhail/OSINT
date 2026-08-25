@@ -1833,17 +1833,27 @@ today?** It reads the last 24 hours and runs every hour.
 
 ```python
 CII = 0.40 * baseline + 0.60 * event_score
-
-event_score = 0.25 * unrest       # serious news rows
-            + 0.30 * conflict     # GDELT fight / attack events
-            + 0.20 * security     # big quakes, hazard alerts
-            + 0.25 * information  # how much news there was at all
 ```
 
 Two halves. **baseline** is a hand-typed number per country that never
-changes — UA 46, SY 48, US 18, GB 14, everyone else 15. **event_score** is
-today, built from four counts, each squashed onto 0–100 with a log so one
-huge count cannot drown the other three.
+changes and was never measured:
+
+```
+UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
+```
+
+**event_score** is today — four counts from the last 24 hours, weighted:
+
+| part | what it counts | weight |
+|---|---|---|
+| unrest | serious news rows | 0.25 |
+| conflict | GDELT fight / attack events | 0.30 |
+| security | big quakes, hazard alerts | 0.20 |
+| information | how much news there was at all | 0.25 |
+
+Each is squashed to 0–100 with a log, so one huge count cannot drown the
+other three. Then a per-country multiplier is applied (UA ×1.25, US ×0.60) —
+200 news rows is a quiet day in the US, not stress.
 
 ## A real output
 
@@ -1862,7 +1872,7 @@ One country, one day, straight out of the scoring module:
 }
 ```
 
-Read it bottom-up. The four counts came out at 88.8, 69.9, 30.0 and 90.6.
+Read it bottom-up. The four parts came out at 88.8, 69.9, 30.0 and 90.6.
 Weight and add them:
 
 ```
@@ -1876,16 +1886,27 @@ Then blend that with the country's fixed 46, and divide by 100 to land in
 0.40(46) + 0.60(71.82) = 61.49   →   ÷ 100   →   0.61   ← total
 ```
 
-`multiplier` 1.25 is why the counts read high: raw counts are scaled per
-country before the log, because 200 news rows is a busy day in one place and
-a quiet one in another.
+## §14 and §15 side by side
+
+| | §14 composite | §15 CII |
+|---|---|---|
+| asks | unusual **for this country**? | bad **today**? |
+| window | 1 month | 24 hours |
+| needs history | 12 months | none |
+| runs live | no | yes |
 
 ## What that 0.61 does not tell you
 
-Run the same country on a day where **nothing at all happens** and it scores
-**0.184** — because `0.40 × 46` is already there before any event arrives. A
-country cannot score low. Part of what this number measures is **the
-baseline table, not the world**, and none of those baselines were measured.
+Run the same country on a day where **nothing at all happens** and it still
+scores **0.184** — because `0.40 × 46` is already there before any event
+arrives. A country cannot score low. Part of what this number measures is
+**the baseline table, not the world**, and none of those baselines were
+measured.
+
+Nothing in it is fitted — baselines, multipliers and weights are all typed by
+hand — and it appears in no accuracy test in Part III. §14 is a measured
+instrument that cannot run live; CII is a live instrument that has never been
+checked.
 
 ---
 
