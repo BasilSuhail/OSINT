@@ -141,6 +141,9 @@ export interface SourceCoverageRow {
   recent: number
   geocoded: number
   latest_occurred_at: string | null
+  /** Oldest event this source still holds. The scrubber's reach is sized from
+   *  the earliest of these across sources. */
+  earliest_occurred_at: string | null
   latest_fetched_at: string | null
 }
 

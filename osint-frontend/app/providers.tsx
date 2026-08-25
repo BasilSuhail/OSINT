@@ -3,7 +3,10 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import useSWR from "swr"
 import { EventBuffer, FIREHOSE_EXCLUDE, type ConnectionDiagnostics, type ConnectionStatus } from "@/lib/realtime"
-import { CLIENT_LIMITS, fetchEvents, isApiConfigured } from "@/lib/apiClient"
+import { CLIENT_LIMITS, fetchEvents, fetchSourceCoverage, isApiConfigured } from "@/lib/apiClient"
+import { useLeftPaneStore } from "@/stores/leftPaneStore"
+import { DEFAULT_SCRUB_SPAN_MS } from "@/stores/createFilterStore"
+import { LIVE_TOLERANCE_MS } from "@/lib/timeWindow"
 import type { EventRow } from "@/lib/types"
 
 interface RealtimeContextValue {
@@ -13,7 +16,11 @@ interface RealtimeContextValue {
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null)
 
-const WINDOW_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+//: How coarsely the firehose key follows the scrubber. The offset changes on
+//: every pointer move and on every playback frame; without a bucket each one
+//: would be a new SWR key and a new request. An hour is finer than the 3-day
+//: window it scopes, so no reachable position is left unfetched.
+const WINDOW_KEY_BUCKET_MS = 60 * 60 * 1000
 
 /**
  * Pull the most-recent events into the buffer in 1000-row pages.
@@ -30,9 +37,15 @@ const WINDOW_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
  * no source toggle, so it is never shown from this buffer anyway. See the
  * `sourceKeyForEvent === null` guard in EventBuffer.ingest for the live path.
  */
-async function fetchRecentEvents(): Promise<EventRow[]> {
-  const since = new Date(Date.now() - WINDOW_MS).toISOString()
-  return fetchEvents({ since, exclude: FIREHOSE_EXCLUDE, limit: CLIENT_LIMITS.eventWindow })
+async function fetchWindowEvents(offsetMs: number, lengthMs: number): Promise<EventRow[]> {
+  const windowEnd = Date.now() - offsetMs
+  const since = new Date(windowEnd - lengthMs).toISOString()
+  //: Live keeps its open end so an event that lands mid-request is not cut off
+  //: by a `until` stamped a moment earlier. A scrubbed-back window is closed at
+  //: both ends: without that, the budget is spent on rows the map will not draw.
+  const until =
+    offsetMs < LIVE_TOLERANCE_MS ? undefined : new Date(windowEnd).toISOString()
+  return fetchEvents({ since, until, exclude: FIREHOSE_EXCLUDE, limit: CLIENT_LIMITS.eventWindow })
 }
 
 async function fetchUpdatedEvents(buffer: EventBuffer): Promise<EventRow[]> {
@@ -81,11 +94,41 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     return () => buffer.disconnect()
   }, [buffer])
 
+  //: The firehose follows the scrubber rather than pulling a fixed recent slab.
+  //: Below the viewport zoom the map has no other source, so a slab was the
+  //: reason dragging past its edge emptied the map instead of showing history.
+  //: Scoping to the visible window also spends the row budget on three days
+  //: instead of thirty, so a dense feed no longer starves a sparse one.
+  const windowOffsetMs = useLeftPaneStore((s) => s.windowEndOffsetMs)
+  const windowLengthMs = useLeftPaneStore((s) => s.windowLengthMs)
+  const setScrubSpan = useLeftPaneStore((s) => s.setScrubSpan)
+  const windowBucket = Math.round(windowOffsetMs / WINDOW_KEY_BUCKET_MS)
+
   // SWR fallback: poll every 30s (and once on mount) to backfill / recover.
-  useSWR(isApiConfigured ? "events-window" : null, fetchRecentEvents, {
-    refreshInterval: 30_000,
+  useSWR(
+    isApiConfigured ? ["events-window", windowBucket, windowLengthMs] : null,
+    () => fetchWindowEvents(windowOffsetMs, windowLengthMs),
+    {
+      refreshInterval: 30_000,
+      revalidateOnFocus: false,
+      keepPreviousData: true,
+      onSuccess: (rows) => buffer.ingest(rows),
+    },
+  )
+
+  //: What the scrubber may reach is what the database still holds. Asked once
+  //: an hour rather than once: retention moves the floor up as old rows are
+  //: pruned, and a board filling a large disk moves it down as history builds.
+  useSWR(isApiConfigured ? "events-earliest" : null, () => fetchSourceCoverage(), {
+    refreshInterval: 3_600_000,
     revalidateOnFocus: false,
-    onSuccess: (rows) => buffer.ingest(rows),
+    onSuccess: (rows) => {
+      const earliest = rows
+        .map((row) => (row.earliest_occurred_at ? Date.parse(row.earliest_occurred_at) : NaN))
+        .filter((ms) => Number.isFinite(ms))
+      if (!earliest.length) return
+      setScrubSpan(Math.max(DEFAULT_SCRUB_SPAN_MS, Date.now() - Math.min(...earliest)))
+    },
   })
 
   // Enrichment mutates existing rows without changing their event time. Poll

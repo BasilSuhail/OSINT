@@ -11,8 +11,15 @@ export interface FilterState {
   /** Time scrubber: offset (ms) of the *end* of the visible window from "now".
    *  0 = window ends now. Positive = window ends in the past. */
   windowEndOffsetMs: number
-  /** Visible window length in ms (fixed at 30 days span control, default 3 days view). */
+  /** Visible window length in ms (default 3 days view). Fixed: the scrubber
+   *  moves where the window sits, it never widens it, so what is on screen is
+   *  never more than this old. */
   windowLengthMs: number
+  /** How far back the scrubber may reach. Not a constant: the map sizes it
+   *  from the earliest event the database actually holds, so a board keeping a
+   *  year can be scrubbed across the year while a fresh one is not offered a
+   *  slider that is mostly empty. Never below `DEFAULT_SCRUB_SPAN_MS`. */
+  scrubSpanMs: number
   playing: boolean
   speed: number
 
@@ -27,13 +34,17 @@ export interface FilterState {
   setAllHazardTypes: (on: boolean) => void
   setSeverity: (range: [number, number]) => void
   setWindowEndOffset: (ms: number) => void
+  setScrubSpan: (ms: number) => void
   setPlaying: (playing: boolean) => void
   togglePlaying: () => void
   setSpeed: (speed: number) => void
   reset: () => void
 }
 
-const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
+//: The reach the scrubber starts with, and the floor it never drops below.
+//: Coverage widens it once the database says how far back it goes; until that
+//: answer arrives the slider behaves exactly as it did before it was dynamic.
+const DEFAULT_SCRUB_SPAN = 30 * 24 * 60 * 60 * 1000
 const DEFAULT_WINDOW = 3 * 24 * 60 * 60 * 1000
 
 const defaultSources: Record<SourceKey, boolean> = {
@@ -63,6 +74,7 @@ export function createFilterStore(): FilterStore {
     severity: [0, 1],
     windowEndOffsetMs: 0,
     windowLengthMs: DEFAULT_WINDOW,
+    scrubSpanMs: DEFAULT_SCRUB_SPAN,
     playing: false,
     speed: 1,
 
@@ -83,8 +95,15 @@ export function createFilterStore(): FilterStore {
         return { hazardTypes: next }
       }),
     setSeverity: (range) => set({ severity: range }),
+    //: Clamped against the live span rather than a constant, so raising the
+    //: reach raises what the slider can be dragged to in the same move.
     setWindowEndOffset: (ms) =>
-      set({ windowEndOffsetMs: Math.max(0, Math.min(THIRTY_DAYS, ms)) }),
+      set((s) => ({ windowEndOffsetMs: Math.max(0, Math.min(s.scrubSpanMs, ms)) })),
+    //: Floored, never lowered below the default: a coverage response that is
+    //: empty, still loading, or briefly wrong must not shorten a slider the
+    //: user is already holding.
+    setScrubSpan: (ms) =>
+      set((s) => ({ scrubSpanMs: Math.max(DEFAULT_SCRUB_SPAN, s.scrubSpanMs, ms) })),
     setPlaying: (playing) => set({ playing }),
     togglePlaying: () => set((s) => ({ playing: !s.playing })),
     setSpeed: (speed) => set({ speed }),
@@ -100,7 +119,9 @@ export function createFilterStore(): FilterStore {
   }))
 }
 
-export const WINDOW_SPAN_MS = THIRTY_DAYS
+/** The scrubber's starting reach, and its floor. The live reach lives in the
+ *  store as `scrubSpanMs` — read that, not this, to size the track. */
+export const DEFAULT_SCRUB_SPAN_MS = DEFAULT_SCRUB_SPAN
 
 /** The window length that counts as the normal live view. Exported so the
  *  status bar can tell a default window from a widened one (#501). */

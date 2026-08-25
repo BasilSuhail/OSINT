@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronUp, Pause, Play } from "lucide-react"
 import { format } from "date-fns"
-import { WINDOW_SPAN_MS, type FilterStore } from "@/stores/createFilterStore"
+import { type FilterStore } from "@/stores/createFilterStore"
 import { LIVE_TOLERANCE_MS } from "@/lib/timeWindow"
 import { cn } from "@/lib/utils"
 import { Slider } from "@/components/ui/slider"
@@ -37,12 +37,14 @@ export function TimeScrubber({
   const speed = useStore((s) => s.speed)
   const windowEndOffsetMs = useStore((s) => s.windowEndOffsetMs)
   const windowLengthMs = useStore((s) => s.windowLengthMs)
+  //: The track is as long as the database is deep, not a fixed month.
+  const scrubSpanMs = useStore((s) => s.scrubSpanMs)
   const togglePlaying = useStore((s) => s.togglePlaying)
   const setSpeed = useStore((s) => s.setSpeed)
   const setWindowEndOffset = useStore((s) => s.setWindowEndOffset)
 
   // Slider value: SPAN - offset, so the right edge = live (offset 0).
-  const sliderValue = WINDOW_SPAN_MS - windowEndOffsetMs
+  const sliderValue = scrubSpanMs - windowEndOffsetMs
   // Same threshold the status bar uses (#501) — two indicators disagreeing
   // about whether the view is live is worse than having only one.
   const isLive = windowEndOffsetMs < LIVE_TOLERANCE_MS
@@ -144,9 +146,9 @@ export function TimeScrubber({
             <Slider
               value={[sliderValue]}
               min={0}
-              max={WINDOW_SPAN_MS}
+              max={scrubSpanMs}
               step={60_000}
-              onValueChange={(v) => setWindowEndOffset(WINDOW_SPAN_MS - (Array.isArray(v) ? v[0] : v))}
+              onValueChange={(v) => setWindowEndOffset(scrubSpanMs - (Array.isArray(v) ? v[0] : v))}
               //: Named for the same reason the severity slider is: the thumb
               //: is an `input type="range"` and an unnamed one is a field the
               //: browser cannot tell from any other (#944).

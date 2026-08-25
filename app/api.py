@@ -169,6 +169,13 @@ def _source_coverage_dict(row) -> dict:
         "latest_occurred_at": (
             row.latest_occurred_at.isoformat() if row.latest_occurred_at else None
         ),
+        #: How far back this source actually reaches. The time scrubber sizes
+        #: its track from the earliest of these rather than a fixed span, so a
+        #: board holding a year of history can be scrubbed across the year and
+        #: a fresh one is not offered a slider that is mostly empty.
+        "earliest_occurred_at": (
+            row.earliest_occurred_at.isoformat() if row.earliest_occurred_at else None
+        ),
         "latest_fetched_at": row.latest_fetched_at.isoformat() if row.latest_fetched_at else None,
     }
 
@@ -240,6 +247,7 @@ def event_coverage(
             recent_count.label("recent"),
             geocoded_count.label("geocoded"),
             func.max(EventRow.occurred_at).label("latest_occurred_at"),
+            func.min(EventRow.occurred_at).label("earliest_occurred_at"),
             func.max(EventRow.fetched_at).label("latest_fetched_at"),
         )
         .group_by(EventRow.source)
