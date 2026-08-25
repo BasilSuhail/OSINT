@@ -1843,11 +1843,9 @@ an existing published instability index that this module re-implements — as
 are the four weights below. Checking that source against the code: the two
 sets of weights match it exactly.
 
-**baseline** is a hand-set 0–50 score for how fragile a country is. These do
-**not** come from the source — its published table gives different figures,
-and its multiplier means something else entirely (there, fragile countries
-score *below* 1). The code calls ours *editorial defaults*, which is the
-honest description: they were written here, by judgement, and never fitted.
+**baseline** is not calculated at all — it is **looked up**. A table of 31
+countries sits in the code, typed by hand, one 0–50 number each for how
+fragile the country is. Ukraine's 46 was written there; nothing measured it.
 
 ```
 UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
@@ -1862,9 +1860,9 @@ UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
 | security | big quakes, hazard alerts | 0.20 |
 | information | how much news there was at all | 0.25 |
 
-Each is squashed to 0–100 with a log, so one huge count cannot drown the
-other three. Then a per-country multiplier is applied (UA ×1.25, US ×0.60) —
-200 news rows is a quiet day in the US, not stress.
+Each count is scaled by a per-country multiplier (UA ×1.25, US ×0.60 — 200
+news rows is a quiet day in the US, not stress), then squashed onto 0–100
+with a log so one huge count cannot drown the other three. Worked below.
 
 ## A real output
 
@@ -1896,6 +1894,18 @@ Then blend that with the country's fixed 46, and divide by 100 to land in
 ```
 0.40(46) + 0.60(71.82) = 61.49   →   ÷ 100   →   0.61   ← total
 ```
+
+And the four parts are counts put through one formula. `information` was 140
+news rows that day:
+
+```
+140 rows × 1.25 multiplier            = 175
+log(1 + 175) ÷ log(1 + 300) × 100     = 5.17 ÷ 5.71 × 100 = 90.6
+```
+
+The 300 is the ceiling — the row count that would read as fully saturated,
+100 out of 100. Every part works this way, with its own ceiling: 60 for
+unrest, 400 for conflict.
 
 ## §14 and §15 side by side
 
