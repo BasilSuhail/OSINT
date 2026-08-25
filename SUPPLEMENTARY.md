@@ -1835,7 +1835,28 @@ today?** It reads the last 24 hours and runs every hour.
 CII = 0.40 * baseline + 0.60 * event_score
 ```
 
-Two halves. **baseline** is a hand-typed number per country that never
+The two numbers add to 1.00, so read them as a percentage split of the
+answer: **40% is what kind of country this is in general, 60% is what
+happened there today.**
+
+Where does 0.40 come from? Nowhere. It is a dial typed into the code, not a
+number that fell out of a fit. Here is what turning it does — same country,
+same busy day:
+
+```
+split        busy day    dead-quiet day
+0.0 / 1.0      0.72          0.00      ← today only, the table ignored
+0.4 / 0.6      0.61          0.18      ← what the code uses
+0.9 / 0.1      0.49          0.41      ← barely reacts to events at all
+```
+
+The right column is the **floor**: with nothing happening, the score is just
+`baseline_weight × baseline ÷ 100`. Turn the dial up and every country sits
+near its typed-in number whatever the day brings; turn it to 0 and a country
+with a violent decade behind it reads like a calm one on its first quiet day.
+0.40 splits the difference — a judgement, not a measurement.
+
+Two halves, then. **baseline** is a hand-typed number per country that never
 changes and was never measured:
 
 ```
@@ -1897,16 +1918,14 @@ Then blend that with the country's fixed 46, and divide by 100 to land in
 
 ## What that 0.61 does not tell you
 
-Run the same country on a day where **nothing at all happens** and it still
-scores **0.184** — because `0.40 × 46` is already there before any event
-arrives. A country cannot score low. Part of what this number measures is
-**the baseline table, not the world**, and none of those baselines were
-measured.
+**A country cannot score low.** Its floor of 0.184 is sitting there before
+any event arrives, so part of what this number measures is **the baseline
+table, not the world**.
 
-Nothing in it is fitted — baselines, multipliers and weights are all typed by
-hand — and it appears in no accuracy test in Part III. §14 is a measured
-instrument that cannot run live; CII is a live instrument that has never been
-checked.
+Nothing in it is fitted — baselines, multipliers and both sets of weights are
+typed by hand — and it appears in no accuracy test in Part III. §14 is a
+measured instrument that cannot run live; CII is a live instrument that has
+never been checked.
 
 ---
 
