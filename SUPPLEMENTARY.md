@@ -1838,13 +1838,16 @@ CII = 0.40 * baseline + 0.60 * event_score
 They add to 1.00, so read it as a split: **40% is what kind of country this
 is, 60% is what happened there today.**
 
-**Where do 0.40 and 0.60 come from?** Not from the data. They were copied
-from an existing published instability index that this module re-implements —
-so were the four weights below, and every number in the baseline table.
-Nothing here was fitted to our rows.
+**Where do 0.40 and 0.60 come from?** Not from our data. They are taken from
+an existing published instability index that this module re-implements — as
+are the four weights below. Checking that source against the code: the two
+sets of weights match it exactly.
 
-**baseline** is a hand-set 0–50 score for how fragile a country is. The code
-calls these *editorial defaults*:
+**baseline** is a hand-set 0–50 score for how fragile a country is. These do
+**not** come from the source — its published table gives different figures,
+and its multiplier means something else entirely (there, fragile countries
+score *below* 1). The code calls ours *editorial defaults*, which is the
+honest description: they were written here, by judgement, and never fitted.
 
 ```
 UA 46    SY 48    PK 42    US 18    GB 14    everyone else 15
@@ -1909,8 +1912,8 @@ Then blend that with the country's fixed 46, and divide by 100 to land in
 event arrives this country already sits at `0.40 × 46 ÷ 100` = **0.184**.
 Part of what the number measures is **the baseline table, not the world**.
 
-And nothing in it was fitted — every weight and baseline came from elsewhere
-— while it appears in no accuracy test in Part III. §14 is a measured
+And nothing in it was fitted — the weights are borrowed, the baselines are
+asserted — while it appears in no accuracy test in Part III. §14 is a measured
 instrument that cannot run live; CII is a live instrument that has never been
 checked.
 
