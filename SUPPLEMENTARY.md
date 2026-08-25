@@ -1860,31 +1860,21 @@ DEFAULT_CII_BASELINE = CiiBaseline(15.0, 1.0)   # anywhere else
 Scoring Ukraine reads `CII_BASELINES["UA"]` and gets 46 — the same 46 today,
 tomorrow and next year.
 
-**event_score** is today — four counts from the last 24 hours, weighted:
+**event_score** is today. Nothing earlier in this document counts anything —
+<a href="#ch-11">§11</a> builds the table, <a href="#ch-12">§12</a> fills in a
+headline's `severity`, <a href="#ch-5">§5</a> brings in the GDELT, USGS, GDACS
+and EONET rows. §15 is the first place a count happens. It takes 24 hours of
+that table and asks four questions of it:
 
-| part | what it counts | weight |
-|---|---|---|
-| unrest | serious news rows | 0.25 |
-| conflict | GDELT fight / attack events | 0.30 |
-| security | big quakes, hazard alerts | 0.20 |
-| information | how much news there was at all | 0.25 |
+| part | the filter | weight | that day |
+|---|---|---|---|
+| unrest | news rows with `severity ≥ 0.6` | 0.25 | 18 |
+| conflict | GDELT rows with CAMEO code 18, 19 or 20 | 0.30 | 52 |
+| security | M5+ quakes, GDACS orange/red, EONET active | 0.20 | 0 / 1 / 3 |
+| information | every news row | 0.25 | 140 |
 
-Nothing earlier in this document counts anything — <a href="#ch-11">§11</a>
-builds the table, <a href="#ch-12">§12</a> fills in a headline's `severity`,
-<a href="#ch-5">§5</a> brings in the GDELT, USGS, GDACS and EONET rows. §15 is
-the first place a count happens. It takes 24 hours of that table and asks
-four questions of it:
-
-| part | the filter | example count |
-|---|---|---|
-| unrest | news rows with `severity ≥ 0.6` | 18 |
-| conflict | GDELT rows with CAMEO code 18, 19 or 20 | 52 |
-| security | M5+ quakes, GDACS orange/red, EONET active | 0 / 1 / 3 |
-| information | every news row | 140 |
-
-Each count is scaled by that country's `multiplier` from the same dict — 200
-news rows is a quiet day in the US, not stress — then turned into a 0–100
-number so one huge count cannot drown the other three.
+Each count is then scaled by that country's `multiplier` from the same dict —
+200 news rows is a quiet day in the US, not stress.
 
 ## A real output
 
@@ -1908,10 +1898,9 @@ looked up, the rest are built:
 
 ## How a count becomes a 0–100 number
 
-The question each part answers is **how full is the tank** — 0 means nothing
-happened, 100 means as bad as this thing gets. So you need a "full" mark. For
-news it is **300 rows a day**. Someone picked that, the same way someone
-picked the 46.
+Each part answers **how full is the tank** — 0 means nothing happened, 100
+means as bad as this thing gets. That needs a "full" mark: for news it is
+**300 rows a day**, picked by hand the same way the 46 was.
 
 A plain percentage would treat every row as equal — 0 → 10 rows moves you 3%,
 and so does 290 → 300. But no headlines to ten headlines is enormous; 290 to
@@ -1928,13 +1917,11 @@ rows      plain %     log %
  600       200%       100%    ← capped, cannot go past full
 ```
 
-The log column is the one used. For your day:
+The log column is the one used. That day's 140 news rows:
 
 ```
-140 news rows × 1.25 multiplier   = 175     ← scale for this country
-log(1 + 175) = 5.17                         ← how full, squashed
-log(1 + 300) = 5.71                         ← completely full, squashed
-5.17 ÷ 5.71 × 100                 = 90.6    ← 91% full
+140 rows × 1.25 multiplier   = 175
+log(1 + 175) ÷ log(1 + 300) × 100  =  5.17 ÷ 5.71 × 100  =  90.6
 ```
 
 The `1 +` is only there so a count of 0 gives log(1) = 0 instead of breaking.
