@@ -98,12 +98,12 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §16  STORIES                                                           │
+   │ <a id="map-16" href="#ch-16">§16  STORIES</a>                                                           │
    │    headlines about the same event grouped by word overlap              │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §17  CORROBORATION + SENSOR CHECKS                                     │
+   │ <a id="map-17" href="#ch-17">§17  CORROBORATION + SENSOR CHECKS</a>                                     │
    │    how many independent owners tell it, and whether a sensor agrees    │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -284,6 +284,7 @@ information and costs a request. The code states this where it applies:
 ```
 
 </details>
+
 
 <details>
 <summary><b>Why the job's name travels as text, not as code</b></summary>
@@ -1829,22 +1830,92 @@ number.
 One number per country per day, 0 to 1: **how stressed is this country
 today?** It reads the last 24 hours and runs every hour.
 
-Unlike §14 it needs no history, so this is the one that actually reaches the
-screen: the dashboard's top-country tile, its trend chart, and its
-country leaderboard are all reading CII.
+Unlike §14, it needs no historical series. It is **backend-live but
+frontend-disconnected**.
 
-## The formula
+## What kind of model is it?
 
-```python
-CII = 0.40 * baseline + 0.60 * event_score
+CII is a **rule-based scoring pipeline**, not a trained machine-learning model.
+No target variable is predicted and no parameters are fitted from examples.
+The code counts events, transforms those counts, applies fixed weights, then
+adds a fixed country starting value.
+
+| Data-science term | Meaning here |
+|---|---|
+| observation | one country during one rolling 24-hour window |
+| features | seven event counts from that window |
+| feature engineering | turning those counts into four 0–100 sub-scores |
+| parameters | hand-set baselines, multipliers, ceilings and weights |
+| output | one score between 0 and 1 |
+
+```text
+raw event rows
+      │
+      ▼
+keep last 24 hours
+      │
+      ▼
+group by country ──► count seven features
+      │
+      ▼
+transform counts ──► four sub-scores, each 0–100
+      │
+      ▼
+weighted average ──► event_score, 0–100
+      │
+      ▼
+add fixed baseline ──► divide by 100 ──► CII, 0–1 ──► dashboard
 ```
 
-They add to 1.00, so read it as a split: **40% is what kind of country this
-is, 60% is what happened there today.**
+The complete calculation is:
 
-**baseline** is the country's **starting score, before any news arrives**.
-Ukraine starts at 46, the UK at 14, so the same day's news lands them in
-different places. It is not calculated — it is **looked up**:
+```python
+event_score = (
+    0.25 * unrest
+    + 0.30 * conflict
+    + 0.20 * security
+    + 0.25 * information
+)
+
+CII = (0.40 * baseline + 0.60 * event_score) / 100
+```
+
+The first set of weights totals 1. The second set also totals 1. Read the last
+line as **40% fixed country starting value + 60% today's events**.
+
+## Stage 1 — build one feature row
+
+For each country, the worker turns the last 24 hours into seven counts:
+
+| feature | what gets counted | example |
+|---|---|---:|
+| `unrest_signals` | news and UK Police rows with `severity ≥ 0.6` | 18 |
+| `unrest_fatalities` | protest and riot fatalities stored in those rows | 4 |
+| `conflict_events` | GDELT rows with CAMEO root code 18, 19 or 20 | 52 |
+| `quake_m5_plus` | USGS earthquakes of magnitude 5+ | 0 |
+| `hazard_orange_red` | GDACS orange or red alerts | 1 |
+| `eonet_events` | active EONET hazards | 3 |
+| `news_volume` | all news and UK Police rows | 140 |
+
+In ordinary data-science notation, that country-day is one feature vector:
+
+```python
+x = {
+    "unrest_signals": 18,
+    "unrest_fatalities": 4,
+    "conflict_events": 52,
+    "quake_m5_plus": 0,
+    "hazard_orange_red": 1,
+    "eonet_events": 3,
+    "news_volume": 140,
+}
+```
+
+Nothing here is a probability. These are counts from the event table.
+
+## Stage 2 — look up two country constants
+
+Each country has a `baseline` and a `multiplier`:
 
 ```python
 CII_BASELINES = {
@@ -1857,55 +1928,30 @@ CII_BASELINES = {
 DEFAULT_CII_BASELINE = CiiBaseline(15.0, 1.0)   # anywhere else
 ```
 
-Scoring Ukraine reads `CII_BASELINES["UA"]` and gets 46 — the same 46 today,
-tomorrow and next year.
+| constant | role | changes during scoring? |
+|---|---|---|
+| `baseline` | starting level before today's events | no |
+| `multiplier` | makes event counts count more or less | no |
 
-**event_score** is today. Nothing earlier in this document counts anything —
-<a href="#ch-11">§11</a> builds the table, <a href="#ch-12">§12</a> fills in a
-headline's `severity`, <a href="#ch-5">§5</a> brings in the GDELT, USGS, GDACS
-and EONET rows. §15 is the first place a count happens. It takes 24 hours of
-that table and asks four questions of it:
+For Ukraine, the lookup always returns `baseline=46` and `multiplier=1.25`.
+For a country missing from the table, it returns `15` and `1.0`.
 
-| part | the filter | weight | that day |
-|---|---|---|---|
-| unrest | news rows with `severity ≥ 0.6` | 0.25 | 18 |
-| conflict | GDELT rows with CAMEO code 18, 19 or 20 | 0.30 | 52 |
-| security | M5+ quakes, GDACS orange/red, EONET active | 0.20 | 0 / 1 / 3 |
-| information | every news row | 0.25 | 140 |
+## Stage 3 — transform counts into four sub-scores
 
-Each count is then scaled by that country's `multiplier` from the same dict —
-200 news rows is a quiet day in the US, not stress.
+Raw counts use different scales. Four earthquakes and 140 headlines cannot be
+averaged directly. CII first maps each topic onto the same 0–100 range.
 
-## A real output
+Three topics use a logarithm:
 
-One country, one day, straight out of the scoring module. Two of these are
-looked up, the rest are built:
-
-```json
-{
-  "baseline":    46.0,      ← looked up
-  "multiplier":  1.25,      ← looked up
-
-  "unrest":      88.8,      ← from today's counts
-  "conflict":    69.9,
-  "security":    30.0,
-  "information": 90.6,
-
-  "event_score": 71.82,     ← 25/30/20/25% of those four, added
-  "total":       0.61       ← 40% of 46 + 60% of 71.82, ÷ 100
-}
+```python
+def log_score(count, multiplier, ceiling):
+    scaled_count = count * multiplier
+    score = log(1 + scaled_count) / log(1 + ceiling) * 100
+    return min(100, score)
 ```
 
-## How a count becomes a 0–100 number
-
-Each part answers **how full is the tank** — 0 means nothing happened, 100
-means as bad as this thing gets. That needs a "full" mark: for news it is
-**300 rows a day**, picked by hand the same way the 46 was.
-
-A plain percentage would treat every row as equal — 0 → 10 rows moves you 3%,
-and so does 290 → 300. But no headlines to ten headlines is enormous; 290 to
-300 is nothing, it was already chaos. A `log` fixes exactly that: **early rows
-count for a lot, later ones for almost nothing**.
+`ceiling` means **the hand-set count that becomes 100**. The logarithm gives
+large gains to early events and smaller gains to later events:
 
 ```
 rows      plain %     log %
@@ -1914,39 +1960,70 @@ rows      plain %     log %
   50        17%        69%
  175        58%        91%
  300       100%       100%    ← the ceiling
- 600       200%       100%    ← capped, cannot go past full
+600       200%       100%    ← capped, cannot go past full
 ```
 
-The log column is the one used. That day's 140 news rows:
+The `1 +` makes a zero count valid because `log(1) = 0`. The final `min`
+clips every sub-score at 100.
 
+The scoring code, shortened without changing its logic, is:
+
+```python
+unrest = min(
+    100,
+    log_score(unrest_signals, multiplier, ceiling=60)
+    + min(30, sqrt(unrest_fatalities) * 6),
+)
+
+conflict = log_score(conflict_events, multiplier, ceiling=400)
+
+security = min(
+    100,
+    (
+        min(60, quake_m5_plus * 6)
+        + min(60, hazard_orange_red * 12)
+        + min(40, eonet_events * 4)
+    ) * multiplier,
+)
+
+information = log_score(news_volume, multiplier, ceiling=300)
 ```
-140 rows × 1.25 multiplier   = 175
-log(1 + 175) ÷ log(1 + 300) × 100  =  5.17 ÷ 5.71 × 100  =  90.6
+
+Using the example feature row and Ukraine's multiplier:
+
+| sub-score | short calculation | result |
+|---|---|---:|
+| unrest | log-scaled 18 signals + fatality bump for 4 deaths | 88.8 |
+| conflict | log-scaled 52 events | 69.9 |
+| security | `(0×6 + 1×12 + 3×4) × 1.25` | 30.0 |
+| information | log-scaled 140 rows | 90.6 |
+
+For example, the information score is:
+
+```text
+140 rows × 1.25 = 175 scaled rows
+log(1 + 175) / log(1 + 300) × 100 = 90.6
 ```
 
-The `1 +` is only there so a count of 0 gives log(1) = 0 instead of breaking.
+## Stage 4 — combine the four sub-scores
 
-`unrest` and `conflict` do the same with their own full marks, **60** and
-**400** — a low ceiling fills fast.
+This is a weighted average. Conflict receives the largest weight:
 
-`security` is the odd one out — flat points, no log. Six per M5+ quake,
-twelve per GDACS orange/red alert, four per EONET event, each capped:
-
-```
-0 quakes(×6) + 1 alert(×12) + 3 events(×4) = 24   ×1.25 = 30.0
-```
-
-## And then the last two lines
-
-Weight the four and add them. The weights total 1, so this is a weighted
-average:
+| sub-score | value | weight | contribution |
+|---|---:|---:|---:|
+| unrest | 88.8 | 0.25 | 22.20 |
+| conflict | 69.9 | 0.30 | 20.97 |
+| security | 30.0 | 0.20 | 6.00 |
+| information | 90.6 | 0.25 | 22.65 |
+| **event score** | | **1.00** | **71.82** |
 
 ```
 0.25(88.8) + 0.30(69.9) + 0.20(30.0) + 0.25(90.6) = 71.82   ← event_score
 ```
 
-Then the same move with two numbers instead of four — 40% of the country's
-fixed 46, 60% of today — and ÷ 100 to land between 0 and 1:
+## Stage 5 — add the baseline
+
+Now blend the fixed baseline with today's event score:
 
 ```
 40% of 46     = 18.40
@@ -1955,51 +2032,387 @@ fixed 46, 60% of today — and ÷ 100 to land between 0 and 1:
                 61.49   →   ÷ 100   →   0.61                ← total
 ```
 
-`0.61` is the number the dashboard shows.
+The dashboard shows `0.61`. This means **0.61 under this scoring recipe**. It
+does not mean a 61% probability of instability.
+
+## One complete output row
+
+```json
+{
+  "baseline": 46.0,
+  "multiplier": 1.25,
+  "unrest": 88.8,
+  "conflict": 69.9,
+  "security": 30.0,
+  "information": 90.6,
+  "event_score": 71.82,
+  "total": 0.61,
+  "method_version": "cii.v1.2"
+}
+```
+
+## Whole thing in one breath
+
+> Count seven kinds of event for one country over 24 hours. Convert them into
+> four 0–100 sub-scores. Take their weighted average. Mix 60% of that result
+> with a 40% fixed country baseline. Divide by 100.
 
 ## §14 and §15 side by side
 
-| | §14 composite | §15 CII |
+| data-science question | §14 composite | §15 CII |
 |---|---|---|
-| asks | unusual **for this country**? | bad **today**? |
-| window | 1 month | 24 hours |
-| needs history | 12 months | none |
-| runs live | no | yes |
-| on screen | no | **yes — it is the dashboard** |
+| what does it ask? | unusual **for this country**? | high under fixed rules **today**? |
+| one observation | country-month | country-day |
+| input window | 1 month | rolling 24 hours |
+| reference | country's previous 12 months | fixed baseline and thresholds |
+| main method | z-score, average, logistic transform | counts, log transforms, weighted average |
+| parameters estimated from data? | mean and standard deviation | no |
+| runs live? | no | yes |
+| appears on dashboard? | no | **yes** |
 
 ## Limitations
 
 Written down as found, not fixed.
 
-**1. Half the score is made up.** 40% of the score is a number someone typed.
-Ukraine 46, UK 14, everyone else 15. Nothing measured it — it is not fitted
-from data, not cited from a source, not elicited from experts.
-*[unvalidated prior]*
+| problem | evidence in this implementation | consequence | data-science name |
+|---|---|---|---|
+| **1. 40% is hand-set.** | Ukraine is 46, the UK 14 and an unlisted country 15. The values were not fitted from data, cited to a source or elicited from experts. | A large part of the result is assumed rather than measured. | **unvalidated prior** |
+| **2. The baseline creates a floor.** | With zero events, Ukraine still scores `0.40 × 46 ÷ 100 = 0.184`. | The score cannot fall below its country-specific starting level. | **floor artefact** |
+| **3. Rankings are partly pre-decided.** | With identical zero-event inputs, Ukraine scores 0.184 and the UK 0.056. | One country can outrank another before today's data arrives. | **constant-driven comparison** |
+| **4. The attribution does not match the numbers.** | The 40/60 and 25/30/20/25 weights match the outside published index. Six checked country values were all different. Its multiplier also runs in the opposite direction: below 1 for fragile countries there, but above 1 here. | Readers may believe the source supports values that it does not contain. | **miscitation** |
+| **5. The score is not validated.** | CII appears in no panel, journal, ranking or results file. It has no reported accuracy or calibration measure. | Software tests can show that the formula runs correctly; they cannot show that the score measures real instability. | **no validation** |
 
-**2. Scores cannot go low.** That typed number is always there, so Ukraine
-reads `0.40 × 46 ÷ 100` = **0.184** on a day when nothing happens at all.
-*[floor artefact]*
+The first three problems can be seen with one empty feature row:
 
-**3. Country rankings are partly decided in advance.** The typed number
-differs per country and never moves, so Ukraine outranks the UK before any
-news arrives — and the dashboard leaderboard is sorted on exactly this.
-*[a constant driving the between-country comparison]*
+```python
+no_events = CiiInputs()
 
-**4. The credit is wrong.** The code says the table matches an outside
-published index. The weights do match it (40/60 and 25/30/20/25). The
-per-country numbers do not — six checked, six different — and its
-`multiplier` carries the opposite sense, below 1 for fragile countries where
-ours is above 1. *[miscitation]*
+compute_cii("UA", no_events).total  # 0.184
+compute_cii("GB", no_events).total  # 0.056
+compute_cii("ZZ", no_events).total  # 0.060: default baseline
+```
 
-**5. Nobody has tested it.** CII appears in no panel, no journal, no ranking
-and no results file. It has no accuracy number — while being the number the
-whole dashboard is built on. *[no validation]*
-
-§14 is a measured instrument that cannot run live. CII runs live, on screen,
-every hour — and has never been checked.
+That is the key contrast. §14 estimates a country's normal level from data but
+cannot run live. CII runs live every hour, but its displayed score has not been
+validated against an external outcome.
 
 ---
 
 <a href="#ch-15">▲ top of §15</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-15">↑ back to §15 in the diagram</a>
+
+</details>
+
+<details id="ch-16">
+<summary><b>§16 &nbsp; Stories</b> &nbsp;—&nbsp; headlines about the same event put into one group</summary>
+<br>
+
+**`app/stories/` → `stories-v1.0`**
+
+## What it is
+
+Many outlets can report one event with different headlines. §16 decides which
+headlines belong together.
+
+In data-science terms, this is **unsupervised text clustering**:
+
+| term | meaning here |
+|---|---|
+| observation | one headline |
+| features | the useful words in it |
+| vector | those words turned into numbers |
+| cluster | one group of matching headlines |
+| centroid | the average vector of the group |
+
+There are no labelled answers, no training set and no LLM. Fixed rules run
+every 30 minutes over the latest **72 hours** of news.
+
+## Step 1 — turn the headline into tokens
+
+A **token** is one word or number.
+
+The tokeniser makes the headline lowercase, then removes:
+
+- glue words such as `the`, `and` and `for`;
+- words shorter than three characters;
+- headline formulas such as `what we know about`;
+- dates and publication-slot words.
+
+The last two rules came from real failures.
+
+“What we know so far” was rare in one 6,561-headline window. TF-IDF therefore
+treated its words as important, and explainers about unrelated events matched.
+
+A dated daily bulletin caused the same problem. Its editions became one
+94-filing “story”. After cleanup:
+
+```text
+Latest news bulletin | August 12th, 2026 – Evening
+                         ↓
+                       news
+```
+
+One token is too little, so the headline is left out.
+
+## Step 2 — turn tokens into a vector
+
+Each token gets a **TF-IDF** weight:
+
+```text
+TF  = how often it appears in this headline
+IDF = how rare it is across the 72-hour window
+```
+
+Common token → low weight. Rare token → high weight.
+
+The weighted tokens form a **vector**: a small bag of words with numbers
+attached.
+
+## Step 3 — compare vectors
+
+**Cosine similarity** compares the direction of two vectors. It runs from 0 to
+1:
+
+| worked example | rough score |
+|---|---:|
+| unrelated | 0.0–0.1 |
+| same story, different angle | about 0.4 |
+| close paraphrase | 0.6 or more |
+
+These are examples, not universal score bands.
+
+Cosine ignores headline length. A short headline can still match a long one.
+
+## Step 4 — make the groups
+
+Articles are processed in `(occurred_at, event_id)` order.
+
+For each article:
+
+1. compare it with every story's centroid;
+2. choose the highest score;
+3. join when the score is at least **0.35** and the guards pass;
+4. otherwise start a new story.
+
+When a headline joins, the centroid — the group's average — moves slightly.
+
+Two trade-offs matter:
+
+- **Nothing is moved later.** A wrong early join stays wrong.
+- **Order matters.** A different processing order can make different groups.
+
+## Three guards
+
+Cosine alone made bad joins. Three rules now sit in front of it:
+
+| guard | value | simple rule |
+|---|---:|---|
+| minimum content | 2 | A headline needs two distinct useful tokens. |
+| minimum shared content | 2 | The headline and story must share two distinct tokens. |
+| country subject share | 30% | A country must be named by 30% of the story members that name any country before it defines the story's place. |
+
+The country rule stops obvious mistakes. For example, a story about an
+earthquake in Japan should not accept a similar headline about an earthquake
+in Colombia. If a headline names no country, the system makes no guess.
+
+These guards were added after a newsletter title and an unrelated market
+article formed one false six-day story.
+
+## What gets written
+
+The database saves each story and which news rows belong to it.
+
+A small audit checked 30 groups. Twenty-eight made sense. Two joined separate
+updates from the same continuing topic.
+
+## Why this matters
+
+§17 and §18 analyse these groups. Joining unrelated headlines creates fake
+support. Splitting one story hides real support.
+
+---
+
+<a href="#ch-16">▲ top of §16</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-16">↑ back to §16 in the diagram</a>
+
+</details>
+
+<details id="ch-17">
+<summary><b>§17 &nbsp; Corroboration</b> &nbsp;—&nbsp; how many independent owners tell a story, and whether a sensor agrees</summary>
+<br>
+
+**`app/stories/independence.py` + `app/corroboration/`**
+
+## What it is
+
+Every current story from §16 gets a **corroboration score**. It starts at 0
+and can move towards 1, but never reaches 1.
+
+The score asks two questions:
+
+1. How many independent owners tell the story?
+2. Did a sensor or market-data feed confirm a checkable claim?
+
+In data-science terms, this is a **rule-based score**, not a trained model:
+
+| term | meaning here |
+|---|---|
+| observation | one story |
+| features | owner count and sensor flag |
+| parameters | fixed formula and sensor rules |
+| output | one score between 0 and 1 |
+| training labels | none |
+
+It is not a probability of truth. A score of `0.75` does not mean “75% likely
+to be true”. It only means `0.75` under this recipe.
+
+## Step 1 — count owners, not outlets
+
+Several outlets may belong to one owner or repeat one wire report. They are not
+independent tellers, so §17 counts distinct **recorded owners**.
+
+The rule is:
+
+> **Independence must be recorded. It is never guessed from missing data.**
+
+A source with no ownership record adds zero to `owner_count`. It is still
+ingested, stored and shown; it simply does not raise the score.
+
+The old code treated every unknown source as its own owner. Ten unknown blogs
+could therefore produce `owner_count = 10` and a score of `0.998`. The current
+rule gives those ten sources `owner_count = 0` until their ownership is known.
+
+### Where the owner facts are kept
+
+Two places, and neither is a model.
+
+**The registry** — `app/sources/rss_feeds.json`, one entry per feed. 55 feeds
+today, 49 distinct owners, none missing:
+
+```json
+{"source": "rss-bbc-world",     "owner": "bbc",   "syndication": null}
+{"source": "rss-bbc-uk",        "owner": "bbc",   "syndication": null}
+{"source": "rss-reuters-world", "owner": "yahoo", "syndication": "reuters"}
+```
+
+`syndication` beats `owner`: the third feed is Yahoo-hosted but carries
+Reuters wire, so the owner of the *words* is `reuters`. And the two BBC feeds
+resolve to one owner, so a story carrying both counts them once.
+
+**The story row** — `stories.owner_count`, a plain integer column written by
+the clustering job (§16) and recomputed from the story's members every run. It
+sits beside two other counts, and the three are deliberately different:
+
+```
+member_count  8   ← eight articles
+outlet_count  5   ← from five feeds
+owner_count   2   ← belonging to two owners
+```
+
+The scorer reads that column, tallies the story's sensor verdicts, and writes
+to its own table — `story_corroboration` — where the score is stored together
+with the inputs that produced it:
+
+```json
+{"owner_count": 3, "sensor_confirmed": true, "confirmed_claims": 1,
+ "unconfirmed_claims": 0, "claims_checked": 1,
+ "method_version": "corroboration-v1.0"}
+```
+
+That is why a line in the report can read *3 owners, 0.875*: the evidence
+travels with the number, and `method_version` records which recipe produced
+it.
+
+## Step 2 — check claims against data
+
+The worker searches all member headlines for fixed keywords. Word boundaries
+stop a short keyword from firing inside a different word.
+
+| detected claim | checked against |
+|---|---|
+| earthquake | `usgs-quake` rows |
+| wildfire | `nasa-firms` fire rows |
+| flood, cyclone, tsunami, volcano or landslide | `gdacs` disaster rows |
+| market crash | `yfinance` rows with severity at least `0.5` |
+
+A match needs the correct feed, the correct country and the correct time:
+
+```text
+story begins − 72 hours  →  sensor row  →  story ends + 6 hours
+```
+
+The lookback allows the physical event to happen before the news. The small
+lookahead allows for clock differences and slow sensor feeds.
+
+Geography is required. A quake somewhere in the world cannot confirm a quake
+story somewhere else. If the story has no country, its claim is marked
+`unconfirmed`.
+
+No detected claim means no sensor-check row. The story still receives an
+owner-only score.
+
+## Step 3 — calculate the score
+
+```text
+effective owners = max(owner_count, 1)
+sensor flag      = 1 if any claim is confirmed, otherwise 0
+
+doubt = 2 ^ -(effective owners - 1 + sensor flag)
+score = 1 - doubt
+```
+
+Plain version: **each extra owner halves the doubt. One machine confirmation
+halves it once more.**
+
+| owners | sensor confirmed? | doubt | score |
+|---:|:---:|---:|---:|
+| 0 or 1 | no | 1.000 | 0.000 |
+| 2 | no | 0.500 | 0.500 |
+| 3 | no | 0.250 | 0.750 |
+| 4 | no | 0.125 | 0.875 |
+| 2 | yes | 0.250 | 0.750 |
+
+Three choices matter:
+
+- **One teller is the starting point.** It scores `0.0` without a sensor.
+- **The sensor is a flag, not a count.** Two confirmed claims do not add two
+  bonuses.
+- **Unconfirmed does not lower the score.** Sensor coverage is incomplete, so
+  no match is not evidence that the story is false.
+
+A confirmed verdict is never downgraded. The evidence snapshot stays after an
+old sensor row is removed by retention.
+
+## What the saved run found
+
+`results/reports/sensor-checks-report.md` records a real run:
+
+```text
+30 stories with checkable claims
+30 claims checked
+ 0 new confirmations
+28 unconfirmed
+ 2 earlier confirmations kept
+1905 stories scored
+```
+
+`unconfirmed` has a narrow meaning: **no matching sensor row was found**. It
+does not mean “probably false”. A real event may be missing from the available
+feeds, the story may have no country, or a keyword may describe something the
+rule cannot understand.
+
+Those verdicts and the score are shown in the story interface, so the reader
+sees the evidence behind the number rather than a bare verdict.
+
+## Why this matters
+
+Ten outlets can look like ten independent witnesses when they are really one
+owner repeated ten times. A global sensor feed can also create false support
+when time matches but place does not.
+
+§17 blocks both shortcuts. It measures **independent telling plus machine
+support**. It does not decide truth.
+
+---
+
+<a href="#ch-17">▲ top of §17</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-17">↑ back to §17 in the diagram</a>
 
 </details>
