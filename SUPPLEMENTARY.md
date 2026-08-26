@@ -2701,26 +2701,32 @@ matures.
 
 **`app/validator/`**
 
-## What it does
+## What the model is for
 
-Everything before this chapter counts things. This one **reads**. A small
-language model, running on the same machine, is shown a story's headlines and
-asked what the story actually claims:
+Everything before this chapter **counts**. This one **reads** — it turns words
+into fields:
 
 ```text
-- "Magnitude 6.1 quake strikes eastern Turkey, 12 dead"
-- "Turkey earthquake: rescue teams reach mountain villages"
+"Magnitude 6.1 quake strikes eastern Turkey, 12 dead"
+                        ↓
+which country?   TR           ← in the prose, not in any column
+what happened?   earthquake   ← keywords guess; the model reads
+how many died?   12           ← a number inside a sentence
 ```
 
-```json
-{"countries": ["TR"], "event_type": "earthquake", "casualties": 12}
-```
+That is the whole job. Three fields, nothing else. `event_type` must be one of
+five words — `earthquake`, `wildfire`, `disaster`, `market_crash`, `none` —
+and `none` is a real answer, not a failure.
 
-Three fields, nothing else. `event_type` must be one of five words —
-`earthquake`, `wildfire`, `disaster`, `market_crash`, `none` — and `none` is a
-real answer, not a failure.
+Why not keyword rules? A real row from §17's saved run shows what they do:
+*"Whoopi Goldberg stranded in Italy amid volcano eruption"* fires the
+`volcano` keyword and is sent to a disaster sensor to be checked. A model
+reading the sentence says it is not a disaster story.
 
-Nothing leaves the machine. The model is called over plain HTTP on localhost.
+The model runs **on the same machine**, called over plain HTTP on localhost —
+no key, no cost per row, and nothing leaving the house. The trade is quality:
+a 3-billion-parameter model is weak beside a hosted one, which is exactly why
+the gate at the end of this chapter exists.
 
 ## The one rule that matters
 
@@ -2756,7 +2762,17 @@ exists to produce.
 | `keep_alive` | 5m — warm through a batch, unloaded the rest of the day |
 | when | nightly, in the quiet window after the journal |
 
-The model is not fixed by the code. A board with 8 GB cannot hold two models
+There are four model jobs in the system, and this chapter owns one of them:
+
+| setting | job |
+|---|---|
+| `OLLAMA_MODEL` | **§19 — extract the claims a story makes** |
+| `SEVERITY_MODEL` | §20 — how much harm a headline reports |
+| `BRAIN_MODEL` | writes the situation summary |
+| `QA_MODEL` | answers questions in the Ask panel |
+
+On a laptop those point at different models. On an 8 GB board all four point
+at the same one, because it cannot hold two models
 at once — two resident came to 5.4 GB of 7.9 and locked the machine up — so
 every job on a small board points at one 3b model, measured at 3.4 GB.
 Dropping smaller was tried and rejected: the 1b **invented** evidence, which
