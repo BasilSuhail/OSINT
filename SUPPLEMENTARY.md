@@ -1737,6 +1737,30 @@ distances from 20:  3  4  5  1  8  4  3  8  5  1  6  6
 So this country's normal month is **20**, and it usually swings about **5**
 either way. This month is **35**.
 
+<table><tr><td>
+
+**Basis** Twelve months is convention — a year covers a full cycle of seasons.<br>
+**Strength** Long enough that one busy month cannot become the new normal.<br>
+**Weakness** Never tested against 6 or 24. The choice is inherited, not measured.<br>
+**Instead** Re-run the panel at several window lengths and report whether the ranking moves.
+
+</td></tr></table>
+
+Two upstream choices decide what the monthly count even is. For the discrete
+topics the month takes its **worst** event, not its average — measured, because
+a month holding one severe US hazard reads 0.095 as a mean and 1.000 as a max.
+Conflict is counted as `log10(1 + count)` rather than by graded severity —
+also measured: the grades barely moved (sd 0.05) while the counts did (sd 0.80).
+
+<table><tr><td>
+
+**Basis** Both **measured**, each against the alternative it replaced.<br>
+**Strength** Neither is a guess, and both quote the number that settled it.<br>
+**Weakness** Worst-of-month lets one mislabelled row decide the month; a log makes 10 versus 100 events read closer than they are.<br>
+**Instead** The month's 90th percentile instead of its max; raw counts instead of the log, letting the z-score handle scale.
+
+</td></tr></table>
+
 ## Step 2 — the z-score = "how many wobbles above normal?"
 
 ```
@@ -1766,6 +1790,16 @@ its own. Another country could also be 15 above normal, but if *its* typical
 swing is 15, that is a Tuesday — `z = 1`. Same gap, completely different
 meaning. Dividing asks *is this big **for them***.
 
+
+<table><tr><td>
+
+**Basis** Z-scoring against a country's own past is standard practice for composite indicators.<br>
+**Strength** Makes four unlike things addable, and asks *unusual **for them***, so a loud country is not permanently top.<br>
+**Weakness** Needs a long history — exactly what retention (§13) deletes, which is why the live score is 0.5 for everyone.<br>
+**Instead** Rank inside the country's own history: coarser, but survives on a few months of data.
+
+</td></tr></table>
+
 ## Step 3 — four scores → one score
 
 You do that same sum four times — markets, conflict, disasters, fires. You get
@@ -1781,6 +1815,15 @@ average = (0 + 3 + 1 + 0) ÷ 4 = 1
 ```
 
 The `0.25 ×` in the code is the ÷ 4. Each of the four counts equally.
+
+<table><tr><td>
+
+**Basis** Declared before the results were looked at.<br>
+**Strength** Pre-registered — it was not tuned until it looked good.<br>
+**Weakness** Equal weights assume the four topics are equally informative, which nobody has shown.<br>
+**Instead** Derive weights from the data — PCA or an entropy weighting — and compare the two rankings.
+
+</td></tr></table>
 
 ## Step 4 — squash it into 0–1
 
@@ -1804,22 +1847,20 @@ Our example: average z = 1 → score **0.73**.
 It can never leave 0–1: the bottom of the fraction is always more than 1, so
 the answer is always under 1.
 
+
+<table><tr><td>
+
+**Basis** Reasoned: the average z is unbounded and needs a display scale.<br>
+**Strength** Bounded by construction — no clipping, and 0.5 always means normal.<br>
+**Weakness** Flattens past about z = 3, so a bad month and a far worse one both read ~0.95.<br>
+**Instead** Clip z at ±3 and rescale straight: keeps the extremes apart, loses the smooth middle.
+
+</td></tr></table>
+
 **One catch.** By z = 3 the shrinking number is already 0.05; at z = 5 it is
 0.007. Both are nearly nothing, so the scores land at 0.95 and 0.99. A disaster
 and a much worse disaster look the same. That is the price of a tidy 0-to-1
 number.
-
-## Where these numbers come from
-
-| choice | basis | strength | weakness | instead |
-|---|---|---|---|---|
-| z-score against the country's own past | standard practice for composite indicators | makes four unlike things addable, and asks "unusual **for them**", so a loud country is not permanently top | needs a long history, which is exactly what retention (§13) deletes — this is why the live score is 0.5 for everyone | rank inside the country's own history instead: coarser, but it survives on a few months of data |
-| a **12**-month window | convention — a year covers a full cycle of seasons | long enough that one busy month cannot become the new normal | never tested against 6 or 24; the choice is inherited, not measured | re-run the panel at several window lengths and report whether the ranking moves |
-| four equal weights of 0.25 | declared before the results were looked at | pre-registered, so it was not tuned until it looked good | equal weights assume the four topics are equally informative, which nobody has shown | derive weights from the data — PCA or an entropy weighting — and compare the two rankings |
-| sigmoid to reach 0–1 | reasoned: the average z is unbounded and needs a display scale | bounded by construction, no clipping, and 0.5 always means normal | flattens past about z = 3, so a bad month and a far worse one both read ~0.95 | clip z at ±3 and rescale straight — keeps the extremes apart, loses the smooth middle |
-| **max**, not mean, for the discrete topics | **measured** — a month with one severe US hazard reads 0.095 as a mean and 1.000 as a max | a rare severe event is what the index is for, and averaging hides it | one event now decides the month, so a single mislabelled row moves the score | the month's 90th percentile — most of the sensitivity, less of the single-row risk |
-| `log10(1 + count)` for conflict | **measured** — the graded severity barely moved (sd 0.05) while the counts did (sd 0.80) | uses the variable that actually varies | a log makes the gap between 10 and 100 events read smaller than it is | keep the counts raw and let the z-score handle scale, at the cost of one huge month dominating |
-
 
 ## Whole thing in one breath
 
@@ -1946,6 +1987,16 @@ DEFAULT_CII_BASELINE = CiiBaseline(15.0, 1.0)   # anywhere else
 | `multiplier` | makes event counts count more or less | no |
 
 For Ukraine, the lookup always returns `baseline=46` and `multiplier=1.25`.
+
+<table><tr><td>
+
+**Basis** **None recorded.** Not fitted, not cited, not elicited — these values first appear in the code that implemented the formula, and the outside index this formula follows publishes different ones.<br>
+**Strength** None. This is the largest unsupported term in the score.<br>
+**Weakness** The baseline carries 40% of every score, and the multiplier decides by hand that the same event load means more in one country than another.<br>
+**Instead** Derive the baseline from something countable — years of recorded conflict or hazard rows per country — and replace the multiplier with the §14 approach, comparing a country against its own past.
+
+</td></tr></table>
+
 For a country missing from the table, it returns `15` and `1.0`.
 
 ## Stage 3 — transform counts into four sub-scores
@@ -1962,7 +2013,18 @@ def log_score(count, multiplier, ceiling):
     return min(100, score)
 ```
 
-`ceiling` means **the hand-set count that becomes 100**. The logarithm gives
+`ceiling` means **the hand-set count that becomes 100**.
+
+<table><tr><td>
+
+**Basis** The three ceilings — 60, 400 and 300 — are typed in as *this reads as fully saturated*.<br>
+**Strength** Explicit, and all three sit in one place.<br>
+**Weakness** Where a ceiling sits decides the whole curve, and none of the three was measured.<br>
+**Instead** Set each from the observed distribution — for example the 95th percentile of that source's daily counts.
+
+</td></tr></table>
+
+ The logarithm gives
 large gains to early events and smaller gains to later events:
 
 ```
@@ -2033,6 +2095,15 @@ This is a weighted average. Conflict receives the largest weight:
 0.25(88.8) + 0.30(69.9) + 0.20(30.0) + 0.25(90.6) = 71.82   ← event_score
 ```
 
+<table><tr><td>
+
+**Basis** **Copied** from an outside published index and checked against it — these four match.<br>
+**Strength** A real source, not an invention.<br>
+**Weakness** Near-equal weights assume the four parts are equally informative, which the source does not show either.<br>
+**Instead** Weight by how much each part actually varies, or report the four parts unweighted alongside.
+
+</td></tr></table>
+
 ## Stage 5 — add the baseline
 
 Now blend the fixed baseline with today's event score:
@@ -2046,6 +2117,16 @@ Now blend the fixed baseline with today's event score:
 
 The dashboard shows `0.61`. This means **0.61 under this scoring recipe**. It
 does not mean a 61% probability of instability.
+
+<table><tr><td>
+
+**Basis** **Copied** from the same outside index — the 40/60 split matches it exactly.<br>
+**Strength** A real source, not an invention.<br>
+**Weakness** The source gives no derivation either, so this is a citation, not evidence.<br>
+**Instead** Report the score at several splits, so a reader sees how much rests on this one.
+
+</td></tr></table>
+
 
 ## One complete output row
 
@@ -2081,17 +2162,6 @@ does not mean a 61% probability of instability.
 | parameters estimated from data? | mean and standard deviation | no |
 | runs live? | no | yes |
 | appears on dashboard? | no | **yes** |
-
-## Where these numbers come from
-
-| choice | basis | strength | weakness | instead |
-|---|---|---|---|---|
-| 40 / 60 split | **copied** from an outside published index and checked against it — it matches | a real source, not an invention | the source gives no derivation either, so it is a citation, not evidence | make it a dial and report the score at several splits, so a reader sees how much rests on it |
-| 25 / 30 / 20 / 25 sub-weights | same source, also matched | four numbers that agree with a published method | equal-ish weights carry an assumption that the four parts are equally informative | weight by how much each part actually varies, or report the four parts unweighted |
-| the per-country baseline values | **none recorded** — not fitted, not cited, not elicited; they first appear in the code that implemented the formula | none | the single largest unsupported term in the score | derive from something countable — years of recorded conflict or hazard rows per country — or drop the term and rank on events alone |
-| the per-country multiplier | same: typed in, and it runs opposite to the source's field of the same name | none | it silently decides that the same event load means more in one country than another | replace with the §14 approach — compare a country against its own past instead of against a typed constant |
-| the ceilings 60 / 400 / 300 | typed in as "this reads as fully saturated" | at least explicit, and named in one place | where the ceiling sits decides the whole curve, and none was measured | set each from the observed distribution — for example the 95th percentile of that source's daily counts |
-| security scored in points, not a log | reasoned: sensor events are rare and discrete, so counting them is honest | avoids a log on numbers that are mostly 0 or 1 | it is the one part that behaves differently, which is easy to miss | give it a ceiling like the others so all four parts share a shape |
 
 ## Limitations
 
@@ -2205,6 +2275,16 @@ These are examples, not universal score bands.
 
 Cosine ignores headline length. A short headline can still match a long one.
 
+
+<table><tr><td>
+
+**Basis** tf-idf with cosine similarity is standard text-clustering practice, decades old.<br>
+**Strength** Cheap, deterministic, and needs no training data or model.<br>
+**Weakness** It matches words, not meaning — two reports of one event that share no vocabulary stay apart.<br>
+**Instead** Sentence embeddings, at the cost of a model to run and a result you cannot check by eye.
+
+</td></tr></table>
+
 ## Step 4 — make the groups
 
 Articles are processed in `(occurred_at, event_id)` order.
@@ -2246,17 +2326,6 @@ The database saves each story and which news rows belong to it.
 
 A small audit checked 30 groups. Twenty-eight made sense. Two joined separate
 updates from the same continuing topic.
-
-## Where these numbers come from
-
-| choice | basis | strength | weakness | instead |
-|---|---|---|---|---|
-| tf-idf + cosine | standard text-clustering practice, decades old | cheap, deterministic, needs no training data or model | matches words, not meaning — two reports of one event sharing no vocabulary stay apart | sentence embeddings, at the cost of a model to run and a result you cannot read by eye |
-| join at **0.35** | **audited**: 30 clusters read by hand, 28 coherent, 2 over-merged, 0 unrelated merges | the one constant here with measured evidence behind it, and the errors run the safe way — it splits rather than fuses | one audit, one window, 30 clusters; the sample cannot speak for rare topics | re-audit per version; the audit itself names a second pass over the 0.30–0.35 band as the next thing to try |
-| two guards, both **2** tokens | **measured**: the shared-token rule refuses 1.1% of joins, and the refused ones read "who", "here", "tomorrow" | each guard exists because a named failure happened, not in case one might | 2 is the smallest number that works, not a number anyone optimised | sweep the value and re-audit, once there is a labelled set to sweep against |
-| a third of members must name the place | reasoned: one passing mention is not what a story is about | stops a story drifting to the wrong country | a third is a judgement, and small stories round harshly — one of two members *is* a half | require the place in the story's title rather than a share of members |
-| join once, never revisit | chosen for determinism and cost | same input always gives the same stories | an early wrong join is permanent, and a different arrival order would give different groups | a second pass that re-reads centroids after the window closes |
-| 72 h window | matches how long a news story stays live | keeps clustering cheap | a story running longer than three days fragments into pieces | widen for slow-moving topics, at the cost of comparing every new item against far more stories |
 
 ## Why this matters
 
@@ -2313,6 +2382,15 @@ ingested, stored and shown; it simply does not raise the score.
 The old code treated every unknown source as its own owner. Ten unknown blogs
 could therefore produce `owner_count = 10` and a score of `0.998`. The current
 rule gives those ten sources `owner_count = 0` until their ownership is known.
+
+<table><tr><td>
+
+**Basis** Reasoned, after that failure was found in the code.<br>
+**Strength** Independence has to be established, so a missing record can no longer inflate confidence.<br>
+**Weakness** A single outlet with a genuine scoop scores the same as an empty rumour.<br>
+**Instead** Let a recorded per-outlet reliability prior lift a trusted lone source — the plan names one, it was never built.
+
+</td></tr></table>
 
 ### Where the owner facts are kept
 
@@ -2376,6 +2454,16 @@ story begins − 72 hours  →  sensor row  →  story ends + 6 hours
 The lookback allows the physical event to happen before the news. The small
 lookahead allows for clock differences and slow sensor feeds.
 
+<table><tr><td>
+
+**Basis** The **direction** is reasoned; the **size** is not measured.<br>
+**Strength** The asymmetry is right — a quake happens before it is reported, never long after.<br>
+**Weakness** 72 h is wide enough to admit a coincidence, and it is the same 72 h as the clustering window, which is nowhere stated as deliberate.<br>
+**Instead** Measure the real gap between sensor row and first headline across the confirmed matches, then set the window from that.
+
+</td></tr></table>
+
+
 Geography is required. A quake somewhere in the world cannot confirm a quake
 story somewhere else. If the story has no country, its claim is marked
 `unconfirmed`.
@@ -2395,6 +2483,16 @@ score = 1 - doubt
 
 Plain version: **each extra owner halves the doubt. One machine confirmation
 halves it once more.**
+
+<table><tr><td>
+
+**Basis** Declared in writing **before** any score was looked at, then version-stamped.<br>
+**Strength** Pre-registered — it cannot have been tuned until the numbers looked good.<br>
+**Weakness** Never checked against outcomes: nobody has shown 0.875 stories are truer than 0.5 ones.<br>
+**Instead** Fit the shape on stories with known outcomes, or carry a per-outlet reliability prior — the plan names one, it was never built.
+
+</td></tr></table>
+
 
 | owners | sensor confirmed? | doubt | score |
 |---:|:---:|---:|---:|
@@ -2435,16 +2533,6 @@ rule cannot understand.
 
 Those verdicts and the score are shown in the story interface, so the reader
 sees the evidence behind the number rather than a bare verdict.
-
-## Where these numbers come from
-
-| choice | basis | strength | weakness | instead |
-|---|---|---|---|---|
-| halve the doubt per owner | declared in the spec **before** any score was looked at, then version-stamped | pre-registered — it cannot have been tuned until it looked good | never checked against outcomes: nobody has shown 0.875 stories are truer than 0.5 ones | fit the shape on stories with known outcomes, or carry a per-outlet reliability prior — the plan names one, it was never built |
-| first teller counts 0 | reasoned: one feed saying something is the baseline | refuses to reward a lone claim | a single eyewitness outlet with a scoop scores the same as an empty rumour | let a recorded reliability prior lift a trusted lone source |
-| sensor is a flag, not a ladder | reasoned: machines confirm *that* something happened, not how much | two matching rows cannot inflate confidence | a richly sensed event and a barely sensed one look identical | scale the flag by how many independent sensor families agree |
-| unconfirmed does not subtract | reasoned from known coverage gaps — no tornado feed, short fire retention | sensor bias stays out of the score | an unchecked claim and a checked-and-missing claim are treated alike | subtract only where coverage is known to be complete |
-| 72 h back, 6 h forward | direction reasoned — the event precedes its coverage; the size is not measured | the asymmetry is right | 72 h is wide enough to admit a coincidence, and it is the same 72 h as the clustering window, which was never stated as deliberate | measure the real gap between sensor row and first headline on the confirmed matches, then set the window from that |
 
 ## Why this matters
 
