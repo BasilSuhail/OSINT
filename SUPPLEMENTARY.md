@@ -2555,89 +2555,137 @@ support**. It does not decide truth.
 
 **`app/disagreement/`**
 
-## What it is
+## The idea, before any maths
 
-Take one story from §16 that outlets in several countries covered. Measure
-**how differently those countries word it**. One number per story, 0 to 1.
+One event. Three outlets, in three countries:
 
-Not *what* they said — **how differently they said it**.
+```text
+GB outlet:  "US launches strikes on Iranian nuclear sites"
+RU outlet:  "Washington attacks Iran in violation of international law"
+IN outlet:  "US strikes Iran; oil prices surge"
+```
 
-| term | meaning here |
+Throw away the glue words (`on`, `in`, `of`) and look at what is left:
+
+```text
+GB:  us  launches  strikes  iranian  nuclear  sites
+RU:  washington  attacks  iran  violation  international  law
+IN:  us  strikes  iran  oil  prices  surge
+```
+
+Now count the shared words, pair by pair:
+
+```text
+GB vs RU:  0 shared    ← "us" vs "washington", "strikes" vs "attacks"
+GB vs IN:  2 shared    ← us, strikes
+RU vs IN:  1 shared    ← iran
+```
+
+**GB and RU reported the same event without using one word in common.** That
+is the thing this chapter measures.
+
+Turn each pair into a distance — 0 = identical wording, 1 = nothing shared —
+and average them:
+
+```text
+GB vs RU:  0.95
+GB vs IN:  0.55
+RU vs IN:  0.80
+             ----
+average  =  0.77     ← this story's divergence
+```
+
+That average is the whole output: **one number per story, 0 to 1.**
+
+## What it is for
+
+| the number says | what that usually means |
 |---|---|
-| observation | one story with outlets from 2+ countries |
-| features | tf-idf vectors of the member headlines |
-| grouping variable | the outlet's **home** country |
-| output | one distance between 0 and 1 |
-| training labels | none |
+| **low**, near 0.1 | everyone used nearly the same words — usually one wire report republished many times |
+| **high**, near 0.8 | each country wrote its own words for the same event |
 
-`0.87` does not mean the countries disagree about facts. It means their
-headlines share little vocabulary.
+So the question is: **is this one story told many times, or many stories about
+one event?** §17 counts *how many* tell it; §18 asks whether they tell it the
+same way.
 
-## Step 1 — group by where the outlet is from
+## The maths behind "shared words"
 
-Not the country the story is *about* — the country the outlet *is*. A source
-whose origin is not recorded is left out rather than guessed, the same rule as
-§17's ownership.
+Counting shared words is the intuition. The code does it properly, in three
+moves.
 
-Fewer than two country groups → the story is skipped and no row is written. A
-story told only by British outlets has no cross-country telling to compare.
+**1. Weight the words.** A word common across the whole window is worth
+little; a rare one is worth a lot. So `iran` counts for less than `kramatorsk`.
+This is **tf-idf**, and it is the same vectorizer §16 clusters with. A headline
+becomes a bag of weighted words — a vector.
 
-<table><tr><td>
+**2. One vector per country, not per headline.** If Britain filed four
+articles, average their four vectors into one **centroid**. That centroid is
+"how Britain worded this story".
 
-**Basis** Reasoned, and consistent with §17: a fact that is not recorded is not assumed.<br>
-**Strength** An unknown outlet cannot invent a country's point of view.<br>
-**Weakness** A country group can be one headline — `RU:1` means a single Russian article stands for Russia's telling.<br>
-**Instead** Require a minimum group size, at the cost of scoring even fewer stories.
-
-</td></tr></table>
-
-## Step 2 — one vector per country
-
-Each country's headlines are tokenized and tf-idf'd — the **same vectorizer
-§16 clusters with** — then averaged into a single vector. That vector is "how
-this country worded this story".
-
-## Step 3 — measure the distance between every pair
+**3. Compare every pair with cosine.** Cosine measures similarity, so `1 -
+cosine` is distance. Average across all pairs:
 
 ```
 divergence = mean over country pairs of (1 - cosine(centroid_A, centroid_B))
 ```
 
-Cosine measures similarity, so `1 - cosine` is distance. Three countries make
-three pairs:
+In code, stripped to its shape:
 
-```
-GB vs IN   1 - 0.30 = 0.70
-GB vs US   1 - 0.55 = 0.45
-IN vs US   1 - 0.25 = 0.75
-                      ----
-           average  =  0.63
+```python
+centroids = {country: mean_vector(headlines) for country, headlines in groups.items()}
+
+pair_distances = {
+    f"{a}|{b}": 1.0 - cosine(centroids[a], centroids[b])
+    for a, b in combinations(sorted(centroids), 2)
+}
+divergence = sum(pair_distances.values()) / len(pair_distances)
 ```
 
-This is **§16's similarity, turned around**. §16 uses cosine to pull headlines
-together; §18 uses the same number as a distance to push tellings apart. One
-tool, both directions.
+Three countries → three pairs. Four countries → six. Each pair's own distance
+is kept, not just the average — that is what the monthly roll-up later feeds on.
+
+This is **§16's cosine, turned around**: clustering uses it as similarity to
+pull headlines together, §18 uses it as distance to measure how far apart the
+tellings sit. One tool, both directions.
 
 <table><tr><td>
 
-**Basis** Standard practice — cosine distance between group centroids, the ordinary way to compare two bags of text.<br>
+**Basis** Standard practice — cosine distance between group centroids, the ordinary way to compare two bodies of text.<br>
 **Strength** Costs nothing extra: the vectors already exist from clustering, and the result is reproducible.<br>
-**Weakness** It measures **wording, not stance**. It cannot tell "framed differently" from "written shorter", and it has no sentiment or stance model behind it.<br>
-**Instead** Score the framing directly — stance detection or a sentiment model per country group — at the cost of a model whose output nobody can check by eye.
+**Weakness** It compares **words, not meaning**. "Washington attacks Iran" and "US strikes Iran" mean the same thing and share no words, so part of any high score is just synonyms.<br>
+**Instead** Score the framing directly with a stance or sentiment model per country group — at the cost of a result nobody can check by eye.
 
 </td></tr></table>
 
-## What gets stored
+## Where the process actually happens
 
-Two tables, one per level:
+| | |
+|---|---|
+| what groups the headlines | each feed's home country, recorded in the feed registry — 55 feeds carry one, 12 of them GB |
+| when it runs | every 30 minutes, at :22 and :52 — deliberately offset from the sensor checks so the two analytical jobs do not collide |
+| what it reads | stories inside the same **72-hour** window §16 clusters in |
+| what it writes | `story_disagreement`, one row per (story, method version) |
+| then | `disagreement_pairs`, rebuilt from those rows: one row per (country A, country B, month) |
 
-| table | one row per | holds |
-|---|---|---|
-| `story_disagreement` | (story, method version) | the divergence, plus `components` naming which countries and how many headlines each |
-| `disagreement_pairs` | (country A, country B, month, version) | `mean_divergence` and `n_stories` for that pair that month |
+The country comes from the **outlet**, not the article. `rss-bbc-world` is GB.
+A feed whose home country is not recorded is left out rather than guessed —
+the same rule as §17's ownership.
 
-The number is never stored alone. `components` carries the group sizes, so a
-reader always sees **who** is diverging before believing **how much**.
+Two country groups are the minimum. Below that the story is skipped and **no
+row is written at all**: a story told only by British outlets has no
+cross-country telling to compare.
+
+<table><tr><td>
+
+**Basis** Reasoned, and consistent with §17: a fact nobody recorded is not assumed.<br>
+**Strength** An outlet of unknown origin cannot invent a country's point of view.<br>
+**Weakness** A country group can be a single headline — `RU:1` means one Russian article stands for Russia's telling.<br>
+**Instead** Require a minimum group size, at the cost of scoring even fewer stories.
+
+</td></tr></table>
+
+The stored number is never alone: `components` carries the group sizes, so a
+reader sees **who** diverged before believing **how much**.
 
 ## What the saved run found
 
@@ -2651,7 +2699,7 @@ reader always sees **who** is diverging before believing **how much**.
 ```
 
 **Only 9% of stories get a score.** The rest were told by outlets from one
-country only. That is the correct refusal, not a failure — but it means the
+country only. That is the correct refusal, not a failure — but it means this
 measure only ever looks at internationally covered news.
 
 The loudest rows of that run:
@@ -2662,15 +2710,15 @@ The loudest rows of that run:
 0.853  IN:1 PK:1                            ICC seeks explanation from ECB over Stokes video
 ```
 
-The first is the case this was built for: British and Russian outlets wording
-one ceasefire story differently. The third is the honest counter-example — a
+The first is the case this was built for — British and Russian outlets wording
+one ceasefire story differently. The third is the honest counter-example: a
 cricket-administration row, scoring almost as high. **A high number is not
-evidence of contested politics.** Two headlines about the same thing, written
-differently, produce the same reading.
+evidence of contested politics.** Two headlines about the same dull thing,
+written differently, read exactly the same to this measure.
 
 ## Where the number goes next
 
-Each pair's monthly mean becomes a country exposure, which is logged as a
+Each country pair's monthly mean becomes a per-country exposure, logged as a
 prediction:
 
 ```
@@ -2678,26 +2726,17 @@ exposure(country, month) = story-count-weighted mean divergence
                            over that month's pairs containing the country
 ```
 
-It is already in [0, 1], so it is used as the prediction score directly — no
-calibration step.
+It already sits in [0, 1], so it is used as the prediction score directly —
+there is no calibration step.
 
 <table><tr><td>
 
 **Basis** Pre-registered before any outcome was knowable, and used raw.<br>
-**Strength** No calibration knob means nothing can be tuned after seeing results.<br>
-**Weakness** Divergence data only exists from the RSS era, so unlike §14 there is **no historical backtest** — nothing can be replayed against the past.<br>
+**Strength** No calibration knob means nothing can be tuned after seeing the results.<br>
+**Weakness** Divergence data exists only from the RSS era, so unlike §14 there is **no historical backtest** — nothing can be replayed against the past.<br>
 **Instead** Wait. It is a forward exam: log now, grade when the window matures, publish whatever accumulates.
 
 </td></tr></table>
-
-## Why this matters
-
-§17 asks whether a story is corroborated. §18 asks something a source count
-cannot: **do the tellings agree with each other?** Ten outlets can all report
-an event and still word it in ways that share nothing.
-
-The measure is honest about its reach — it scores 9% of stories, it needs two
-known-origin countries, and it reads vocabulary rather than meaning.
 
 ---
 
