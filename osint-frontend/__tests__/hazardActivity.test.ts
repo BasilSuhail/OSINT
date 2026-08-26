@@ -99,3 +99,52 @@ describe("isPersistentActiveHazard feed presence", () => {
     expect(isPersistentActiveHazard(ev, NOW, FEED_LATEST)).toBe(false)
   })
 })
+
+/** The second argument is the moment on screen, not the wall clock: the map
+ *  passes the scrubber's window end. Persistence is what lets a hazard outlive
+ *  the three-day window, and it was bounded in one direction only — a hazard
+ *  running longer than the window stayed, but so did one that had not started
+ *  yet, drawn at full opacity months before its onset. */
+describe("isPersistentActiveHazard at a scrubbed-back moment", () => {
+  const ongoing = { is_current: true }
+  const SCRUBBED = Date.parse("2026-07-15T13:03:00Z")
+  /** Ingestion is happening now; the map is showing July. */
+  const FEED_LATEST = Date.parse("2026-08-26T21:17:00Z")
+
+  it("refuses a hazard that had not happened at the moment on screen", () => {
+    const ev = row({
+      occurred_at: "2026-08-20T10:08:00Z",
+      fetched_at: "2026-08-26T21:10:00Z",
+      payload: ongoing,
+    })
+    expect(isPersistentActiveHazard(ev, SCRUBBED, FEED_LATEST)).toBe(false)
+  })
+
+  it("keeps a hazard the feed was still republishing at that moment", () => {
+    // Onset in June, last seen in the feed in August: it was running in July.
+    const ev = row({
+      occurred_at: "2026-06-01T00:00:00Z",
+      fetched_at: "2026-08-01T00:00:00Z",
+      payload: ongoing,
+    })
+    expect(isPersistentActiveHazard(ev, SCRUBBED, FEED_LATEST)).toBe(true)
+  })
+
+  it("refuses a hazard that had already left the feed by that moment", () => {
+    const ev = row({
+      occurred_at: "2026-06-01T00:00:00Z",
+      fetched_at: "2026-06-20T00:00:00Z",
+      payload: ongoing,
+    })
+    expect(isPersistentActiveHazard(ev, SCRUBBED, FEED_LATEST)).toBe(false)
+  })
+
+  it("still judges a live map against feed activity, not the clock", () => {
+    // Window end is now, ingestion stalled an hour ago: every row ages
+    // together, so none is singled out and the map holds its last state.
+    const LIVE = Date.parse("2026-08-26T21:17:00Z")
+    const STALLED = Date.parse("2026-08-26T20:17:00Z")
+    const ev = row({ fetched_at: "2026-08-26T20:15:00Z", payload: ongoing })
+    expect(isPersistentActiveHazard(ev, LIVE, STALLED)).toBe(true)
+  })
+})
