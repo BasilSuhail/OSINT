@@ -19,18 +19,15 @@ import { placeUrl } from "./placeUrl"
 import type { PlaceTarget } from "@/stores/placeStore"
 import { sourceKeyForEvent, type EventRow, type HazardTypeKey, type ScoreRow } from "./types"
 import { hazardKind } from "./hazardSymbols"
-import { isPersistentActiveHazard } from "./hazardActivity"
 import { mergeEventRows } from "./eventMerge"
 import type { FilterStore } from "@/stores/createFilterStore"
+import { occursWithinWindow } from "./timeWindow"
 
 export interface VisibleEvent extends EventRow {
   /** 0 (new) .. 1 (about to expire) */
   age: number
   opacity: number
   occurredMs: number
-  /** Rendered outside the time window because its source still publishes it
-   *  as live. Drives the map's "ongoing" treatment (#340). */
-  ongoing: boolean
 }
 
 export interface WindowState {
@@ -91,20 +88,6 @@ export function useEventsInWindow(
     const windowEnd = realNow - windowEndOffsetMs
     const windowStart = windowEnd - windowLengthMs
 
-    //: Newest fetched_at per source. A hazard that has ended drops out of its
-    //: upstream feed and stops being re-upserted, which is the only signal that
-    //: distinguishes it from one that is still running — its `is_current` flag
-    //: never changes (#340). Measured per source so one stalled feed cannot
-    //: expire another's events.
-    const feedLatest = new Map<string, number>()
-    for (const ev of allEvents) {
-      if (!ev.source || !ev.fetched_at) continue
-      const t = +new Date(ev.fetched_at)
-      if (!Number.isFinite(t)) continue
-      const seen = feedLatest.get(ev.source)
-      if (seen === undefined || t > seen) feedLatest.set(ev.source, t)
-    }
-
     const visible: VisibleEvent[] = []
     for (const ev of allEvents) {
       const sk = sourceKeyForEvent(ev)
@@ -118,26 +101,14 @@ export function useEventsInWindow(
       }
       if (ev.severity < severity[0] || ev.severity > severity[1]) continue
       const occurredMs = +new Date(ev.occurred_at)
-      // Only active, stateful hazards are persistent. Closed GDACS cyclones /
-      // volcanoes and point-in-time hazards should obey the scrubber window.
-      const isPersistentHazard = isPersistentActiveHazard(
-        ev,
-        windowEnd,
-        ev.source ? feedLatest.get(ev.source) : undefined,
-      )
+      if (!occursWithinWindow(occurredMs, windowStart, windowEnd)) continue
       const age = windowLengthMs > 0 ? (windowEnd - occurredMs) / windowLengthMs : 0
-      if (!isPersistentHazard) {
-        if (occurredMs > windowEnd || occurredMs < windowStart) continue
-        if (age > 1) continue
-      }
+      if (age > 1) continue
       visible.push({
         ...ev,
-        age: isPersistentHazard ? 0 : age,
-        opacity: isPersistentHazard ? 1 : Math.max(0.1, 1 - age),
+        age,
+        opacity: Math.max(0.1, 1 - age),
         occurredMs,
-        //: Only flag it "ongoing" when persistence is what kept it visible —
-        //: a live hazard inside the window is just a normal marker.
-        ongoing: isPersistentHazard && (occurredMs < windowStart || occurredMs > windowEnd),
       })
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }

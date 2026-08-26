@@ -87,7 +87,6 @@ function asVisible(ev: EventRow): VisibleEvent {
     age: 0,
     opacity: 1,
     occurredMs: new Date(ev.occurred_at).getTime(),
-    ongoing: false,
   }
 }
 

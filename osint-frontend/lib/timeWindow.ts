@@ -101,3 +101,25 @@ export function describeTimeWindow({
     canReturnToNow: false,
   }
 }
+
+/**
+ * Whether an event belongs on the map at this window position.
+ *
+ * One rule, every category. Hazards used to be exempt while their source still
+ * listed them, so that a wildfire running longer than the window did not vanish
+ * mid-burn. The exemption cost more than it bought: GDACS keeps green forest-
+ * fire entries in its event list well past the burn and lists hundreds at once
+ * in a dry season, so a live map carried six-day-old fires it described as
+ * current, and every scrubber position drew whatever was live today rather
+ * than what was running then.
+ *
+ * An unreadable date cannot be placed in time, so it is not drawn.
+ */
+export function occursWithinWindow(
+  occurredMs: number,
+  windowStart: number,
+  windowEnd: number,
+): boolean {
+  if (!Number.isFinite(occurredMs)) return false
+  return occurredMs >= windowStart && occurredMs <= windowEnd
+}
