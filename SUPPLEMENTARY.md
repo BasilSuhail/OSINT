@@ -108,7 +108,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §18  DISAGREEMENT                                                      │
+   │ <a id="map-18" href="#ch-18">§18  DISAGREEMENT</a>                                                      │
    │    how differently countries word the same story                       │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -2546,5 +2546,161 @@ support**. It does not decide truth.
 ---
 
 <a href="#ch-17">▲ top of §17</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-17">↑ back to §17 in the diagram</a>
+
+</details>
+
+<details id="ch-18">
+<summary><b>§18 &nbsp; Disagreement</b> &nbsp;—&nbsp; how differently countries word the same story</summary>
+<br>
+
+**`app/disagreement/`**
+
+## What it is
+
+Take one story from §16 that outlets in several countries covered. Measure
+**how differently those countries word it**. One number per story, 0 to 1.
+
+Not *what* they said — **how differently they said it**.
+
+| term | meaning here |
+|---|---|
+| observation | one story with outlets from 2+ countries |
+| features | tf-idf vectors of the member headlines |
+| grouping variable | the outlet's **home** country |
+| output | one distance between 0 and 1 |
+| training labels | none |
+
+`0.87` does not mean the countries disagree about facts. It means their
+headlines share little vocabulary.
+
+## Step 1 — group by where the outlet is from
+
+Not the country the story is *about* — the country the outlet *is*. A source
+whose origin is not recorded is left out rather than guessed, the same rule as
+§17's ownership.
+
+Fewer than two country groups → the story is skipped and no row is written. A
+story told only by British outlets has no cross-country telling to compare.
+
+<table><tr><td>
+
+**Basis** Reasoned, and consistent with §17: a fact that is not recorded is not assumed.<br>
+**Strength** An unknown outlet cannot invent a country's point of view.<br>
+**Weakness** A country group can be one headline — `RU:1` means a single Russian article stands for Russia's telling.<br>
+**Instead** Require a minimum group size, at the cost of scoring even fewer stories.
+
+</td></tr></table>
+
+## Step 2 — one vector per country
+
+Each country's headlines are tokenized and tf-idf'd — the **same vectorizer
+§16 clusters with** — then averaged into a single vector. That vector is "how
+this country worded this story".
+
+## Step 3 — measure the distance between every pair
+
+```
+divergence = mean over country pairs of (1 - cosine(centroid_A, centroid_B))
+```
+
+Cosine measures similarity, so `1 - cosine` is distance. Three countries make
+three pairs:
+
+```
+GB vs IN   1 - 0.30 = 0.70
+GB vs US   1 - 0.55 = 0.45
+IN vs US   1 - 0.25 = 0.75
+                      ----
+           average  =  0.63
+```
+
+This is **§16's similarity, turned around**. §16 uses cosine to pull headlines
+together; §18 uses the same number as a distance to push tellings apart. One
+tool, both directions.
+
+<table><tr><td>
+
+**Basis** Standard practice — cosine distance between group centroids, the ordinary way to compare two bags of text.<br>
+**Strength** Costs nothing extra: the vectors already exist from clustering, and the result is reproducible.<br>
+**Weakness** It measures **wording, not stance**. It cannot tell "framed differently" from "written shorter", and it has no sentiment or stance model behind it.<br>
+**Instead** Score the framing directly — stance detection or a sentiment model per country group — at the cost of a model whose output nobody can check by eye.
+
+</td></tr></table>
+
+## What gets stored
+
+Two tables, one per level:
+
+| table | one row per | holds |
+|---|---|---|
+| `story_disagreement` | (story, method version) | the divergence, plus `components` naming which countries and how many headlines each |
+| `disagreement_pairs` | (country A, country B, month, version) | `mean_divergence` and `n_stories` for that pair that month |
+
+The number is never stored alone. `components` carries the group sizes, so a
+reader always sees **who** is diverging before believing **how much**.
+
+## What the saved run found
+
+`results/reports/disagreement-report.md` records a real run:
+
+```text
+1992 stories in window
+ 185 scored
+1807 single-country — no cross-country telling
+  83 (pair, month) roll-up rows
+```
+
+**Only 9% of stories get a score.** The rest were told by outlets from one
+country only. That is the correct refusal, not a failure — but it means the
+measure only ever looks at internationally covered news.
+
+The loudest rows of that run:
+
+```text
+0.872  CA:1 FR:1 GB:4 IN:1 PK:1 RU:4 UY:1   Ceasefire with Iran no longer in effect
+0.865  RU:1 US:1                            US poised to escalate tensions with Iran again
+0.853  IN:1 PK:1                            ICC seeks explanation from ECB over Stokes video
+```
+
+The first is the case this was built for: British and Russian outlets wording
+one ceasefire story differently. The third is the honest counter-example — a
+cricket-administration row, scoring almost as high. **A high number is not
+evidence of contested politics.** Two headlines about the same thing, written
+differently, produce the same reading.
+
+## Where the number goes next
+
+Each pair's monthly mean becomes a country exposure, which is logged as a
+prediction:
+
+```
+exposure(country, month) = story-count-weighted mean divergence
+                           over that month's pairs containing the country
+```
+
+It is already in [0, 1], so it is used as the prediction score directly — no
+calibration step.
+
+<table><tr><td>
+
+**Basis** Pre-registered before any outcome was knowable, and used raw.<br>
+**Strength** No calibration knob means nothing can be tuned after seeing results.<br>
+**Weakness** Divergence data only exists from the RSS era, so unlike §14 there is **no historical backtest** — nothing can be replayed against the past.<br>
+**Instead** Wait. It is a forward exam: log now, grade when the window matures, publish whatever accumulates.
+
+</td></tr></table>
+
+## Why this matters
+
+§17 asks whether a story is corroborated. §18 asks something a source count
+cannot: **do the tellings agree with each other?** Ten outlets can all report
+an event and still word it in ways that share nothing.
+
+The measure is honest about its reach — it scores 9% of stories, it needs two
+known-origin countries, and it reads vocabulary rather than meaning.
+
+---
+
+<a href="#ch-18">▲ top of §18</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-18">↑ back to §18 in the diagram</a>
 
 </details>
