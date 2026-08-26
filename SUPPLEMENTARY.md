@@ -128,7 +128,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §22  THE PREDICTION JOURNAL                                            │
+   │ <a id="map-22" href="#ch-22">§22  THE PREDICTION JOURNAL</a>                                            │
    │    forecasts written down before the outcome, never rewritten          │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -3117,5 +3117,157 @@ an error, not a bad answer.**
 ---
 
 <a href="#ch-21">▲ top of §21</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-21">↑ back to §21 in the diagram</a>
+
+</details>
+
+<details id="ch-22">
+<summary><b>§22 &nbsp; The prediction journal</b> &nbsp;—&nbsp; forecasts written down before the outcome, never rewritten</summary>
+<br>
+
+**`app/journal/`**
+
+## What it is
+
+A score is only a claim. This chapter turns claims into a **track record**.
+
+Every month, each country's score is written down as a bet about the future,
+before anyone can know the answer. Later, when the answer is knowable, the bet
+is marked right or wrong. Nothing else in this project can say *how often it
+was right* — this is the machinery that makes that sentence possible.
+
+In data-science terms: **forward evaluation**. Not a backtest on old data,
+where you already know what happened, but predictions logged in advance and
+graded when time catches up.
+
+## Step 1 — turn a score into bets
+
+One score becomes three predictions, one per horizon:
+
+```python
+HORIZONS = (1, 3, 6)     # months ahead
+```
+
+Ukraine scores 0.73 in March, so three rows are written:
+
+| country | month | horizon | score | outcome |
+|---|---|---|---|---|
+| UA | March | 1 | 0.73 | *not yet* |
+| UA | March | 3 | 0.73 | *not yet* |
+| UA | March | 6 | 0.73 | *not yet* |
+
+Each row means: *"something bad happens in Ukraine within the next k months,
+and I am 0.73 confident."*
+
+Two sources issue these — the composite (§14) and disagreement (§18).
+
+## Step 2 — the row can never be changed
+
+The insert is `ON CONFLICT DO NOTHING`. Once a prediction exists, a rerun
+cannot overwrite it — not even if the composite is recomputed with better
+data.
+
+That single line is the chapter's integrity claim. A forecast you can edit
+after the fact is not a forecast.
+
+<table><tr><td>
+
+**Basis** Standard pre-registration discipline, enforced by the database rather than by care.<br>
+**Strength** The track record cannot be improved by rewriting history, and `issued_at` is stamped by the server, not the caller.<br>
+**Weakness** A genuinely broken prediction — wrong input, buggy run — is also permanent, and shows up as a real miss.<br>
+**Instead** Allow corrections under a new method version, so both versions stay visible and neither is edited.
+
+</td></tr></table>
+
+## Step 3 — grading, exactly once
+
+A prediction is graded only when **both** of these hold:
+
+```text
+1. the whole window [month+1 … month+k] is in the past
+2. that window sits inside the country's label coverage
+```
+
+The outcome is binary — did a qualifying event happen in any month of the
+window?
+
+```python
+outcome = 1 if any(month has a label for this country) else 0
+```
+
+The labels are the ground truth: country-month flags built from an external
+conflict dataset, not from anything this project measured.
+
+Condition 2 is the careful one. If the window has passed but the label data
+does not cover that country and period, the prediction stays **pending
+forever** rather than being graded against a guess.
+
+<table><tr><td>
+
+**Basis** Reasoned: grading against unknowable truth would corrupt the record.<br>
+**Strength** An ungraded prediction is honest; a wrongly graded one is a lie that never announces itself.<br>
+**Weakness** Coverage gaps mean some predictions can never be graded at all, and they are invisible in a pass rate — they simply never appear.<br>
+**Instead** Publish the pending count beside every rate, which the scoreboard does.
+
+</td></tr></table>
+
+## Step 4 — the scoreboard
+
+Graded rows are grouped by (source, method version, horizon) and three numbers
+come out. The one that matters is the **Brier score**:
+
+```python
+brier = mean((score - outcome) ** 2)
+```
+
+Baby version: **square how far the bet was from the truth, then average.**
+
+```text
+said 0.90, it happened (1)    (0.90 - 1)² = 0.01   ← confident and right
+said 0.90, it did not (0)     (0.90 - 0)² = 0.81   ← confident and wrong, punished hard
+said 0.50, either way          (0.50 - x)² = 0.25   ← the fence-sitter's score
+```
+
+**Lower is better.** And the number to beat is **0.25** — what you score by
+saying 0.5 to everything. A model that cannot beat 0.25 has told you nothing.
+
+Grouping by `method_version` matters: change the formula, and the new version
+starts its own record rather than inheriting the old one's.
+
+## What the journal actually says today
+
+```text
+546 predictions on record · 0 newly issued · 0 newly graded
+
+source         version              k    issued  graded  pending  Brier
+composite      v1.0                 1       158       0      158    n/a
+composite      v1.0                 3       158       0      158    n/a
+composite      v1.0                 6       158       0      158    n/a
+disagreement   disagreement-v1.0    1        24       0       24    n/a
+disagreement   disagreement-v1.0    3        24       0       24    n/a
+disagreement   disagreement-v1.0    6        24       0       24    n/a
+```
+
+**546 issued, 0 graded.** Every Brier column reads `n/a`.
+
+Nothing is broken. The machinery works and is running; the windows have not
+matured, and the label coverage has not caught up. But it has to be said in
+those words: **this project currently has a prediction journal and no accuracy
+number.**
+
+That is the correct state for a forward evaluation that has just started, and
+it is also the reason no accuracy claim appears anywhere in this document.
+
+## Why this matters
+
+§14 through §21 each produce a number. Any of them can be argued about.
+
+This chapter is the only one that can ever settle an argument — and it will,
+once the pending column starts falling. Until then, the honest summary of the
+whole system is: **it makes forecasts, they are written down where they cannot
+be edited, and none of them has come due yet.**
+
+---
+
+<a href="#ch-22">▲ top of §22</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-22">↑ back to §22 in the diagram</a>
 
 </details>
