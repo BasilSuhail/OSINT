@@ -123,7 +123,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §21  THE BRAIN                                                         │
+   │ <a id="map-21" href="#ch-21">§21  THE BRAIN</a>                                                         │
    │    a local model summarises stored rows and answers questions on them  │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -2977,5 +2977,145 @@ chapters build on it inherits **0.860**, not certainty.
 ---
 
 <a href="#ch-20">▲ top of §20</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-20">↑ back to §20 in the diagram</a>
+
+</details>
+
+<details id="ch-21">
+<summary><b>§21 &nbsp; The brain</b> &nbsp;—&nbsp; a local model summarises stored rows and answers questions on them</summary>
+<br>
+
+**`app/brain/`**
+
+## What it does
+
+Two jobs, same model:
+
+1. **Narrate** — write a short account of what is happening right now.
+2. **Answer** — take a typed question and answer it from the stored rows.
+
+§19 and §20 point a model at *one headline*. This one points it at **the whole
+database**. That is a different problem, and it creates a different risk: a
+model asked a broad question will happily invent the answer.
+
+## The model never sees raw rows
+
+The prompt is built from **pre-digested numbers**, not from the table:
+
+```text
+snapshot = top 5 stories of the last 24 h
+         + job outcomes of the last 6 h
+         + ingest freshness
+         + latest composite, highest-stress country
+         + most-contested story, prediction scoreboard counts
+```
+
+Everything §14 to §20 computed arrives here as a handful of figures.
+
+Two reasons, and only one of them is about quality. The prompt has to fit
+`num_ctx 2048` on a small board, so raw rows are impossible. And a model given
+a digest can only summarise the digest — it cannot quietly reinterpret the
+underlying data.
+
+## Answering a question
+
+Asking is not a single model call. Three steps:
+
+```text
+question → embed it → rank stored stories by cosine → hand top matches to the model
+```
+
+Each story was embedded once during the enrichment beat — its title, gist and
+top keywords turned into a vector by a small local embedding model. At ask
+time the question becomes a vector too, and the closest stories are retrieved.
+
+No vector database. Candidates are at most 120 rows, so the maths runs
+in-process.
+
+<table><tr><td>
+
+**Basis** Standard retrieval-then-generate: fetch relevant context first, let the model write only from it.<br>
+**Strength** The model answers about stories that exist, and each one is numbered so the answer can point at it.<br>
+**Weakness** Cosine retrieval fails the same way §18 does — it matches words, so a story that describes the question's subject in different vocabulary is never retrieved and the model never learns it exists.<br>
+**Instead** Retrieve more candidates and let the model filter, at the cost of context the small board does not have.
+
+</td></tr></table>
+
+## The rule that holds it together
+
+**A claim must cite the story it rests on**, by number, in brackets. An answer
+that cites nothing is rejected outright — the code raises rather than
+returning it.
+
+The answer has a fixed three-part shape:
+
+| part | what it must be |
+|---|---|
+| what happened | the event in plain terms, **cited** |
+| why it matters | who is involved, what is at stake, **cited** |
+| what to watch | the model's own reasoning, explicitly *not* reporting |
+
+Splitting the third part out is the honest move: it is the only part allowed
+to go beyond the sources, and it is labelled as such.
+
+If the retrieved stories only partly answer the question, the instruction is
+to **say what they show** rather than refuse — and to refuse rather than
+present an unrelated story as if it were relevant.
+
+## How well it works — this one was measured
+
+Six questions, scored by a **deterministic rubric** — seven dimensions,
+checked by code, not by another model. An answer passes only if every
+dimension passes:
+
+```text
+relevance · citation · uncertainty · contested · refusal · usefulness · echo
+```
+
+Two models were run against it:
+
+| model | answered | passed the full rubric | median latency | invalid citations |
+|---|---|---|---|---|
+| 1.5b | **0 / 6** | 0 / 6 | — | 0 |
+| 4b | 4 / 6 | **2 / 6** | 7.1 s | 0 |
+
+The 1.5b scored zero because it could not produce a cited answer at all — the
+code rejected every one. The 4b answered four of six and passed the whole
+rubric on two.
+
+<table><tr><td>
+
+**Basis** **Measured** — a fixed question set, a rubric evaluated in code, both models run against it.<br>
+**Strength** Deterministic scoring: no model judging another model, and the failure reasons are per-dimension.<br>
+**Weakness** Six questions is a smoke test, not an evaluation. Two of six is the honest headline, and it is low.<br>
+**Instead** More questions and more models — the harness already accepts both.
+
+</td></tr></table>
+
+## When it is allowed to run
+
+The brain is the heaviest thing on the machine, so it asks permission first:
+
+| check | refuses when |
+|---|---|
+| RAM headroom | not enough free memory to load the model |
+| heavy job in flight | another analytical job is running with a fresh heartbeat |
+
+A job whose heartbeat is older than 90 seconds counts as dead, not busy. And
+the brain's own jobs are excluded from the second check — otherwise the job it
+just opened would block itself.
+
+## Why this matters
+
+Everything before this chapter produces numbers. This chapter is where a
+person asks a question in words and gets words back — the only place the whole
+system is legible without reading a table.
+
+That makes it the easiest place to fabricate, which is why the citation rule
+is enforced in code rather than requested in a prompt: **an uncited answer is
+an error, not a bad answer.**
+
+---
+
+<a href="#ch-21">▲ top of §21</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-21">↑ back to §21 in the diagram</a>
 
 </details>
