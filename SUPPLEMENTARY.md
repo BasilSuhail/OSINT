@@ -113,7 +113,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §19  VALIDATOR                                                         │
+   │ <a id="map-19" href="#ch-19">§19  VALIDATOR</a>                                                         │
    │    a local model extracts the factual claims a story makes             │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -2692,5 +2692,132 @@ matures.
 ---
 
 <a href="#ch-18">▲ top of §18</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-18">↑ back to §18 in the diagram</a>
+
+</details>
+
+<details id="ch-19">
+<summary><b>§19 &nbsp; Validator</b> &nbsp;—&nbsp; a local model extracts the factual claims a story makes</summary>
+<br>
+
+**`app/validator/`**
+
+## What it does
+
+Everything before this chapter counts things. This one **reads**. A small
+language model, running on the same machine, is shown a story's headlines and
+asked what the story actually claims:
+
+```text
+- "Magnitude 6.1 quake strikes eastern Turkey, 12 dead"
+- "Turkey earthquake: rescue teams reach mountain villages"
+```
+
+```json
+{"countries": ["TR"], "event_type": "earthquake", "casualties": 12}
+```
+
+Three fields, nothing else. `event_type` must be one of five words —
+`earthquake`, `wildfire`, `disaster`, `market_crash`, `none` — and `none` is a
+real answer, not a failure.
+
+Nothing leaves the machine. The model is called over plain HTTP on localhost.
+
+## The one rule that matters
+
+> The model's answer is checked for **shape**, never for **truth**.
+
+The parser asks: is that a valid two-letter country code, is `event_type` one
+of the five, is `casualties` a non-negative whole number. It never fixes a
+wrong answer.
+
+A story about Greece labelled `TR` is well-formed, wrong, and **stored exactly
+as it came out** — because how often that happens is the number this chapter
+exists to produce.
+
+<table><tr><td>
+
+**Basis** Reasoned: a corrected output cannot be measured.<br>
+**Strength** The stored rows are a clean sample of the model's real behaviour.<br>
+**Weakness** Wrong claims sit in the database looking exactly like right ones.<br>
+**Instead** Correct on the way in, and give up any ability to state an error rate.
+
+</td></tr></table>
+
+## How it is set up
+
+| | |
+|---|---|
+| model | whatever the machine chose — `qwen3.5:4b-q4_K_M` on a laptop, `llama3.2:3b` on an 8 GB board |
+| served by | Ollama, localhost, plain HTTP |
+| `temperature` | **0** — same headlines give the same answer |
+| `format` | `json` — the reply must parse |
+| `think` | `false` — otherwise the model puts its answer in the thinking channel |
+| `num_ctx` | 2048 — the prompt is short, so the model reserves little memory |
+| `keep_alive` | 5m — warm through a batch, unloaded the rest of the day |
+| when | nightly, in the quiet window after the journal |
+
+The model is not fixed by the code. A board with 8 GB cannot hold two models
+at once — two resident came to 5.4 GB of 7.9 and locked the machine up — so
+every job on a small board points at one 3b model, measured at 3.4 GB.
+Dropping smaller was tried and rejected: the 1b **invented** evidence, which
+disqualifies it for a system whose claim is that it shows its evidence.
+
+<table><tr><td>
+
+**Basis** **Measured** on the board itself — resident size, and the 1b's fabrication.<br>
+**Strength** The choice is recorded with the numbers that forced it.<br>
+**Weakness** The version stamp on each row is a fixed string naming the laptop model, so rows written by the 3b claim to be the 4b's ([#1032](https://github.com/BasilSuhail/OSINT/issues/1032)).<br>
+**Instead** Build the stamp from the model actually in use, so the field records what produced the row.
+
+</td></tr></table>
+
+## A second pass, on the grouping
+
+The same model is asked one more thing — whether the headlines really are one
+story, and whether any two of them contradict each other:
+
+```json
+{"one_story": true, "contradiction": true, "kind": "facts",
+ "note": "one headline says 12 dead, another says 30"}
+```
+
+`kind` separates a **facts** disagreement from a **framing** one. That is the
+judgement §18 cannot make: §18 measures that the wording differs, this asks
+whether the difference is about what happened.
+
+## The gate — and why nothing downstream uses any of this
+
+The rows feed **nothing**. That is enforced, and it is the point of the
+chapter:
+
+> These rows feed nothing until a human sample has been filled in and an
+> agreement rate published.
+
+So 50 extracted stories were sampled into a check sheet — reproducible seed —
+with three columns for a person to mark `ok` or write the correction. The
+scorer that turns that sheet into per-field agreement rates is written and
+ready.
+
+**The sheet is empty.** Every human column is blank, and no agreement rate
+file exists. The gate has never been opened.
+
+<table><tr><td>
+
+**Basis** Declared as a rule before the extractor was built.<br>
+**Strength** An unmeasured model output cannot quietly become evidence.<br>
+**Weakness** The gate has held since the day it was written, so the extractor produces rows nobody has ever used.<br>
+**Instead** Fill the fifty rows. It is the only step between this chapter and a published error rate.
+
+</td></tr></table>
+
+## Why this matters
+
+§15 puts an unmeasured number on the dashboard. §19 refuses to let an
+unmeasured output leave the table it was written into. Same missing
+measurement, opposite handling — and this is the one to point at.
+
+---
+
+<a href="#ch-19">▲ top of §19</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-19">↑ back to §19 in the diagram</a>
 
 </details>
