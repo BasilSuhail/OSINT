@@ -2751,78 +2751,100 @@ exists to produce.
 
 ## How it is set up
 
-| | |
-|---|---|
-| model | whatever the machine chose — `qwen3.5:4b-q4_K_M` on a laptop, `llama3.2:3b` on an 8 GB board |
-| served by | Ollama, localhost, plain HTTP |
-| `temperature` | **0** — same headlines give the same answer |
-| `format` | `json` — the reply must parse |
-| `think` | `false` — otherwise the model puts its answer in the thinking channel |
-| `num_ctx` | 2048 — the prompt is short, so the model reserves little memory |
-| `keep_alive` | 5m — warm through a batch, unloaded the rest of the day |
-| when | nightly, in the quiet window after the journal |
+| setting | value | why |
+|---|---|---|
+| `temperature` | **0** | no randomness — the same headlines give the same JSON. Without it you could not tell a model error from a dice roll |
+| `format` | `json` | the reply must parse. Otherwise the model writes *"Sure! Here's the JSON:"* and the parser dies |
+| `think` | `false` | some models reason in a separate channel. Left on, the answer goes there and the reply comes back empty |
+| `num_ctx` | 2048 | the model reserves memory for the whole window whether it uses it or not. The prompt is a few hundred tokens, so the reservation stays small |
+| `keep_alive` | 5m | loaded through one nightly batch, then unloaded — the machine is not holding a model idle all day |
+| when | nightly | in the quiet window, after the journal |
 
-There are four model jobs in the system, and this chapter owns one of them:
+Note what `format: json` does and does not buy: the reply is guaranteed
+**parseable**, never **correct**.
 
-| setting | job |
-|---|---|
-| `OLLAMA_MODEL` | **§19 — extract the claims a story makes** |
-| `SEVERITY_MODEL` | §20 — how much harm a headline reports |
-| `BRAIN_MODEL` | writes the situation summary |
-| `QA_MODEL` | answers questions in the Ask panel |
+### Which model — and why the code does not say
 
-On a laptop those point at different models. On an 8 GB board all four point
-at the same one, because it cannot hold two models
-at once — two resident came to 5.4 GB of 7.9 and locked the machine up — so
-every job on a small board points at one 3b model, measured at 3.4 GB.
-Dropping smaller was tried and rejected: the 1b **invented** evidence, which
-disqualifies it for a system whose claim is that it shows its evidence.
+Four jobs in the system need a model. This chapter owns the first:
+
+```
+OLLAMA_MODEL     §19 — extract the claims a story makes
+SEVERITY_MODEL   §20 — how much harm a headline reports
+BRAIN_MODEL      writes the situation summary
+QA_MODEL         answers questions in the Ask panel
+```
+
+On a laptop each can point at whichever model suits it. On an 8 GB board the
+arithmetic decides instead — Ollama keeps one copy resident per model *name*:
+
+```
+two model names, both resident    5.4 GB of 7.9 GB   → the board locked up
+one name, all four jobs           3.4 GB             → fits
+```
+
+So a small board points every job at one 3b model.
+
+The obvious escape — go smaller still — was tried and rejected. The 1b
+**fabricated**: asked what was happening, it invented the evidence. For a
+system whose whole claim is that it shows its sources, a model that makes them
+up is worse than none, so that model is now refused outright.
 
 <table><tr><td>
 
 **Basis** **Measured** on the board itself — resident size, and the 1b's fabrication.<br>
-**Strength** The choice is recorded with the numbers that forced it.<br>
+**Strength** The choice is recorded together with the numbers that forced it.<br>
 **Weakness** The version stamp on each row is a fixed string naming the laptop model, so rows written by the 3b claim to be the 4b's ([#1032](https://github.com/BasilSuhail/OSINT/issues/1032)).<br>
 **Instead** Build the stamp from the model actually in use, so the field records what produced the row.
 
 </td></tr></table>
 
-## A second pass, on the grouping
+## Second pass — is this even one story?
 
-The same model is asked one more thing — whether the headlines really are one
-story, and whether any two of them contradict each other:
+The same model is asked a second question, this time about §16's grouping
+rather than the facts:
 
 ```json
 {"one_story": true, "contradiction": true, "kind": "facts",
  "note": "one headline says 12 dead, another says 30"}
 ```
 
-`kind` separates a **facts** disagreement from a **framing** one. That is the
-judgement §18 cannot make: §18 measures that the wording differs, this asks
-whether the difference is about what happened.
+| field | asks |
+|---|---|
+| `one_story` | did the clusterer group one event, or fuse two? |
+| `contradiction` | do any two headlines assert incompatible things? |
+| `kind` | is the disagreement about **facts** or only **framing**? |
 
-## The gate — and why nothing downstream uses any of this
+`kind` is the judgement §18 cannot make. §18 measures *that* the wording
+differs; this asks *whether the difference is about what happened*:
 
-The rows feed **nothing**. That is enforced, and it is the point of the
-chapter:
+```
+"12 dead"  vs  "30 dead"        → facts
+"strikes"  vs  "attacks"        → framing
+```
+
+Both produce a high divergence score in §18. They mean completely different
+things.
+
+## The gate — why nothing downstream uses any of this
+
+The rule was written before the extractor was:
 
 > These rows feed nothing until a human sample has been filled in and an
 > agreement rate published.
 
-So 50 extracted stories were sampled into a check sheet — reproducible seed —
-with three columns for a person to mark `ok` or write the correction. The
-scorer that turns that sheet into per-field agreement rates is written and
-ready.
+The machinery is finished. 50 stories sampled with a reproducible seed, a
+sheet with three columns per row for a person to write `ok` or the correction,
+and a scorer that turns the filled sheet into per-field agreement rates.
 
-**The sheet is empty.** Every human column is blank, and no agreement rate
-file exists. The gate has never been opened.
+**The sheet is empty.** Every human column is blank and no agreement file
+exists. So §19 runs nightly, writes its rows, and nothing reads them.
 
 <table><tr><td>
 
 **Basis** Declared as a rule before the extractor was built.<br>
 **Strength** An unmeasured model output cannot quietly become evidence.<br>
 **Weakness** The gate has held since the day it was written, so the extractor produces rows nobody has ever used.<br>
-**Instead** Fill the fifty rows. It is the only step between this chapter and a published error rate.
+**Instead** Fill the fifty rows. That is the whole distance between this chapter and a published error rate.
 
 </td></tr></table>
 
