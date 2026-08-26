@@ -2610,26 +2610,14 @@ same way.
 
 ## The maths behind "shared words"
 
-Counting shared words is the intuition. The code does it properly, in three
-moves.
+Same idea, done properly:
 
-**1. Weight the words.** A word common across the whole window is worth
-little; a rare one is worth a lot. So `iran` counts for less than `kramatorsk`.
-This is **tf-idf**, and it is the same vectorizer §16 clusters with. A headline
-becomes a bag of weighted words — a vector.
-
-**2. One vector per country, not per headline.** If Britain filed four
-articles, average their four vectors into one **centroid**. That centroid is
-"how Britain worded this story".
-
-**3. Compare every pair with cosine.** Cosine measures similarity, so `1 -
-cosine` is distance. Average across all pairs:
-
-```
-divergence = mean over country pairs of (1 - cosine(centroid_A, centroid_B))
-```
-
-In code, stripped to its shape:
+1. **Weight the words** — rare words count more than common ones (`kramatorsk`
+   over `iran`). That is tf-idf, the same vectorizer §16 clusters with.
+2. **One vector per country** — average a country's headlines into one
+   **centroid**: "how Britain worded this story".
+3. **Distance per pair** — cosine gives similarity, so `1 - cosine` is
+   distance. Average the pairs.
 
 ```python
 centroids = {country: mean_vector(headlines) for country, headlines in groups.items()}
@@ -2641,102 +2629,65 @@ pair_distances = {
 divergence = sum(pair_distances.values()) / len(pair_distances)
 ```
 
-Three countries → three pairs. Four countries → six. Each pair's own distance
-is kept, not just the average — that is what the monthly roll-up later feeds on.
-
-This is **§16's cosine, turned around**: clustering uses it as similarity to
-pull headlines together, §18 uses it as distance to measure how far apart the
-tellings sit. One tool, both directions.
+Each pair's own distance is kept, not just the average — the monthly roll-up
+feeds on those. It is §16's cosine read backwards: similarity to group
+headlines, distance to separate tellings.
 
 <table><tr><td>
 
-**Basis** Standard practice — cosine distance between group centroids, the ordinary way to compare two bodies of text.<br>
-**Strength** Costs nothing extra: the vectors already exist from clustering, and the result is reproducible.<br>
-**Weakness** It compares **words, not meaning**. "Washington attacks Iran" and "US strikes Iran" mean the same thing and share no words, so part of any high score is just synonyms.<br>
-**Instead** Score the framing directly with a stance or sentiment model per country group — at the cost of a result nobody can check by eye.
+**Basis** Standard practice — cosine distance between group centroids.<br>
+**Strength** Free: the vectors already exist from clustering, and it is reproducible.<br>
+**Weakness** Compares **words, not meaning**. "Washington attacks Iran" and "US strikes Iran" share nothing, so part of any high score is just synonyms.<br>
+**Instead** A stance or sentiment model per country group — at the cost of a result nobody can check by eye.
 
 </td></tr></table>
 
-## Where the process actually happens
+## Where it runs
 
 | | |
 |---|---|
-| what groups the headlines | each feed's home country, recorded in the feed registry — 55 feeds carry one, 12 of them GB |
-| when it runs | every 30 minutes, at :22 and :52 — deliberately offset from the sensor checks so the two analytical jobs do not collide |
-| what it reads | stories inside the same **72-hour** window §16 clusters in |
-| what it writes | `story_disagreement`, one row per (story, method version) |
-| then | `disagreement_pairs`, rebuilt from those rows: one row per (country A, country B, month) |
+| groups by | the **outlet's** home country from the feed registry — `rss-bbc-world` is GB |
+| when | every 30 min, at :22 and :52, offset from the sensor checks |
+| reads | stories in the same 72-hour window §16 clusters in |
+| writes | `story_disagreement` per story, then `disagreement_pairs` per (country A, country B, month) |
 
-The country comes from the **outlet**, not the article. `rss-bbc-world` is GB.
-A feed whose home country is not recorded is left out rather than guessed —
-the same rule as §17's ownership.
-
-Two country groups are the minimum. Below that the story is skipped and **no
-row is written at all**: a story told only by British outlets has no
-cross-country telling to compare.
+A feed with no recorded country is left out rather than guessed, and a story
+with fewer than two countries gets **no row at all**.
 
 <table><tr><td>
 
-**Basis** Reasoned, and consistent with §17: a fact nobody recorded is not assumed.<br>
+**Basis** Reasoned, consistent with §17: a fact nobody recorded is not assumed.<br>
 **Strength** An outlet of unknown origin cannot invent a country's point of view.<br>
-**Weakness** A country group can be a single headline — `RU:1` means one Russian article stands for Russia's telling.<br>
-**Instead** Require a minimum group size, at the cost of scoring even fewer stories.
+**Weakness** A group can be one headline — `RU:1` means one article stands for Russia.<br>
+**Instead** Require a minimum group size, and score even fewer stories.
 
 </td></tr></table>
 
-The stored number is never alone: `components` carries the group sizes, so a
-reader sees **who** diverged before believing **how much**.
-
-## What the saved run found
-
-`results/reports/disagreement-report.md` records a real run:
+## What the real run found
 
 ```text
-1992 stories in window
- 185 scored
-1807 single-country — no cross-country telling
-  83 (pair, month) roll-up rows
+1992 stories in window · 185 scored · 1807 single-country · 83 roll-up rows
 ```
 
-**Only 9% of stories get a score.** The rest were told by outlets from one
-country only. That is the correct refusal, not a failure — but it means this
-measure only ever looks at internationally covered news.
-
-The loudest rows of that run:
+**Only 9% get a score** — the rest were told by one country's outlets. Correct
+refusal, but it means the measure only ever sees internationally covered news.
 
 ```text
 0.872  CA:1 FR:1 GB:4 IN:1 PK:1 RU:4 UY:1   Ceasefire with Iran no longer in effect
-0.865  RU:1 US:1                            US poised to escalate tensions with Iran again
 0.853  IN:1 PK:1                            ICC seeks explanation from ECB over Stokes video
 ```
 
-The first is the case this was built for — British and Russian outlets wording
-one ceasefire story differently. The third is the honest counter-example: a
-cricket-administration row, scoring almost as high. **A high number is not
-evidence of contested politics.** Two headlines about the same dull thing,
-written differently, read exactly the same to this measure.
+The first is what it was built for. The second is the honest counter-example —
+a cricket-administration row scoring almost as high. **A high number is not
+evidence of contested politics**, only of different wording.
 
-## Where the number goes next
+## Where the number goes
 
-Each country pair's monthly mean becomes a per-country exposure, logged as a
-prediction:
-
-```
-exposure(country, month) = story-count-weighted mean divergence
-                           over that month's pairs containing the country
-```
-
-It already sits in [0, 1], so it is used as the prediction score directly —
-there is no calibration step.
-
-<table><tr><td>
-
-**Basis** Pre-registered before any outcome was knowable, and used raw.<br>
-**Strength** No calibration knob means nothing can be tuned after seeing the results.<br>
-**Weakness** Divergence data exists only from the RSS era, so unlike §14 there is **no historical backtest** — nothing can be replayed against the past.<br>
-**Instead** Wait. It is a forward exam: log now, grade when the window matures, publish whatever accumulates.
-
-</td></tr></table>
+Each pair's monthly mean becomes a per-country exposure, logged as a
+prediction and used raw — it is already in [0, 1], so there is no calibration
+step. Divergence data exists only from the RSS era, so unlike §14 there is
+**no historical backtest**: it is a forward exam, graded when the window
+matures.
 
 ---
 
