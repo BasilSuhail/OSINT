@@ -118,7 +118,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §20  SEVERITY GRADING                                                  │
+   │ <a id="map-20" href="#ch-20">§20  SEVERITY GRADING</a>                                                  │
    │    how much harm to people a headline reports                          │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -2857,5 +2857,125 @@ measurement, opposite handling — and this is the one to point at.
 ---
 
 <a href="#ch-19">▲ top of §19</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-19">↑ back to §19 in the diagram</a>
+
+</details>
+
+<details id="ch-20">
+<summary><b>§20 &nbsp; Severity grading</b> &nbsp;—&nbsp; how much harm to people a headline reports</summary>
+<br>
+
+**`app/severity/`**
+
+## What it does
+
+One headline in, one number between 0 and 1 out, plus the reason for it:
+
+```text
+"Magnitude 6.1 quake strikes eastern Turkey, 12 dead"
+                        ↓
+{"band": "mass_casualty", "rationale": "12 people were killed by an earthquake"}
+```
+
+`severity` is the column §14 z-scores, §15 counts as unrest, and §12 attaches
+to the row. This chapter is where the number comes from.
+
+## The scale is bands, not a slider
+
+Five bands, each a **floor** rather than a target:
+
+| band | range | meaning |
+|---|---|---|
+| routine | 0.00 – 0.20 | policy, business, sport — nothing happened to anyone |
+| tension | 0.20 – 0.40 | protest, strike, diplomatic rupture — no violence |
+| violence | 0.40 – 0.60 | violence without confirmed death, or mass displacement |
+| **grave** | **0.60** – 0.80 | confirmed deaths (1–9), or a serious armed attack |
+| **mass_casualty** | **0.80** – 1.00 | 10+ dead, massacre, mass-fatality disaster |
+
+Two of those numbers do the work. **0.60 is the lethal floor**: any confirmed
+death sits at or above it, so a score below 0.60 is the scale claiming nobody
+died. **0.80** is where ten deaths floor.
+
+The model is asked for a **band name**, not a number. Naming a band is a
+judgement a small model can make; picking 0.63 over 0.58 is not.
+
+<table><tr><td>
+
+**Basis** **Measured** — grading everything harshly was tried, and 55% of hazard country-months pinned at 0.90, which separates events no better than a floor of zeros.<br>
+**Strength** Floors refuse to soften real harm while routine news still lands low, so the scale keeps the ability to tell them apart.<br>
+**Weakness** Five bands is coarse: everything from one death to nine reads the same.<br>
+**Instead** Ask for a number directly, and lose the reliability that made band-asking work.
+
+</td></tr></table>
+
+## Every score must state its reason
+
+A `Verdict` **cannot be constructed without a rationale**. That is enforced in
+the type, not by convention.
+
+The reason: four separate defects in this project were numbers nobody could
+interrogate — plausible at every layer except the one that used them. A score
+with no stated reason is the failure this module exists to prevent.
+
+Two guards then check the rationale itself, and either one rejects the verdict:
+
+| guard | rejects | why |
+|---|---|---|
+| invented figures | a rationale citing a number the headline does not contain | the model inventing a death toll |
+| euphemism | *"incident"*, *"situation"* for something at or above 0.60 | softening a lethal event out of the data |
+
+The euphemism guard only applies at or above the lethal floor — *"a routine
+incident"* is the correct description of a routine incident.
+
+## When the model cannot run
+
+The ingest path needs a grade immediately, and the model is a nightly batch.
+So there is a keyword fallback — but a **graded** one: it separates fatal from
+violent from disruptive rather than flattening all three onto one value, and
+it states its reason too. Even the fallback is interrogable.
+
+Two protocols, one guard function, deliberately shared: a guard that exists on
+one path and not the other is how the same defect ships twice.
+
+## The gate — and this one was opened
+
+Same rule as §19: the model's grades feed nothing until a human says how often
+they are right. Unlike §19, **someone filled the sheet**:
+
+```text
+50 graded rows, 50 with a band on both sides
+
+band agreement          0.860
+floor violations        0        ← human says a death, model scored below 0.60
+rationale judged honest 0.780
+mean absolute error     0.148
+```
+
+Read the second line first. **Zero floor violations** — the model never scored
+a confirmed death as routine. That is the failure that matters, and one of
+them would outweigh ten near-miss band disagreements.
+
+Exact match is the wrong test for a number: a human writing 0.62 against the
+model's 0.60 agrees with it. So band agreement is the headline metric, and the
+raw error is reported beside it.
+
+<table><tr><td>
+
+**Basis** **Measured** — 50 hand-checked rows, published as a rate.<br>
+**Strength** The one model output in this project with a real error rate attached, so downstream use of it is defensible.<br>
+**Weakness** 50 rows, one window, one model. `rationale judged honest 0.780` means roughly one rationale in five did not convince the reader.<br>
+**Instead** Re-audit per model version — the rate describes the model that was graded, not whichever one runs tonight.
+
+</td></tr></table>
+
+## Why this matters
+
+§19 and §20 are the same design: a small local model, a versioned prompt, a
+human sample, a gate. §19's gate is still shut. §20's was opened, which is why
+`severity` is allowed to reach §12, §14 and §15 — and why every number those
+chapters build on it inherits **0.860**, not certainty.
+
+---
+
+<a href="#ch-20">▲ top of §20</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-20">↑ back to §20 in the diagram</a>
 
 </details>
