@@ -209,3 +209,45 @@ describe("EventBuffer.ingest source filtering", () => {
     })
   })
 })
+
+/** A hazard's claim on a buffer slot is how recently its feed republished it,
+ *  not when it began. Onset became a true onset rather than a fetch time, and
+ *  a flood that started in March then scored as March: bottom of the eviction
+ *  sort, below every news story of the last hour. Hazards were dropped from a
+ *  full buffer and reappeared en masse whenever the source next revised them. */
+describe("EventBuffer hazard retention", () => {
+  const FULL = () =>
+    Array.from({ length: CLIENT_LIMITS.eventBuffer }, (_, index) =>
+      row({ id: String(index + 1), occurred_at: "2026-08-26T21:00:00Z" }),
+    )
+
+  it("keeps a long-running hazard its feed is still republishing", () => {
+    const buf = new EventBuffer()
+    buf.ingest(FULL())
+    buf.ingest([
+      row({
+        id: "flood",
+        source: "gdacs",
+        category: "hazard",
+        occurred_at: "2026-03-01T00:00:00Z",
+        fetched_at: "2026-08-26T21:05:00Z",
+      }),
+    ])
+    expect(buf.getSnapshot().some((event) => event.id === "flood")).toBe(true)
+  })
+
+  it("still evicts a hazard that has left its feed", () => {
+    const buf = new EventBuffer()
+    buf.ingest(FULL())
+    buf.ingest([
+      row({
+        id: "ended",
+        source: "gdacs",
+        category: "hazard",
+        occurred_at: "2026-03-01T00:00:00Z",
+        fetched_at: "2026-03-04T00:00:00Z",
+      }),
+    ])
+    expect(buf.getSnapshot().some((event) => event.id === "ended")).toBe(false)
+  })
+})

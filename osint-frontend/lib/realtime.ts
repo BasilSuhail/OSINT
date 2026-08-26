@@ -95,11 +95,26 @@ function timestampAfter(candidate: string, current: string): boolean {
  * ancient rows scores as though it were revised at migration time, outranking
  * genuinely recent events and evicting them under the buffer cap. A bulk stamp
  * is evidence that a million rows were touched at once, not evidence that any
- * of them is fresh. */
+ * of them is fresh.
+ *
+ * A hazard is scored on republication instead. Its `occurred_at` is an onset,
+ * and an onset is not staleness: a flood that began in March is March here, so
+ * it sat below every news story of the last hour and was evicted from a full
+ * buffer while it was still flooding. It then returned all at once, whenever
+ * the source next revised it late enough to qualify above. GDACS and EONET
+ * re-upsert every event they still consider live on every poll, so `fetched_at`
+ * says when the feed last vouched for it — which is exactly the claim being
+ * ranked. An ended hazard stops being republished and ages out normally. */
 function retentionTimeMs(row: EventRow, seenFromMs: number): number {
   const occurredMs = validTimeMs(row.occurred_at) ?? Number.NEGATIVE_INFINITY
   const updateMs = validTimeMs(eventUpdateStamp(row)) ?? Number.NEGATIVE_INFINITY
-  return Math.max(occurredMs, updateMs >= seenFromMs ? updateMs : Number.NEGATIVE_INFINITY)
+  const claim = Math.max(occurredMs, updateMs >= seenFromMs ? updateMs : Number.NEGATIVE_INFINITY)
+  if (row.category !== "hazard") return claim
+  //: Read straight rather than through `eventUpdateStamp`, which prefers
+  //: `updated_at` and is gated on `seenFromMs` for the bulk-stamp reason above.
+  //: That gate is about a migration's revisions; a snapshot feed's fetch time
+  //: is not one, and hazards are a few hundred rows, not a million.
+  return Math.max(claim, validTimeMs(row.fetched_at) ?? Number.NEGATIVE_INFINITY)
 }
 
 /** High-volume feeds kept OUT of the main firehose so they can't saturate the
