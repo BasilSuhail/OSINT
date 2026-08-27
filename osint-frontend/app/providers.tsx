@@ -104,6 +104,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const setScrubSpan = useLeftPaneStore((s) => s.setScrubSpan)
   const windowBucket = Math.round(windowOffsetMs / WINDOW_KEY_BUCKET_MS)
 
+  //: Eviction ranks on nearness to the moment on screen, so the buffer has to
+  //: be told when that moves. Without it the rows fetched for a scrubbed window
+  //: arrived older than the live ones already held and were dropped on sight,
+  //: which is why scrubbing back drew an empty map.
+  useEffect(() => {
+    buffer.setWindowAnchor(Date.now() - windowOffsetMs)
+  }, [buffer, windowOffsetMs])
+
   // SWR fallback: poll every 30s (and once on mount) to backfill / recover.
   useSWR(
     isApiConfigured ? ["events-window", windowBucket, windowLengthMs] : null,

@@ -85,36 +85,36 @@ function timestampAfter(candidate: string, current: string): boolean {
 
 /** How much a row deserves its place when the buffer is full.
  *
- * The newer of event time and durable revision, so a story enriched a moment
- * ago survives a buffer full of newer events — that is the behaviour #763
- * added and it must stay.
+ * Nearness to the moment the map is showing, not to the wall clock. The buffer
+ * used to keep the newest rows outright, which is the same thing only while the
+ * scrubber sits at now. Moved back a fortnight, the firehose refetched that
+ * window and every row it returned was older than the live rows already held,
+ * so the whole answer was evicted on arrival and the historical map came up
+ * empty. Ranking against the window end keeps what the map is about to draw.
  *
- * The revision only counts when this client actually saw it happen (#764).
- * Migration 0026 stamped 1,489,591 rows with one revision, and the live table
- * still carries that tie today. Under a plain `max()` every one of those
- * ancient rows scores as though it were revised at migration time, outranking
- * genuinely recent events and evicting them under the buffer cap. A bulk stamp
- * is evidence that a million rows were touched at once, not evidence that any
- * of them is fresh.
+ * The candidates are the times that can each be the true claim on a slot. Event
+ * time is the row's own. A durable revision counts only when this client saw it
+ * happen (#764): migration 0026 stamped 1,489,591 rows with one revision and
+ * the live table still carries that tie, so under a plain comparison every one
+ * of those ancient rows scored as freshly revised. A bulk stamp is evidence
+ * that a million rows were touched at once, not that any is fresh.
  *
- * A hazard is scored on republication instead. Its `occurred_at` is an onset,
- * and an onset is not staleness: a flood that began in March is March here, so
- * it sat below every news story of the last hour and was evicted from a full
- * buffer while it was still flooding. It then returned all at once, whenever
- * the source next revised it late enough to qualify above. GDACS and EONET
- * re-upsert every event they still consider live on every poll, so `fetched_at`
- * says when the feed last vouched for it — which is exactly the claim being
- * ranked. An ended hazard stops being republished and ages out normally. */
-function retentionTimeMs(row: EventRow, seenFromMs: number): number {
-  const occurredMs = validTimeMs(row.occurred_at) ?? Number.NEGATIVE_INFINITY
-  const updateMs = validTimeMs(eventUpdateStamp(row)) ?? Number.NEGATIVE_INFINITY
-  const claim = Math.max(occurredMs, updateMs >= seenFromMs ? updateMs : Number.NEGATIVE_INFINITY)
-  if (row.category !== "hazard") return claim
-  //: Read straight rather than through `eventUpdateStamp`, which prefers
-  //: `updated_at` and is gated on `seenFromMs` for the bulk-stamp reason above.
-  //: That gate is about a migration's revisions; a snapshot feed's fetch time
-  //: is not one, and hazards are a few hundred rows, not a million.
-  return Math.max(claim, validTimeMs(row.fetched_at) ?? Number.NEGATIVE_INFINITY)
+ * A hazard may also claim on its fetch time, because a snapshot feed re-upserts
+ * every event it still considers live and that is the feed vouching for it now.
+ * The nearest of the candidates wins, so a claim can only ever help.
+ */
+function retentionTimeMs(row: EventRow, seenFromMs: number, anchorMs: number): number {
+  const distances: number[] = []
+  const occurredMs = validTimeMs(row.occurred_at)
+  if (occurredMs !== null) distances.push(Math.abs(occurredMs - anchorMs))
+  const updateMs = validTimeMs(eventUpdateStamp(row))
+  if (updateMs !== null && updateMs >= seenFromMs) distances.push(Math.abs(updateMs - anchorMs))
+  if (row.category === "hazard") {
+    const fetchedMs = validTimeMs(row.fetched_at)
+    if (fetchedMs !== null) distances.push(Math.abs(fetchedMs - anchorMs))
+  }
+  //: Negated so that, as before, a larger number is a better claim.
+  return distances.length ? -Math.min(...distances) : Number.NEGATIVE_INFINITY
 }
 
 /** High-volume feeds kept OUT of the main firehose so they can't saturate the
@@ -159,10 +159,22 @@ export class EventBuffer {
   private lastEventAt: Date | null = null
   private revisionCursor: RevisionCursor | null = null
   private lastSeenAt: Date | null = null
+  //: Where the scrubber is, so eviction can prefer what the map is about to
+  //: draw. Defaults to now, which is where the scrubber starts.
+  private windowAnchorMs: number = Date.now()
 
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private notifyTimer: ReturnType<typeof setTimeout> | null = null
   private stopped = false
+
+  /** Tell the buffer which moment the map is showing.
+   *
+   *  Called as the scrubber moves. Eviction ranks on nearness to this, so the
+   *  rows fetched for a scrubbed window are not discarded for being older than
+   *  the live ones already held. */
+  setWindowAnchor(ms: number): void {
+    if (Number.isFinite(ms)) this.windowAnchorMs = ms
+  }
 
   /** Seed/merge a batch of events (e.g. from the initial query or SWR refetch). */
   ingest(rows: EventRow[], retainIds: ReadonlySet<string> = new Set()): void {
@@ -208,7 +220,8 @@ export class EventBuffer {
         const protectedOrder = Number(retainIds.has(b.id)) - Number(retainIds.has(a.id))
         return (
           protectedOrder ||
-          retentionTimeMs(b, this.startedAtMs) - retentionTimeMs(a, this.startedAtMs)
+          retentionTimeMs(b, this.startedAtMs, this.windowAnchorMs) -
+            retentionTimeMs(a, this.startedAtMs, this.windowAnchorMs)
         )
       })
       const removed = this.events.splice(MAX_EVENTS)
