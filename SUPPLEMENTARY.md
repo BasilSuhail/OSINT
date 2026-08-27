@@ -146,7 +146,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §25  THE EXAMS                                                         │
+   │ <a id="map-25" href="#ch-25">§25  THE EXAMS</a>                                                         │
    │    the score against six baselines; the verdict is computed, not read  │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -3501,5 +3501,155 @@ entirely about what is allowed to count as a negative.
 ---
 
 <a href="#ch-24">▲ top of §24</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-24">↑ back to §24 in the diagram</a>
+
+</details>
+
+<details id="ch-25">
+<summary><b>§25 &nbsp; The exams</b> &nbsp;—&nbsp; the score against six baselines; the verdict is computed, not read</summary>
+<br>
+
+**`app/baselines/`**
+
+## The claim under test
+
+> A composite of market, geopolitical and hazard signals discriminates later
+> instability better than the best single domain.
+
+That sentence is the whole project's claim. This chapter tests it against the
+panel (§24) and prints the answer.
+
+**It fails. Six comparisons out of six.** The rest of this chapter is how that
+was established, because a failure that was measured carefully is worth more
+than a pass that was not.
+
+## Who is in the race
+
+Seven contenders. Each turns a country-month into a number, and each is scored
+against the same labels (§23).
+
+**The no-skill floor** — beat these or you know nothing:
+
+| | what it predicts |
+|---|---|
+| **B0** random | seeded noise. Scores ≈ 0.5 by construction — the sanity check |
+| **B1** persistence | *"next months look like this month"* |
+| **B2** base rate | how often this country has been labelled so far |
+
+**The real rivals** — the claim is about these:
+
+| | |
+|---|---|
+| **B3** | the geopolitical signal, alone |
+| **B4** | the market signal, alone |
+| **B5** | the hazard signal, alone |
+| **B6** | the composite (§14) |
+
+## How each one is marked
+
+| metric | plain reading | good |
+|---|---|---|
+| **AUROC** | pick one labelled month and one unlabelled month at random — how often is the labelled one scored higher? | 1.0 is perfect, **0.5 is a coin flip** |
+| **AUPR** | the same idea, but only rewards catching the rare positives | higher |
+| **Brier** | mean squared distance from the truth (§22) | lower |
+
+AUPR matters because positives are rare — about a fifth of rows (§24). A model
+can look strong on AUROC while catching almost none of them.
+
+## The verdict is computed, not read
+
+The rule was written in the README **before** the exams ran:
+
+> the composite must beat **each** single-domain baseline on **both** AUROC
+> and AUPR
+
+and the code applies it and prints the word. The reason, from the module
+itself: *stating a rule and leaving a reader to apply it across a dozen
+numbers is how a rule stops being one.*
+
+Two outcomes are kept deliberately separate:
+
+```text
+FAIL       measured, and the bar was not cleared
+UNDECIDED  a rival was never scored, or a metric could not be computed
+```
+
+Collapsing them would let a missing measurement read as a passed test.
+
+<table><tr><td>
+
+**Basis** Pre-registered: the bar was written down before any score was compared against it, and it is applied in code.<br>
+**Strength** The reader cannot be handed a dozen numbers and left to conclude something kinder than the rule allows.<br>
+**Weakness** The report states that the held-out window was opened to scoring before the methodology was locked, so the test numbers are **not** a clean pre-registered read.<br>
+**Instead** Lock the methodology first and re-open the test window once, which is the only way that particular claim can be made properly.
+
+</td></tr></table>
+
+## The result
+
+```text
+train+validation 2015-01 → 2022-12     k=1  FAIL     k=3  FAIL     k=6  FAIL
+held-out test    2023-01 → 2024-12     k=1  FAIL     k=3  FAIL     k=6  FAIL
+```
+
+Every cell reads the same: *the composite does not beat B3 geopolitical only,
+B4 market only, B5 hazard only.*
+
+The numbers behind it, at k = 1 on common support:
+
+```text
+                    AUROC    AUPR    Brier
+B0 random           0.504   0.262   0.330
+B3 geopolitical     0.503   0.262   2.089
+B4 market           0.493   0.293   0.398
+B5 hazard           0.479   0.276   0.628
+B6 composite        0.502   0.274   0.261
+B2 base rate        0.929   0.835   0.096
+```
+
+Read the AUROC column. **Every signal-based predictor sits at 0.5.** The
+composite is 0.502 — a coin flip. Combining three signals that do not
+discriminate produces a fourth that does not discriminate.
+
+## The finding that is bigger than the verdict
+
+**B2 scores 0.929.** It knows nothing about markets, conflict or hazards. It
+knows only how often this country has been labelled before.
+
+Country identity is enormously predictive of country instability, and none of
+the signals in this system add anything on top of it. That is a harder result
+than "the composite failed", and it is the one worth carrying forward: any
+future model has to beat 0.929, not 0.5.
+
+## One detail that keeps the comparison fair
+
+The head-to-head runs on **common support** — only rows every contender can
+score, 12,618 of 12,785 at k = 1.
+
+The contenders drop out on different months. Scoring each on its own available
+rows would compare **the difficulty of those rows** rather than the quality of
+the forecasts.
+
+<table><tr><td>
+
+**Basis** Standard practice, and necessary here because coverage differs per predictor.<br>
+**Strength** Every contender is marked on the same exam paper.<br>
+**Weakness** It discards rows, and a predictor with wider coverage gets no credit for it.<br>
+**Instead** Report both — restricted for the head-to-head, full panel beside it, which the report already does.
+
+</td></tr></table>
+
+## Why this matters
+
+A project that grades itself and publishes six failures is doing the thing
+correctly. The value of §22 to §25 is not that they produced a good number; it
+is that they could have produced a bad one, and did, and printed it.
+
+Every claim made anywhere else in this document should be read against this
+chapter: **the composite, as it stands, does not beat a single-domain
+baseline, and does not beat knowing which country you are looking at.**
+
+---
+
+<a href="#ch-25">▲ top of §25</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-25">↑ back to §25 in the diagram</a>
 
 </details>
