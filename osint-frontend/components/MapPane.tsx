@@ -12,8 +12,10 @@ import MapGL, {
 import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl"
 import { Activity, Droplets, Flame, Snowflake, Sun, Triangle, Wind } from "lucide-react"
 import { useConfigured, useEvents } from "@/app/providers"
-import { fetchAllEventPages, fetchAllUpdatedEventPages } from "@/lib/apiClient"
+import { fetchAllEventPages, fetchAllUpdatedEventPages, fetchEventGrid } from "@/lib/apiClient"
+import useSWR from "swr"
 import { mergeEventRows } from "@/lib/eventMerge"
+import { cellDegForZoom, gridCellsToFeatures } from "@/lib/mapGrid"
 import { circlePolygon } from "@/lib/footprints"
 import { PRECISION_OPACITY, PRECISION_RADIUS_PX } from "@/lib/precision"
 import {
@@ -122,6 +124,11 @@ const EVENT_SOURCE_ID = "place-backed-events"
 const EVENT_CLUSTER_LAYER_ID = "place-event-clusters"
 const EVENT_CLUSTER_COUNT_LAYER_ID = "place-event-cluster-count"
 const EVENT_POINT_LAYER_ID = "place-event-points"
+const GRID_SOURCE_ID = "event-density-cells"
+const GRID_CIRCLE_LAYER_ID = "event-density-circles"
+const GRID_COUNT_LAYER_ID = "event-density-count"
+//: How coarsely the density key follows the scrubber, matching the firehose.
+const GRID_KEY_BUCKET_MS = 60 * 60 * 1000
 const EMPTY_VIEWPORT_EVENTS: EventRow[] = []
 const NON_MAP_VIEWPORT_SOURCES = ["opensky-adsb", "nasa-firms"]
 
@@ -325,6 +332,33 @@ export function MapPane({
   const [areaSnapshot, setAreaSnapshot] = useState<AreaSnapshot | null>(null)
   const areaSnapshotRef = useRef<AreaSnapshot | null>(null)
   const viewportEnabled = zoom >= COMPLETE_VIEWPORT_ZOOM && viewport !== null
+
+  //: Below the viewport zoom the map cannot draw rows: 43,748 events occurred
+  //: in a measured three-day window against a page of 5,000, so the world view
+  //: was showing about eight hours of it and saying nothing about the rest.
+  //: Density is counted server-side there instead, which is what the bubbles
+  //: were doing in the browser anyway — only now they can count what they
+  //: cannot hold. Above that zoom the viewport query pages its box to
+  //: exhaustion and is already complete, so this asks nothing.
+  const gridActive = !viewportEnabled
+  const gridCellDeg = cellDegForZoom(zoom)
+  const gridWindowBucket = Math.round(settledWindowOffsetMs / GRID_KEY_BUCKET_MS)
+  const { data: gridCells } = useSWR(
+    gridActive
+      ? ["event-grid", viewport, gridCellDeg, gridWindowBucket, windowLengthMs]
+      : null,
+    async () => {
+      const windowEnd = Date.now() - settledWindowOffsetMs
+      return fetchEventGrid({
+        since: new Date(windowEnd - windowLengthMs).toISOString(),
+        until: new Date(windowEnd).toISOString(),
+        cellDeg: gridCellDeg,
+        ...(viewport ?? {}),
+      })
+    },
+    { revalidateOnFocus: false, keepPreviousData: true, refreshInterval: 60_000 },
+  )
+  const gridData = useMemo(() => gridCellsToFeatures(gridCells ?? []), [gridCells])
   const viewportScopeKey =
     viewportEnabled && viewport
       ? JSON.stringify([
@@ -1498,6 +1532,52 @@ export function MapPane({
           />
         </Source>
 
+        {/* One bubble per grid cell, counted in Postgres, for the zooms where
+            the client cannot hold the window it is drawing. Deliberately the
+            same shape and palette as the clusters above: the reader is looking
+            at the same thing, and only the arithmetic moved. */}
+        <Source id={GRID_SOURCE_ID} type="geojson" data={gridData}>
+          <Layer
+            id={GRID_CIRCLE_LAYER_ID}
+            type="circle"
+            maxzoom={COMPLETE_VIEWPORT_ZOOM}
+            paint={{
+              "circle-color": "rgba(96, 165, 250, 0.35)",
+              "circle-stroke-color": "rgba(147, 197, 253, 0.9)",
+              "circle-stroke-width": 1,
+              "circle-opacity": dimMultiplier,
+              "circle-stroke-opacity": dimMultiplier,
+              "circle-radius": [
+                "step",
+                ["get", "point_count"],
+                7,
+                10,
+                10,
+                50,
+                14,
+                250,
+                19,
+                1000,
+                25,
+                5000,
+                32,
+              ],
+            }}
+          />
+          <Layer
+            id={GRID_COUNT_LAYER_ID}
+            type="symbol"
+            maxzoom={COMPLETE_VIEWPORT_ZOOM}
+            layout={{
+              "text-field": ["get", "point_count_abbreviated"],
+              //: The style ships one font; see the cluster count layer below.
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 10,
+            }}
+            paint={{ "text-color": "#e5f2ff" }}
+          />
+        </Source>
+
         {/* News/GDELT density is handled inside MapLibre's worker. Every valid
             position in the active client event window enters the source;
             clustering changes only presentation, never membership. */}
@@ -1513,6 +1593,10 @@ export function MapPane({
           <Layer
             id={EVENT_CLUSTER_LAYER_ID}
             type="circle"
+            //: Below this the client holds a fraction of the window, so its
+            //: cluster counts describe the page it fetched rather than the
+            //: world. The density layer answers for those zooms.
+            minzoom={COMPLETE_VIEWPORT_ZOOM}
             filter={["has", "point_count"]}
             paint={{
               "circle-color": "rgba(96, 165, 250, 0.35)",
@@ -1542,6 +1626,7 @@ export function MapPane({
           <Layer
             id={EVENT_CLUSTER_COUNT_LAYER_ID}
             type="symbol"
+            minzoom={COMPLETE_VIEWPORT_ZOOM}
             filter={["has", "point_count"]}
             layout={{
               "text-field": ["get", "point_count_abbreviated"],
@@ -1558,6 +1643,7 @@ export function MapPane({
           <Layer
             id={EVENT_POINT_LAYER_ID}
             type="circle"
+            minzoom={COMPLETE_VIEWPORT_ZOOM}
             filter={["!", ["has", "point_count"]]}
             paint={{
               "circle-color": ["get", "color"],
