@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { EventBuffer } from "./realtime"
+import { CLIENT_LIMITS } from "./apiClient"
 import type { EventRow } from "./types"
 
 /** Migration 0026 stamped 1,489,591 rows with one revision, and the live table
@@ -88,7 +89,7 @@ describe("buffer retention under a migration-sized revision tie (#764)", () => {
     const buffer = new EventBuffer()
     buffer.ingest(recentFlood(9000))
     const snapshot = buffer.getSnapshot()
-    expect(snapshot.length).toBeLessThanOrEqual(7500)
+    expect(snapshot.length).toBeLessThanOrEqual(CLIENT_LIMITS.eventBuffer)
     expect(snapshot.length).toBeGreaterThan(0)
   })
 })

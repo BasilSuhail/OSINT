@@ -132,11 +132,24 @@ function intEnv(raw: string | undefined, fallback: number, min: number, max: num
   return Math.min(max, Math.max(min, parsed))
 }
 
+const eventWindow = intEnv(process.env.NEXT_PUBLIC_EVENT_WINDOW_LIMIT, 5000, 500, 10000)
+const hazardEvents = intEnv(process.env.NEXT_PUBLIC_HAZARD_EVENT_LIMIT, 2500, 250, 10000)
+const cyberEvents = intEnv(process.env.NEXT_PUBLIC_CYBER_EVENT_LIMIT, 1000, 250, 5000)
+
 export const CLIENT_LIMITS = {
-  eventWindow: intEnv(process.env.NEXT_PUBLIC_EVENT_WINDOW_LIMIT, 5000, 500, 10000),
-  eventBuffer: intEnv(process.env.NEXT_PUBLIC_EVENT_BUFFER_LIMIT, 7500, 1000, 15000),
-  hazardEvents: intEnv(process.env.NEXT_PUBLIC_HAZARD_EVENT_LIMIT, 2500, 250, 10000),
-  cyberEvents: intEnv(process.env.NEXT_PUBLIC_CYBER_EVENT_LIMIT, 1000, 250, 5000),
+  eventWindow,
+  hazardEvents,
+  cyberEvents,
+  //: Derived, not chosen. Three polls fill this buffer and together they asked
+  //: for 8,500 rows into 7,500, so every cycle evicted a thousand rows and the
+  //: sparsest feed lost to the densest. Summing the three means raising any one
+  //: of them in `.env` raises the room for it, and the mismatch cannot return.
+  eventBuffer: intEnv(
+    process.env.NEXT_PUBLIC_EVENT_BUFFER_LIMIT,
+    eventWindow + hazardEvents + cyberEvents,
+    1000,
+    15000,
+  ),
   scoreRows: intEnv(process.env.NEXT_PUBLIC_SCORE_ROW_LIMIT, 2000, 500, 10000),
   analyticsRows: intEnv(process.env.NEXT_PUBLIC_ANALYTICS_ROW_LIMIT, 7500, 1000, 10000),
 }

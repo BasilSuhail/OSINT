@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import {
+  CLIENT_LIMITS,
   fetchAllEventPages,
   fetchAllUpdatedEventPages,
   fetchEvents,
@@ -181,5 +182,16 @@ describe("apiClient", () => {
     expect(url).toContain("since=")
     expect(url).toContain("country=US")
     expect(url).toContain("limit=200")
+  })
+})
+
+/** The three polls that fill the map buffer asked for 8,500 rows into a buffer
+ *  of 7,500, so they evicted each other on every cycle and the sparsest of them
+ *  lost. A buffer smaller than what is fetched into it cannot be right. */
+describe("CLIENT_LIMITS", () => {
+  it("holds everything the polls that fill it ask for", () => {
+    const fetched =
+      CLIENT_LIMITS.eventWindow + CLIENT_LIMITS.hazardEvents + CLIENT_LIMITS.cyberEvents
+    expect(CLIENT_LIMITS.eventBuffer).toBeGreaterThanOrEqual(fetched)
   })
 })
