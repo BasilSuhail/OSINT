@@ -22,12 +22,16 @@ import { hazardKind } from "./hazardSymbols"
 import { mergeEventRows } from "./eventMerge"
 import type { FilterStore } from "@/stores/createFilterStore"
 import { occursWithinWindow } from "./timeWindow"
+import { isPersistentActiveHazard } from "./hazardActivity"
 
 export interface VisibleEvent extends EventRow {
   /** 0 (new) .. 1 (about to expire) */
   age: number
   opacity: number
   occurredMs: number
+  /** Drawn although it falls outside the window, because its source still
+   *  reports it as running and it is more than routine. */
+  ongoing: boolean
 }
 
 export interface WindowState {
@@ -88,6 +92,20 @@ export function useEventsInWindow(
     const windowEnd = realNow - windowEndOffsetMs
     const windowStart = windowEnd - windowLengthMs
 
+    //: Newest fetched_at per source. A hazard that has ended drops out of its
+    //: upstream feed and stops being re-upserted, which is the only signal that
+    //: separates it from one still running — a stored `is_current` is written
+    //: once and can never be falsified. Measured per source so one stalled feed
+    //: cannot expire another's events.
+    const feedLatest = new Map<string, number>()
+    for (const ev of allEvents) {
+      if (!ev.source || !ev.fetched_at) continue
+      const t = +new Date(ev.fetched_at)
+      if (!Number.isFinite(t)) continue
+      const seen = feedLatest.get(ev.source)
+      if (seen === undefined || t > seen) feedLatest.set(ev.source, t)
+    }
+
     const visible: VisibleEvent[] = []
     for (const ev of allEvents) {
       const sk = sourceKeyForEvent(ev)
@@ -101,14 +119,24 @@ export function useEventsInWindow(
       }
       if (ev.severity < severity[0] || ev.severity > severity[1]) continue
       const occurredMs = +new Date(ev.occurred_at)
-      if (!occursWithinWindow(occurredMs, windowStart, windowEnd)) continue
+      //: A flood's onset is the day it began, and one that began last week is
+      //: still running this week. Only a hazard its feed still reports, that
+      //: had started by this moment, and that is more than routine may say so.
+      const persistent = isPersistentActiveHazard(
+        ev,
+        windowEnd,
+        ev.source ? feedLatest.get(ev.source) : undefined,
+      )
+      const inWindow = occursWithinWindow(occurredMs, windowStart, windowEnd)
+      if (!inWindow && !persistent) continue
       const age = windowLengthMs > 0 ? (windowEnd - occurredMs) / windowLengthMs : 0
-      if (age > 1) continue
+      if (inWindow && age > 1) continue
       visible.push({
         ...ev,
-        age,
-        opacity: Math.max(0.1, 1 - age),
+        age: inWindow ? age : 0,
+        opacity: inWindow ? Math.max(0.1, 1 - age) : 1,
         occurredMs,
+        ongoing: !inWindow,
       })
     }
     return { events: visible, windowStart, windowEnd, total: visible.length }

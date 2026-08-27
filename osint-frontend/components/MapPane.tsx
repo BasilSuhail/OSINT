@@ -212,6 +212,11 @@ function EventMarker({
           opacity: focusOpacity(ev.opacity, focusActive, isFocused),
         }}
         className="relative grid place-items-center"
+        title={
+          ev.ongoing
+            ? "Ongoing — began before this window and its source still reports it"
+            : undefined
+        }
       >
         {(() => {
           const kind = hazardKind(ev)
