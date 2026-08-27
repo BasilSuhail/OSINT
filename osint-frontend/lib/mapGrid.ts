@@ -11,6 +11,36 @@
  *  the one readers know and only the arithmetic moves.
  */
 
+/** Sources a density cell must not count.
+ *
+ *  A cell stands in for the cluster layer, and that layer only ever held what
+ *  `isClusterable` admits — news, RSS, GDELT, police. Everything else is drawn
+ *  as its own marker, so counting it here would put the same event on the map
+ *  twice: once as an icon and again inside the number beside it.
+ *
+ *  The two at the end are drawn by nothing at all. `sourceKeyForEvent` returns
+ *  null for FIRMS and the aviation feed has no toggle, yet both carry
+ *  coordinates — the aviation feed writes ~190k rows a day, so counted they
+ *  would be most of every cell.
+ *
+ *  Passed explicitly because `exclude` replaces the endpoint's own default
+ *  rather than adding to it.
+ */
+export const GRID_EXCLUDE_SOURCES = [
+  "gdacs",
+  "usgs-quake",
+  "eonet",
+  "abuse-ch-urlhaus",
+  "abuse-ch-feodo",
+  "acled",
+  "emdat",
+  "fred",
+  "yfinance",
+  "polymarket",
+  "nasa-firms",
+  "opensky-adsb",
+]
+
 export interface GridCell {
   lat: number
   lon: number

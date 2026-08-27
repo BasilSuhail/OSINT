@@ -15,7 +15,12 @@ import { useConfigured, useEvents } from "@/app/providers"
 import { fetchAllEventPages, fetchAllUpdatedEventPages, fetchEventGrid } from "@/lib/apiClient"
 import useSWR from "swr"
 import { mergeEventRows } from "@/lib/eventMerge"
-import { cellDegForZoom, gridBoundsFor, gridCellsToFeatures } from "@/lib/mapGrid"
+import {
+  GRID_EXCLUDE_SOURCES,
+  cellDegForZoom,
+  gridBoundsFor,
+  gridCellsToFeatures,
+} from "@/lib/mapGrid"
 import { circlePolygon } from "@/lib/footprints"
 import { PRECISION_OPACITY, PRECISION_RADIUS_PX } from "@/lib/precision"
 import {
@@ -353,6 +358,7 @@ export function MapPane({
         since: new Date(windowEnd - windowLengthMs).toISOString(),
         until: new Date(windowEnd).toISOString(),
         cellDeg: gridCellDeg,
+        exclude: GRID_EXCLUDE_SOURCES,
         ...(gridBoundsFor(viewport) ?? {}),
       })
     },
