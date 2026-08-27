@@ -151,7 +151,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §26  HUMAN AUDIT SHEETS                                                │
+   │ <a id="map-26" href="#ch-26">§26  HUMAN AUDIT SHEETS</a>                                                │
    │    a person hand-checks a sample of every model output                 │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -3651,5 +3651,112 @@ baseline, and does not beat knowing which country you are looking at.**
 ---
 
 <a href="#ch-25">▲ top of §25</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-25">↑ back to §25 in the diagram</a>
+
+</details>
+
+<details id="ch-26">
+<summary><b>§26 &nbsp; Human audit sheets</b> &nbsp;—&nbsp; a person hand-checks a sample of every model output</summary>
+<br>
+
+**`app/severity/audit.py` · `app/validator/audit.py` · `app/stories/audit.py`**
+
+## What it is
+
+A model's output is only a claim until someone checks it. This chapter is the
+checking: draw a sample, print it as a markdown table with blank columns, and
+have a person fill them in.
+
+The filled sheet becomes an **error rate**. Nothing else in this project can
+produce one.
+
+## The sheet
+
+Real rows from `data/exports/severity-audit-sheet.md`:
+
+```text
+| headline                                   | model severity | model band | human band | rationale ok |
+|--------------------------------------------|----------------|------------|------------|--------------|
+| 100 years on, Paris mosque remains a symbol | 0.0            | routine    | routine    | ok           |
+| Queensland government buried a report from  | 0.0            | routine    | routine    | ok           |
+| domestic violence survivors                 |                |            |            |              |
+```
+
+Three rules printed on the sheet itself:
+
+- judge the **headline**, not the model's answer
+- `rationale ok` is `no` if the reason is wrong, softened, or cites something
+  the headline does not say
+- **a blank row is dropped, never counted as agreement**
+
+That last rule is the one that keeps the rate honest. A tired reviewer who
+skips ten rows lowers the sample size; they do not raise the score.
+
+## How the sample is drawn
+
+Fixed seed, so the same sample comes back every run:
+
+```python
+SAMPLE_SIZE:  int = 50
+SAMPLE_SEED:  int = 591
+```
+
+Roughly:
+
+```sql
+SELECT headline, severity, band, rationale
+FROM   graded_news
+ORDER  BY hash(id, 591)     -- deterministic shuffle, not random()
+LIMIT  50;
+```
+
+`random()` would give a different sheet every time and no way to re-draw the
+one a published rate came from.
+
+## Why the sample is stratified
+
+News is mostly not fatal, so a plain random 50 contains almost no deaths — and
+deaths are exactly what the scale must never get wrong.
+
+The published *"zero missed deaths"* figure originally rested on **four
+headlines**. So the sheet now draws two blocks and labels each row with the one
+it came from:
+
+| stratum | size | purpose |
+|---|---|---|
+| `random` | 50 | unbiased — this is what the agreement rate is computed on |
+| `lethal` | 30 | headlines that look fatal — this is what the floor check is computed on |
+
+<table><tr><td>
+
+**Basis** **Measured** — the claim that mattered most was resting on four rows.<br>
+**Strength** The rare, high-cost case gets enough rows to say anything about, without asking a person to grade hundreds.<br>
+**Weakness** The two blocks answer different questions, so mixing them would inflate the headline rate.<br>
+**Instead** Keep them labelled in the sheet and reported separately, which is what the stratum column is for.
+
+</td></tr></table>
+
+## The three sheets, and their state
+
+| sheet | sample | filled? | result |
+|---|---|---|---|
+| **severity** (§20) | 50 + 30 | **yes** | band agreement **0.860**, floor violations **0** |
+| **validator** (§19) | 50 | **no** | every human column blank; no rate exists |
+| **stories** (§16) | 30 clusters | **yes** | 28 coherent, 2 over-merged, 0 unrelated merges |
+
+Two of three were done. The one that was not is why §19's output feeds
+nothing.
+
+## Why this matters
+
+Every number in Part III compares a model against labels. This chapter is the
+only place a **person** looks at what the model actually said.
+
+It is also the cheapest unfinished work in the project: fifty rows of someone's
+afternoon is the entire distance between §19 producing rows nobody uses and
+§19 having a published error rate.
+
+---
+
+<a href="#ch-26">▲ top of §26</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-26">↑ back to §26 in the diagram</a>
 
 </details>
