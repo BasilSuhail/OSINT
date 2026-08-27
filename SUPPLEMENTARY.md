@@ -152,7 +152,7 @@ Where the two disagree, the code is right.
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
    │ <a id="map-26" href="#ch-26">§26  HUMAN AUDIT SHEETS</a>                                                │
-   │    a person hand-checks a sample of every model output                 │
+   │    a person hand-checks a sample of what a model said                  │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
 
@@ -3655,7 +3655,7 @@ baseline, and does not beat knowing which country you are looking at.**
 </details>
 
 <details id="ch-26">
-<summary><b>§26 &nbsp; Human audit sheets</b> &nbsp;—&nbsp; a person hand-checks a sample of every model output</summary>
+<summary><b>§26 &nbsp; Human audit sheets</b> &nbsp;—&nbsp; a person hand-checks a sample of what a model said</summary>
 <br>
 
 **`app/severity/audit.py` · `app/validator/audit.py` · `app/stories/audit.py`**
@@ -3671,7 +3671,7 @@ produce one.
 
 ## The sheet
 
-Real rows from `data/exports/severity-audit-sheet.md`:
+Real rows from `results/audit-sheets/severity-audit-sheet.md`:
 
 ```text
 | headline                                   | model severity | model band | human band | rationale ok |
@@ -3958,8 +3958,8 @@ honest about **how good** the scores it displays are.
 
 ## What it is
 
-Every number quoted in this document comes from a file here. This chapter is
-the index of those files.
+Almost every number quoted in this document comes from a file here. This
+chapter is the index of those files, and of the one that got away.
 
 ```text
 results/
@@ -4033,6 +4033,11 @@ statement than §25's verdict, and it is sitting in a file no chapter reads.
 The four sheets from §26, kept in the repository rather than in someone's
 downloads folder, so **0.860** can be traced to the exact 50 rows that
 produced it.
+
+**The one that got away.** The sheets are here; the rate computed from them is
+not. `severity-agreement.md` — the file holding that 0.860 — sits only in
+`data/exports/`, never copied across. So the single most-quoted measurement in
+this document is the one number the index does not cover.
 
 ## Why this matters
 
