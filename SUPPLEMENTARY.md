@@ -141,7 +141,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §24  THE PANEL                                                         │
+   │ <a id="map-24" href="#ch-24">§24  THE PANEL</a>                                                         │
    │    one row per country per month — 31,637 of them                      │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -3380,5 +3380,126 @@ page rather than in a footnote.
 ---
 
 <a href="#ch-23">▲ top of §23</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-23">↑ back to §23 in the diagram</a>
+
+</details>
+
+<details id="ch-24">
+<summary><b>§24 &nbsp; The panel</b> &nbsp;—&nbsp; one row per country per month, 31,637 of them</summary>
+<br>
+
+**`app/panel/`**
+
+## What it is
+
+One table. One row per country per month. Labels on the left, scores on the
+right:
+
+```text
+country  month     label_p1 label_p2 label_p3 label_any  signal_*  composite_score
+UA       2022-03          1        0        1         1     ...              0.91
+GB       2022-03          0        0        0         0     ...              0.12
+```
+
+That shape has a name: a **panel** — the same units observed repeatedly over
+time. It is the dataset every exam in §25 reads, and the reason those exams
+can be re-run by anyone.
+
+```text
+31,637 rows · 200 countries · 1996-12 → 2026-06
+```
+
+## The one rule that makes it honest
+
+A model is judged on how well it separates the yes rows from the no rows. So
+what counts as a **no** decides the whole result.
+
+The rule:
+
+> A month before a country's first observed record is **unknown**, not a
+> negative. It never enters the panel.
+
+Without it you could add decades of quiet, unobserved country-months, every
+one of them a free correct answer, and any model would look excellent.
+
+Each country therefore gets its own coverage window — first observed month to
+last — and only months inside it become rows.
+
+<table><tr><td>
+
+**Basis** Reasoned: absence of a record is not evidence of calm.<br>
+**Strength** The negative class contains only months somebody actually observed, so a high score cannot be manufactured with empty rows.<br>
+**Weakness** Countries enter at different dates, so the panel is unbalanced — some contribute 100 months, others 300.<br>
+**Instead** Restrict every country to a common window, and throw away most of the data to get it.
+
+</td></tr></table>
+
+## How a row is built
+
+Three pieces joined on `(country, month)`:
+
+```python
+spine   = every month inside that country's coverage window
+labels  = P1 / P2 / P3 from §23
+scores  = the composite from §14, where it exists
+```
+
+Missing values stay **missing** — written as empty, never as 0. A month with
+no score is not a month that scored zero, and §25 has to be able to tell the
+difference.
+
+Rows outside the spine are dropped rather than added: the labels and scores
+join **onto** coverage, they cannot extend it.
+
+## What is actually in it
+
+| | count | share |
+|---|---|---|
+| rows | 31,637 | |
+| carrying `label_any` | 7,088 | **22.4%** |
+| carrying a composite score | 17,367 | **54.9%** |
+| both scored and labelled | 4,299 | |
+
+Two numbers to hold on to.
+
+**22.4%** is the base rate — always answering *yes* is right that often, so it
+is the floor every exam in §25 must clear.
+
+**54.9%** is the honest limit of this dataset. The composite is only
+computable back to 2015, because that is where the input signals start, while
+the labels reach back to 1996. Nearly half the panel has an answer key and
+nothing to test against it.
+
+## Why it is a file, not a query
+
+The panel is exported to CSV and parquet with a `panel-meta.json` beside it
+recording exactly what that build contained — row count, country count, span,
+label counts, method versions.
+
+The database is the source of truth; the export is reproducible from it. But
+the exams run against the file, so a result can be checked months later
+against the exact table that produced it, rather than against a database that
+has moved on.
+
+<table><tr><td>
+
+**Basis** Standard practice — freeze the evaluation dataset, evaluate against the frozen copy.<br>
+**Strength** An exam result and the data that produced it stay together, and 30-day retention (§13) cannot quietly change what a published number was computed on.<br>
+**Weakness** A stale export silently evaluates yesterday's data, and only the metadata's timestamp says so.<br>
+**Instead** Rebuild before every exam run, and lose the ability to reproduce an older result exactly.
+
+</td></tr></table>
+
+## Why this matters
+
+§23 supplied the answer key. §14 supplied the answers. This chapter is where
+they are put in the same table, on the same rows — which is the step that
+makes an accuracy number arithmetically possible.
+
+Nothing here is a model. It is a join, done carefully, and the care is
+entirely about what is allowed to count as a negative.
+
+---
+
+<a href="#ch-24">▲ top of §24</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-24">↑ back to §24 in the diagram</a>
 
 </details>
