@@ -164,7 +164,7 @@ Where the two disagree, the code is right.
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §28  THE CONSOLE                                                       │
+   │ <a id="map-28" href="#ch-28">§28  THE CONSOLE</a>                                                       │
    │    map, panels and a live stream of arriving rows                      │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -3848,5 +3848,104 @@ worth one page of attention.
 ---
 
 <a href="#ch-27">▲ top of §27</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-27">↑ back to §27 in the diagram</a>
+
+</details>
+
+<details id="ch-28">
+<summary><b>§28 &nbsp; The console</b> &nbsp;—&nbsp; map, panels and a live stream of arriving rows</summary>
+<br>
+
+**`osint-frontend/`**
+
+## What it is
+
+One screen. It reads §27's API and nothing else — no database access of its
+own.
+
+![The console: story feed, world map, and filter rail](images/console-screenshot-live.jpg)
+
+```text
+┌──────────────┬───────────────────────────────┬──────────────┐
+│  stories     │            MAP                │  panels      │
+│  live feed   │  events, hazard footprints    │  CII · trust │
+│  §16 §17     │  §11 §12                      │  §15 §22     │
+└──────────────┴───────────────────────────────┴──────────────┘
+```
+
+## What each region reads
+
+| region | shows | from |
+|---|---|---|
+| map | every event with coordinates, hazard outlines | §11 §12 |
+| story feed | clusters, owner counts, sensor verdicts | §16 §17 |
+| CII leaderboard | 14 countries, sparkline, 7-day delta | §15 |
+| scoreboard | issued / graded / pending | §22 |
+| situation · briefing | the model's written summary and answers | §21 |
+
+## The live stream degrades instead of dying
+
+```text
+connecting → connected → (error) → reconnecting → polling
+```
+
+Three failed reconnects and it falls back to polling every 30 s, so a broken
+stream shows stale-but-real data rather than an empty screen. Arrivals are
+coalesced into one re-render.
+
+One browser constraint, stated in the code: `EventSource` cannot send headers,
+so the stream carries its token in the URL.
+
+## The map never claims precision it does not have
+
+Every event carries a `location_precision`, and the interface says it in
+words:
+
+```ts
+export const PRECISION_LABEL = {
+  exact:   "verified location",
+  city:    "somewhere in this city",
+  area:    "somewhere in this area",
+  country: "somewhere in this country",
+  unknown: "location not established",
+}
+```
+
+A missing verdict defaults to `unknown`, for the reason written beside it: *a
+marker that cannot say how precise it is must not imply that it is precise.*
+
+It is drawn, not just labelled — radius and opacity vary by precision, so a
+country-level guess is a wide faint blob and an exact fix is a tight solid
+dot.
+
+<table><tr><td>
+
+**Basis** Reasoned: a map is read as a claim about where something happened.<br>
+**Strength** The uncertainty is in the geometry, so it cannot be missed by someone who does not hover.<br>
+**Weakness** A wide faint blob is still a blob somewhere — a reader may take its centre as the location.<br>
+**Instead** Refuse to plot anything below city precision, and lose most hazard and news rows from the map.
+
+</td></tr></table>
+
+## What is not measured here
+
+There is no browser automation and no DOM test infrastructure in this project.
+So unlike §20's **0.860** or §25's **FAIL**, nothing on this screen carries a
+measured correctness claim. It is verified by looking at it.
+
+Worth stating plainly, because this screen is what most people would judge the
+whole system by — and it is the least evaluated part of it.
+
+## Why this matters
+
+The CII leaderboard (§15) is the most prominent thing on the page, and it is
+the number with no accuracy figure behind it. The scoreboard (§22), which
+would supply one, currently reads all pending.
+
+The interface is honest about **where** an event was. It is not yet able to be
+honest about **how good** the scores it displays are.
+
+---
+
+<a href="#ch-28">▲ top of §28</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-28">↑ back to §28 in the diagram</a>
 
 </details>
