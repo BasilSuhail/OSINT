@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { abbreviateCount, cellDegForZoom, gridCellsToFeatures, type GridCell } from "@/lib/mapGrid"
+import {
+  abbreviateCount,
+  cellDegForZoom,
+  gridBoundsFor,
+  gridCellsToFeatures,
+  type GridCell,
+} from "@/lib/mapGrid"
 
 function cell(over: Partial<GridCell> = {}): GridCell {
   return { lat: 10, lon: 20, cell_deg: 2, category: "news", count: 5, max_severity: 0.4, ...over }
@@ -61,15 +67,34 @@ describe("abbreviateCount", () => {
 })
 
 describe("cellDegForZoom", () => {
-  it("halves the cell as the map zooms in", () => {
-    expect(cellDegForZoom(0)).toBeGreaterThan(cellDegForZoom(4))
-    expect(cellDegForZoom(4)).toBeGreaterThan(cellDegForZoom(7))
+  it("coarsens as the map zooms out", () => {
+    expect(cellDegForZoom(0)).toBeGreaterThan(cellDegForZoom(2))
+    expect(cellDegForZoom(2)).toBeGreaterThanOrEqual(cellDegForZoom(7))
   })
 
-  it("stays inside what the endpoint accepts", () => {
+  it("never asks for a world grid finer than the measured one", () => {
     for (const zoom of [-5, 0, 3, 8, 22]) {
-      expect(cellDegForZoom(zoom)).toBeGreaterThan(0.05)
-      expect(cellDegForZoom(zoom)).toBeLessThanOrEqual(45)
+      expect(cellDegForZoom(zoom)).toBeGreaterThanOrEqual(2)
+      expect(cellDegForZoom(zoom)).toBeLessThanOrEqual(8)
     }
+  })
+})
+
+/** Bounds are normalised to ±180, so a world view arrives with west greater
+ *  than east — indistinguishable from an antimeridian pan, and read as one it
+ *  selects the two Pacific edges and excludes everything between. That is what
+ *  emptied the map of news while leaving a few bubbles on its borders. */
+describe("gridBoundsFor", () => {
+  it("asks for the world rather than a strip when the box wraps", () => {
+    expect(gridBoundsFor({ west: 110, south: -90, east: -110, north: 90 })).toBeNull()
+  })
+
+  it("passes an ordinary box straight through", () => {
+    const box = { west: -10, south: 40, east: 20, north: 60 }
+    expect(gridBoundsFor(box)).toEqual(box)
+  })
+
+  it("asks for the world when the map has not reported bounds yet", () => {
+    expect(gridBoundsFor(null)).toBeNull()
   })
 })
