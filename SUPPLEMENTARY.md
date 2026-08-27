@@ -3404,6 +3404,30 @@ That shape has a name: a **panel** — the same units observed repeatedly over
 time. It is the dataset every exam in §25 reads, and the reason those exams
 can be re-run by anyone.
 
+### Two real rows
+
+Straight out of `results/data/panel.csv`, trimmed to the columns that matter:
+
+```csv
+country  month     label_any  magnitude_p1  magnitude_p3  signal_geo  composite_score
+UA       2022-03           1         707.0        4406.0      0.6540           0.5543
+AD       2020-01           0            —             —      -0.3667           0.4695
+```
+
+The first is Ukraine in the month of the invasion: both labels fired, 707
+battle deaths, 4,406 political-violence deaths. The second is Andorra on an
+ordinary January, where nothing happened at all.
+
+**The composite scores them 0.5543 and 0.4695.** The invasion is worth
+**0.085** more than a quiet month in a country of 80,000 people.
+
+Two rows, and §25's verdict is already visible: whatever this score is
+measuring, it is not the difference between those two months.
+
+Also visible: `magnitude` is **empty** where nothing was labelled, never zero,
+and `signal_geo` is a **z-score** — negative for below-normal — not a
+probability.
+
 ```text
 31,637 rows · 200 countries · 1996-12 → 2026-06
 ```
