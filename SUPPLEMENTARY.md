@@ -136,7 +136,7 @@ Where the two disagree, the code is right.
 ═════════════════════ PART III — OFFLINE EVALUATION ═════════════════════
 
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §23  GROUND TRUTH                                                      │
+   │ <a id="map-23" href="#ch-23">§23  GROUND TRUTH</a>                                                      │
    │    conflict records become the labels, in a table of their own         │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -3269,5 +3269,116 @@ be edited, and none of them has come due yet.**
 ---
 
 <a href="#ch-22">▲ top of §22</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-22">↑ back to §22 in the diagram</a>
+
+</details>
+
+<details id="ch-23">
+<summary><b>§23 &nbsp; Ground truth</b> &nbsp;—&nbsp; conflict records become the labels, in a table of their own</summary>
+<br>
+
+**`app/labels/`**
+
+## What it is
+
+Every accuracy claim needs an **answer key**.
+
+§14 says Ukraine scored 0.73 that month. §22 wrote that down as a bet. But
+right or wrong against *what*? Something outside this project has to say
+whether anything bad actually happened. That is this chapter.
+
+In data-science terms: the **labels**, `y`. Everything else in Part III is
+comparing a prediction against them.
+
+## Where they come from
+
+Public weekly exports of a conflict-event dataset — one row per week ×
+country × region × event type, with event counts and fatalities. Downloaded
+as spreadsheets, read directly.
+
+The important detail is at the join: country names map to ISO2 codes through
+a shared table, and **an unmapped name is counted and skipped, never guessed.**
+A wrong country in the answer key is worse than a missing one.
+
+## Three rules turn events into labels
+
+Each rule produces a yes/no flag on a (country, month):
+
+| rule | fires when | meaning |
+|---|---|---|
+| **P1** | weekly battle fatalities **≥ 10** | armed conflict onset |
+| **P2** | weekly demonstrations **≥ 20** *and* riots **≥ 5** | mass escalation |
+| **P3** | political-violence fatalities **≥ 2×** the previous month, floor **25** | sharp deterioration |
+
+`label_any` = 1 if any of the three fired.
+
+P3's floor is the guard worth noticing. Without it, one death becoming two is
+a doubling, and fires. The floor of 25 stops arithmetic noise reading as
+escalation.
+
+## How often they fire
+
+Measured over the 31,637 country-months in the panel (§24):
+
+```text
+label_p1     5,309    16.8%
+label_p2     2,445     7.7%
+label_p3     1,417     4.5%
+label_any    7,088    22.4%
+```
+
+Roughly one country-month in five carries a label. That number sets the bar
+for everything in §25: a model that always says *yes* is right 22.4% of the
+time without knowing anything.
+
+## The threshold that had to be raised
+
+P2 originally fired at 5 demonstrations and 1 riot. That labelled **33% of
+all country-months** as mass escalation — which is not escalation, it is
+ordinary politics. A label that fires a third of the time cannot discriminate.
+
+It was raised to 20 and 5, bringing the rate to 9.9%. And the rule under which
+it was raised is the part that matters:
+
+> chosen from marginal label rates only, **before any model evaluation**
+
+The threshold was set by looking at **how often the label fires**, never at
+**how well the model scores against it**.
+
+<table><tr><td>
+
+**Basis** Pre-registration: the answer key was fixed before any score was compared against it.<br>
+**Strength** Tuning the answer key against your own model's performance is how a good result gets manufactured. This rules it out by sequence, not by promise.<br>
+**Weakness** The thresholds are still judgement — 10 deaths and 20 demonstrations were chosen, not derived.<br>
+**Instead** Report results at several thresholds, so the reader sees how much the verdict depends on where the line sits.
+
+</td></tr></table>
+
+Changing any threshold requires a new `RULES_VERSION` — currently
+`labels-v1.1`. Never an in-place edit, the same lock the composite's method
+version carries.
+
+## Coverage — and why §22 has nothing graded
+
+Labels exist only for the countries and periods the source dataset covers.
+That is not a defect of this project; it is the shape of the data.
+
+It has a direct consequence upstream. §22 refuses to grade a prediction whose
+window falls outside coverage, so those predictions stay pending **forever**
+rather than being marked against nothing. That refusal, plus windows that have
+not matured, is why the journal reads 546 issued and 0 graded.
+
+## Why this matters
+
+This is the only chapter in the document whose numbers this project did not
+produce. That is the point of it — an answer key you wrote yourself is not an
+answer key.
+
+Everything in Part III rests on these labels being independent, so what they
+are, where they stop, and when their thresholds were fixed all belong on the
+page rather than in a footnote.
+
+---
+
+<a href="#ch-23">▲ top of §23</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-23">↑ back to §23 in the diagram</a>
 
 </details>
