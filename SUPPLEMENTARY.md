@@ -159,7 +159,7 @@ Where the two disagree, the code is right.
 ═══════════════════════════ PART IV — SERVING ═══════════════════════════
 
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ §27  THE API                                                           │
+   │ <a id="map-27" href="#ch-27">§27  THE API</a>                                                           │
    │    31 endpoints — the only way anything leaves the database            │
    └───────────────────────────────────┬────────────────────────────────────┘
                                        ▼
@@ -3758,5 +3758,95 @@ afternoon is the entire distance between §19 producing rows nobody uses and
 ---
 
 <a href="#ch-26">▲ top of §26</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-26">↑ back to §26 in the diagram</a>
+
+</details>
+
+<details id="ch-27">
+<summary><b>§27 &nbsp; The API</b> &nbsp;—&nbsp; 31 endpoints, the only way anything leaves the database</summary>
+<br>
+
+**`app/api.py` · `app/api_auth.py`**
+
+## What it is
+
+One FastAPI service, **read-only**, over the local Postgres.
+
+Nothing here writes. Every write in this system is a scheduled job (§1), so
+the worst an API bug can do is show the wrong thing or cost too much — never
+corrupt a row.
+
+## The 31 endpoints are this document's table of contents
+
+| group | reads what | from |
+|---|---|---|
+| events | `/events` `/search` `/events/stats` `/geo/place` | §11 |
+| stories | `/stories/top` `/stories/developing` `/stories/{id}/detail` | §16 |
+| analysis | `/scores` `/composite/movers` `/disagreement/top` | §14 §15 §18 |
+| the model | `/brain/narrative/latest` `/brain/ask` | §21 |
+| evaluation | `/journal/scoreboard` `/analytics/baselines` | §22 §25 |
+| health | `/health` `/ingest-health` `/jobs/recent` `/audit/latest` | §10 |
+| live | `/stream` — server-sent events | §28 |
+
+Every chapter that produced a number has an endpoint here. That is the whole
+design: **the database is not reachable, this is.**
+
+## One token, no accounts
+
+Authentication is a shared secret in `.env`, checked in one dependency. The
+reasoning, from the code:
+
+> The system serves one operator. An account model would be building for a
+> user who does not exist, and every extra moving part in an auth path is
+> somewhere for a mistake to hide.
+
+**No token configured means open** — deliberately, because requiring one would
+break a working setup on upgrade and teach whoever hit it to switch the check
+off. Instead the startup log says which state it is in, every single time:
+
+```text
+WARNING  API is UNAUTHENTICATED: every endpoint, including /brain/ask, answers
+```
+
+## The finding that forced it
+
+The API was listening on every interface and answering anything that could
+reach the port:
+
+```text
+com.docke *:8000     API, every interface
+com.docke *:5432     Postgres, every interface
+```
+
+One of those endpoints, `/brain/ask`, **spends a local model generation per
+call** (§21). On a shared network that is an open compute endpoint — anyone
+reachable can run the machine's model until it stops answering.
+
+So that one path also carries a rate limit, and only that one:
+
+```python
+def limit_inference(request: Request) -> None:
+    """Guard the one endpoint that costs a generation."""
+    if not ask_limiter.check(client_key(request)):
+        raise HTTPException(status_code=429, detail="too many inference requests")
+```
+
+<table><tr><td>
+
+**Basis** **Measured** — the open ports were observed, not assumed.<br>
+**Strength** The expensive endpoint is guarded, and the unguarded state announces itself at every startup rather than sitting silent.<br>
+**Weakness** This is an honest posture, not a strong one: with no token set, every read endpoint still answers anyone on the network.<br>
+**Instead** Bind to localhost by default and require the token for anything else, at the cost of breaking the setup people already run.
+
+</td></tr></table>
+
+## Why this matters
+
+Everything in Parts I to III happens where nobody can see it. This chapter is
+the seam where it becomes visible — and the only seam, which is what makes it
+worth one page of attention.
+
+---
+
+<a href="#ch-27">▲ top of §27</a> <sub>(click the heading there to fold it)</sub> &nbsp;·&nbsp; <a href="#map-27">↑ back to §27 in the diagram</a>
 
 </details>
