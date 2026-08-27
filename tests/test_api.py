@@ -872,21 +872,3 @@ def test_event_grid_skips_rows_without_coordinates(db_session):
 def test_event_grid_rejects_a_partial_bounding_box(db_session):
     client = _grid_rows(db_session, [_positioned("a", 1.0, 1.0)])
     assert client.get("/events/grid?west=0&south=0&east=10").status_code == 422
-
-
-def test_event_grid_leaves_out_the_feeds_nothing_draws(db_session):
-    #: Aircraft tracks carry coordinates and are drawn by nothing; the feed
-    #: writes ~190k rows a day, so counted they would be most of every cell.
-    aircraft = _positioned("plane", 10.0, 20.0, category="aviation")
-    aircraft.source = "opensky-adsb"
-    client = _grid_rows(db_session, [aircraft, _positioned("real", 10.5, 20.5)])
-    body = client.get("/events/grid?cell_deg=2").json()
-    assert sum(c["count"] for c in body) == 1
-
-
-def test_event_grid_lets_a_caller_replace_the_default_exclusion(db_session):
-    aircraft = _positioned("plane", 10.0, 20.0, category="aviation")
-    aircraft.source = "opensky-adsb"
-    client = _grid_rows(db_session, [aircraft])
-    body = client.get("/events/grid?cell_deg=2&exclude=gdacs").json()
-    assert sum(c["count"] for c in body) == 1

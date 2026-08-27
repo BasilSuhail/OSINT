@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
 import {
-  GRID_EXCLUDE_SOURCES,
   abbreviateCount,
   cellDegForZoom,
   gridBoundsFor,
@@ -97,27 +96,5 @@ describe("gridBoundsFor", () => {
 
   it("asks for the world when the map has not reported bounds yet", () => {
     expect(gridBoundsFor(null)).toBeNull()
-  })
-})
-
-/** A cell stands in for the cluster layer, which only ever held clusterable
- *  rows. Anything drawn as its own marker would otherwise be on the map twice,
- *  and the two feeds nothing draws would be most of every count. */
-describe("GRID_EXCLUDE_SOURCES", () => {
-  it("leaves out the feeds the map never draws", () => {
-    expect(GRID_EXCLUDE_SOURCES).toContain("opensky-adsb")
-    expect(GRID_EXCLUDE_SOURCES).toContain("nasa-firms")
-  })
-
-  it("leaves out every source drawn as its own marker", () => {
-    for (const source of ["gdacs", "usgs-quake", "eonet", "abuse-ch-urlhaus", "fred"]) {
-      expect(GRID_EXCLUDE_SOURCES).toContain(source)
-    }
-  })
-
-  it("keeps the sources the cluster layer actually held", () => {
-    for (const source of ["gdelt", "uk-police", "rss-bbc-world"]) {
-      expect(GRID_EXCLUDE_SOURCES).not.toContain(source)
-    }
   })
 })

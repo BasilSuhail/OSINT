@@ -507,19 +507,8 @@ def event_grid(
         stmt = stmt.where(EventRow.occurred_at <= until)
     if sources:
         stmt = stmt.where(EventRow.source.in_([s.strip() for s in sources.split(",")]))
-    #: Aircraft tracks and thermal pixels carry coordinates and are never drawn:
-    #: `sourceKeyForEvent` returns null for FIRMS and the aviation feed has no
-    #: toggle at all. Counted, they would be most of every cell — the aviation
-    #: feed alone writes ~190k rows a day. Defaulted rather than required, so a
-    #: caller that forgets cannot silently be told the map is mostly aeroplanes.
-    #: `exclude` replaces the default when supplied, as it does for `/events/stats`.
-    skipped = (
-        [s.strip() for s in exclude.split(",") if s.strip()]
-        if exclude is not None
-        else list(NON_RENDERABLE_SOURCES)
-    )
-    if skipped:
-        stmt = stmt.where(EventRow.source.notin_(skipped))
+    if exclude:
+        stmt = stmt.where(EventRow.source.notin_([s.strip() for s in exclude.split(",")]))
     if west is not None and south is not None and east is not None and north is not None:
         stmt = stmt.where(EventRow.lat.between(south, north))
         # A viewport dragged across the antimeridian has west greater than east
