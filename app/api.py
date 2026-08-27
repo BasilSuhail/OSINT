@@ -443,6 +443,114 @@ def geo_place(
     raise HTTPException(status_code=422, detail="give both lat and lon, or an iso code")
 
 
+#: Default grid resolution, in degrees. Two degrees is roughly 220km at the
+#: equator — fine enough that a country the size of Nepal is several cells,
+#: coarse enough that a world view is a few thousand cells rather than tens of
+#: thousands of rows. The map picks a resolution from its zoom; this is only
+#: the answer when it does not ask.
+GRID_DEFAULT_CELL_DEG = 2.0
+
+
+@app.get("/events/grid")
+def event_grid(
+    session: Session = Depends(get_session),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    west: float | None = Query(default=None, ge=-180, le=180),
+    south: float | None = Query(default=None, ge=-90, le=90),
+    east: float | None = Query(default=None, ge=-180, le=180),
+    north: float | None = Query(default=None, ge=-90, le=90),
+    cell_deg: float = Query(default=GRID_DEFAULT_CELL_DEG, gt=0.05, le=45),
+    sources: str | None = Query(default=None),
+    exclude: str | None = Query(default=None),
+    readable_only: bool = Query(default=True),
+    limit: int = Query(default=5000, ge=1, le=20000),
+) -> list[dict]:
+    """Positioned events counted per grid cell, for a map that cannot draw rows.
+
+    The world view asks for rows and gets the newest page of them. Measured on
+    a board holding a year of history, 43,748 events occurred in the three-day
+    window the map draws and at least 10,000 carry coordinates, against a page
+    of 5,000 — so the world view showed about eight hours of a three-day window
+    and said nothing about the rest. Above the zoom where the viewport query
+    takes over, the map pages its bounding box to exhaustion and is unaffected;
+    this endpoint exists for the zooms below it.
+
+    A cell is worth returning because a world view already draws clusters. The
+    client clustered rows it had to hold in order to count them, which is the
+    whole reason it had to hold them. Counting here removes the reason.
+
+    Cells are keyed by their south-west corner so a cell's identity does not
+    move with its resolution. Add half of `cell_deg` for the centre.
+
+    Relations are collapsed first, so a count is articles rather than the rows
+    a parser produced — the same rule `/events` applies, for the same reason.
+
+    Only the row's own coordinate is read. `/events` also recovers a story
+    through the extra points in `payload.place_locations`, which is right when
+    the question is "did I miss a marker" and too expensive per cell when the
+    question is "how many".
+    """
+    bbox = (west, south, east, north)
+    if any(value is not None for value in bbox) and not all(value is not None for value in bbox):
+        raise HTTPException(
+            status_code=422,
+            detail="west, south, east, and north are required together",
+        )
+    if south is not None and north is not None and south > north:
+        raise HTTPException(status_code=422, detail="south must not exceed north")
+
+    stmt = select(EventRow).where(EventRow.lat.is_not(None), EventRow.lon.is_not(None))
+    if since is not None:
+        stmt = stmt.where(EventRow.occurred_at >= since)
+    if until is not None:
+        stmt = stmt.where(EventRow.occurred_at <= until)
+    if sources:
+        stmt = stmt.where(EventRow.source.in_([s.strip() for s in sources.split(",")]))
+    if exclude:
+        stmt = stmt.where(EventRow.source.notin_([s.strip() for s in exclude.split(",")]))
+    if west is not None and south is not None and east is not None and north is not None:
+        stmt = stmt.where(EventRow.lat.between(south, north))
+        # A viewport dragged across the antimeridian has west greater than east
+        # and covers the two ends of the range rather than the gap between them.
+        stmt = stmt.where(
+            EventRow.lon.between(west, east)
+            if west <= east
+            else sa.or_(EventRow.lon >= west, EventRow.lon <= east)
+        )
+    if readable_only:
+        stmt = stmt.where(has_readable_claim())
+
+    entity, _relation_count, survivor = collapse_article_relations(stmt)
+    cell_lat = (func.floor(entity.lat / cell_deg) * cell_deg).label("lat")
+    cell_lon = (func.floor(entity.lon / cell_deg) * cell_deg).label("lon")
+    grid = (
+        select(
+            cell_lat,
+            cell_lon,
+            entity.category.label("category"),
+            func.count().label("count"),
+            func.max(entity.severity).label("max_severity"),
+        )
+        .where(survivor)
+        .group_by(cell_lat, cell_lon, entity.category)
+        # Densest first, so a client that caps the response keeps what matters.
+        .order_by(func.count().desc())
+        .limit(limit)
+    )
+    return [
+        {
+            "lat": float(row.lat),
+            "lon": float(row.lon),
+            "cell_deg": cell_deg,
+            "category": row.category,
+            "count": int(row.count),
+            "max_severity": float(row.max_severity) if row.max_severity is not None else None,
+        }
+        for row in session.execute(grid).all()
+    ]
+
+
 @app.get("/events")
 def events(
     session: Session = Depends(get_session),
