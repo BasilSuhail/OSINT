@@ -15,7 +15,7 @@ import { useConfigured, useEvents } from "@/app/providers"
 import { fetchAllEventPages, fetchAllUpdatedEventPages, fetchEventGrid } from "@/lib/apiClient"
 import useSWR from "swr"
 import { mergeEventRows } from "@/lib/eventMerge"
-import { cellDegForZoom, gridBoundsFor, gridCellsToFeatures } from "@/lib/mapGrid"
+import { cellDegForZoom, gridCellsToFeatures } from "@/lib/mapGrid"
 import { circlePolygon } from "@/lib/footprints"
 import { PRECISION_OPACITY, PRECISION_RADIUS_PX } from "@/lib/precision"
 import {
@@ -353,18 +353,12 @@ export function MapPane({
         since: new Date(windowEnd - windowLengthMs).toISOString(),
         until: new Date(windowEnd).toISOString(),
         cellDeg: gridCellDeg,
-        ...(gridBoundsFor(viewport) ?? {}),
+        ...(viewport ?? {}),
       })
     },
     { revalidateOnFocus: false, keepPreviousData: true, refreshInterval: 60_000 },
   )
   const gridData = useMemo(() => gridCellsToFeatures(gridCells ?? []), [gridCells])
-  //: The row layers only stand down once the cells are actually there. A grid
-  //: that is empty, still in flight or failing must never be the reason the map
-  //: is blank — worst case the reader sees the truncated clusters they saw
-  //: before, which is the thing this replaced, not the loss of it.
-  const gridDrawn = gridActive && gridData.features.length > 0
-  const rowLayerMinZoom = gridDrawn ? COMPLETE_VIEWPORT_ZOOM : 0
   const viewportScopeKey =
     viewportEnabled && viewport
       ? JSON.stringify([
@@ -1602,7 +1596,7 @@ export function MapPane({
             //: Below this the client holds a fraction of the window, so its
             //: cluster counts describe the page it fetched rather than the
             //: world. The density layer answers for those zooms.
-            minzoom={rowLayerMinZoom}
+            minzoom={COMPLETE_VIEWPORT_ZOOM}
             filter={["has", "point_count"]}
             paint={{
               "circle-color": "rgba(96, 165, 250, 0.35)",
@@ -1632,7 +1626,7 @@ export function MapPane({
           <Layer
             id={EVENT_CLUSTER_COUNT_LAYER_ID}
             type="symbol"
-            minzoom={rowLayerMinZoom}
+            minzoom={COMPLETE_VIEWPORT_ZOOM}
             filter={["has", "point_count"]}
             layout={{
               "text-field": ["get", "point_count_abbreviated"],
@@ -1649,7 +1643,7 @@ export function MapPane({
           <Layer
             id={EVENT_POINT_LAYER_ID}
             type="circle"
-            minzoom={rowLayerMinZoom}
+            minzoom={COMPLETE_VIEWPORT_ZOOM}
             filter={["!", ["has", "point_count"]]}
             paint={{
               "circle-color": ["get", "color"],

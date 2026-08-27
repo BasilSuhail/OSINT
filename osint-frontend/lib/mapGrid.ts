@@ -107,32 +107,12 @@ export function gridCellsToFeatures(
 /**
  * How coarse a cell should be at this zoom.
  *
- * Halved per zoom so a cell stays roughly constant on screen, clamped at both
- * ends. The floor is what keeps a whole-world request an answer of a couple of
- * thousand cells: 2 degrees was measured at 1,529 for a three-day window, and
- * a finer world grid is a larger answer than anyone can read at that size.
+ * Halved per zoom level so a cell stays roughly the same size on screen as the
+ * map is zoomed, and clamped: the endpoint refuses anything outside its own
+ * bounds, and a whole-world request at a fine resolution is a large answer to
+ * a question nobody can read at that size.
  */
 export function cellDegForZoom(zoom: number): number {
   const raw = 8 / 2 ** Math.max(0, Math.floor(zoom))
-  return Math.min(8, Math.max(2, raw))
-}
-
-/**
- * The bounding box to ask for, or nothing at all.
- *
- * Bounds are normalised to ±180, so a map showing the whole world comes back
- * with west greater than east — the same shape a genuine antimeridian pan has.
- * Read as a crossing it selects the two Pacific edges and excludes everything
- * between them, which at world zoom is everything: the map kept its hazards and
- * lost every news cluster except a handful against the left and right borders.
- *
- * The grid is only asked below the zoom where a viewport query takes over, and
- * a wrapped box there means the world is on screen. So it asks for the world,
- * which is cheap at this resolution and cannot be read as a strip.
- */
-export function gridBoundsFor(
-  viewport: { west: number; south: number; east: number; north: number } | null,
-): { west: number; south: number; east: number; north: number } | null {
-  if (!viewport) return null
-  return viewport.west > viewport.east ? null : viewport
+  return Math.min(8, Math.max(0.25, raw))
 }
