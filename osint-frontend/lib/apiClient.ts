@@ -2,7 +2,6 @@ import type { PlaceTarget } from "@/stores/placeStore"
 import { placeUrl } from "./placeUrl"
 import type { PresenceAnswer } from "./presence"
 import type { VesselAnswer } from "./vessels"
-import type { GridCell } from "./mapGrid"
 import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "./types"
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -670,36 +669,6 @@ export async function fetchPlace(
   const res = await apiFetch(url, { signal: options.signal })
   if (!res.ok) throw new Error(`place failed: ${res.status}`)
   return (await res.json()) as PlaceAnswer
-}
-
-export interface EventGridQuery {
-  since?: string
-  until?: string
-  west?: number
-  south?: number
-  east?: number
-  north?: number
-  cellDeg?: number
-  exclude?: string[]
-}
-
-/** Density per grid cell, for the zooms where the map cannot draw rows (#1030). */
-export async function fetchEventGrid(
-  query: EventGridQuery,
-  options: { signal?: AbortSignal } = {},
-): Promise<GridCell[]> {
-  const qs = new URLSearchParams()
-  if (query.since) qs.set("since", query.since)
-  if (query.until) qs.set("until", query.until)
-  if (query.west != null) qs.set("west", String(query.west))
-  if (query.south != null) qs.set("south", String(query.south))
-  if (query.east != null) qs.set("east", String(query.east))
-  if (query.north != null) qs.set("north", String(query.north))
-  if (query.cellDeg != null) qs.set("cell_deg", String(query.cellDeg))
-  if (query.exclude?.length) qs.set("exclude", query.exclude.join(","))
-  const res = await apiFetch(`${API_BASE}/events/grid?${qs.toString()}`, { signal: options.signal })
-  if (!res.ok) throw new Error(`GET /events/grid ${res.status}`)
-  return (await res.json()) as GridCell[]
 }
 
 /** Live aircraft (#873). Never stored, never citable — see `app/presence/`. */
