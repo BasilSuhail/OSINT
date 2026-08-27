@@ -1486,18 +1486,54 @@ So there is one table, and all 67 conform to it.
 | `lat`, `lon` | where | nullable |
 | `payload` | the original record, untouched | JSON. The receipt: everything the source sent, so nothing is lost in flattening and a row can be re-read later. Also where §12's enrichment is stored — the 22 protected keys of §9 |
 
-## The same shape, three different worlds
+## The same shape, four different worlds
+
+Four real rows, taken from the live table and trimmed to the columns that
+carry the argument:
 
 ```
-earthquake   source="usgs-quake"  category="hazard"  severity=0.62
-                                  payload={"magnitude": 6.1, "depth_km": 10}
+fire       source="nasa-firms"  category="hazard"        severity=0.069  country=AO
+                                lat=-17.35  lon=21.95
+                                payload={"frp": "1.5", "acq_date": "2026-08-19", "daynight": "N"}
 
-market move  source="yfinance"    category="market"  severity=0.30
-                                  payload={"ticker": "^VIX", "close": 24.1}
+conflict   source="gdelt"       category="geopolitical"  severity=0.75   country=US
+                                lat=45.73   lon=-93.92
+                                payload={"avg_tone": -3.61, "geo_name": "Minnesota, United States"}
 
-headline     source="rss-bbc"     category="news"    severity=0.45
-                                  payload={"title": "…", "url": "…"}
+headline   source="rss-bbc-world" category="news"        severity=0.6    country=NP
+                                lat=None    lon=None
+                                payload={"title": "What we know about deadly Nepal-Tibet floods"}
+
+rate       source="fred"        category="market"        severity=0.089  country=US
+                                lat=None    lon=None
+                                payload={"series_id": "DGS10", "value": 4.71, "units": "Percent"}
 ```
+
+A satellite fire pixel, a coded conflict event, a headline and a bond yield —
+same columns, same table. Two carry coordinates and two do not, and the two
+that do not are honest about it rather than being placed at a country's
+centre.
+
+Note the severities: 0.069 for one fire pixel, 0.75 for a conflict event, 0.6
+for a flood headline. §11 warned that severity is **not comparable across
+sources**, and these four rows are what that warning looks like.
+
+### What the table is actually made of
+
+Counted on the live database, one 30-day window:
+
+| source | rows | share |
+|---|---|---|
+| `nasa-firms` | 2,134,341 | **89.5%** |
+| `gdelt` | 139,543 | 5.9% |
+| `opensky-adsb` | 29,534 | 1.2% |
+| `abuse-ch-urlhaus` | 16,794 | 0.7% |
+| all 53 news feeds together | ~59,700 | 2.5% |
+| `yfinance` · `fred` · `polymarket` | 1,236 | 0.05% |
+
+**Nine rows in ten are fire pixels.** Every count of "events" anywhere in this
+document is dominated by one satellite feed, and news — the thing most of the
+later chapters analyse — is one row in forty.
 
 Nothing downstream asks what kind of thing a row is. It asks *how many rows,
 this country, this month, severity above this* — and the question is written
