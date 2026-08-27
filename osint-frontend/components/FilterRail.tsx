@@ -31,20 +31,16 @@ import {
   Triangle,
   Wind,
 } from "lucide-react"
-import { useEvents } from "@/app/providers"
-import { mergeEventRows } from "@/lib/eventMerge"
 import { useEventsInWindow } from "@/lib/queries"
 import {
   HAZARD_SOURCE_KEYS,
   HAZARD_TYPE_FILTERS,
   SOURCE_FILTERS,
-  sourceKeyForEvent,
   type EventRow,
   type HazardTypeKey,
   type SourceFilterDef,
   type SourceKey,
 } from "@/lib/types"
-import { hazardKind } from "@/lib/hazardSymbols"
 import {
   FULL_SEVERITY,
   activeExclusions,
@@ -293,11 +289,6 @@ export function FilterRail({
   //: rail to leave (#944).
   const deckOpen = usePanelLayoutStore((s) => s.left)
 
-  const baseEvents = useEvents()
-  const allEvents = useMemo(
-    () => mergeEventRows(baseEvents, supplementalEvents),
-    [baseEvents, supplementalEvents],
-  )
   const sources = useStore((s) => s.sources)
   const severity = useStore((s) => s.severity)
   const toggleSource = useStore((s) => s.toggleSource)
@@ -333,7 +324,12 @@ export function FilterRail({
 
   /** Windowed count for the panel header — the same pipeline the map markers
    *  use, so the header and the dots always agree. */
-  const { total: visibleTotal } = useEventsInWindow(useStore, supplementalEvents)
+  const {
+    total: visibleTotal,
+    eligibleBySource: sourceCounts,
+    eligibleByHazardType: typeCounts,
+    eligibleTotal: paneTotal,
+  } = useEventsInWindow(useStore, supplementalEvents)
 
   /** Source toggles, minus the hazard sources (USGS / GDACS / EONET) — those
    *  are filtered by disaster type instead, below. */
@@ -352,36 +348,10 @@ export function FilterRail({
     [paneFilters],
   )
 
-  /** Events that could appear on the map: anything with a known source key.
-   *  sourceKeyForEvent returns null for feeds with no renderer (NASA FIRMS,
-   *  aviation), so they never reach the counts. */
-  const paneEvents = useMemo(() => {
-    return allEvents.filter((ev) => sourceKeyForEvent(ev) !== null)
-  }, [allEvents])
-
-  /** Live count of pane-scoped events per source — drives the per-row counts. */
-  const sourceCounts = useMemo(() => {
-    const m = new Map<SourceKey, number>()
-    for (const ev of paneEvents) {
-      const sk = sourceKeyForEvent(ev)
-      if (sk) m.set(sk, (m.get(sk) ?? 0) + 1)
-    }
-    return m
-  }, [paneEvents])
-
-  /** Live count of hazard events per disaster type on this pane. */
-  const typeCounts = useMemo(() => {
-    const m = new Map<HazardTypeKey, number>()
-    for (const ev of paneEvents) {
-      if (ev.category !== "hazard") continue
-      const k = hazardKind(ev)
-      if (k === "other") continue
-      m.set(k as HazardTypeKey, (m.get(k as HazardTypeKey) ?? 0) + 1)
-    }
-    return m
-  }, [paneEvents])
-
-  const paneTotal = paneEvents.length
+  //: The counts above come from the window rather than from the buffer. The
+  //: buffer holds rows no position of the scrubber can draw — 106 earthquakes
+  //: counted against the 44 that occurred in the window — and a number beside a
+  //: switch has to describe what the switch would show.
 
   //: Said in the panel rather than inferred from an empty map (#902).
   const exclusions = useMemo(
