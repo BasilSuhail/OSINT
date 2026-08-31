@@ -28,9 +28,9 @@ console that looks broken rather than one that says why:
   nothing.
 - `API_CORS_ORIGINS` — the origin allow-list. Wrong, and the guest's browser
   makes the request, then discards the answer at the preflight.
-- `NEXT_PUBLIC_API_URL` — compiled into the bundle the guest downloads, so it
-  must name an address the *guest* can resolve. The default
-  `http://localhost:8000`, in a guest's browser, is the guest's own machine.
+- `NEXT_PUBLIC_API_URL` — the browser uses the same-origin `/api` path, which
+  Next proxies to the local API. An absolute HTTP URL would be blocked when the
+  frontend is served over HTTPS.
 - `LAN_SHARE_HOST` → `allowedDevOrigins` — `next dev` refuses its own
   `/_next/*` dev resources for any host that is not localhost. Missing, and the
   guest gets a page shell, a websocket retrying forever, and a map that never
@@ -70,7 +70,6 @@ ALL_INTERFACES: str = "0.0.0.0"
 #: sharing never silently narrows what already worked.
 DEFAULT_CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 
-DEFAULT_API_PORT: int = 8000
 DEFAULT_FRONTEND_PORT: int = 3000
 
 
@@ -111,8 +110,8 @@ def _validated(address: str) -> str:
         raise ShareAddressError(f"{candidate!r} looks like a URL; give a bare host")
     if ":" in candidate:
         # IPv6 is refused rather than half-supported: the compose port mapping
-        # and the bundle URL both need bracket syntax, and neither has been
-        # tried that way. A trailing `:port` lands here too, and the port is
+        # and guest URL both need bracket syntax, and neither has been tried
+        # that way. A trailing `:port` lands here too; the frontend port is
         # supplied separately.
         raise ShareAddressError(f"{candidate!r} must carry no port and no colon")
 
@@ -139,7 +138,6 @@ def _validated(address: str) -> str:
 def share_env(
     address: str,
     *,
-    api_port: int = DEFAULT_API_PORT,
     frontend_port: int = DEFAULT_FRONTEND_PORT,
     cors_origins: str = "",
     also_reachable_at: tuple[str, ...] = (),
@@ -172,7 +170,10 @@ def share_env(
     return {
         "API_BIND": ALL_INTERFACES,
         "FRONTEND_BIND": ALL_INTERFACES,
-        "NEXT_PUBLIC_API_URL": f"http://{ip}:{api_port}",
+        # Browser calls stay on the frontend origin. Next proxies this path to
+        # the local API, so a guest never needs to resolve a second origin and
+        # an HTTPS frontend never attempts blocked HTTP mixed content (#1034).
+        "NEXT_PUBLIC_API_URL": "/api",
         "API_CORS_ORIGINS": ",".join(origins),
         # `next dev` refuses its own /_next/* dev resources for any host that is
         # not localhost, which reached the guest as a page shell with a dead
@@ -239,11 +240,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"usage: python -m app.devx.lan_share [locked|share] (got {mode!r})", file=sys.stderr)
         return 2
 
-    #: The same setting `make env` derives NEXT_PUBLIC_API_URL from (#964).
-    #: Share mode used to ignore it and overwrite that value with the detected
-    #: address, so pinning a host and then sharing silently discarded the
-    #: choice — two commands in one project reading one setting differently
-    #: (#974). Detection is now the fallback, not the rule.
+    #: A pinned host is the address printed for a guest and allowed through the
+    #: dev server. Detection is the fallback, not the rule (#974).
     pinned = _env("OSINT_PUBLIC_HOST").strip()
     detected = ""
     try:
@@ -255,7 +253,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         env = share_env(
             pinned or detected,
-            api_port=int(_env_port("API_PORT", DEFAULT_API_PORT)),
             frontend_port=int(_env_port("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)),
             cors_origins=_env("API_CORS_ORIGINS"),
             also_reachable_at=(detected,) if pinned else (),

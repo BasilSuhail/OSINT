@@ -4,7 +4,11 @@ import type { PresenceAnswer } from "./presence"
 import type { VesselAnswer } from "./vessels"
 import type { EventRow, IngestHealthRow, ScoreRow, SourceCoverageRow } from "./types"
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+// Same-origin by default. Next proxies this path during local development;
+// production can route it straight to the API at the TLS terminator. Keeping
+// the browser on one origin prevents an HTTPS console from making blocked
+// mixed-content requests to an HTTP API (#1034).
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api"
 
 /** Shared secret the API requires when one is configured (#824). Empty in a
  *  development stack, where the API is open and says so at startup. */

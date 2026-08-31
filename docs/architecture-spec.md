@@ -147,7 +147,7 @@ Not yet exercised; this is the plan, to be promoted to an `OPERATIONS.md` once t
 4. Postgres data dir bind-mounted to `/mnt/raid1/postgres`. Redis tmpfs with AOF copy to `/mnt/raid1/redis` every hour.
 5. Restic init against `/mnt/raid1/backups`. Cron the nightly `restic backup /mnt/raid1/postgres /mnt/raid1/parquet`.
 6. Tailscale or WireGuard tunnel so the dashboard can hit the FastAPI read API without exposing it to the public Internet.
-7. Frontend deploy: GitHub Actions builds the Next.js static export and pushes to Vercel. Vercel env points to the API tunnel.
+7. Frontend deploy: GitHub Actions builds the Next.js app and pushes to Vercel. `API_PROXY_TARGET` points the server-side `/api` rewrite to the HTTPS API tunnel, while browser requests remain same-origin.
 
 Operational targets, kept honest:
 

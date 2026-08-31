@@ -1071,7 +1071,7 @@ Leave these defaults unless there is a clear reason to change them:
 
 ```dotenv
 OSINT_DATA_DIR=./data
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=/api
 API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 RETENTION_GDELT_DAYS=30
 RETENTION_NEWS_DAYS=30
@@ -1188,11 +1188,11 @@ together from a single detected address in
 | --- | --- |
 | `API_BIND` | The published bind address. Wrong, and the guest reaches nothing. |
 | `API_CORS_ORIGINS` | The origin allow-list. Wrong, and the guest's browser makes the request and then discards the answer at the preflight. |
-| `NEXT_PUBLIC_API_URL` | Compiled into the bundle the guest downloads, so it must name an address the *guest* can resolve. The default `http://localhost:8000`, in a guest's browser, means the guest's own machine. |
+| `NEXT_PUBLIC_API_URL` | The same-origin `/api` route. Next proxies it to the local API, so HTTP LAN access and an HTTPS frontend use the same browser URL. |
 | `LAN_SHARE_HOST` → `allowedDevOrigins` | `next dev` refuses its own `/_next/*` dev resources to any host that is not localhost. Missing, and the guest gets a page shell, a websocket retrying forever, and a map that never initialises. |
 
 The fourth was missed the first time this was built, which is the argument for
-deriving all four from one address rather than configuring them by hand.
+deriving all four together rather than configuring them by hand.
 
 Whatever `.env` already configures stays configured — share mode adds the
 guest's address, it does not replace your settings.
@@ -3621,7 +3621,7 @@ docker compose logs --tail=100 api
 
 If health works in the terminal but not the browser, check:
 
-- `NEXT_PUBLIC_API_URL`;
+- the `/api` proxy target (`API_PORT` locally, or `API_PROXY_TARGET` when Next is hosted);
 - `API_CORS_ORIGINS` contains the exact browser origin;
 - API and frontend tokens match when auth is enabled;
 - no browser extension or proxy blocks local requests.

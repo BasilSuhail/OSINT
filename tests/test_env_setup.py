@@ -380,7 +380,7 @@ MACHINE = Machine(hosts=("localhost", "box.local", "192.0.2.7"), api_port=8000, 
 ORIGIN_EXAMPLE = """POSTGRES_PASSWORD=
 API_AUTH_TOKEN=
 NEXT_PUBLIC_API_TOKEN=
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=/api
 API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 OSINT_PUBLIC_HOST=
 """
@@ -449,18 +449,22 @@ class TestMirroring:
 
 
 class TestDerivedAddresses:
-    #: The browser on the machine that ran `make up` is the case that must never
-    #: break, and `localhost` is the only name guaranteed to resolve for it.
-    def test_the_api_url_defaults_to_loopback(self):
+    #: One relative route works from loopback, a LAN name, and an HTTPS edge.
+    def test_the_api_url_defaults_to_same_origin(self):
         written = originate(ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret)
-        assert (
-            written.get("NEXT_PUBLIC_API_URL", "http://localhost:8000") == "http://localhost:8000"
-        )
+        assert written.get("NEXT_PUBLIC_API_URL", "/api") == "/api"
 
-    def test_a_pinned_host_wins_over_detection(self):
+    def test_a_pinned_host_does_not_change_the_same_origin_api_route(self):
         env = ORIGIN_EXAMPLE.replace("OSINT_PUBLIC_HOST=", "OSINT_PUBLIC_HOST=box.local")
         written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
-        assert written["NEXT_PUBLIC_API_URL"] == "http://box.local:8000"
+        assert written.get("NEXT_PUBLIC_API_URL", "/api") == "/api"
+
+    def test_migrates_the_former_generated_api_url(self):
+        env = ORIGIN_EXAMPLE.replace(
+            "NEXT_PUBLIC_API_URL=/api", "NEXT_PUBLIC_API_URL=http://localhost:8000"
+        )
+        written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
+        assert written["NEXT_PUBLIC_API_URL"] == "/api"
 
     #: Sharing must never silently narrow what already worked, so the example's
     #: own origins stay in the list rather than being replaced by detection.
@@ -504,7 +508,7 @@ class TestDerivedAddresses:
 class TestStaleAddresses:
     def test_an_address_this_machine_still_has_is_not_stale(self):
         env = ORIGIN_EXAMPLE.replace(
-            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=/api",
             "NEXT_PUBLIC_API_URL=http://box.local:8000",
         )
         assert stale_addresses(env, MACHINE) == []
@@ -513,7 +517,7 @@ class TestStaleAddresses:
     #: saying the address compiled into it belongs to a different network.
     def test_an_address_this_machine_no_longer_has_is_stale(self):
         env = ORIGIN_EXAMPLE.replace(
-            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=/api",
             "NEXT_PUBLIC_API_URL=http://198.51.100.4:8000",
         )
         assert stale_addresses(env, MACHINE) == ["NEXT_PUBLIC_API_URL"]
@@ -521,7 +525,7 @@ class TestStaleAddresses:
     #: A pinned host is a decision. Detection does not get to call it wrong.
     def test_a_pinned_host_is_never_stale(self):
         env = ORIGIN_EXAMPLE.replace(
-            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=/api",
             "NEXT_PUBLIC_API_URL=http://198.51.100.4:8000",
         ).replace("OSINT_PUBLIC_HOST=", "OSINT_PUBLIC_HOST=198.51.100.4")
         assert stale_addresses(env, MACHINE) == []
@@ -575,13 +579,13 @@ class TestTheCommandOriginates:
         after = parse_env((tmp_path / ".env").read_text())
         assert after["API_AUTH_TOKEN"] == before["API_AUTH_TOKEN"]
         assert after["POSTGRES_PASSWORD"] == before["POSTGRES_PASSWORD"]
-        assert after["NEXT_PUBLIC_API_URL"] == "http://localhost:8000"
+        assert after["NEXT_PUBLIC_API_URL"] == "/api"
 
 
 HOST_ID_EXAMPLE = """POSTGRES_PASSWORD=
 API_AUTH_TOKEN=
 NEXT_PUBLIC_API_TOKEN=
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=/api
 API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 OSINT_PUBLIC_HOST=
 DOCKER_UID=

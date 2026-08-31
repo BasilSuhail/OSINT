@@ -5,15 +5,14 @@ left the two ports a browser uses published on every interface. A laptop that
 runs the stack on an untrusted network was serving the console and
 `POST /brain/ask` to it.
 
-Three settings have to agree before another device can load the dashboard, and
+Four settings have to agree before another device can load the dashboard, and
 disagreeing silently is what makes this worth testing rather than documenting:
 
 - the API's published bind address, or the guest cannot reach the API at all;
 - `API_CORS_ORIGINS`, or the guest's browser makes the request and then throws
   the answer away at the preflight;
-- `NEXT_PUBLIC_API_URL`, which is compiled into the bundle the guest downloads
-  and must therefore name an address resolvable from the *guest*. The default
-  `http://localhost:8000` resolves, on a guest device, to the guest.
+- `NEXT_PUBLIC_API_URL`, which must stay on `/api` so the frontend proxy keeps
+  browser requests same-origin under both HTTP and HTTPS;
 
 The shared secret is deliberately not part of share mode: the guest loads the
 frontend, so `NEXT_PUBLIC_API_TOKEN` is in the bundle they download.
@@ -68,10 +67,9 @@ def test_share_publishes_on_every_interface() -> None:
     assert env["FRONTEND_BIND"] == ALL_INTERFACES
 
 
-def test_share_points_the_bundle_at_an_address_a_guest_can_resolve() -> None:
+def test_share_keeps_browser_api_calls_same_origin() -> None:
     env = share_env("203.0.113.42")
-    assert env["NEXT_PUBLIC_API_URL"] == "http://203.0.113.42:8000"
-    assert "localhost" not in env["NEXT_PUBLIC_API_URL"]
+    assert env["NEXT_PUBLIC_API_URL"] == "/api"
 
 
 def test_share_adds_the_guest_origin_without_dropping_the_configured_ones() -> None:
@@ -96,9 +94,9 @@ def test_share_falls_back_to_the_localhost_origins_when_none_configured() -> Non
     assert "http://203.0.113.42:3000" in origins
 
 
-def test_share_honours_non_default_ports() -> None:
-    env = share_env("203.0.113.42", api_port=9000, frontend_port=3001, cors_origins="")
-    assert env["NEXT_PUBLIC_API_URL"] == "http://203.0.113.42:9000"
+def test_share_honours_a_non_default_frontend_port() -> None:
+    env = share_env("203.0.113.42", frontend_port=3001, cors_origins="")
+    assert env["NEXT_PUBLIC_API_URL"] == "/api"
     assert "http://203.0.113.42:3001" in env["API_CORS_ORIGINS"].split(",")
 
 
@@ -159,14 +157,13 @@ def test_share_refuses_an_address_that_means_this_machine(address: str) -> None:
 class TestPinnedHost:
     """A pinned host, for reaching the console from off the local network (#974).
 
-    The detected address is private. It is not only the link — it is compiled
-    into the bundle the guest downloads, so a guest arriving by any other route
-    loads a console whose every API call goes somewhere they cannot reach.
+    The detected address is private. A pin controls the link and the host Next
+    allows; API requests remain relative to whichever origin the guest used.
     """
 
     def test_a_name_is_accepted_where_only_an_address_was(self) -> None:
-        env = share_env("console.invalid", frontend_port=3000, api_port=8000)
-        assert env["NEXT_PUBLIC_API_URL"] == "http://console.invalid:8000"
+        env = share_env("console.invalid", frontend_port=3000)
+        assert env["NEXT_PUBLIC_API_URL"] == "/api"
         assert env["LAN_SHARE_URL"] == "http://console.invalid:3000"
         assert env["LAN_SHARE_HOST"] == "console.invalid"
 
@@ -250,12 +247,10 @@ def test_dev_up_binds_the_frontend_explicitly() -> None:
 def test_dev_up_reuses_the_dashboard_only_when_the_whole_mode_matches() -> None:
     """Bind address alone is not the identity of a running dashboard.
 
-    Two shares on two networks have the same bind and different addresses in
-    the bundle. Comparing only the bind would reuse a dashboard pointing at an
-    address that no longer resolves, which shows up as an empty console rather
-    than as an error.
+    Every startup value captured by Next belongs here. `API_PORT` and
+    `API_PROXY_TARGET` choose the upstream behind `/api`; reusing a process
+    after either changes would keep proxying to the old service.
 
-    Every value the bundle is built from belongs here, for the same reason.
     `NEXT_PUBLIC_ASK_ENABLED` decides whether the console draws the ask control
     at all, so leaving it out means an operator who edits `.env` to turn
     questions back on is told the frontend is already running and keeps being
@@ -263,10 +258,11 @@ def test_dev_up_reuses_the_dashboard_only_when_the_whole_mode_matches() -> None:
     watching it do nothing.
     """
     script = DEV_UP.read_text()
-    assert (
-        'printf \'%s %s %s\' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}"'
-        ' "${NEXT_PUBLIC_ASK_ENABLED:-}"' in script
-    )
+    signature = script.split("frontend_mode_signature() {", 1)[1].split("\n}", 1)[0]
+    assert '"${NEXT_PUBLIC_API_URL:-}"' in signature
+    assert '"${NEXT_PUBLIC_ASK_ENABLED:-}"' in signature
+    assert '"${API_PORT:-}"' in signature
+    assert '"${API_PROXY_TARGET:-}"' in signature
     # The signature must be taken after the .env values are loaded, or the
     # comparison and the recorded value disagree and every run restarts.
     body = script.split("spawn_frontend() {", 1)[1]
@@ -282,6 +278,13 @@ def test_next_config_reads_the_shared_host() -> None:
     config = (ROOT / "osint-frontend" / "next.config.mjs").read_text()
     assert "allowedDevOrigins" in config
     assert "process.env.LAN_SHARE_HOST" in config
+
+
+def test_next_proxy_has_local_and_hosted_upstreams() -> None:
+    config = (ROOT / "osint-frontend" / "next.config.mjs").read_text()
+    assert "process.env.API_PROXY_TARGET" in config
+    assert "http://127.0.0.1:${apiPort}" in config
+    assert "destination: `${apiProxyTarget}/:path*`" in config
 
 
 def test_make_share_exists_and_does_not_persist_the_choice() -> None:
