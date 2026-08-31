@@ -373,11 +373,11 @@ ENV = {
 
 def _unit() -> str:
     return unit_text(
-        working_dir="/home/board/OSINT/osint-frontend",
+        working_dir="/srv/osint/osint-frontend",
         env_file="/etc/osint-console.env",
         bind="100.100.100.100",
         port=3000,
-        commit_file="/home/board/OSINT/osint-frontend/.next/BUILD_COMMIT",
+        commit_file="/srv/osint/osint-frontend/.next/BUILD_COMMIT",
     )
 
 
@@ -406,7 +406,7 @@ def test_it_starts_the_built_console_on_the_bind_it_was_given() -> None:
 
 
 def test_it_runs_from_the_console_directory() -> None:
-    assert "WorkingDirectory=/home/board/OSINT/osint-frontend" in _unit()
+    assert "WorkingDirectory=/srv/osint/osint-frontend" in _unit()
 
 
 #: A stale build is otherwise invisible: the console loads, and the fix that
@@ -502,7 +502,7 @@ def unit_text(
     """The service that keeps the console up."""
     return f"""[Unit]
 Description=OSINT console
-Documentation=https://github.com/BasilSuhail/OSINT
+Documentation=https://example.invalid/osint
 # The bind address does not exist until the tailnet is up, and a unit that
 # starts before it fails at boot while working perfectly when tried by hand.
 After=network-online.target tailscaled.service

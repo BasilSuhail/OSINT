@@ -25,16 +25,15 @@ to remember to change back.
 A guest device needs all of them to agree, and one wrong value produces a
 console that looks broken rather than one that says why:
 
-- `API_BIND` — the published bind address. Wrong, and the guest reaches
-  nothing.
+- `API_BIND` — the published bind address. Share mode opens it to the LAN;
+  serve mode keeps it on loopback behind the console's private HTTPS edge.
 - `API_CORS_ORIGINS` — the origin allow-list. Wrong, and the guest's browser
   makes the request, then discards the answer at the preflight.
 - `NEXT_PUBLIC_API_URL` — the browser uses the same-origin `/api` path, which
   Next proxies to the local API. An absolute HTTP URL would be blocked when the
   frontend is served over HTTPS.
-- `API_PROXY_TARGET` — the upstream Next calls behind `/api`. Development can
-  use loopback; serve mode must use the API's tailnet bind because that is the
-  only address where the board publishes it.
+- `API_PROXY_TARGET` — the upstream Next calls behind `/api`. It stays on
+  loopback whenever Next and the API run on the same machine.
 - `LAN_SHARE_HOST` → `allowedDevOrigins` — `next dev` refuses its own
   `/_next/*` dev resources for any host that is not localhost. Missing, and the
   guest gets a page shell, a websocket retrying forever, and a map that never
@@ -258,8 +257,8 @@ def require_linux() -> None:
     Checked before anything else in the mode — before the token, and above all
     before the tailnet probe — because a platform that cannot use the answer
     has no business asking the question. Everything serve mode derives is for a
-    machine with systemd: a bind on a tailnet interface, a unit file, a service
-    that survives a reboot. `make serve-install` has always refused where there
+    machine with systemd: a private tailnet identity, unit files, and services
+    that survive a reboot. `make serve-install` has always refused where there
     is no systemd; the module did not, so the mode stayed reachable by hand and
     the probe with it.
 
@@ -269,7 +268,7 @@ def require_linux() -> None:
     """
     if not sys.platform.startswith("linux"):
         raise ServeRefused(
-            f"serve mode configures a board: it binds a tailnet interface and installs "
+            f"serve mode configures a board: it reads a tailnet identity and installs "
             f"systemd units, and this machine is {sys.platform}. Run it on the board "
             f"itself — `make up` and `make share` are this machine's modes"
         )
@@ -318,9 +317,9 @@ def _tailscale_status() -> dict:
 def tailnet_identity() -> tuple[str, str]:
     """This board's name and address on the tailnet.
 
-    The name is what the phone resolves and the address is what the API binds,
-    and they are read together so a console can never be built naming one
-    machine and bound to another.
+    The name is what the phone resolves. The address proves the same status
+    payload describes a node currently attached to the IPv4 tailnet; neither
+    application process binds it.
     """
     status = _tailscale_status()
     myself = status.get("Self") or {}
@@ -373,9 +372,9 @@ def serve_env(
 ) -> dict[str, str]:
     """Every setting a served console needs, derived from the tailnet identity.
 
-    Two arguments rather than one because the two answers differ and both are
-    load-bearing: the phone opens the MagicDNS name, while the API proxy must
-    name the interface where the board actually publishes the backend.
+    Two arguments rather than one because both answers prove the private edge
+    is usable: the phone opens the MagicDNS name, and the address proves the
+    node is actually attached to the tailnet. Neither is an application bind.
     """
     require_api_token(api_token)
     name = _validated(host)
@@ -384,7 +383,7 @@ def serve_env(
     except ipaddress.AddressValueError as exc:
         raise ServeRefused(f"{address!r} is not an IPv4 address") from exc
     if bind not in TAILNET_RANGE:
-        raise ServeRefused(f"{bind} is not a tailnet address — serve mode binds the tailnet only")
+        raise ServeRefused(f"{bind} is not a tailnet address — serve mode needs a live tailnet")
 
     origin = f"https://{name}"
     configured = [o.strip() for o in (cors_origins or DEFAULT_CORS_ORIGINS).split(",") if o.strip()]
@@ -394,13 +393,16 @@ def serve_env(
             origins.append(candidate)
 
     return {
-        "API_BIND": str(bind),
+        # The HTTPS edge reaches Next on loopback, and Next reaches the API on
+        # loopback. Binding a tailnet address adds no reachability; it only
+        # adds a boot-time dependency on an address that appears later.
+        "API_BIND": LOOPBACK,
         # Tailscale Serve terminates HTTPS and is only able to proxy to
         # loopback. Keeping Next there also removes its raw HTTP port from the
         # tailnet; the phone reaches the secure origin instead (#1034).
         "FRONTEND_BIND": LOOPBACK,
         "NEXT_PUBLIC_API_URL": "/api",
-        "API_PROXY_TARGET": f"http://{bind}:{api_port}",
+        "API_PROXY_TARGET": f"http://{LOOPBACK}:{api_port}",
         "API_CORS_ORIGINS": ",".join(origins),
         "OSINT_SERVE_HOST": name,
         "OSINT_SERVE_URL": origin,

@@ -504,7 +504,7 @@ Everything above gets a console running on the machine you typed it into, but
 dies with the power. This turns it into a service that starts on its own, and
 turns the board into something you can reach from a phone.
 
-**Every command here is the board's.** They derive a tailnet bind and install
+**Every command here is the board's.** They derive a tailnet identity and install
 systemd units, so they refuse anywhere else and say so. `make up` and `make
 share` stay the laptop's commands and are unaffected.
 
@@ -541,9 +541,9 @@ make serve-build
 ```
 
 A few minutes. It prints the private HTTPS console URL, the browser's `/api`
-path, and the tailnet API address behind that proxy. The proxy route is part of
-the build, so changing the tailnet address or API port requires another build,
-not just a restart.
+path, and the loopback API address behind that proxy. The proxy route is part
+of the build, so changing the API port requires another build, not just a
+restart.
 
 ### 2. Install the service
 
@@ -566,15 +566,15 @@ the console on loopback. That secure origin is what lets Chrome and Safari
 install the console and News as separate apps. It stays inside the tailnet and
 returns after a reboot; it is not Tailscale Funnel and is not public.
 
-**Two services, because a reboot has two halves to get right.** In this mode
-the API is published on the board's *tailnet* address, and that address does
-not exist until Tailscale has configured it. Docker starts at boot with no
-ordering against Tailscale, so left alone it can try to publish before the
-address is there, fail with `cannot assign requested address`, and never try
-again — failing to *start* is not *exiting*, and only exiting triggers a
-restart. `osint-stack` waits for the address to appear, then brings the
-containers up. The console listens on loopback behind Tailscale's HTTPS edge
-and is ordered behind the stack so its `/api` proxy has a live upstream.
+**Two services, because a reboot has two halves to get right.** The API and
+console both listen on loopback, which exists before Docker or Tailscale. The
+private HTTPS edge reaches the console; the console's `/api` proxy reaches the
+API locally. `osint-stack` checks the host-published API, not only the health
+check inside its container. It asks Docker for the current published port, so
+an `API_PORT` edit is read from `.env` at reboot instead of being overridden by
+stale unit configuration. `osint-console` then checks `/api/health` through the
+built proxy. Either failure is visible to systemd and retried instead of leaving
+an active service over an unreachable endpoint.
 
 **Why it wants you rather than root:** the console runs as the account you
 install it from, because it writes its build cache inside your checkout. A root
@@ -589,7 +589,7 @@ either way.
 make serve
 ```
 
-Brings the containers up with the API published on the tailnet address only,
+Brings the containers up with the API published on loopback only,
 rebuilds the backend image from whatever you have pulled, then restarts the
 loopback console behind the persistent private HTTPS route.
 
@@ -626,9 +626,8 @@ make serve
 serve` says so rather than serving a stale build quietly.
 
 **From here on, `make serve` is this board's command and `make up` is not.**
-`make up` republishes the API on `127.0.0.1` while the installed console keeps
-proxying to the tailnet address. Nothing necessarily clashes or complains, but
-every request from the phone is refused because the API moved. `make up`
+`make up` starts development processes beside the installed services. They
+compete for the same frontend port and ownership of the same processes. It
 notices the service is installed and asks first, so it is a mistake you get one
 chance to catch — but the command you want is `make serve`.
 
@@ -639,7 +638,7 @@ The symptom says which half to look at:
 | Symptom | Look at |
 |---|---|
 | page does not load at all | the console — `systemctl status osint-console`, then `journalctl -u osint-console -n 50` |
-| page loads, every panel empty | the containers — `systemctl status osint-stack` (it says plainly if it gave up waiting for the tailnet address), then `docker compose ps` |
+| page loads, every panel empty | the containers — `systemctl status osint-stack`, then `docker compose ps` |
 
 An old build serving quietly looks the same as a working one, so the console's
 unit logs the commit it is serving at every start.

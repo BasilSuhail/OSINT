@@ -18,14 +18,10 @@ serving_as_a_service() {
   systemctl is-enabled --quiet osint-console.service 2>/dev/null
 }
 
-#: `make up` is destructive on a serving board, and silently so.
-#:
-#: This script exports API_BIND=127.0.0.1. On a board with the console's
-#: service installed, that recreates the API on loopback while the loopback
-#: console remains reachable through private HTTPS. Nothing clashes, so
-#: nothing complains — and every browser request is refused because the
-#: console proxy still calls the tailnet API address. `make down` afterwards
-#: stops the containers and leaves the service up, which looks identical.
+#: `make up` starts development processes beside the board's systemd
+#: services. Both now bind loopback, so they compete for the same frontend
+#: port and the development cleanup may kill a child systemd expects to own.
+#: `make down` then stops the containers while leaving the console service up.
 #:
 #: Asked rather than refused. A hard refusal in the laptop's own start script
 #: is a cost paid on every machine to protect one, and there are real reasons
@@ -45,15 +41,13 @@ refuse_if_serving() {
 
 This machine serves the console as a service, and `make up` is not its command.
 
-  `make up` republishes the API on 127.0.0.1. osint-console.service stays
-  reachable through private HTTPS, so no port clashes and nothing complains —
-  and every request from the phone is refused, because the console proxy calls
-  a tailnet API address that is no longer published. `make down`
-  afterwards stops the containers and leaves the service up, which from the
-  phone looks exactly the same.
+  `make up` starts a development console beside osint-console.service. Both
+  use the same loopback port, and the development cleanup may kill a process
+  systemd expects to own. `make down` afterwards stops the containers while
+  leaving the HTTPS console service up.
 
-  `make serve` is this machine's command: it publishes the API on the tailnet
-  address and restarts the console on the build it finds.
+  `make serve` is this machine's command: it reconciles the loopback stack and
+  restarts the console on the build it finds.
 
 SERVING
 
@@ -64,7 +58,7 @@ SERVING
     exit 1
   fi
 
-  read -r -p "Start on 127.0.0.1 anyway, taking the API off the tailnet? [y/N] " answer
+  read -r -p "Start development processes beside systemd anyway? [y/N] " answer
   case "$answer" in
     y | Y) echo "  continuing — \`make serve\` puts it back" >&2 ;;
     *)

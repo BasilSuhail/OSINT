@@ -1,15 +1,14 @@
 """The console's systemd unit, rendered rather than shipped.
 
-A checked-in unit file cannot know where the repository was cloned, which
-address the tailnet handed out, or which port the console was told to use, and
-a file with three placeholders to edit by hand is three chances to install a
-unit that names a directory that does not exist.
+A checked-in unit file cannot know where the repository was cloned, which port
+the console was told to use, or which account owns the build. A file with three
+placeholders to edit by hand is three chances to install a broken unit.
 
 So it is text this module produces and `scripts/serve-up.sh` writes, which is
 also what makes it testable: the failures worth catching are all failures of
-the text. Starting before the tailnet is up binds an address that does not
-exist yet. Not restarting turns one crash into a dark console until somebody
-notices. A secret in a unit is published to every account on the machine,
+the text. Starting a process is not proof its public route works. Not
+restarting turns one crash into a dark console until somebody notices. A
+secret in a unit is published to every account on the machine,
 because unit files are world-readable — which is why anything that has to
 reach the running process goes in the environment file beside it, which is
 not.
@@ -26,19 +25,17 @@ from __future__ import annotations
 
 UNIT_NAME = "osint-console.service"
 
-#: The containers, brought up once the tailnet address exists. Separate from
-#: the console's unit because the two fail differently and are debugged
-#: separately: this one is a `docker compose up` that ran or did not, the
-#: console is a long-lived process.
+#: The containers, reconciled and checked at boot. Separate from the console's
+#: unit because the two fail differently and are debugged separately: this one
+#: proves the host-published API, the console proves the same-origin proxy.
 STACK_UNIT_NAME = "osint-stack.service"
 
 #: systemd units run with a minimal built-in PATH and never source a login
-#: shell, so an inherited PATH cannot be relied on to contain `pnpm`, `docker`
-#: or `ip` — this repository has already hit exactly that failure once, in
+#: shell, so an inherited PATH cannot be relied on to contain `pnpm` or
+#: `docker` — this repository has already hit exactly that failure once, in
 #: scripts/dev-up.sh, which runs `pnpm dev` through a login shell for the same
 #: reason. Named explicitly instead, covering where the documented install
-#: (`apt install nodejs && corepack enable`, `get.docker.com`) puts its shims
-#: and where Debian puts `ip`.
+#: (`apt install nodejs && corepack enable`, `get.docker.com`) puts its shims.
 _PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
@@ -115,12 +112,15 @@ def unit_text(
     the checkout is under the operator's home, and protecting it would put the
     build out of the service's reach.
     """
+    health_command = (
+        "/usr/bin/timeout 90 /bin/sh -c 'until /usr/bin/curl -fsS --max-time 2 "
+        f"http://{bind}:{port}/api/health >/dev/null; do sleep 2; done'"
+    )
     return f"""[Unit]
 Description=OSINT console
-# `After=` only orders two units that are already starting; it does not pull
-# tailscaled into the boot transaction. `Wants=` is what starts it. Together
-# they are what actually keeps this unit from binding an address that does
-# not exist yet.
+# The console listens on loopback, but the private HTTPS route belongs to
+# tailscaled. Pulling both into the transaction makes remote access return as
+# soon as the tailnet does, without making the local bind depend on it.
 After=network-online.target tailscaled.service
 Wants=network-online.target tailscaled.service
 
@@ -141,6 +141,10 @@ EnvironmentFile={env_file}
 # not rebuilt is a line to read rather than a mystery.
 ExecStartPre=/bin/sh -c 'echo "console build: $(cat {commit_file} 2>/dev/null || echo unknown)"'
 ExecStart=/usr/bin/env pnpm exec next start -H {bind} -p {port}
+# Prove the whole request path, not merely that the Node process stayed up.
+# This catches a stale or wrong compiled API proxy target. The retry gives
+# `next start` time to listen; timeout makes failure visible to systemd.
+ExecStartPost={health_command}
 Restart=always
 RestartSec=5
 # A build server answering HTTP needs none of this, so it does not get it.
@@ -164,41 +168,27 @@ def stack_unit_text(
     *,
     working_dir: str,
     bind: str,
-    environment: dict[str, str],
 ) -> str:
-    """The unit that brings the containers up once the tailnet address exists.
+    """The unit that reconciles the containers and proves the published API.
 
     ## The failure this exists for
 
-    `API_BIND` in serve mode is the board's tailnet address. Every earlier mode
-    bound `127.0.0.1` or `0.0.0.0`, both of which exist the moment the kernel
-    is up; `100.x.y.z` exists only once tailscaled has configured its
-    interface. `docker.service` and `tailscaled.service` are ordered against
-    each other by nothing, so on a reboot dockerd can restore the `api`
-    container first, the port allocation fails with `bind: cannot assign
-    requested address`, and — because a *start* failure is not a container
-    *exit* — `restart: unless-stopped` never fires. The container stays down.
+    An earlier serve mode bound the API to the board's tailnet address. Docker
+    can restore the container before tailscaled has configured that address.
+    Docker then leaves uvicorn running and healthy inside a container with no
+    network endpoint and no published port: the process did not exit, its
+    internal health check passes, and `restart: unless-stopped` has nothing to
+    react to.
 
     The console recovers on its own (`Restart=always`), so the symptom is a
     page that loads with every panel empty: indistinguishable, from the phone,
     from a backend that is broken.
 
-    ## Why a unit that waits, rather than a drop-in that orders
-
-    A `docker.service.d` drop-in saying `After=tailscaled.service` is four
-    lines and was the first thing considered. It was not enough. tailscaled is
-    `Type=notify` and reports ready when the *daemon* is up, which is before it
-    has reached the control plane and configured an address on the interface —
-    so the drop-in narrows the race without closing it, and a race that fires
-    rarely is harder to diagnose than one that fires every time. It would also
-    put every other container on the board behind tailscaled, which is a cost
-    paid by workloads that never asked.
-
-    So this waits for the address itself, and then reconciles. Waiting is the
-    only check that is actually true at the moment it passes: the address is on
-    an interface, therefore a bind will succeed. It also repairs the case where
-    dockerd already tried and failed, which ordering alone cannot — `up -d`
-    starts a container that exists and is not running.
+    The API now binds loopback, which exists before Docker or tailscaled. That
+    deletes the race rather than ordering around it. `ExecStartPost` then asks
+    the host-published endpoint, because an in-container health check cannot
+    prove the port mapping exists. A failed probe fails this unit and activates
+    its retry policy instead of leaving green indicators over a dead service.
 
     ## Why this one does stay root
 
@@ -213,23 +203,15 @@ def stack_unit_text(
     console's same-origin proxy calls the API on this address, and ordering it
     after this unit means it does not start until that upstream is available.
     """
-    lines = []
-    for key, value in environment.items():
-        _refuse_unusable(key, value)
-        if '"' in value:
-            # `Environment="KEY=value"` is the form that survives a value with
-            # a space in it, and an embedded double quote ends the assignment
-            # early — the rest of the value becomes a second, malformed one.
-            raise ValueError(f"{key} contains a double quote, which ends the assignment early")
-        lines.append(f'Environment="{key}={value}"')
-    rendered = "\n".join(lines)
+    _refuse_unusable("API_BIND", bind)
+    if '"' in bind:
+        raise ValueError("API_BIND contains a double quote, which ends the assignment early")
+    health_command = "/usr/bin/timeout 90 /usr/bin/env bash scripts/probe-api.sh"
 
     return f"""[Unit]
-Description=OSINT containers, once the tailnet address exists
-# `After=` orders; `Wants=` is what pulls them into the boot transaction. Both
-# are needed, and neither is sufficient on its own — see ExecStartPre.
-After=docker.service tailscaled.service network-online.target
-Wants=docker.service tailscaled.service network-online.target
+Description=OSINT containers
+After=docker.service
+Wants=docker.service
 # The console proxies browser API calls to this address. Ordered behind this,
 # it starts with a live upstream instead of an empty page.
 Before={UNIT_NAME}
@@ -242,18 +224,14 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory={working_dir}
 Environment=PATH={_PATH}
-{rendered}
-# The one check that is true at the moment it passes: tailscaled reports ready
-# before it has configured an address, so `After=tailscaled.service` is not
-# the same question as "can this address be bound". No interface is named —
-# the address being on any of them is the whole precondition. No shell
-# variable either: systemd expands `$word` inside ExecStart lines before sh
-# ever sees it, so a loop counter would arrive empty.
-ExecStartPre=/bin/sh -c 'until ip -4 -o addr show | grep -q " {bind}/"; do sleep 2; done'
+Environment="COMPOSE_PROFILES=app"
+Environment="API_BIND={bind}"
 ExecStart=/usr/bin/env docker compose up -d
-# The wait above has no bound of its own. This is the bound: five minutes, and
-# then a journal line saying the start timed out, which is the truth. Trying
-# again half a minute later covers a tailnet that came up slowly.
+# Docker's health check runs inside the container and cannot see a missing
+# host port. The probe discovers the current published port from Docker instead
+# of baking mutable .env configuration into this unit, then asks that address.
+# Loopback always exists, so failure means the API is genuinely unreachable.
+ExecStartPost={health_command}
 TimeoutStartSec=300
 Restart=on-failure
 RestartSec=30

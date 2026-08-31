@@ -13,7 +13,7 @@ disagreeing silently is what makes this worth testing rather than documenting:
   the answer away at the preflight;
 - `NEXT_PUBLIC_API_URL`, which must stay on `/api` so the frontend proxy keeps
   browser requests same-origin under both HTTP and HTTPS;
-- `API_PROXY_TARGET`, which must name the interface where the selected mode
+- `API_PROXY_TARGET`, which must name the address where the selected mode
   actually publishes the API;
 
 The shared secret is deliberately not part of share mode: the guest loads the
@@ -425,14 +425,14 @@ SERVE_ADDRESS = "100.100.100.100"
 
 
 class TestServeMode:
-    #: The API is tailnet-only. The console itself is loopback-only because
-    #: Tailscale Serve is its HTTPS ingress and officially proxies only to
-    #: loopback targets.
-    def test_it_binds_each_service_to_its_private_interface(self) -> None:
+    #: Both processes stay on loopback. Tailscale Serve is the HTTPS ingress
+    #: for the console, and the console is the local proxy for the API.
+    def test_it_binds_each_service_to_loopback(self) -> None:
         env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
-        assert env["API_BIND"] == SERVE_ADDRESS
+        assert env["API_BIND"] == LOOPBACK
         assert env["FRONTEND_BIND"] == LOOPBACK
         assert ALL_INTERFACES not in env.values()
+        assert SERVE_ADDRESS not in env.values()
 
     #: Browser calls stay on the console origin. That is what lets the same
     #: installed app work through the Tailscale HTTPS edge without
@@ -441,12 +441,11 @@ class TestServeMode:
         env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
         assert env["NEXT_PUBLIC_API_URL"] == "/api"
 
-    #: The board publishes the API only on its tailnet interface. Loopback is
-    #: correct for local development and dead in serve mode, so the server-side
-    #: proxy gets the address that Docker actually binds.
-    def test_the_proxy_points_at_the_tailnet_api_bind(self) -> None:
+    #: Next and the API run on the same board. Making that hop depend on a
+    #: tailnet address adds a boot race without adding reachability.
+    def test_the_proxy_points_at_the_loopback_api_bind(self) -> None:
         env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
-        assert env["API_PROXY_TARGET"] == f"http://{SERVE_ADDRESS}:8000"
+        assert env["API_PROXY_TARGET"] == f"http://{LOOPBACK}:8000"
 
     def test_it_adds_the_tailnet_origin_without_dropping_configured_ones(self) -> None:
         env = serve_env(
@@ -464,7 +463,7 @@ class TestServeMode:
             SERVE_HOST, SERVE_ADDRESS, api_port=9000, frontend_port=4000, api_token="a-token"
         )
         assert env["NEXT_PUBLIC_API_URL"] == "/api"
-        assert env["API_PROXY_TARGET"] == f"http://{SERVE_ADDRESS}:9000"
+        assert env["API_PROXY_TARGET"] == f"http://{LOOPBACK}:9000"
         assert f"https://{SERVE_HOST}" in env["API_CORS_ORIGINS"]
 
     def test_it_reports_the_url_to_open(self) -> None:
@@ -525,8 +524,8 @@ class TestReadingTheTailnet:
         host, _ = lan_share.tailnet_identity()
         assert not host.endswith(".")
 
-    #: The v4 address, not whichever came first. A bind address in brackets is
-    #: a shape neither compose nor the unit has been tried with.
+    #: The v4 address, not whichever came first. Serve mode validates the
+    #: identity against the tailnet's IPv4 range.
     def test_it_takes_the_v4_address(self, monkeypatch) -> None:
         monkeypatch.setattr(lan_share, "_tailscale_status", lambda: self.STATUS)
         _, address = lan_share.tailnet_identity()
@@ -720,7 +719,7 @@ class TestServeModeRefusesOffTheBoard:
         monkeypatch.delenv("OSINT_PUBLIC_HOST", raising=False)
         assert lan_share.main(["serve"]) == 0
         exported = capsys.readouterr().out
-        assert f"export API_BIND={SERVE_ADDRESS}" in exported
+        assert f"export API_BIND={LOOPBACK}" in exported
         assert SERVE_HOST in exported
 
     #: Tailscale Serve can provision HTTPS only for the node's MagicDNS name.
@@ -870,14 +869,12 @@ def test_the_build_loads_dot_env_before_building() -> None:
 
 
 class TestTheLaptopCommandIsNotRunAccidentallyOnTheBoard:
-    """`make up` is destructive on a serving board, and silently so.
+    """`make up` still starts the wrong lifecycle on a serving board.
 
-    `dev-up.sh` exports `API_BIND=127.0.0.1`. With the console's service
-    installed, that recreates the API container on loopback while the installed
-    console keeps proxying to the tailnet address — no port clash, so nothing
-    complains, and every request from the phone is refused. `make down`
-    compounds it: the containers stop, the HTTPS console stays up, and the
-    phone still gets a page.
+    Both modes now use loopback, so the old split-bind outage is gone. The
+    command is still wrong there: it starts development processes beside
+    systemd's production services. `make down` compounds it by stopping the
+    containers while the HTTPS console stays up.
 
     Asked rather than refused. A hard refusal in the laptop's own start script
     is a cost paid by every machine to protect one, and a loopback stack on a
@@ -933,13 +930,12 @@ def test_the_start_rebuilds_the_backend() -> None:
     assert "-f docker-compose.dev.yml" not in _serve_script()
 
 
-#: The stores are pinned to 127.0.0.1 in docker-compose.yml and stay there in
-#: every mode. Announcing them as published on the tailnet address describes
-#: an exposure that does not exist.
+#: Every host port stays on loopback in serve mode. Tailscale reaches the
+#: console, and the console reaches the API locally.
 def test_the_start_says_what_is_actually_published() -> None:
     start_body = _serve_script().split("cmd_start() {", 1)[1]
-    assert "stores and backend, published" not in start_body
-    assert "stores on 127.0.0.1" in start_body
+    assert "API published on" not in start_body
+    assert "stores and API on 127.0.0.1" in start_body
 
 
 #: The backend is rebuilt by the command; the console is not, and a pull does
@@ -974,10 +970,8 @@ def test_the_install_refuses_to_run_as_root() -> None:
     assert "exit 1" in guard[1][:400]
 
 
-#: The console alone is half a reboot. The API is published on the tailnet
-#: address in this mode, and that address does not exist until tailscaled has
-#: configured it — so the containers need a unit that waits for it, and that
-#: unit is no use uninstalled.
+#: The console alone is half a reboot. The containers need their own unit to
+#: reconcile them and prove the host-published API before the console starts.
 def test_the_install_puts_the_boot_time_container_start_in_place_too() -> None:
     script = _serve_script()
     assert "osint-stack.service" in script

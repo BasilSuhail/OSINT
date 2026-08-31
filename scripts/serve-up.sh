@@ -41,7 +41,7 @@ serve_python() {
 #: for anyone reaching the module directly.
 require_a_board() {
   [ "$(uname -s)" = "Linux" ] && return 0
-  echo "Serve mode configures a board: a tailnet bind and systemd units." >&2
+  echo "Serve mode configures a board: a tailnet identity and systemd units." >&2
   echo "This machine is $(uname -s). Run it on the board itself —" >&2
   echo "\`make up\` and \`make share\` are this machine's commands." >&2
   exit 1
@@ -153,33 +153,23 @@ installing_account() {
   echo "${SUDO_USER:-$(id -un)}"
 }
 
-#: The unit that starts the containers at boot, once the tailnet address is
-#: actually on an interface. See `stack_unit_text` for why ordering docker
-#: after tailscaled is not the same question.
+#: The unit that starts the containers at boot and proves the API through its
+#: host-published loopback port.
 render_stack_unit() {
   local python
   python="$(serve_python)"
   "$python" - "$@" <<'PY'
-import os
 import sys
 
 from app.devx.console_unit import stack_unit_text
 
 working_dir, bind = sys.argv[1:3]
 
-#: What compose cannot get from `.env`. `API_BIND` and the origin list are
-#: *derived* by serve mode and exist only in the shell that derived them, and
-#: compose substitutes from the process environment in preference to `.env` —
-#: so this is the only route they take into a start that systemd runs rather
-#: than the operator. Everything else compose reads from `.env` itself,
-#: `API_AUTH_TOKEN` above all: a secret has no business in a unit file, which
-#: is world-readable.
-env = {"COMPOSE_PROFILES": "app", "API_BIND": bind}
-for key in ("API_CORS_ORIGINS", "API_PORT"):
-    if os.environ.get(key):
-        env[key] = os.environ[key]
-
-sys.stdout.write(stack_unit_text(working_dir=working_dir, bind=bind, environment=env))
+#: Only the mode is persisted. Compose reads every mutable setting from the
+#: current `.env` at boot, and the post-start probe asks Docker which host port
+#: it actually published. Editing API_PORT therefore cannot leave this unit
+#: restoring an old port after the next reboot.
+sys.stdout.write(stack_unit_text(working_dir=working_dir, bind=bind))
 PY
 }
 
@@ -223,7 +213,7 @@ cmd_build() {
   echo "  console: $OSINT_SERVE_URL"
   echo "  browser API path: $NEXT_PUBLIC_API_URL"
   echo "  API proxy target: $API_PROXY_TARGET"
-  echo "  (the route is compiled into the build — a changed tailnet address means building again)"
+  echo "  (the route is compiled into the build — a changed API port means building again)"
   if [ ! -d osint-frontend/node_modules ]; then
     echo "  installing console packages (first run — several minutes)"
     (cd osint-frontend && pnpm install --frozen-lockfile)
@@ -322,8 +312,8 @@ cmd_install() {
   #: `enable --now` starts an inactive unit, but does not restart one that was
   #: already active before its unit file was replaced. Enable and restart are
   #: deliberately separate so an upgrade applies the new bind immediately.
-  #: The stack goes first, so the containers are reconciled onto the tailnet
-  #: bind before the console starts answering for them.
+  #: The stack goes first, so its host-level API probe passes before the
+  #: console starts answering for it.
   sudo systemctl enable "$STACK_UNIT"
   sudo systemctl restart "$STACK_UNIT"
   sudo systemctl enable "$UNIT"
@@ -346,11 +336,9 @@ cmd_start() {
     echo "No console build yet. Run \`make serve-build\` first." >&2
     exit 1
   fi
-  #: Only the API is published on the tailnet. The stores are pinned to
-  #: 127.0.0.1 in docker-compose.yml and stay there in every mode — saying
-  #: they are on $API_BIND would describe an exposure that does not exist and
-  #: would be the wrong thing to reassure anyone about.
-  echo "→ stores on 127.0.0.1; API published on $API_BIND"
+  #: Every host port stays on loopback. Tailscale's private HTTPS edge reaches
+  #: the console, and the console reaches the API through its local proxy.
+  echo "→ stores and API on 127.0.0.1; console behind private HTTPS"
 
   #: --build, because there is no other route for a backend source change to
   #: reach this board. `dev-up.sh` gets away without one on a laptop: it

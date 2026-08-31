@@ -34,19 +34,16 @@ change.
 
 `serve_env()` returns the same shape its neighbours return:
 
-- `API_BIND` — the board's own tailnet address (the `100.x.y.z` one), not
-  `0.0.0.0`. Binding every interface would also publish the API on the home
-  wifi, which is share mode's exposure arriving through a mode that never
-  said it would. Explicit, because the two look identical from the console
-  and differ entirely in who can reach it.
+- `API_BIND` — loopback. The private HTTPS edge reaches Next, and Next reaches
+  the API locally. No application process needs a tailnet bind.
 - `API_CORS_ORIGINS` — the tailnet hostname's origin, added to whatever `.env`
   already configures rather than replacing it, as share mode does.
 - `FRONTEND_BIND` — loopback. Tailscale Serve officially proxies local HTTP
   targets and terminates the private HTTPS origin the installed app requires.
 - `NEXT_PUBLIC_API_URL` — `/api`, keeping every browser request on the secure
   frontend origin.
-- `API_PROXY_TARGET` — the API's tailnet-bound address, used by Next behind
-  that same-origin route.
+- `API_PROXY_TARGET` — the API's loopback address, used by Next behind that
+  same-origin route.
 - `OSINT_SERVE_URL` — the tailnet's HTTPS MagicDNS name, with no raw port.
 
 The fourth setting share needs drops out. `LAN_SHARE_HOST` exists only because
@@ -85,8 +82,8 @@ This is the sharp edge of the whole design. In development, frontend settings
 are read when the process spawns, so `dev-up.sh` can restart the console to
 change one. A production build compiles both the public settings and the rewrite
 table. The consequence, which the build target prints rather than leaving to be
-discovered: **change the tailnet API address or port and the console must be
-rebuilt, not restarted.**
+discovered: **change the API port and the console must be rebuilt, not
+restarted.**
 
 The target prints the HTTPS console URL, browser API path and proxy target, then
 writes the commit it built from where the unit can read it.
@@ -100,14 +97,18 @@ after every power cut and turns a failed build into no console at all.
 
 Two units divide the two failure modes:
 
-- `osint-stack.service` waits for the tailnet address, then reconciles the
-  containers so Docker cannot lose the API bind race during boot.
+- `osint-stack.service` reconciles the containers, then checks `/health`
+  through the loopback port Docker reports as published. This catches the
+  missing endpoint that an in-container health check cannot see without
+  persisting mutable `.env` values in the unit.
 - `osint-console.service` starts the built console on loopback after the stack:
   - `ExecStart` runs `next start` bound as serve mode derived, from
     `osint-frontend`.
   - `Restart=always`, so a crash comes back.
   - `After=network-online.target tailscaled.service`: the private HTTPS ingress
-    and API upstream depend on the tailnet.
+    returns with the tailnet, while the process's loopback bind remains local.
+  - `ExecStartPost` checks `/api/health` through Next, proving the compiled
+    rewrite and API together.
   - `EnvironmentFile` points at a generated file, so no secret is written into
     the unit.
   - The commit being served is logged at start, so a stale build is a line in
@@ -122,8 +123,7 @@ outside the tailnet.
 
 Serve mode refuses to start, naming the fix, when:
 
-- **Tailscale is not up.** There is no private hostname for the HTTPS ingress
-  and no tailnet address on which to publish the API.
+- **Tailscale is not up.** There is no private hostname for the HTTPS ingress.
 - **HTTPS Certificates are disabled.** MagicDNS is a separate setting. Install
   proves certificate eligibility in a temporary directory before it writes or
   enables either service, so failure cannot strand a loopback-only console.
@@ -147,9 +147,10 @@ watching.
 - empty `API_AUTH_TOKEN` — raises, with a message naming the fix
 - `locked` and `share` unchanged: their existing tests must pass untouched
 
-The unit file is produced by a function that returns text, tested on what it
-renders: the bind address, the port, `Restart=always`, and no secret inline.
-systemd itself is not tested — the daemon is not this project's to verify.
+The unit files are produced by functions that return text, tested on what they
+render: loopback binds, host-level and proxy-level health checks, restart
+policies, and no secret inline. systemd itself is not tested — the daemon is
+not this project's to verify.
 
 The board booting into a working console is confirmed by the operator, once, by
 rebooting it. There is no test that can stand in for that.
