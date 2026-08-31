@@ -480,6 +480,25 @@ version this project pins; a different one resolves the lockfile differently.
 <details>
 <summary><b>Run it as a server</b> — the console as a service, reachable from a phone</summary>
 
+### QUICK START
+
+On the board, from the directory that contains the `OSINT` checkout:
+
+```bash
+cd OSINT
+git switch feat/board-as-a-server
+git pull --ff-only origin feat/board-as-a-server
+make env-check        # optional; read-only
+make serve-build
+make serve-install    # first install, or after service-installer changes
+make serve
+```
+
+For an ordinary update after the services are installed, skip
+`make serve-install`; pulling, rebuilding the console, and running `make serve`
+is enough. Do **not** run `make env`: serve mode derives its address settings
+without rewriting the board's existing `.env`.
+
 Everything above gets a console running on the machine you typed it into, but
 `make up` runs that console as a development server, and a development server
 dies with the power. This turns it into a service that starts on its own, and
@@ -597,7 +616,7 @@ Install action. That is the actual test, and the only one that proves it.
 After a pull, both, in this order:
 
 ```bash
-git pull
+git pull --ff-only origin feat/board-as-a-server
 make serve-build
 make serve
 ```
