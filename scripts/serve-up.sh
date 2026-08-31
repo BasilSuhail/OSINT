@@ -214,16 +214,16 @@ PY
 
 cmd_build() {
   apply_serve_mode
-  #: The bundle compiles in NEXT_PUBLIC_* from this shell's environment.
-  #: Serve mode has just derived NEXT_PUBLIC_API_URL; everything else
-  #: NEXT_PUBLIC_* — above all NEXT_PUBLIC_API_TOKEN, which is how the
-  #: console authenticates every request once it is running — lives only in
-  #: `.env`, and reaches the build from here or not at all.
+  #: The build compiles both the browser's same-origin /api route and the
+  #: server-side upstream behind it. Serve mode has derived API_PROXY_TARGET;
+  #: NEXT_PUBLIC_API_TOKEN — how the console authenticates every request once
+  #: it is running — lives only in `.env`, and reaches the build here.
   load_frontend_public_env
   echo "→ building the console for the tailnet"
   echo "  console: $OSINT_SERVE_URL"
-  echo "  API:     $NEXT_PUBLIC_API_URL"
-  echo "  (both are compiled into the bundle — a new tailnet name means building again)"
+  echo "  browser API path: $NEXT_PUBLIC_API_URL"
+  echo "  API proxy target: $API_PROXY_TARGET"
+  echo "  (the route is compiled into the build — a changed tailnet address means building again)"
   if [ ! -d osint-frontend/node_modules ]; then
     echo "  installing console packages (first run — several minutes)"
     (cd osint-frontend && pnpm install --frozen-lockfile)
@@ -276,6 +276,9 @@ cmd_install() {
   echo "--- $UNIT_PATH"
   cat "$tmp/$UNIT"
   echo
+  echo "--- private HTTPS ingress"
+  echo "sudo tailscale serve --bg --yes --https=443 localhost:${FRONTEND_PORT:-3000}"
+  echo
   echo "  and $ENV_PATH, readable by root only, carrying the console's settings."
   read -r -p "Install and enable them? [y/N] " answer
   case "$answer" in
@@ -286,6 +289,21 @@ cmd_install() {
       ;;
   esac
 
+  #: MagicDNS and HTTPS certificates are separate tailnet settings. Prove the
+  #: latter before writing units: otherwise the final Serve command can fail
+  #: after both services are enabled, leaving a loopback-only console with no
+  #: remote ingress. The certificate and key live only in this temporary
+  #: directory; Serve obtains and renews its own certificate after the check.
+  if ! sudo tailscale cert \
+    --cert-file="$tmp/https-preflight.crt" \
+    --key-file="$tmp/https-preflight.key" \
+    "$OSINT_SERVE_HOST" >/dev/null; then
+    echo "Tailnet HTTPS certificates are not available." >&2
+    echo "Enable HTTPS Certificates under Tailscale admin console → DNS, then retry." >&2
+    exit 1
+  fi
+  rm -f "$tmp/https-preflight.crt" "$tmp/https-preflight.key"
+
   #: 0600 and 0644, which is the split rather than a reaction to what is in
   #: them today: nothing in the environment file is currently a secret, and
   #: the point of it being root-only is that the first thing that is can go
@@ -295,11 +313,18 @@ cmd_install() {
   sudo install -m 0644 "$tmp/$STACK_UNIT" "$STACK_UNIT_PATH"
   sudo install -m 0644 "$tmp/$UNIT" "$UNIT_PATH"
   sudo systemctl daemon-reload
+  #: Installability requires a secure context. The console listens on
+  #: loopback; Tailscale terminates HTTPS and persists this route across
+  #: reboots without putting the service on the public internet. Configure it
+  #: before enabling either unit so an ingress failure cannot leave active but
+  #: unreachable services behind.
+  sudo tailscale serve --bg --yes --https=443 "localhost:${FRONTEND_PORT:-3000}"
   #: The stack first, and `--now` on it, so the containers are reconciled onto
   #: the tailnet bind before the console starts answering for them.
   sudo systemctl enable --now "$STACK_UNIT"
   sudo systemctl enable --now "$UNIT"
   sudo systemctl status "$STACK_UNIT" "$UNIT" --no-pager || true
+  sudo tailscale serve status
   echo "  open $OSINT_SERVE_URL"
 }
 
@@ -341,7 +366,7 @@ cmd_start() {
   fi
   if [ "$console" != "$head" ]; then
     echo "  the console is not this commit. Run \`make serve-build\` to rebuild it —" >&2
-    echo "  the tailnet name and the API URL are compiled in, so a restart will not do." >&2
+    echo "  the API proxy route is compiled in, so a restart will not do." >&2
   fi
   echo "  open $OSINT_SERVE_URL"
 }

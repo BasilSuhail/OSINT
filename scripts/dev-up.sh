@@ -21,12 +21,11 @@ serving_as_a_service() {
 #: `make up` is destructive on a serving board, and silently so.
 #:
 #: This script exports API_BIND=127.0.0.1. On a board with the console's
-#: service installed, that recreates the api container on loopback while
-#: osint-console.service carries on serving the tailnet address. Nothing
-#: clashes, so nothing complains — and every request from the phone is
-#: refused, because the API the bundle calls is no longer published where the
-#: bundle is looking. `make down` afterwards stops the containers and leaves
-#: the service up, which looks identical.
+#: service installed, that recreates the API on loopback while the loopback
+#: console remains reachable through private HTTPS. Nothing clashes, so
+#: nothing complains — and every browser request is refused because the
+#: console proxy still calls the tailnet API address. `make down` afterwards
+#: stops the containers and leaves the service up, which looks identical.
 #:
 #: Asked rather than refused. A hard refusal in the laptop's own start script
 #: is a cost paid on every machine to protect one, and there are real reasons
@@ -46,10 +45,10 @@ refuse_if_serving() {
 
 This machine serves the console as a service, and `make up` is not its command.
 
-  `make up` republishes the API on 127.0.0.1. osint-console.service keeps
-  running on the tailnet address, so no port clashes and nothing complains —
-  and every request from the phone is refused, because the API the bundle
-  calls is no longer published where the bundle is looking. `make down`
+  `make up` republishes the API on 127.0.0.1. osint-console.service stays
+  reachable through private HTTPS, so no port clashes and nothing complains —
+  and every request from the phone is refused, because the console proxy calls
+  a tailnet API address that is no longer published. `make down`
   afterwards stops the containers and leaves the service up, which from the
   phone looks exactly the same.
 
@@ -65,7 +64,7 @@ SERVING
     exit 1
   fi
 
-  read -r -p "Start on 127.0.0.1 anyway, taking the console off the tailnet? [y/N] " answer
+  read -r -p "Start on 127.0.0.1 anyway, taking the API off the tailnet? [y/N] " answer
   case "$answer" in
     y | Y) echo "  continuing — \`make serve\` puts it back" >&2 ;;
     *)
@@ -383,10 +382,9 @@ FRONTEND_PORT_DEFAULT=3000
 #: find a live process, report it as satisfying the request, and keep serving
 #: the previous mode (#928).
 #:
-#: The bind address is not enough on its own. `NEXT_PUBLIC_API_URL` is compiled
-#: in at start, so a share on one network and a share on the next — same bind,
-#: different address — would reuse a dashboard pointing at an address that no
-#: longer exists, and fail as an empty console rather than as an error.
+#: Browser-facing settings are compiled in at start. A changed value must
+#: restart the frontend or it keeps serving the previous bundle while claiming
+#: the new configuration is active.
 #:
 #: `NEXT_PUBLIC_ASK_ENABLED` for the same reason and with a worse ending. It is
 #: compiled in at start too, and it decides whether the console draws the ask
@@ -398,7 +396,12 @@ FRONTEND_PORT_DEFAULT=3000
 FRONTEND_MODE_FILE="logs/frontend.mode"
 
 frontend_mode_signature() {
-  printf '%s %s %s' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}" "${NEXT_PUBLIC_ASK_ENABLED:-}"
+  printf '%s %s %s %s %s' \
+    "$FRONTEND_BIND" \
+    "${NEXT_PUBLIC_API_URL:-}" \
+    "${NEXT_PUBLIC_ASK_ENABLED:-}" \
+    "${API_PORT:-}" \
+    "${API_PROXY_TARGET:-}"
 }
 
 env_value() { # key — the value in .env, if .env sets one
@@ -423,9 +426,9 @@ share_python() {
 
 apply_network_mode() {
   # Closed unless sharing was asked for (#928). The derivation — bind address,
-  # CORS origins, and the API URL compiled into the browser bundle, which must
-  # name an address the *guest* can resolve — lives in app/devx/lan_share.py
-  # with its tests. This function only chooses a mode and evals the result.
+  # CORS origins, same-origin API route, and allowed dev host — lives in
+  # app/devx/lan_share.py with its tests. This function only chooses a mode and
+  # evals the result.
   local mode="locked"
   if [ "${LAN_SHARE:-0}" = "1" ]; then
     mode="share"
@@ -448,11 +451,10 @@ apply_network_mode() {
   # origin to the list rather than replacing it.
   export API_CORS_ORIGINS="${API_CORS_ORIGINS:-$(env_value API_CORS_ORIGINS)}"
   export API_PORT="${API_PORT:-$(env_value API_PORT)}"
+  export API_PROXY_TARGET="${API_PROXY_TARGET:-$(env_value API_PROXY_TARGET)}"
   export FRONTEND_PORT="${FRONTEND_PORT:-$FRONTEND_PORT_DEFAULT}"
   #: Which of this machine's names the console should be reached by, when it
-  #: should not be the detected one (#974). The same setting `make env` derives
-  #: NEXT_PUBLIC_API_URL from, so the two agree instead of overwriting one
-  #: another.
+  #: should not be the detected one (#974).
   export OSINT_PUBLIC_HOST="${OSINT_PUBLIC_HOST:-$(env_value OSINT_PUBLIC_HOST)}"
 
   local exports

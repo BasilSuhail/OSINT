@@ -5,15 +5,16 @@ left the two ports a browser uses published on every interface. A laptop that
 runs the stack on an untrusted network was serving the console and
 `POST /brain/ask` to it.
 
-Three settings have to agree before another device can load the dashboard, and
+The network settings have to agree before another device can load the dashboard, and
 disagreeing silently is what makes this worth testing rather than documenting:
 
 - the API's published bind address, or the guest cannot reach the API at all;
 - `API_CORS_ORIGINS`, or the guest's browser makes the request and then throws
   the answer away at the preflight;
-- `NEXT_PUBLIC_API_URL`, which is compiled into the bundle the guest downloads
-  and must therefore name an address resolvable from the *guest*. The default
-  `http://localhost:8000` resolves, on a guest device, to the guest.
+- `NEXT_PUBLIC_API_URL`, which must stay on `/api` so the frontend proxy keeps
+  browser requests same-origin under both HTTP and HTTPS;
+- `API_PROXY_TARGET`, which must name the interface where the selected mode
+  actually publishes the API;
 
 The shared secret is deliberately not part of share mode: the guest loads the
 frontend, so `NEXT_PUBLIC_API_TOKEN` is in the bundle they download.
@@ -73,10 +74,9 @@ def test_share_publishes_on_every_interface() -> None:
     assert env["FRONTEND_BIND"] == ALL_INTERFACES
 
 
-def test_share_points_the_bundle_at_an_address_a_guest_can_resolve() -> None:
+def test_share_keeps_browser_api_calls_same_origin() -> None:
     env = share_env("203.0.113.42")
-    assert env["NEXT_PUBLIC_API_URL"] == "http://203.0.113.42:8000"
-    assert "localhost" not in env["NEXT_PUBLIC_API_URL"]
+    assert env["NEXT_PUBLIC_API_URL"] == "/api"
 
 
 def test_share_adds_the_guest_origin_without_dropping_the_configured_ones() -> None:
@@ -101,9 +101,9 @@ def test_share_falls_back_to_the_localhost_origins_when_none_configured() -> Non
     assert "http://203.0.113.42:3000" in origins
 
 
-def test_share_honours_non_default_ports() -> None:
-    env = share_env("203.0.113.42", api_port=9000, frontend_port=3001, cors_origins="")
-    assert env["NEXT_PUBLIC_API_URL"] == "http://203.0.113.42:9000"
+def test_share_honours_a_non_default_frontend_port() -> None:
+    env = share_env("203.0.113.42", frontend_port=3001, cors_origins="")
+    assert env["NEXT_PUBLIC_API_URL"] == "/api"
     assert "http://203.0.113.42:3001" in env["API_CORS_ORIGINS"].split(",")
 
 
@@ -164,14 +164,13 @@ def test_share_refuses_an_address_that_means_this_machine(address: str) -> None:
 class TestPinnedHost:
     """A pinned host, for reaching the console from off the local network (#974).
 
-    The detected address is private. It is not only the link — it is compiled
-    into the bundle the guest downloads, so a guest arriving by any other route
-    loads a console whose every API call goes somewhere they cannot reach.
+    The detected address is private. A pin controls the link and the host Next
+    allows; API requests remain relative to whichever origin the guest used.
     """
 
     def test_a_name_is_accepted_where_only_an_address_was(self) -> None:
-        env = share_env("console.invalid", frontend_port=3000, api_port=8000)
-        assert env["NEXT_PUBLIC_API_URL"] == "http://console.invalid:8000"
+        env = share_env("console.invalid", frontend_port=3000)
+        assert env["NEXT_PUBLIC_API_URL"] == "/api"
         assert env["LAN_SHARE_URL"] == "http://console.invalid:3000"
         assert env["LAN_SHARE_HOST"] == "console.invalid"
 
@@ -255,12 +254,10 @@ def test_dev_up_binds_the_frontend_explicitly() -> None:
 def test_dev_up_reuses_the_dashboard_only_when_the_whole_mode_matches() -> None:
     """Bind address alone is not the identity of a running dashboard.
 
-    Two shares on two networks have the same bind and different addresses in
-    the bundle. Comparing only the bind would reuse a dashboard pointing at an
-    address that no longer resolves, which shows up as an empty console rather
-    than as an error.
+    Every startup value captured by Next belongs here. `API_PORT` and
+    `API_PROXY_TARGET` choose the upstream behind `/api`; reusing a process
+    after either changes would keep proxying to the old service.
 
-    Every value the bundle is built from belongs here, for the same reason.
     `NEXT_PUBLIC_ASK_ENABLED` decides whether the console draws the ask control
     at all, so leaving it out means an operator who edits `.env` to turn
     questions back on is told the frontend is already running and keeps being
@@ -268,10 +265,11 @@ def test_dev_up_reuses_the_dashboard_only_when_the_whole_mode_matches() -> None:
     watching it do nothing.
     """
     script = DEV_UP.read_text()
-    assert (
-        'printf \'%s %s %s\' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}"'
-        ' "${NEXT_PUBLIC_ASK_ENABLED:-}"' in script
-    )
+    signature = script.split("frontend_mode_signature() {", 1)[1].split("\n}", 1)[0]
+    assert '"${NEXT_PUBLIC_API_URL:-}"' in signature
+    assert '"${NEXT_PUBLIC_ASK_ENABLED:-}"' in signature
+    assert '"${API_PORT:-}"' in signature
+    assert '"${API_PROXY_TARGET:-}"' in signature
     # The signature must be taken after the .env values are loaded, or the
     # comparison and the recorded value disagree and every run restarts.
     body = script.split("spawn_frontend() {", 1)[1]
@@ -287,6 +285,13 @@ def test_next_config_reads_the_shared_host() -> None:
     config = (ROOT / "osint-frontend" / "next.config.mjs").read_text()
     assert "allowedDevOrigins" in config
     assert "process.env.LAN_SHARE_HOST" in config
+
+
+def test_next_proxy_has_local_and_hosted_upstreams() -> None:
+    config = (ROOT / "osint-frontend" / "next.config.mjs").read_text()
+    assert "process.env.API_PROXY_TARGET" in config
+    assert "http://127.0.0.1:${apiPort}" in config
+    assert "destination: `${apiProxyTarget}/:path*`" in config
 
 
 def test_make_share_exists_and_does_not_persist_the_choice() -> None:
@@ -420,21 +425,28 @@ SERVE_ADDRESS = "100.100.100.100"
 
 
 class TestServeMode:
-    #: The whole point of the mode. Not 0.0.0.0: that also publishes on the
-    #: home wifi, which is share mode's exposure arriving through a mode that
-    #: never said it would.
-    def test_it_binds_the_tailnet_address_and_not_every_interface(self) -> None:
+    #: The API is tailnet-only. The console itself is loopback-only because
+    #: Tailscale Serve is its HTTPS ingress and officially proxies only to
+    #: loopback targets.
+    def test_it_binds_each_service_to_its_private_interface(self) -> None:
         env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
         assert env["API_BIND"] == SERVE_ADDRESS
-        assert env["FRONTEND_BIND"] == SERVE_ADDRESS
+        assert env["FRONTEND_BIND"] == LOOPBACK
         assert ALL_INTERFACES not in env.values()
 
-    #: Compiled into the bundle the phone downloads, so it must name what the
-    #: phone can resolve — the tailnet name, never the address the board calls
-    #: itself.
-    def test_the_bundle_points_at_the_tailnet_name(self) -> None:
+    #: Browser calls stay on the console origin. That is what lets the same
+    #: installed app work through the Tailscale HTTPS edge without
+    #: mixed-content requests.
+    def test_browser_api_calls_stay_same_origin(self) -> None:
         env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
-        assert env["NEXT_PUBLIC_API_URL"] == f"http://{SERVE_HOST}:8000"
+        assert env["NEXT_PUBLIC_API_URL"] == "/api"
+
+    #: The board publishes the API only on its tailnet interface. Loopback is
+    #: correct for local development and dead in serve mode, so the server-side
+    #: proxy gets the address that Docker actually binds.
+    def test_the_proxy_points_at_the_tailnet_api_bind(self) -> None:
+        env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
+        assert env["API_PROXY_TARGET"] == f"http://{SERVE_ADDRESS}:8000"
 
     def test_it_adds_the_tailnet_origin_without_dropping_configured_ones(self) -> None:
         env = serve_env(
@@ -445,18 +457,19 @@ class TestServeMode:
         )
         origins = env["API_CORS_ORIGINS"].split(",")
         assert "http://localhost:3000" in origins
-        assert f"http://{SERVE_HOST}:3000" in origins
+        assert f"https://{SERVE_HOST}" in origins
 
     def test_it_honours_non_default_ports(self) -> None:
         env = serve_env(
             SERVE_HOST, SERVE_ADDRESS, api_port=9000, frontend_port=4000, api_token="a-token"
         )
-        assert env["NEXT_PUBLIC_API_URL"] == f"http://{SERVE_HOST}:9000"
-        assert f"http://{SERVE_HOST}:4000" in env["API_CORS_ORIGINS"]
+        assert env["NEXT_PUBLIC_API_URL"] == "/api"
+        assert env["API_PROXY_TARGET"] == f"http://{SERVE_ADDRESS}:9000"
+        assert f"https://{SERVE_HOST}" in env["API_CORS_ORIGINS"]
 
     def test_it_reports_the_url_to_open(self) -> None:
         env = serve_env(SERVE_HOST, SERVE_ADDRESS, api_token="a-token")
-        assert env["OSINT_SERVE_URL"] == f"http://{SERVE_HOST}:3000"
+        assert env["OSINT_SERVE_URL"] == f"https://{SERVE_HOST}"
         assert env["OSINT_SERVE_HOST"] == SERVE_HOST
 
     #: `next start` has no equivalent of the dev server's host allow-list, so
@@ -535,14 +548,12 @@ class TestReadingTheTailnet:
 
 
 class TestMagicDNSIsAPrecondition:
-    """The name in the bundle has to be one the phone can actually resolve.
+    """The private HTTPS name has to be one the phone can actually resolve.
 
     `Self.DNSName` is populated whether or not MagicDNS is on — it is the name
     the node *would* answer to. With it off, every step of serve mode succeeds
-    and the phone gets NXDOMAIN after the reboot. And because the name is
-    compiled into the bundle, the fix is another build, not a restart: the one
-    precondition here whose cost is minutes rather than seconds, and the only
-    one that was not checked.
+    and the phone gets NXDOMAIN after the reboot. It also prevents Tailscale
+    Serve from provisioning the secure origin that makes the apps installable.
     """
 
     OFF: ClassVar[dict] = {
@@ -567,14 +578,14 @@ class TestMagicDNSIsAPrecondition:
         assert "MagicDNS" in str(raised.value)
 
     #: A refusal that does not name the fix is a refusal the operator has to
-    #: go and research. This one costs a rebuild, so it says so.
-    def test_the_refusal_names_the_rebuild_and_not_a_restart(self, monkeypatch) -> None:
+    #: go and research. It names the setting and says to retry serve mode.
+    def test_the_refusal_names_the_setting_and_retry(self, monkeypatch) -> None:
         monkeypatch.setattr(lan_share, "_tailscale_status", lambda: self.OFF)
         with pytest.raises(ServeRefused) as raised:
             lan_share.tailnet_identity()
         message = str(raised.value)
-        assert "make serve-build" in message
         assert "admin console" in message
+        assert "rerun the serve command" in message
 
     #: Not assumed good. A tailnet that says nothing about MagicDNS costs one
     #: look at the admin console to clear; assuming it costs a build, a reboot
@@ -711,6 +722,19 @@ class TestServeModeRefusesOffTheBoard:
         exported = capsys.readouterr().out
         assert f"export API_BIND={SERVE_ADDRESS}" in exported
         assert SERVE_HOST in exported
+
+    #: Tailscale Serve can provision HTTPS only for the node's MagicDNS name.
+    #: The pin remains useful to LAN share mode, but applying it here would
+    #: print an HTTPS URL whose certificate does not exist.
+    def test_serve_uses_magic_dns_instead_of_the_share_host_pin(self, monkeypatch, capsys) -> None:
+        monkeypatch.setattr("sys.platform", "linux")
+        monkeypatch.setattr(lan_share, "tailnet_identity", lambda: (SERVE_HOST, SERVE_ADDRESS))
+        monkeypatch.setenv("API_AUTH_TOKEN", "a-token")
+        monkeypatch.setenv("OSINT_PUBLIC_HOST", "console.invalid")
+        assert lan_share.main(["serve"]) == 0
+        exported = capsys.readouterr().out
+        assert SERVE_HOST in exported
+        assert "console.invalid" not in exported
 
     #: Every platform keeps the laptop's two modes. `scripts/dev-up.sh` runs
     #: locked on every `make up`, so a guard that reached them would stop the
@@ -849,11 +873,11 @@ class TestTheLaptopCommandIsNotRunAccidentallyOnTheBoard:
     """`make up` is destructive on a serving board, and silently so.
 
     `dev-up.sh` exports `API_BIND=127.0.0.1`. With the console's service
-    installed, that recreates the api container on loopback while the service
-    carries on serving the tailnet address — no port clash, so nothing
+    installed, that recreates the API container on loopback while the installed
+    console keeps proxying to the tailnet address — no port clash, so nothing
     complains, and every request from the phone is refused. `make down`
-    compounds it: the containers stop, the service stays up, and the phone
-    still gets a page.
+    compounds it: the containers stop, the HTTPS console stays up, and the
+    phone still gets a page.
 
     Asked rather than refused. A hard refusal in the laptop's own start script
     is a cost paid by every machine to protect one, and a loopback stack on a
@@ -960,6 +984,34 @@ def test_the_install_puts_the_boot_time_container_start_in_place_too() -> None:
     install_body = script.split("cmd_install() {", 1)[1]
     assert "render_stack_unit" in install_body
     assert 'systemctl enable --now "$STACK_UNIT"' in install_body
+
+
+#: A manifest on raw HTTP is metadata, not an installable app in current
+#: browsers. Serve mode puts the console on loopback and persists Tailscale's
+#: private HTTPS reverse proxy, so the phone receives a secure origin after a
+#: reboot without exposing it to the public internet.
+def test_the_install_persists_private_https_for_the_console() -> None:
+    install_body = _serve_script().split("cmd_install() {", 1)[1]
+    command = 'tailscale serve --bg --yes --https=443 "localhost:${FRONTEND_PORT:-3000}"'
+    assert command in install_body
+    assert "tailscale serve status" in install_body
+    assert install_body.index("private HTTPS ingress") < install_body.index("read -r -p")
+    assert install_body.index(command) < install_body.index('systemctl enable --now "$STACK_UNIT"')
+
+
+#: MagicDNS does not imply that the separate HTTPS Certificates setting is on.
+#: Discovering that after writing and enabling the units strands a console on
+#: loopback with no remote route to it.
+def test_the_install_proves_https_before_writing_or_enabling_services() -> None:
+    install_body = _serve_script().split("cmd_install() {", 1)[1]
+    preflight = "tailscale cert"
+    assert preflight in install_body
+    assert "--cert-file" in install_body
+    assert "--key-file" in install_body
+    assert install_body.index(preflight) < install_body.index("sudo install")
+    assert install_body.index(preflight) < install_body.index(
+        'systemctl enable --now "$STACK_UNIT"'
+    )
 
 
 #: Shown before it is written, on the same argument as the console's: a file

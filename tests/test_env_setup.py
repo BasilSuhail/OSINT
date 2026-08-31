@@ -231,7 +231,7 @@ class TestADuplicatedKey:
 class TestAPathTheContainerCannotSee:
     """The mistake that cost a live debugging session (#959).
 
-    `PRESENCE_WATCHLIST_PATH=/Users/somebody/watch.json` is the obvious thing to
+    `PRESENCE_WATCHLIST_PATH=/host/operator/watch.json` is the obvious thing to
     write. The file is right there. It is also nothing at all inside the
     container that reads it, and everything downstream reported an empty
     watchlist rather than a missing file.
@@ -245,7 +245,7 @@ class TestAPathTheContainerCannotSee:
     REQUIRED: ClassVar[set[str]] = {"OSINT_DATA_DIR"}
 
     def test_flags_a_path_from_this_machine(self):
-        env = "PRESENCE_WATCHLIST_PATH=/Users/somebody/watch.json\n"
+        env = "PRESENCE_WATCHLIST_PATH=/host/operator/watch.json\n"
         report = check(self.EXAMPLE_WITH_PATHS, env, self.REQUIRED)
         assert report.host_paths == ["PRESENCE_WATCHLIST_PATH"]
         assert not report.ok
@@ -275,7 +275,7 @@ class TestAPathTheContainerCannotSee:
         (tmp_path / "docker-compose.yml").write_text("x: ${OSINT_DATA_DIR}\n")
         (tmp_path / ".env").write_text(
             "OSINT_DATA_DIR=./data\n"
-            "PRESENCE_WATCHLIST_PATH=/Users/somebody/secret-place/watch.json\n"
+            "PRESENCE_WATCHLIST_PATH=/host/operator/secret-place/watch.json\n"
             "ACLED_CSV_PATH=\n"
         )
         assert main(["check", "--root", str(tmp_path)]) == 1
@@ -291,8 +291,8 @@ class TestAPathTheContainerCannotSee:
     def test_leaves_alone_a_key_the_compose_files_set_outright(self):
         example = "EMDAT_CSV_PATH=\nPRESENCE_WATCHLIST_PATH=\n"
         env = (
-            "EMDAT_CSV_PATH=/Users/somebody/emdat.csv\n"
-            "PRESENCE_WATCHLIST_PATH=/Users/somebody/watch.json\n"
+            "EMDAT_CSV_PATH=/host/operator/emdat.csv\n"
+            "PRESENCE_WATCHLIST_PATH=/host/operator/watch.json\n"
         )
         report = check(example, env, set(), {"EMDAT_CSV_PATH"})
         assert report.host_paths == ["PRESENCE_WATCHLIST_PATH"]
@@ -329,7 +329,7 @@ class TestSettingOneKey:
     """
 
     def test_points_an_existing_key_somewhere_else(self):
-        env = "A=1\nPRESENCE_WATCHLIST_PATH=/Users/somebody/watch.json\nB=2\n"
+        env = "A=1\nPRESENCE_WATCHLIST_PATH=/host/operator/watch.json\nB=2\n"
         rendered, changed = set_value(env, "PRESENCE_WATCHLIST_PATH", "/data/watchlist.json")
         assert changed
         assert parse_env(rendered)["PRESENCE_WATCHLIST_PATH"] == "/data/watchlist.json"
@@ -364,7 +364,7 @@ class TestSettingOneKey:
 
     def test_the_command_writes_it(self, tmp_path, capsys):
         (tmp_path / "env.example").write_text("K=\n")
-        (tmp_path / ".env").write_text("K=/Users/somebody/thing.json\n")
+        (tmp_path / ".env").write_text("K=/host/operator/thing.json\n")
         assert main(["set", "K", "/data/thing.json", "--root", str(tmp_path)]) == 0
         assert parse_env((tmp_path / ".env").read_text())["K"] == "/data/thing.json"
 
@@ -380,7 +380,7 @@ MACHINE = Machine(hosts=("localhost", "box.local", "192.0.2.7"), api_port=8000, 
 ORIGIN_EXAMPLE = """POSTGRES_PASSWORD=
 API_AUTH_TOKEN=
 NEXT_PUBLIC_API_TOKEN=
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=/api
 API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 OSINT_PUBLIC_HOST=
 """
@@ -449,18 +449,22 @@ class TestMirroring:
 
 
 class TestDerivedAddresses:
-    #: The browser on the machine that ran `make up` is the case that must never
-    #: break, and `localhost` is the only name guaranteed to resolve for it.
-    def test_the_api_url_defaults_to_loopback(self):
+    #: One relative route works from loopback, a LAN name, and an HTTPS edge.
+    def test_the_api_url_defaults_to_same_origin(self):
         written = originate(ORIGIN_EXAMPLE, ORIGIN_EXAMPLE, MACHINE, make_secret=_fixed_secret)
-        assert (
-            written.get("NEXT_PUBLIC_API_URL", "http://localhost:8000") == "http://localhost:8000"
-        )
+        assert written.get("NEXT_PUBLIC_API_URL", "/api") == "/api"
 
-    def test_a_pinned_host_wins_over_detection(self):
+    def test_a_pinned_host_does_not_change_the_same_origin_api_route(self):
         env = ORIGIN_EXAMPLE.replace("OSINT_PUBLIC_HOST=", "OSINT_PUBLIC_HOST=box.local")
         written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
-        assert written["NEXT_PUBLIC_API_URL"] == "http://box.local:8000"
+        assert written.get("NEXT_PUBLIC_API_URL", "/api") == "/api"
+
+    def test_migrates_the_former_generated_api_url(self):
+        env = ORIGIN_EXAMPLE.replace(
+            "NEXT_PUBLIC_API_URL=/api", "NEXT_PUBLIC_API_URL=http://localhost:8000"
+        )
+        written = originate(ORIGIN_EXAMPLE, env, MACHINE, make_secret=_fixed_secret)
+        assert written["NEXT_PUBLIC_API_URL"] == "/api"
 
     #: Sharing must never silently narrow what already worked, so the example's
     #: own origins stay in the list rather than being replaced by detection.
@@ -502,9 +506,12 @@ class TestDerivedAddresses:
 
 
 class TestStaleAddresses:
+    def test_the_same_origin_api_route_is_never_stale(self):
+        assert stale_addresses(ORIGIN_EXAMPLE, MACHINE) == []
+
     def test_an_address_this_machine_still_has_is_not_stale(self):
         env = ORIGIN_EXAMPLE.replace(
-            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=/api",
             "NEXT_PUBLIC_API_URL=http://box.local:8000",
         )
         assert stale_addresses(env, MACHINE) == []
@@ -513,7 +520,7 @@ class TestStaleAddresses:
     #: saying the address compiled into it belongs to a different network.
     def test_an_address_this_machine_no_longer_has_is_stale(self):
         env = ORIGIN_EXAMPLE.replace(
-            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=/api",
             "NEXT_PUBLIC_API_URL=http://198.51.100.4:8000",
         )
         assert stale_addresses(env, MACHINE) == ["NEXT_PUBLIC_API_URL"]
@@ -521,7 +528,7 @@ class TestStaleAddresses:
     #: A pinned host is a decision. Detection does not get to call it wrong.
     def test_a_pinned_host_is_never_stale(self):
         env = ORIGIN_EXAMPLE.replace(
-            "NEXT_PUBLIC_API_URL=http://localhost:8000",
+            "NEXT_PUBLIC_API_URL=/api",
             "NEXT_PUBLIC_API_URL=http://198.51.100.4:8000",
         ).replace("OSINT_PUBLIC_HOST=", "OSINT_PUBLIC_HOST=198.51.100.4")
         assert stale_addresses(env, MACHINE) == []
@@ -575,13 +582,13 @@ class TestTheCommandOriginates:
         after = parse_env((tmp_path / ".env").read_text())
         assert after["API_AUTH_TOKEN"] == before["API_AUTH_TOKEN"]
         assert after["POSTGRES_PASSWORD"] == before["POSTGRES_PASSWORD"]
-        assert after["NEXT_PUBLIC_API_URL"] == "http://localhost:8000"
+        assert after["NEXT_PUBLIC_API_URL"] == "/api"
 
 
 HOST_ID_EXAMPLE = """POSTGRES_PASSWORD=
 API_AUTH_TOKEN=
 NEXT_PUBLIC_API_TOKEN=
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=/api
 API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 OSINT_PUBLIC_HOST=
 DOCKER_UID=

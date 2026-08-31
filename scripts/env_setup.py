@@ -296,9 +296,9 @@ _MIRRORED: dict[str, str] = {
     "NEXT_PUBLIC_ASK_ENABLED": "ASK_ENABLED",
 }
 
-#: Keys whose value describes where this machine can be reached. Unlike a
-#: secret these go out of date — a machine changes network, or gets a new name
-#: — so `refresh` may rewrite them and `check` says when they have.
+#: Network settings owned by this script. Unlike a secret these can go out of
+#: date as the machine or routing changes, so `refresh` may rewrite them and
+#: `check` says when they have.
 _DERIVED: tuple[str, ...] = ("NEXT_PUBLIC_API_URL", "API_CORS_ORIGINS")
 
 #: Set this and detection stops arguing. Blank means work it out.
@@ -399,7 +399,7 @@ _SMALL_MACHINE_PROFILE: dict[str, str] = {
 }
 
 
-#: Values this profile wrote in an earlier version and has since changed its mind
+#: Values this script wrote in an earlier version and has since changed its mind
 #: about.
 #:
 #: The promise everywhere else here is that a value already in `.env` is somebody's
@@ -417,6 +417,9 @@ _SMALL_MACHINE_PROFILE: dict[str, str] = {
 #: different one, which is the limit of what can be told apart from here, and the
 #: report says what changed so the choice can be made again.
 _SUPERSEDED: dict[str, frozenset[str]] = {
+    # The former example default. Keeping it would bypass the same-origin proxy
+    # and make an HTTPS console call an HTTP API (#1034).
+    "NEXT_PUBLIC_API_URL": frozenset({"http://localhost:8000"}),
     "BRAIN_MODEL": frozenset({"llama3.2:1b"}),
     "QA_MODEL": frozenset({"llama3.2:1b"}),
     "SEVERITY_MODEL": frozenset({"llama3.2:1b"}),
@@ -598,6 +601,11 @@ def stale_addresses(env_text: str, machine: Machine) -> list[str]:
     url = have.get("NEXT_PUBLIC_API_URL", "").strip()
     if not url:
         return []
+    # Same-origin routes carry no host and work at every address the console
+    # answers on. Treating `/api` as a hostname would report the new default as
+    # stale on every machine.
+    if url.startswith("/"):
+        return []
     host = _host_of(url)
     return [] if not host or host in machine.hosts else ["NEXT_PUBLIC_API_URL"]
 
@@ -652,7 +660,9 @@ def originate(
         #: exists for, every model setting already holds the laptop default by
         #: the time the question is asked.
         overridable = key in _DERIVED or key in _SMALL_MACHINE_PROFILE
-        return not (overridable and value == defaults.get(key, ""))
+        return not (
+            overridable and (value == defaults.get(key, "") or superseded(key, value))
+        )
 
     if secrets_too:
         for key in _GENERATED_SECRETS:
@@ -693,10 +703,10 @@ def originate(
             if documented(mirror) and original and not answered(mirror):
                 written[mirror] = original
 
-    pinned = have.get(_PINNED_HOST_KEY, "").strip()
-    host = pinned or (machine.hosts[0] if machine.hosts else "localhost")
     derived = {
-        "NEXT_PUBLIC_API_URL": f"http://{host}:{machine.api_port}",
+        # One browser origin works on loopback, a shared LAN address, and HTTPS.
+        # Next proxies /api locally; a deployment may route it at the TLS edge.
+        "NEXT_PUBLIC_API_URL": "/api",
         "API_CORS_ORIGINS": _origins(
             machine.hosts, machine.frontend_port, defaults.get("API_CORS_ORIGINS", "")
         ),
@@ -768,7 +778,7 @@ def looks_like_a_host_path(key: str, value: str, host_side: set[str]) -> bool:
     machine is exactly right; the second never reaches the process at all, so
     whatever is written in `.env` cannot be wrong. What is left is read by the
     application, which normally runs in a container — and in there
-    `/Users/somebody/file.json` is not a file, it is nothing at all.
+    `/host/operator/file.json` is not a file, it is nothing at all.
     """
     if not key.endswith(_PATH_SUFFIXES) or key in host_side:
         return False

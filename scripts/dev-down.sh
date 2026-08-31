@@ -49,7 +49,7 @@ echo "all app processes + stores stopped (data preserved in \$OSINT_DATA_DIR)."
 #: rather than leave it to be discovered.
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet osint-console.service 2>/dev/null; then
   echo
-  echo "osint-console.service is still running, and is still answering on the tailnet."
+  echo "osint-console.service is still running behind private tailnet HTTPS."
   echo "Its panels will be empty until the containers are back: \`make serve\`."
   echo "To stop it as well: sudo systemctl stop osint-console osint-stack"
 fi

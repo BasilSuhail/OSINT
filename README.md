@@ -497,8 +497,11 @@ Three things, each of which will otherwise stop you later:
   This repository does not install it — follow [its own
   instructions](https://tailscale.com).
 - **MagicDNS on** for your tailnet — a switch under DNS in the admin console,
-  on by default. The name gets compiled in, so the build refuses without it
-  rather than letting you discover it after the reboot.
+  on by default. The install uses that name for its private HTTPS certificate,
+  so it refuses without it rather than letting you discover it after reboot.
+- **HTTPS Certificates enabled** under DNS in the Tailscale admin console.
+  MagicDNS is separate from this switch; install checks certificate eligibility
+  before it writes or enables either system service.
 - **`API_AUTH_TOKEN` set in `.env`.** It is the only thing between a device on
   the tailnet and an endpoint that spends model inference per call, and serve
   mode refuses to start without it.
@@ -518,10 +521,10 @@ browser at the end.
 make serve-build
 ```
 
-A few minutes. It prints the console URL and the API URL it is baking in, and
-those are worth reading, because this is the sharp part: **both are compiled
-into the bundle, not read again at startup.** Change the tailnet name later and
-the fix is building again, not restarting.
+A few minutes. It prints the private HTTPS console URL, the browser's `/api`
+path, and the tailnet API address behind that proxy. The proxy route is part of
+the build, so changing the tailnet address or API port requires another build,
+not just a restart.
 
 ### 2. Install the service
 
@@ -537,7 +540,12 @@ confirm before writing anything, then installs:
 |---|---|
 | `/etc/systemd/system/osint-console.service` | the console process |
 | `/etc/systemd/system/osint-stack.service` | the containers |
-| `/etc/osint-console.env` | root-only, nearly empty — the token and API URL are compiled in, not read here |
+| `/etc/osint-console.env` | root-only runtime settings for the console |
+
+It also persists a Tailscale Serve route from the board's private HTTPS name to
+the console on loopback. That secure origin is what lets Chrome and Safari
+install the console and News as separate apps. It stays inside the tailnet and
+returns after a reboot; it is not Tailscale Funnel and is not public.
 
 **Two services, because a reboot has two halves to get right.** In this mode
 the API is published on the board's *tailnet* address, and that address does
@@ -546,8 +554,8 @@ ordering against Tailscale, so left alone it can try to publish before the
 address is there, fail with `cannot assign requested address`, and never try
 again — failing to *start* is not *exiting*, and only exiting triggers a
 restart. `osint-stack` waits for the address to appear, then brings the
-containers up. The console is ordered behind it because it binds the same
-address and would race the same way.
+containers up. The console listens on loopback behind Tailscale's HTTPS edge
+and is ordered behind the stack so its `/api` proxy has a live upstream.
 
 **Why it wants you rather than root:** the console runs as the account you
 install it from, because it writes its build cache inside your checkout. A root
@@ -564,7 +572,7 @@ make serve
 
 Brings the containers up with the API published on the tailnet address only,
 rebuilds the backend image from whatever you have pulled, then restarts the
-console's service.
+loopback console behind the persistent private HTTPS route.
 
 ### 4. Prove it
 
@@ -572,15 +580,16 @@ console's service.
 sudo reboot
 ```
 
-Then open the console from your phone. That is the actual test, and the only
-one that proves it.
+Then open the printed `https://...ts.net` address from your phone. Install `/`
+as the console and `/news` as News using the browser's Add to Home Screen or
+Install action. That is the actual test, and the only one that proves it.
 
 ### Everyday, on the board
 
 | Command | When |
 |---|---|
 | `make serve` | start or restart — **after every pull** |
-| `make serve-build` | after every pull too, and after changing the token, the tailnet name, or any `NEXT_PUBLIC_*` |
+| `make serve-build` | after every pull too, and after changing the token, API port or any `NEXT_PUBLIC_*` |
 | `make down` | stop the containers — the console's service keeps running, and it says so |
 | `make logs` | watch what the stack is doing |
 | *after a reboot* | nothing — both units are enabled and come back on their own |
@@ -598,12 +607,11 @@ make serve
 serve` says so rather than serving a stale build quietly.
 
 **From here on, `make serve` is this board's command and `make up` is not.**
-`make up` republishes the API on `127.0.0.1` while the console's service
-carries on serving the tailnet address. Nothing clashes and nothing complains,
-and every request from the phone is refused, because the API the bundle calls
-is no longer published where the bundle is looking. `make up` notices the
-service is installed and asks first, so it is a mistake you get one chance to
-catch — but the command you want is `make serve`.
+`make up` republishes the API on `127.0.0.1` while the installed console keeps
+proxying to the tailnet address. Nothing necessarily clashes or complains, but
+every request from the phone is refused because the API moved. `make up`
+notices the service is installed and asks first, so it is a mistake you get one
+chance to catch — but the command you want is `make serve`.
 
 ### If it does not come back
 

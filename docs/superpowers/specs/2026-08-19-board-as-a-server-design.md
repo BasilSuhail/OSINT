@@ -23,7 +23,7 @@ modes. This adds a third.
 | | `locked` (`make up`) | `share` (`make share`) | `serve` (`make serve`) |
 |---|---|---|---|
 | Reachable by | this machine | the local network | devices on the tailnet |
-| Console runs | `next dev` | `next dev` | `next start`, from a build |
+| Console runs | `next dev` | `next dev` | `next start`, behind Tailscale Serve HTTPS |
 | Survives reboot | no | no | yes |
 | Credential | none needed | none — and it says so | `API_AUTH_TOKEN`, required |
 
@@ -41,17 +41,22 @@ change.
   and differ entirely in who can reach it.
 - `API_CORS_ORIGINS` — the tailnet hostname's origin, added to whatever `.env`
   already configures rather than replacing it, as share mode does.
-- `NEXT_PUBLIC_API_URL` — the tailnet hostname, because this is the address the
-  *phone* must resolve.
+- `FRONTEND_BIND` — loopback. Tailscale Serve officially proxies local HTTP
+  targets and terminates the private HTTPS origin the installed app requires.
+- `NEXT_PUBLIC_API_URL` — `/api`, keeping every browser request on the secure
+  frontend origin.
+- `API_PROXY_TARGET` — the API's tailnet-bound address, used by Next behind
+  that same-origin route.
+- `OSINT_SERVE_URL` — the tailnet's HTTPS MagicDNS name, with no raw port.
 
 The fourth setting share needs drops out. `LAN_SHARE_HOST` exists only because
 `next dev` refuses to serve its own `/_next/*` resources to a host that is not
 localhost; `next start` has no such rule, and a setting that does nothing is
 better absent than present and inert.
 
-The hostname comes from `tailscale status --json`. `OSINT_PUBLIC_HOST` overrides
-it, the same setting `make env` already honours when deriving addresses, so the
-two agree rather than overwriting one another.
+The hostname comes from `tailscale status --json`. `OSINT_PUBLIC_HOST` remains a
+share-mode override, but cannot replace this name: Tailscale provisions the
+private HTTPS certificate for the node's MagicDNS name.
 
 ## Why serve is remembered when share is not
 
@@ -76,14 +81,15 @@ mistake.
 
 `make serve-build` runs `pnpm build` with the serve-mode environment in place.
 
-This is the sharp edge of the whole design. In development, `NEXT_PUBLIC_*` is
-read when the process spawns, so `dev-up.sh` can restart the console to change
-one. A production build compiles them into the bundle. The consequence, which
-the build target prints rather than leaving to be discovered: **change the
-tailnet hostname and the console must be rebuilt, not restarted.**
+This is the sharp edge of the whole design. In development, frontend settings
+are read when the process spawns, so `dev-up.sh` can restart the console to
+change one. A production build compiles both the public settings and the rewrite
+table. The consequence, which the build target prints rather than leaving to be
+discovered: **change the tailnet API address or port and the console must be
+rebuilt, not restarted.**
 
-The target prints the hostname and API URL it baked, and writes the commit it
-built from where the unit can read it.
+The target prints the HTTPS console URL, browser API path and proxy target, then
+writes the commit it built from where the unit can read it.
 
 Building on the board rather than elsewhere: it is minutes and it is memory
 hungry, but it happens when the operator pulls new code, not on a schedule and
@@ -92,38 +98,43 @@ after every power cut and turns a failed build into no console at all.
 
 ## Boot
 
-One unit, `osint-console.service`:
+Two units divide the two failure modes:
 
-- `ExecStart` runs `next start` bound as serve mode derived, from
-  `osint-frontend`
-- `Restart=always`, so a crash comes back
-- `After=network-online.target tailscaled.service`: the bind address does not
-  exist until the tailnet is up, and an address that is not there yet is the
-  one thing that makes this fail at boot and work when tried by hand
-- `EnvironmentFile` points at a generated file, so no secret is written into the
-  unit
-- The commit being served is logged at start, so a stale build is a line in
-  `journalctl` rather than a mystery about why a fix is not showing
+- `osint-stack.service` waits for the tailnet address, then reconciles the
+  containers so Docker cannot lose the API bind race during boot.
+- `osint-console.service` starts the built console on loopback after the stack:
+  - `ExecStart` runs `next start` bound as serve mode derived, from
+    `osint-frontend`.
+  - `Restart=always`, so a crash comes back.
+  - `After=network-online.target tailscaled.service`: the private HTTPS ingress
+    and API upstream depend on the tailnet.
+  - `EnvironmentFile` points at a generated file, so no secret is written into
+    the unit.
+  - The commit being served is logged at start, so a stale build is a line in
+    `journalctl` rather than a mystery about why a fix is not showing.
 
-`make serve-install` renders the unit, prints it in full, asks before writing,
-then enables it. Nothing about the backend is installed: compose's restart policy
-already does that job, and a second mechanism doing the same thing is a second
-mechanism to keep in agreement.
+`make serve-install` renders both units, prints them in full, asks before
+writing, enables them, then persists a Tailscale Serve HTTPS route to the
+loopback console. Tailscale resumes that route after reboot without exposing it
+outside the tailnet.
 
 ## Refusals
 
 Serve mode refuses to start, naming the fix, when:
 
-- **Tailscale is not up.** There is no hostname to bake, and a build carrying the
-  wrong one produces a console that loads and then cannot reach its API — a
-  failure that looks like a broken backend.
+- **Tailscale is not up.** There is no private hostname for the HTTPS ingress
+  and no tailnet address on which to publish the API.
+- **HTTPS Certificates are disabled.** MagicDNS is a separate setting. Install
+  proves certificate eligibility in a temporary directory before it writes or
+  enables either service, so failure cannot strand a loopback-only console.
 - **`API_AUTH_TOKEN` is empty.** On a laptop an empty token is a convenience. On
   a machine that is up all the time and reachable from a phone, it is the only
   thing between a tailnet device and `POST /brain/ask`, which spends local model
   inference per call. Empty is refused rather than warned about.
 
 Both refusals are the mode's own, not the unit's, so they happen at
-`make serve` and `make serve-build` where a person is watching.
+`make serve`, `make serve-build`, and `make serve-install` where a person is
+watching.
 
 ## Testing
 

@@ -210,9 +210,8 @@ def stack_unit_text(
     for the console.
 
     `Before=` the console rather than the console waiting on its own: the
-    console binds the same address and has the same race, and ordering it after
-    this one means it does not start until the address is there. Its
-    `Restart=always` stops being the thing that saves it.
+    console's same-origin proxy calls the API on this address, and ordering it
+    after this unit means it does not start until that upstream is available.
     """
     lines = []
     for key, value in environment.items():
@@ -231,8 +230,8 @@ Description=OSINT containers, once the tailnet address exists
 # are needed, and neither is sufficient on its own — see ExecStartPre.
 After=docker.service tailscaled.service network-online.target
 Wants=docker.service tailscaled.service network-online.target
-# The console binds the same address and would race the same way. Ordered
-# behind this, it starts knowing the address is there.
+# The console proxies browser API calls to this address. Ordered behind this,
+# it starts with a live upstream instead of an empty page.
 Before={UNIT_NAME}
 
 [Service]

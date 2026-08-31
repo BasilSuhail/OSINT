@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import {
+  API_BASE,
   CLIENT_LIMITS,
   fetchAllEventPages,
   fetchAllUpdatedEventPages,
@@ -13,6 +14,10 @@ import type { EventRow } from "./types"
 afterEach(() => vi.restoreAllMocks())
 
 describe("apiClient", () => {
+  it("uses the same-origin API proxy by default", () => {
+    expect(API_BASE).toBe("/api")
+  })
+
   it("builds the events query string", async () => {
     const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify([]), { status: 200 }),

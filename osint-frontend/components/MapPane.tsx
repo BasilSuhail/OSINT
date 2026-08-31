@@ -1746,7 +1746,7 @@ export function MapPane({
       {!configured && (
         <PaneStatus
           mode="error"
-          message="Local API unreachable — start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)."
+          message="Local API unreachable — check the same-origin /api proxy."
         />
       )}
       {/*: The live source-count chips that floated top-left are gone. The

@@ -372,7 +372,7 @@ export function SplitLayout() {
         <Omnibox narrow={isNarrow} />
         {!configured && (
           <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
-            Local API unreachable - start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)
+            Local API unreachable - check the same-origin /api proxy
           </div>
         )}
 

@@ -28,11 +28,11 @@ ENV = {
 
 def _unit() -> str:
     return unit_text(
-        working_dir="/home/board/OSINT/osint-frontend",
+        working_dir="/srv/osint/osint-frontend",
         env_file="/etc/osint-console.env",
         bind="100.100.100.100",
         port=3000,
-        commit_file="/home/board/OSINT/osint-frontend/.next/BUILD_COMMIT",
+        commit_file="/srv/osint/osint-frontend/.next/BUILD_COMMIT",
         user="board",
         group="board",
     )
@@ -76,7 +76,7 @@ def test_it_starts_the_built_console_on_the_bind_it_was_given() -> None:
 
 
 def test_it_runs_from_the_console_directory() -> None:
-    assert "WorkingDirectory=/home/board/OSINT/osint-frontend" in _unit()
+    assert "WorkingDirectory=/srv/osint/osint-frontend" in _unit()
 
 
 #: A stale build is otherwise invisible: the console loads, and the fix that
@@ -140,7 +140,7 @@ STACK_BIND = "100.100.100.100"
 
 def _stack() -> str:
     return stack_unit_text(
-        working_dir="/home/board/OSINT",
+        working_dir="/srv/osint",
         bind=STACK_BIND,
         environment={
             "COMPOSE_PROFILES": "app",
@@ -211,9 +211,9 @@ class TestTheContainersComeBackAfterAReboot:
         assert "Type=oneshot" in unit
         assert "RemainAfterExit=yes" in unit
 
-    #: The console binds the same address and has the same race. Ordered
-    #: behind this unit it starts knowing the address exists, instead of
-    #: relying on `Restart=always` to paper over a failed first attempt.
+    #: The console proxies to the API on this address. Ordered behind the
+    #: stack, it starts with that upstream available instead of serving an
+    #: empty page while the containers recover from the bind race.
     def test_the_console_is_ordered_behind_it(self) -> None:
         assert f"Before={UNIT_NAME}" in _stack()
 
@@ -239,13 +239,13 @@ class TestTheContainersComeBackAfterAReboot:
     def test_a_value_systemd_would_misread_is_refused(self, value: str) -> None:
         with pytest.raises(ValueError):
             stack_unit_text(
-                working_dir="/home/board/OSINT",
+                working_dir="/srv/osint",
                 bind=STACK_BIND,
                 environment={"API_CORS_ORIGINS": value},
             )
 
     def test_it_runs_from_the_directory_compose_is_defined_in(self) -> None:
-        assert "WorkingDirectory=/home/board/OSINT" in _stack()
+        assert "WorkingDirectory=/srv/osint" in _stack()
 
     def test_it_is_enabled_at_boot(self) -> None:
         assert "WantedBy=multi-user.target" in _stack()

@@ -20,25 +20,28 @@ somewhere else". Share mode is a run-time environment variable, so a stack
 opened at home and restarted on another network comes back closed with no file
 to remember to change back.
 
-## Why four settings, not one
+## Why these settings travel together
 
-A guest device needs all four to agree, and any one of them alone produces a
+A guest device needs all of them to agree, and one wrong value produces a
 console that looks broken rather than one that says why:
 
 - `API_BIND` — the published bind address. Wrong, and the guest reaches
   nothing.
 - `API_CORS_ORIGINS` — the origin allow-list. Wrong, and the guest's browser
   makes the request, then discards the answer at the preflight.
-- `NEXT_PUBLIC_API_URL` — compiled into the bundle the guest downloads, so it
-  must name an address the *guest* can resolve. The default
-  `http://localhost:8000`, in a guest's browser, is the guest's own machine.
+- `NEXT_PUBLIC_API_URL` — the browser uses the same-origin `/api` path, which
+  Next proxies to the local API. An absolute HTTP URL would be blocked when the
+  frontend is served over HTTPS.
+- `API_PROXY_TARGET` — the upstream Next calls behind `/api`. Development can
+  use loopback; serve mode must use the API's tailnet bind because that is the
+  only address where the board publishes it.
 - `LAN_SHARE_HOST` → `allowedDevOrigins` — `next dev` refuses its own
   `/_next/*` dev resources for any host that is not localhost. Missing, and the
   guest gets a page shell, a websocket retrying forever, and a map that never
   initialises (#930).
 
-The fourth was missed the first time, which is the argument for deriving them
-together: one address in, everything that depends on it out.
+The dev-host setting was missed the first time, which is the argument for
+deriving them together: one address in, everything that depends on it out.
 
 ## Why no credential
 
@@ -136,8 +139,8 @@ def _validated(address: str) -> str:
         raise ShareAddressError(f"{candidate!r} looks like a URL; give a bare host")
     if ":" in candidate:
         # IPv6 is refused rather than half-supported: the compose port mapping
-        # and the bundle URL both need bracket syntax, and neither has been
-        # tried that way. A trailing `:port` lands here too, and the port is
+        # and guest URL both need bracket syntax, and neither has been tried
+        # that way. A trailing `:port` lands here too; the frontend port is
         # supplied separately.
         raise ShareAddressError(f"{candidate!r} must carry no port and no colon")
 
@@ -164,7 +167,6 @@ def _validated(address: str) -> str:
 def share_env(
     address: str,
     *,
-    api_port: int = DEFAULT_API_PORT,
     frontend_port: int = DEFAULT_FRONTEND_PORT,
     cors_origins: str = "",
     also_reachable_at: tuple[str, ...] = (),
@@ -197,7 +199,10 @@ def share_env(
     return {
         "API_BIND": ALL_INTERFACES,
         "FRONTEND_BIND": ALL_INTERFACES,
-        "NEXT_PUBLIC_API_URL": f"http://{ip}:{api_port}",
+        # Browser calls stay on the frontend origin. Next proxies this path to
+        # the local API, so a guest never needs to resolve a second origin and
+        # an HTTPS frontend never attempts blocked HTTP mixed content (#1034).
+        "NEXT_PUBLIC_API_URL": "/api",
         "API_CORS_ORIGINS": ",".join(origins),
         # `next dev` refuses its own /_next/* dev resources for any host that is
         # not localhost, which reached the guest as a page shell with a dead
@@ -328,7 +333,7 @@ def tailnet_identity() -> tuple[str, str]:
 
 
 def _require_magic_dns(status: dict, host: str) -> None:
-    """Refuse unless the tailnet will actually resolve the name being compiled in.
+    """Refuse unless the tailnet will resolve the private HTTPS name.
 
     `Self.DNSName` is populated whether or not MagicDNS is switched on — it is
     the name the node *would* answer to. With MagicDNS off, nothing resolves
@@ -336,11 +341,11 @@ def _require_magic_dns(status: dict, host: str) -> None:
     unit installs, the service starts, and the phone gets NXDOMAIN after the
     reboot with nothing anywhere saying why.
 
-    That makes this the worst precondition in the mode to leave unchecked. The
-    name is compiled into the bundle, so the fix is `make serve-build` again —
-    minutes on a small board — where every other failure here is a restart. So
-    it is checked before the name is handed back, and the message names the
-    setting and the rebuild.
+    That makes this the worst precondition in the mode to leave unchecked. A
+    manifest on raw HTTP is not installable in current browsers; Tailscale
+    Serve needs this name to provision the secure origin. It is checked before
+    the name is handed back, and the message names the setting and the command
+    to rerun.
 
     A tailnet that reports nothing about MagicDNS is refused too, rather than
     assumed good. Refusing on a field that did not arrive costs the operator
@@ -353,8 +358,7 @@ def _require_magic_dns(status: dict, host: str) -> None:
     raise ServeRefused(
         f"MagicDNS is off for this tailnet, so nothing can resolve {host} — the phone "
         "would get a name that does not exist. Turn MagicDNS on in the Tailscale admin "
-        "console (DNS → MagicDNS), then run `make serve-build` again: the name is "
-        "compiled into the bundle, so a restart will not pick it up"
+        "console (DNS → MagicDNS), then rerun the serve command"
     )
 
 
@@ -370,8 +374,8 @@ def serve_env(
     """Every setting a served console needs, derived from the tailnet identity.
 
     Two arguments rather than one because the two answers differ and both are
-    load-bearing: the bundle must name what the *phone* resolves, and the bind
-    must name the interface the tailnet is on.
+    load-bearing: the phone opens the MagicDNS name, while the API proxy must
+    name the interface where the board actually publishes the backend.
     """
     require_api_token(api_token)
     name = _validated(host)
@@ -382,7 +386,7 @@ def serve_env(
     if bind not in TAILNET_RANGE:
         raise ServeRefused(f"{bind} is not a tailnet address — serve mode binds the tailnet only")
 
-    origin = f"http://{name}:{frontend_port}"
+    origin = f"https://{name}"
     configured = [o.strip() for o in (cors_origins or DEFAULT_CORS_ORIGINS).split(",") if o.strip()]
     origins: list[str] = []
     for candidate in [*configured, origin]:
@@ -391,8 +395,12 @@ def serve_env(
 
     return {
         "API_BIND": str(bind),
-        "FRONTEND_BIND": str(bind),
-        "NEXT_PUBLIC_API_URL": f"http://{name}:{api_port}",
+        # Tailscale Serve terminates HTTPS and is only able to proxy to
+        # loopback. Keeping Next there also removes its raw HTTP port from the
+        # tailnet; the phone reaches the secure origin instead (#1034).
+        "FRONTEND_BIND": LOOPBACK,
+        "NEXT_PUBLIC_API_URL": "/api",
+        "API_PROXY_TARGET": f"http://{bind}:{api_port}",
         "API_CORS_ORIGINS": ",".join(origins),
         "OSINT_SERVE_HOST": name,
         "OSINT_SERVE_URL": origin,
@@ -460,11 +468,13 @@ def main(argv: list[str] | None = None) -> int:
             #: machine that is not a board at all spawns a probe whose answer
             #: it could never have used.
             require_linux()
-            pinned = _env("OSINT_PUBLIC_HOST").strip()
             require_api_token(_env("API_AUTH_TOKEN"))
             host, address = tailnet_identity()
             env = serve_env(
-                pinned or host,
+                # Tailscale provisions HTTPS only for this node's MagicDNS
+                # name. OSINT_PUBLIC_HOST remains a share-mode override; using
+                # it here would print a secure URL with no certificate.
+                host,
                 address,
                 api_port=int(_env_port("API_PORT", DEFAULT_API_PORT)),
                 frontend_port=int(_env_port("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)),
@@ -485,11 +495,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    #: The same setting `make env` derives NEXT_PUBLIC_API_URL from (#964).
-    #: Share mode used to ignore it and overwrite that value with the detected
-    #: address, so pinning a host and then sharing silently discarded the
-    #: choice — two commands in one project reading one setting differently
-    #: (#974). Detection is now the fallback, not the rule.
+    #: A pinned host is the address printed for a guest and allowed through the
+    #: dev server. Detection is the fallback, not the rule (#974).
     pinned = _env("OSINT_PUBLIC_HOST").strip()
     detected = ""
     try:
@@ -501,7 +508,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         env = share_env(
             pinned or detected,
-            api_port=int(_env_port("API_PORT", DEFAULT_API_PORT)),
             frontend_port=int(_env_port("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)),
             cors_origins=_env("API_CORS_ORIGINS"),
             also_reachable_at=(detected,) if pinned else (),
