@@ -117,6 +117,42 @@ def test_prune_is_idempotent_when_no_stale_rows(db_session: Session) -> None:
     assert runs[0].notes is None  # No per-source breakdown when nothing pruned.
 
 
+def test_active_gdacs_retention_uses_feed_freshness_not_onset(db_session: Session) -> None:
+    now = datetime.now(UTC)
+    active = _make_event_row(
+        source="gdacs",
+        occurred_at=now - timedelta(days=120),
+        suffix="active-flood",
+    )
+    active.fetched_at = now - timedelta(hours=1)
+    db_session.add(active)
+    db_session.commit()
+
+    result = prune_events(db_session, now=now)
+    db_session.commit()
+
+    assert result["gdacs"] == 0
+    assert _event_count(db_session) == 1
+
+
+def test_gdacs_row_dropped_from_feed_expires_by_last_fetch(db_session: Session) -> None:
+    now = datetime.now(UTC)
+    ended = _make_event_row(
+        source="gdacs",
+        occurred_at=now - timedelta(days=120),
+        suffix="ended-flood",
+    )
+    ended.fetched_at = now - timedelta(days=31)
+    db_session.add(ended)
+    db_session.commit()
+
+    result = prune_events(db_session, now=now)
+    db_session.commit()
+
+    assert result["gdacs"] == 1
+    assert _event_count(db_session) == 0
+
+
 GIB = 1024**3
 
 

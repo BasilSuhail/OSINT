@@ -93,8 +93,8 @@ def retention_days() -> dict[str, int | None]:
     }
 
 
-#: Sources whose publication lag exceeds their retention window, pruned on when
-#: the row was *ingested* rather than when the event happened (#765).
+#: Sources whose event timestamp is not the right retention clock, pruned on
+#: when the row was last fetched rather than when the event happened (#765).
 #:
 #: `data.police.uk` publishes about two months in arrears — it offered
 #: `2026-06-01` on 2026-08-08 — and pins every crime to the first of that
@@ -105,8 +105,11 @@ def retention_days() -> dict[str, int | None]:
 #:
 #: Retention still means thirty days. For a lagged archive the only reading
 #: that works is thirty days of what we ingested, which is also what the
-#: storage cap is actually protecting.
-PRUNE_ON_INGEST: frozenset[str] = frozenset({"uk-police"})
+#: storage cap is actually protecting. GDACS is a current-hazard snapshot: a
+#: flood can remain active long after its true onset, and each poll refreshes
+#: `fetched_at`. Using onset would delete and recreate that live row every day
+#: once it crossed the hazard window.
+PRUNE_ON_INGEST: frozenset[str] = frozenset({"gdacs", "uk-police"})
 
 
 def _prune_source(session: Session, *, source: str, days: int, now: datetime) -> int:
