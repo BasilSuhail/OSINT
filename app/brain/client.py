@@ -93,12 +93,15 @@ _REPEAT_PENALTY: float = 1.15
 
 
 def _gen_options(num_predict: int | None) -> dict[str, Any]:
-    return {
+    options = {
         "temperature": 0,
         "num_ctx": _NUM_CTX,
         "num_predict": _NUM_PREDICT if num_predict is None else num_predict,
         "repeat_penalty": _REPEAT_PENALTY,
     }
+    if settings.ollama_request_num_thread > 0:
+        options["num_thread"] = settings.ollama_request_num_thread
+    return options
 
 
 def generate_json(

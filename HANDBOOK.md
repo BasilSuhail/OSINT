@@ -910,6 +910,14 @@ Environment="OLLAMA_NUM_PARALLEL=1"
 
 The cost is a reload of several seconds on each question, which is the right trade on 8 GB.
 
+Generation thread count belongs in the application's `.env`, not this systemd
+override. `OLLAMA_REQUEST_NUM_THREAD=0` lets Ollama choose; the small-machine
+profile writes up to `3`, retaining one CPU when the host has one to spare. The
+measured four-core board therefore gets `3`. The API sends it as
+`options.num_thread` on every generation request, reducing competition with the
+console, ingest and the operating system. `OLLAMA_NUM_THREAD` is not an Ollama
+service setting.
+
 `make up` starts Ollama and pulls the model itself when Ollama is installed, so the pull above only moves the download earlier. Adding it later and re-running `make up` needs nothing else redone.
 
 On a machine with 8 GB of memory, the 3B model at Q4 is roughly 2.5 GB resident against a container ceiling of about 4.3 GB. That fits, but not alongside a heavy analytical run — check with `free -h` before starting one.

@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # WS-G local LLM validator (#378) — localhost only, never a cloud API.
     ollama_url: str = Field(default="http://localhost:11434")
     ollama_model: str = Field(default="qwen3.5:4b-q4_K_M")
+    # Per-request runner threads. Zero leaves Ollama's automatic choice alone;
+    # the measured small-machine profile uses three to reduce competition with
+    # the API and ingest while local inference runs (#1035).
+    ollama_request_num_thread: int = Field(default=0, ge=0)
+
+    @field_validator("ollama_request_num_thread", mode="before")
+    @classmethod
+    def _blank_threads_mean_automatic(cls, value: object) -> object:
+        return 0 if isinstance(value, str) and not value.strip() else value
+
     validator_batch_limit: int = Field(default=200)
     # News severity grading (#591) had no setting of its own, so it rode on the
     # validator's model above and neither could move without the other. Split so
