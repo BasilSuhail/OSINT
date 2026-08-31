@@ -1022,9 +1022,7 @@ def test_the_install_proves_https_before_writing_or_enabling_services() -> None:
     assert "--cert-file" in install_body
     assert "--key-file" in install_body
     assert install_body.index(preflight) < install_body.index("sudo install")
-    assert install_body.index(preflight) < install_body.index(
-        'systemctl restart "$STACK_UNIT"'
-    )
+    assert install_body.index(preflight) < install_body.index('systemctl restart "$STACK_UNIT"')
 
 
 def test_successful_install_cleans_the_local_tmp_before_it_returns() -> None:
