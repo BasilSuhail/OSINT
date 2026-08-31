@@ -382,6 +382,7 @@ _SMALL_MACHINE_PROFILE: dict[str, str] = {
     "QA_MODEL": "llama3.2:3b",
     "SEVERITY_MODEL": "llama3.2:3b",
     "OLLAMA_MODEL": "llama3.2:3b",
+    "OLLAMA_REQUEST_NUM_THREAD": "3",
     "BRAIN_KEEP_ALIVE": "5m",
     "QA_KEEP_ALIVE": "5m",
     "BRAIN_MIN_FREE_MB": "3500",
@@ -397,6 +398,20 @@ _SMALL_MACHINE_PROFILE: dict[str, str] = {
     "NEXT_PUBLIC_STREAM_IDLE_TIMEOUT_MS": "240000",
     "NEXT_PUBLIC_ASK_TIMEOUT_MS": "600000",
 }
+
+
+def small_machine_inference_threads(cpu_count: int | None = None) -> int:
+    """Request threads that preserve one CPU when the host has one to spare."""
+    cores = os.cpu_count() if cpu_count is None else cpu_count
+    if cores is None or cores < 1:
+        return 0
+    return max(1, min(3, cores - 1))
+
+
+def _small_machine_profile(cpu_count: int | None = None) -> dict[str, str]:
+    profile = dict(_SMALL_MACHINE_PROFILE)
+    profile["OLLAMA_REQUEST_NUM_THREAD"] = str(small_machine_inference_threads(cpu_count))
+    return profile
 
 
 #: Values this script wrote in an earlier version and has since changed its mind
@@ -619,6 +634,7 @@ def originate(
     secrets_too: bool = True,
     rederive: bool = False,
     small: bool | None = None,
+    cpu_count: int | None = None,
 ) -> dict[str, str]:
     """The values this script should write, given the ones already answered.
 
@@ -678,7 +694,7 @@ def originate(
         #: memory. Inside `secrets_too` so that `refresh`, which exists to
         #: rewrite addresses, cannot reach a model setting on its way past.
         if is_small_machine() if small is None else small:
-            for key, value in _SMALL_MACHINE_PROFILE.items():
+            for key, value in _small_machine_profile(cpu_count).items():
                 #: Already correct is not a change. Several profile values match
                 #: the example's own default — the memory floors a 3b needs are
                 #: the floors the example ships — and without this the file would

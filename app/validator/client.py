@@ -22,6 +22,13 @@ _KEEP_ALIVE: str = "5m"
 _NUM_CTX: int = 2048
 
 
+def _gen_options() -> dict[str, Any]:
+    options: dict[str, Any] = {"temperature": 0, "num_ctx": _NUM_CTX}
+    if settings.ollama_request_num_thread > 0:
+        options["num_thread"] = settings.ollama_request_num_thread
+    return options
+
+
 def generate_json(prompt: str, *, model: str | None = None) -> dict[str, Any]:
     """One prompt → parsed JSON dict. Raises on HTTP or JSON failure."""
     response = httpx.post(
@@ -33,7 +40,7 @@ def generate_json(prompt: str, *, model: str | None = None) -> dict[str, Any]:
             "stream": False,
             "think": False,
             "keep_alive": _KEEP_ALIVE,
-            "options": {"temperature": 0, "num_ctx": _NUM_CTX},
+            "options": _gen_options(),
         },
         timeout=_TIMEOUT_S,
     )

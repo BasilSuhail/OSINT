@@ -25,6 +25,7 @@ from scripts.env_setup import (
     parse_example,
     required_keys,
     set_value,
+    small_machine_inference_threads,
     stale_addresses,
     sync,
 )
@@ -659,6 +660,7 @@ BRAIN_MODEL=llama3.2:3b
 QA_MODEL=qwen3.5:4b-q4_K_M
 SEVERITY_MODEL=qwen3.5:4b-q4_K_M
 OLLAMA_MODEL=qwen3.5:4b-q4_K_M
+OLLAMA_REQUEST_NUM_THREAD=
 BRAIN_KEEP_ALIVE=30m
 QA_KEEP_ALIVE=0
 BRAIN_MIN_FREE_MB=3500
@@ -731,6 +733,34 @@ class TestTheSmallMachineProfile:
     def test_it_sends_fewer_stories_to_the_model(self):
         written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True)
         assert int(written["QA_STORIES"]) < 6
+
+    def test_it_leaves_one_core_for_non_model_work(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True, cpu_count=4)
+        assert written["OLLAMA_REQUEST_NUM_THREAD"] == "3"
+
+    def test_it_does_not_oversubscribe_a_two_core_host(self):
+        written = originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=True, cpu_count=2)
+        assert written["OLLAMA_REQUEST_NUM_THREAD"] == "1"
+
+    def test_the_cap_never_exceeds_the_measured_three_threads(self):
+        assert small_machine_inference_threads(8) == 3
+
+    def test_a_single_core_host_still_has_one_inference_thread(self):
+        assert small_machine_inference_threads(1) == 1
+
+    def test_an_unknown_cpu_count_keeps_ollama_automatic(self, monkeypatch):
+        monkeypatch.setattr("os.cpu_count", lambda: None)
+        assert small_machine_inference_threads() == 0
+
+    def test_it_keeps_an_operator_thread_choice(self):
+        env = PROFILE_EXAMPLE.replace("OLLAMA_REQUEST_NUM_THREAD=", "OLLAMA_REQUEST_NUM_THREAD=2")
+        written = originate(PROFILE_EXAMPLE, env, MACHINE, small=True)
+        assert "OLLAMA_REQUEST_NUM_THREAD" not in written
+
+    def test_it_keeps_an_explicit_automatic_thread_choice(self):
+        env = PROFILE_EXAMPLE.replace("OLLAMA_REQUEST_NUM_THREAD=", "OLLAMA_REQUEST_NUM_THREAD=0")
+        written = originate(PROFILE_EXAMPLE, env, MACHINE, small=True)
+        assert "OLLAMA_REQUEST_NUM_THREAD" not in written
 
     def test_a_big_machine_keeps_every_default(self):
         assert originate(PROFILE_EXAMPLE, PROFILE_EXAMPLE, MACHINE, small=False) == {}
@@ -862,6 +892,11 @@ class TestTheExampleAgreesWithTheCode:
             assert documented == field.default, (
                 f"env.example says {key}={example[key].strip()}, settings.py says {field.default}"
             )
+
+    def test_blank_request_threads_mean_the_automatic_default(self) -> None:
+        from app.settings import Settings
+
+        assert Settings(ollama_request_num_thread="").ollama_request_num_thread == 0
 
 
 class TestUpdatingWhatThisScriptItselfWrote:

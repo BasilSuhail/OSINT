@@ -117,7 +117,8 @@ make env
 
 Nothing to edit. `make env` reads how much memory the board has and, at 8 GB,
 writes the settings for it: one small model doing every job instead of three
-different ones, and memory floors and generation timeouts sized for that model.
+different ones, a three-thread inference cap to preserve capacity for the rest
+of the system, and memory floors and generation timeouts sized for that model.
 It prints what it chose.
 
 Those numbers are in force from the first run, not held in reserve.
@@ -128,6 +129,11 @@ reported as the brain being offline. `QA_MIN_FREE_MB` is the free-memory floor
 a reader-triggered read has to clear, and the reasoned read behind a contested
 story still asks for one. They are also the numbers an answer would use, sized
 so they are already right if you turn the question box back on.
+
+`OLLAMA_REQUEST_NUM_THREAD=3` is sent inside each generation request. It is not
+an Ollama service setting. On the measured four-core board it reduced runner CPU
+and made the representative grading request faster; `0` keeps Ollama's automatic
+choice on other machines.
 
 The question box is the one thing `make env` turns off on a board this size.
 Everything else runs: it fetches, it stores, it scores, it writes the gists and
