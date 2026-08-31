@@ -983,7 +983,20 @@ def test_the_install_puts_the_boot_time_container_start_in_place_too() -> None:
     assert "osint-stack.service" in script
     install_body = script.split("cmd_install() {", 1)[1]
     assert "render_stack_unit" in install_body
-    assert 'systemctl enable --now "$STACK_UNIT"' in install_body
+    assert 'systemctl enable "$STACK_UNIT"' in install_body
+    assert 'systemctl restart "$STACK_UNIT"' in install_body
+
+
+#: Replacing an active unit and calling `enable --now` leaves the old process
+#: running with its old bind. Installation is also an upgrade path, so both
+#: services must be explicitly restarted after their new files are installed.
+def test_the_install_applies_replaced_units_immediately() -> None:
+    install_body = _serve_script().split("cmd_install() {", 1)[1]
+    stack_restart = install_body.index('systemctl restart "$STACK_UNIT"')
+    console_restart = install_body.index('systemctl restart "$UNIT"')
+    assert stack_restart > install_body.index('sudo install -m 0644 "$tmp/$STACK_UNIT"')
+    assert console_restart > install_body.index('sudo install -m 0644 "$tmp/$UNIT"')
+    assert stack_restart < console_restart
 
 
 #: A manifest on raw HTTP is metadata, not an installable app in current
@@ -996,7 +1009,7 @@ def test_the_install_persists_private_https_for_the_console() -> None:
     assert command in install_body
     assert "tailscale serve status" in install_body
     assert install_body.index("private HTTPS ingress") < install_body.index("read -r -p")
-    assert install_body.index(command) < install_body.index('systemctl enable --now "$STACK_UNIT"')
+    assert install_body.index(command) < install_body.index('systemctl restart "$STACK_UNIT"')
 
 
 #: MagicDNS does not imply that the separate HTTPS Certificates setting is on.
@@ -1010,8 +1023,16 @@ def test_the_install_proves_https_before_writing_or_enabling_services() -> None:
     assert "--key-file" in install_body
     assert install_body.index(preflight) < install_body.index("sudo install")
     assert install_body.index(preflight) < install_body.index(
-        'systemctl enable --now "$STACK_UNIT"'
+        'systemctl restart "$STACK_UNIT"'
     )
+
+
+def test_successful_install_cleans_the_local_tmp_before_it_returns() -> None:
+    install_body = _serve_script().split("cmd_install() {", 1)[1].split("\n}", 1)[0]
+    cleanup = install_body.rindex('rm -rf "$tmp"')
+    disarm = install_body.rindex("trap - EXIT")
+    assert cleanup > install_body.index('echo "  open $OSINT_SERVE_URL"')
+    assert disarm > cleanup
 
 
 #: Shown before it is written, on the same argument as the console's: a file

@@ -319,13 +319,25 @@ cmd_install() {
   #: before enabling either unit so an ingress failure cannot leave active but
   #: unreachable services behind.
   sudo tailscale serve --bg --yes --https=443 "localhost:${FRONTEND_PORT:-3000}"
-  #: The stack first, and `--now` on it, so the containers are reconciled onto
-  #: the tailnet bind before the console starts answering for them.
-  sudo systemctl enable --now "$STACK_UNIT"
-  sudo systemctl enable --now "$UNIT"
+  #: `enable --now` starts an inactive unit, but does not restart one that was
+  #: already active before its unit file was replaced. Enable and restart are
+  #: deliberately separate so an upgrade applies the new bind immediately.
+  #: The stack goes first, so the containers are reconciled onto the tailnet
+  #: bind before the console starts answering for them.
+  sudo systemctl enable "$STACK_UNIT"
+  sudo systemctl restart "$STACK_UNIT"
+  sudo systemctl enable "$UNIT"
+  sudo systemctl restart "$UNIT"
   sudo systemctl status "$STACK_UNIT" "$UNIT" --no-pager || true
   sudo tailscale serve status
   echo "  open $OSINT_SERVE_URL"
+  #: The EXIT trap is the failure-path cleanup. On success, remove the
+  #: directory while the function-local path still exists, then disarm it.
+  #: Leaving the trap armed reaches process exit after `tmp` has gone out of
+  #: scope, and `set -u` turns successful installation into `tmp: unbound
+  #: variable` even though every install action already completed.
+  rm -rf "$tmp"
+  trap - EXIT
 }
 
 cmd_start() {
