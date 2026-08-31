@@ -348,11 +348,11 @@ export function SplitLayout() {
   }
 
   return (
-    <main className="relative h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-100">
+    <main className="console-viewport relative w-full overflow-hidden bg-neutral-950 text-neutral-100">
       {/*: No status bar (#936). Eleven always-on chips cost the map the full
           width of the screen to say what three numbers in the corner say, and
           were read once and then ignored. The map gets the whole viewport. */}
-      <div className="relative h-dvh w-full overflow-hidden">
+      <div className="relative h-full w-full overflow-hidden">
         {/*: The corner cluster: whether the view is live, and whether the
             sources are. Two detached controls rather than one bar — the time
             readout has to stay legible without opening anything (#501), and

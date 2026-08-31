@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { readFileSync } from "node:fs"
 
 import { consoleManifest, newsManifest } from "./appManifests"
 
@@ -20,5 +21,16 @@ describe("installable app manifests", () => {
         expect.objectContaining({ sizes: "512x512", type: "image/png", purpose: "maskable" }),
       ]),
     )
+  })
+
+  it("uses a plain O for both app identities and keeps News lines separate", () => {
+    const consoleIcon = readFileSync(new URL("../icons-src/osint.svg", import.meta.url), "utf8")
+    const newsIcon = readFileSync(new URL("../icons-src/news.svg", import.meta.url), "utf8")
+
+    expect(consoleIcon).toContain('<ellipse cx="90" cy="90"')
+    expect(consoleIcon).not.toContain("<path")
+    expect(newsIcon).toContain('<ellipse cx="90" cy="68"')
+    expect(newsIcon).toContain('fill="#67e8f9"')
+    expect(newsIcon).not.toContain("<path")
   })
 })

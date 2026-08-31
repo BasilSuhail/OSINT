@@ -383,12 +383,11 @@ export function FilterRail({
         //: (#936) — it is a separate control with its own border, so the rail
         //: starts below it rather than sharing an edge and reading as one panel.
         isLeft ? "left-3 top-3" : "right-3 top-14",
-        //: Full height on a phone so the handle, which centres itself inside
-        //: this box, centres on the screen — the same height as the deck's
-        //: handle on the opposite edge. The panel keeps its own margins to
-        //: clear the search bar above and the scrubber's handle below; that is
-        //: the panel's problem, not the handle's.
-        narrow ? "top-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]" : "bottom-3",
+        //: The two phone handles answer to the screen's true midpoint. Safe
+        //: area clearance belongs to panel contents, not the flex box that
+        //: centres this handle; including only the bottom inset shifted this
+        //: arrow above the deck arrow on the opposite edge.
+        narrow ? "inset-y-0" : "bottom-3",
       )}
     >
       {/*: The deck's handle, exactly: it floats on the map *outside* the thing
@@ -442,7 +441,9 @@ export function FilterRail({
             //: the panel never runs off the edge it is docked to. The margins
             //: are what the handle no longer carries: the search bar is above
             //: and the scrubber's handle is below.
-            narrow ? "mt-16 mb-14 w-[min(264px,calc(100vw-4.5rem))]" : "w-[264px]",
+            narrow
+              ? "mt-[calc(env(safe-area-inset-top)+4.25rem)] mb-[calc(env(safe-area-inset-bottom)+3.5rem)] w-[min(264px,calc(100vw-4.5rem))]"
+              : "w-[264px]",
           )}
         >
           <div className="flex flex-col gap-0.5 px-1">
