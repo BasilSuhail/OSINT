@@ -189,6 +189,23 @@ class TestAnnounce:
         # dropping the one message that mattered.
         assert db_session.execute(select(NotificationRow)).first() is None
 
+    def test_a_refusal_survives_the_outer_commit(
+        self, db_session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`app.tasks` wraps this in `session_scope`, which commits on the way
+        out. The rollback on a refused send has to survive that commit, or the
+        story is recorded as announced by the very wrapper meant to be neutral.
+        """
+        _pinnable(db_session)
+        monkeypatch.setattr(mod.settings, "discord_webhook_url", "https://example.invalid/hook")
+        monkeypatch.setattr(mod.settings, "discord_announce_dry_run", False)
+        monkeypatch.setattr(mod, "_discord_send", lambda payload: False)
+
+        announce_developing(db_session, now=NOW)
+        db_session.commit()  # what session_scope does on the way out
+
+        assert db_session.execute(select(NotificationRow)).first() is None
+
     def test_the_retry_after_a_refusal_delivers_it(
         self, db_session: Session, monkeypatch: pytest.MonkeyPatch, armed: list[dict[str, Any]]
     ) -> None:
