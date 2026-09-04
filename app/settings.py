@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     pushover_token: str = Field(default="")
     pushover_user: str = Field(default="")
 
+    # Developing-story announcements (#1039). Absent webhook means quiet,
+    # the same rule Pushover follows above. The dry run defaults on so a
+    # first deploy measures how often a story pins before anything is sent.
+    discord_webhook_url: str = Field(default="")
+    discord_announce_dry_run: bool = Field(default=True)
+
     # WS-G local LLM validator (#378) — localhost only, never a cloud API.
     ollama_url: str = Field(default="http://localhost:11434")
     ollama_model: str = Field(default="qwen3.5:4b-q4_K_M")

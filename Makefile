@@ -216,6 +216,9 @@ validator-audit:  ## Emit the ~50-story human-check sheet for the validator (#37
 validator-agreement:  ## Compute + publish the model-vs-human agreement rate from the filled sheet (#386)
 	$(RUN_PY) -m app.validator.agreement
 
+announce:  ## Send any newly pinned developing story now — dry run unless armed (#1039)
+	$(RUN_PY) -m app.stories.announce
+
 briefing:  ## Generate the weekly briefing now — the newsletter artifact (#401)
 	$(RUN_PY) -m app.briefing.run
 
