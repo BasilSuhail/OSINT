@@ -32,7 +32,9 @@ class TestMaxAge:
     def test_news_is_bounded_by_the_retention_window(self) -> None:
         # The rule is "do not ingest what retention would immediately delete",
         # which is defensible where an arbitrary number is not.
-        assert freshness.max_age("rss-bbc-world") == freshness.RETENTION_ALIGNED_MAX_AGE
+        assert freshness.max_age("rss-bbc-world") == freshness.retention_aligned_max_age(
+            "rss-bbc-world"
+        )
 
     def test_market_and_macro_are_unbounded(self) -> None:
         # FRED history runs to 385 days at ingest and yfinance to 7 — historical
@@ -46,7 +48,9 @@ class TestMaxAge:
         assert bound is not None and bound > timedelta(days=31)
 
     def test_an_unknown_source_gets_the_default_rather_than_a_free_pass(self) -> None:
-        assert freshness.max_age("something-new") == freshness.RETENTION_ALIGNED_MAX_AGE
+        assert freshness.max_age("something-new") == freshness.retention_aligned_max_age(
+            "something-new"
+        )
 
 
 class TestPartition:
@@ -138,3 +142,119 @@ class TestSummary:
 
     def test_no_rejections_summarizes_to_nothing(self) -> None:
         assert freshness.summarize([]) is None
+
+
+class TestBoundsFollowRetention:
+    """The gate is a rule, not a number: raise retention and it moves.
+
+    A board with a larger disk keeps a longer collection window. Every bound
+    here is the retention window the same source is pruned on, so "do not
+    ingest what retention would immediately delete" stays true at any window
+    rather than only at the default one.
+    """
+
+    def test_the_news_bound_is_the_news_retention_window(self, monkeypatch) -> None:
+        assert freshness.retention_aligned_max_age("rss-bbc-world") == timedelta(days=30)
+        monkeypatch.setattr("app.settings.settings.retention_news_days", 365)
+        assert freshness.retention_aligned_max_age("rss-bbc-world") == timedelta(days=365)
+
+    def test_the_hazard_bound_is_the_hazard_retention_window(self, monkeypatch) -> None:
+        assert freshness.retention_aligned_max_age("usgs-quake") == timedelta(days=30)
+        monkeypatch.setattr("app.settings.settings.retention_hazard_days", 365)
+        assert freshness.retention_aligned_max_age("usgs-quake") == timedelta(days=365)
+
+    def test_a_machine_coded_source_follows_its_own_window(self, monkeypatch) -> None:
+        # gdelt has always had a separate setting; the gate now honours it too.
+        monkeypatch.setattr("app.settings.settings.retention_gdelt_days", 90)
+        assert freshness.max_age("gdelt") == timedelta(days=90)
+
+    def test_an_event_past_the_default_is_accepted_once_the_window_is_raised(
+        self, monkeypatch
+    ) -> None:
+        # The whole point of the change: a 200-day-old story is churn under a
+        # 30-day retention window and evidence under a year-long one.
+        old = _event("rss-bbc-world", NOW - timedelta(days=200), "long window")
+        assert freshness.partition([old], now=NOW)[0] == []
+
+        monkeypatch.setattr("app.settings.settings.retention_news_days", 365)
+        kept, rejected = freshness.partition([old], now=NOW)
+        assert [e.payload["title"] for e in kept] == ["long window"]
+        assert rejected == []
+
+    def test_the_cyber_bound_keeps_its_headroom_at_any_window(self, monkeypatch) -> None:
+        # urlhaus republishes a rolling window measured at p99 30.3 days, so the
+        # bound sits clear of the retention window by the measured headroom —
+        # 45 days at the 30-day default, and still 15 days clear at a year.
+        headroom = freshness.CYBER_REPUBLISH_HEADROOM
+        assert headroom > timedelta(days=30.3) - timedelta(days=30)
+        assert freshness.max_age("abuse-ch-urlhaus") == timedelta(days=30) + headroom
+
+        monkeypatch.setattr("app.settings.settings.retention_hazard_days", 365)
+        assert freshness.max_age("abuse-ch-urlhaus") == timedelta(days=365) + headroom
+
+    def test_unbounded_sources_stay_unbounded_at_any_window(self, monkeypatch) -> None:
+        # Historical depth is these sources' value; retention never governs it.
+        monkeypatch.setattr("app.settings.settings.retention_news_days", 365)
+        for source in ("fred", "yfinance", "emdat", "acled", "polymarket", "uk-police"):
+            assert freshness.max_age(source) is None, source
+
+    def _clock_off(self, monkeypatch) -> None:
+        for name in ("retention_news_days", "retention_hazard_days", "retention_gdelt_days"):
+            monkeypatch.setattr(f"app.settings.settings.{name}", 0)
+
+    def test_a_window_of_zero_leaves_a_currency_bound_behind(self, monkeypatch) -> None:
+        # Zero is the storage rule's off switch, not this gate's. Read literally
+        # it would refuse every event ever published; read as "no bound" it lets
+        # the evergreen entries back in that this module exists to stop.
+        self._clock_off(monkeypatch)
+        bound = freshness.NO_RETENTION_MAX_AGE
+        assert freshness.max_age("rss-bbc-world") == bound
+        assert freshness.max_age("usgs-quake") == bound
+        assert freshness.max_age("gdelt") == bound
+        assert freshness.max_age("abuse-ch-urlhaus") == bound + freshness.CYBER_REPUBLISH_HEADROOM
+        # And an unlisted source, which falls back to the news window.
+        assert freshness.max_age("rss-not-in-policy") == bound
+
+    def test_the_currency_bound_clears_every_measured_publishing_lag(self) -> None:
+        # The slowest legitimate feed measured here is p99 19.3 days. A bound
+        # that could refuse real news would be the worse failure of the two.
+        assert timedelta(days=19.3) * 5 < freshness.NO_RETENTION_MAX_AGE
+
+    def test_an_evergreen_entry_is_still_refused_with_the_clock_off(self, monkeypatch) -> None:
+        self._clock_off(monkeypatch)
+        # The shape this module was written for: a promo entry dated years back,
+        # republished by its feed forever.
+        promo = _event("rss-bbc-world", NOW - timedelta(days=1000), "donate now")
+        kept, rejected = freshness.partition([promo], now=NOW)
+        assert kept == []
+        assert len(rejected) == 1
+
+    def test_a_gdacs_hazard_is_unbounded_whatever_the_clock_says(self, monkeypatch) -> None:
+        # Only currently-active hazards are listed at all, so age is onset and
+        # never staleness — a flood that began in spring is the most current
+        # thing the feed has to say.
+        assert freshness.max_age("gdacs") is None
+        self._clock_off(monkeypatch)
+        assert freshness.max_age("gdacs") is None
+        old_flood = _event("gdacs", NOW - timedelta(days=200), "still running")
+        assert [e.payload["title"] for e in freshness.partition([old_flood], now=NOW)[0]] == [
+            "still running"
+        ]
+
+    def test_a_half_year_old_story_is_collected_once_the_clock_is_off(self, monkeypatch) -> None:
+        old = _event("rss-bbc-world", NOW - timedelta(days=120), "four months back")
+        assert freshness.partition([old], now=NOW)[0] == []
+
+        self._clock_off(monkeypatch)
+        kept, rejected = freshness.partition([old], now=NOW)
+        assert [e.payload["title"] for e in kept] == ["four months back"]
+        assert rejected == []
+
+    def test_the_future_skew_rule_is_untouched_by_a_raised_window(self, monkeypatch) -> None:
+        # A future date is a parsing defect at any retention setting.
+        monkeypatch.setattr("app.settings.settings.retention_news_days", 365)
+        kept, rejected = freshness.partition(
+            [_event("rss-bbc-world", NOW + timedelta(hours=12))], now=NOW
+        )
+        assert kept == []
+        assert "future" in rejected[0].reason.lower()

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 import {
   LIVE_TOLERANCE_MS,
   describeTimeWindow,
+  occursWithinWindow,
   type TimeWindowInput,
 } from "@/lib/timeWindow"
 
@@ -92,5 +93,37 @@ describe("describeTimeWindow", () => {
 
   it("survives a non-finite offset instead of rendering NaN at the user", () => {
     expect(describeTimeWindow(input({ windowEndOffsetMs: Number.NaN })).state).toBe("live")
+  })
+})
+
+/** One rule for every category. Hazards were exempt from the window while
+ *  their source still listed them, which is why a GDACS wildfire with a 20 Aug
+ *  onset sat on a map whose window began on 23 Aug — and why the same hazards
+ *  appeared at scrubber positions months before they started. */
+describe("occursWithinWindow", () => {
+  const START = Date.parse("2026-08-23T23:35:00Z")
+  const END = Date.parse("2026-08-26T23:35:00Z")
+
+  it("keeps an event inside the window", () => {
+    expect(occursWithinWindow(Date.parse("2026-08-25T12:00:00Z"), START, END)).toBe(true)
+  })
+
+  it("refuses an event older than the window", () => {
+    // WF:1031065 — a GDACS wildfire still listed by its feed. Being current
+    // upstream is no longer permission to outlive the window on screen.
+    expect(occursWithinWindow(Date.parse("2026-08-20T01:00:00Z"), START, END)).toBe(false)
+  })
+
+  it("refuses an event later than the window", () => {
+    expect(occursWithinWindow(Date.parse("2026-08-27T00:00:00Z"), START, END)).toBe(false)
+  })
+
+  it("includes both edges", () => {
+    expect(occursWithinWindow(START, START, END)).toBe(true)
+    expect(occursWithinWindow(END, START, END)).toBe(true)
+  })
+
+  it("refuses an event whose date cannot be read", () => {
+    expect(occursWithinWindow(Number.NaN, START, END)).toBe(false)
   })
 })

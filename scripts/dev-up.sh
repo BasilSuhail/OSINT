@@ -10,6 +10,65 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 mkdir -p logs
 
+#: Whether this machine is a board that serves, rather than a desk that
+#: develops. Enabled, not merely present: an installed unit that was disabled
+#: on purpose is a machine whose operator has already decided.
+serving_as_a_service() {
+  command -v systemctl >/dev/null 2>&1 || return 1
+  systemctl is-enabled --quiet osint-console.service 2>/dev/null
+}
+
+#: `make up` starts development processes beside the board's systemd
+#: services. Both now bind loopback, so they compete for the same frontend
+#: port and the development cleanup may kill a child systemd expects to own.
+#: `make down` then stops the containers while leaving the console service up.
+#:
+#: Asked rather than refused. A hard refusal in the laptop's own start script
+#: is a cost paid on every machine to protect one, and there are real reasons
+#: to want a loopback stack on a board — reproducing something the tailnet is
+#: not involved in, most obviously. But it is not asked quietly either: a
+#: warning printed into a wall of start-up output is a warning nobody reads,
+#: and the confirmation is what makes it a decision. On a laptop the unit does
+#: not exist and none of this runs.
+refuse_if_serving() {
+  serving_as_a_service || return 0
+  if [ "${OSINT_IGNORE_SERVING:-0}" = "1" ]; then
+    echo "→ this machine serves the console; continuing anyway (OSINT_IGNORE_SERVING=1)" >&2
+    return 0
+  fi
+
+  cat >&2 <<'SERVING'
+
+This machine serves the console as a service, and `make up` is not its command.
+
+  `make up` starts a development console beside osint-console.service. Both
+  use the same loopback port, and the development cleanup may kill a process
+  systemd expects to own. `make down` afterwards stops the containers while
+  leaving the HTTPS console service up.
+
+  `make serve` is this machine's command: it reconciles the loopback stack and
+  restarts the console on the build it finds.
+
+SERVING
+
+  #: Nothing is reading the question, so the destructive answer must not be
+  #: the default one. The escape hatch is named in the message.
+  if [ ! -t 0 ]; then
+    echo "Refusing: no terminal to ask. Run \`make serve\`, or set OSINT_IGNORE_SERVING=1." >&2
+    exit 1
+  fi
+
+  read -r -p "Start development processes beside systemd anyway? [y/N] " answer
+  case "$answer" in
+    y | Y) echo "  continuing — \`make serve\` puts it back" >&2 ;;
+    *)
+      echo "  nothing started" >&2
+      exit 0
+      ;;
+  esac
+}
+refuse_if_serving
+
 # Settings first (#957). A key missing from .env is a feature silently off and
 # a typed key name loads as nothing, so both are worth a sentence before
 # anything starts. Never fatal: a warning about a key nobody uses must not stop
@@ -317,10 +376,9 @@ FRONTEND_PORT_DEFAULT=3000
 #: find a live process, report it as satisfying the request, and keep serving
 #: the previous mode (#928).
 #:
-#: The bind address is not enough on its own. `NEXT_PUBLIC_API_URL` is compiled
-#: in at start, so a share on one network and a share on the next — same bind,
-#: different address — would reuse a dashboard pointing at an address that no
-#: longer exists, and fail as an empty console rather than as an error.
+#: Browser-facing settings are compiled in at start. A changed value must
+#: restart the frontend or it keeps serving the previous bundle while claiming
+#: the new configuration is active.
 #:
 #: `NEXT_PUBLIC_ASK_ENABLED` for the same reason and with a worse ending. It is
 #: compiled in at start too, and it decides whether the console draws the ask
@@ -332,7 +390,12 @@ FRONTEND_PORT_DEFAULT=3000
 FRONTEND_MODE_FILE="logs/frontend.mode"
 
 frontend_mode_signature() {
-  printf '%s %s %s' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}" "${NEXT_PUBLIC_ASK_ENABLED:-}"
+  printf '%s %s %s %s %s' \
+    "$FRONTEND_BIND" \
+    "${NEXT_PUBLIC_API_URL:-}" \
+    "${NEXT_PUBLIC_ASK_ENABLED:-}" \
+    "${API_PORT:-}" \
+    "${API_PROXY_TARGET:-}"
 }
 
 env_value() { # key — the value in .env, if .env sets one
@@ -357,9 +420,9 @@ share_python() {
 
 apply_network_mode() {
   # Closed unless sharing was asked for (#928). The derivation — bind address,
-  # CORS origins, and the API URL compiled into the browser bundle, which must
-  # name an address the *guest* can resolve — lives in app/devx/lan_share.py
-  # with its tests. This function only chooses a mode and evals the result.
+  # CORS origins, same-origin API route, and allowed dev host — lives in
+  # app/devx/lan_share.py with its tests. This function only chooses a mode and
+  # evals the result.
   local mode="locked"
   if [ "${LAN_SHARE:-0}" = "1" ]; then
     mode="share"
@@ -382,11 +445,10 @@ apply_network_mode() {
   # origin to the list rather than replacing it.
   export API_CORS_ORIGINS="${API_CORS_ORIGINS:-$(env_value API_CORS_ORIGINS)}"
   export API_PORT="${API_PORT:-$(env_value API_PORT)}"
+  export API_PROXY_TARGET="${API_PROXY_TARGET:-$(env_value API_PROXY_TARGET)}"
   export FRONTEND_PORT="${FRONTEND_PORT:-$FRONTEND_PORT_DEFAULT}"
   #: Which of this machine's names the console should be reached by, when it
-  #: should not be the detected one (#974). The same setting `make env` derives
-  #: NEXT_PUBLIC_API_URL from, so the two agree instead of overwriting one
-  #: another.
+  #: should not be the detected one (#974).
   export OSINT_PUBLIC_HOST="${OSINT_PUBLIC_HOST:-$(env_value OSINT_PUBLIC_HOST)}"
 
   local exports

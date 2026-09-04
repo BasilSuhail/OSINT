@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { EventBuffer } from "./realtime"
+import { CLIENT_LIMITS } from "./apiClient"
 import type { EventRow } from "./types"
 
 /** Migration 0026 stamped 1,489,591 rows with one revision, and the live table
@@ -88,7 +89,59 @@ describe("buffer retention under a migration-sized revision tie (#764)", () => {
     const buffer = new EventBuffer()
     buffer.ingest(recentFlood(9000))
     const snapshot = buffer.getSnapshot()
-    expect(snapshot.length).toBeLessThanOrEqual(7500)
+    expect(snapshot.length).toBeLessThanOrEqual(CLIENT_LIMITS.eventBuffer)
     expect(snapshot.length).toBeGreaterThan(0)
+  })
+})
+
+/** Scrubbing back refetches the window, and the buffer threw every row of it
+ *  away: it ranked on absolute recency, so today's rows outranked the ones the
+ *  map had just asked for and the historical map came up empty. */
+describe("retention follows the moment on screen", () => {
+  const DAY = 24 * 3600_000
+
+  function newsRow(id: string, occurredMs: number): EventRow {
+    return {
+      id,
+      source: "rss-bbc-world",
+      source_event_id: null,
+      occurred_at: new Date(occurredMs).toISOString(),
+      fetched_at: null,
+      updated_at: null,
+      category: "news",
+      severity: 0.5,
+      keywords: null,
+      country: "GB",
+      lat: 51,
+      lon: 0,
+      payload: {},
+    }
+  }
+
+  it("keeps the historical rows the firehose fetched for a scrubbed window", () => {
+    const buffer = new EventBuffer()
+    const now = Date.now()
+    buffer.setWindowAnchor(now)
+    buffer.ingest(
+      Array.from({ length: CLIENT_LIMITS.eventBuffer }, (_, i) => newsRow(`live-${i}`, now)),
+    )
+    //: The scrubber moves; the firehose asks again for that window.
+    buffer.setWindowAnchor(now - 14 * DAY)
+    buffer.ingest(
+      Array.from({ length: 100 }, (_, i) => newsRow(`old-${i}`, now - 14 * DAY)),
+    )
+    const kept = buffer.getSnapshot().filter((e) => e.id.startsWith("old-"))
+    expect(kept).toHaveLength(100)
+  })
+
+  it("still prefers the newest rows while the map is live", () => {
+    const buffer = new EventBuffer()
+    const now = Date.now()
+    buffer.setWindowAnchor(now)
+    buffer.ingest(
+      Array.from({ length: CLIENT_LIMITS.eventBuffer }, (_, i) => newsRow(`live-${i}`, now)),
+    )
+    buffer.ingest(Array.from({ length: 100 }, (_, i) => newsRow(`old-${i}`, now - 14 * DAY)))
+    expect(buffer.getSnapshot().filter((e) => e.id.startsWith("old-"))).toHaveLength(0)
   })
 })

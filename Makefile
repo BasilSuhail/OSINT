@@ -3,7 +3,7 @@
 OSINT_DATA_DIR ?= $(shell sed -n 's/^OSINT_DATA_DIR=//p' .env 2>/dev/null)
 OSINT_DATA_DIR := $(if $(strip $(OSINT_DATA_DIR)),$(OSINT_DATA_DIR),./data)
 
-.PHONY: help env env-check fetch news news-all ask logs severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
+.PHONY: help env env-check fetch news news-all ask logs severity-grade severity-audit severity-agreement severity-bench category-audit category-agreement within-eval up share serve-build serve-install serve down clear start stop off up-docker down-docker docker-prune clean-dev down-soft data-size data-prune data-reset labels panel baselines coverage journal stories stories-audit backfill-signals brain enrich
 
 #: How the analysis commands below run Python.
 #:
@@ -54,6 +54,15 @@ up:  ## Start everything: Docker stores, backend, frontend, Ollama
 
 share:  ## Start everything, reachable from the local network (no password)
 	@LAN_SHARE=1 bash scripts/dev-up.sh
+
+serve-build:  ## Build the console for the tailnet — run this after every pull
+	@bash scripts/serve-up.sh build
+
+serve-install:  ## Install and enable the console's service (asks for sudo, Linux only)
+	@bash scripts/serve-up.sh install
+
+serve:  ## Start the stack for the tailnet and restart the served console
+	@bash scripts/serve-up.sh start
 
 down:  ## Stop everything, keep all data
 	@bash scripts/dev-down.sh
@@ -206,6 +215,9 @@ validator-audit:  ## Emit the ~50-story human-check sheet for the validator (#37
 
 validator-agreement:  ## Compute + publish the model-vs-human agreement rate from the filled sheet (#386)
 	$(RUN_PY) -m app.validator.agreement
+
+announce:  ## Send any newly pinned developing story now — dry run unless armed (#1039)
+	$(RUN_PY) -m app.stories.announce
 
 briefing:  ## Generate the weekly briefing now — the newsletter artifact (#401)
 	$(RUN_PY) -m app.briefing.run

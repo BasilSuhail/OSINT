@@ -117,7 +117,8 @@ make env
 
 Nothing to edit. `make env` reads how much memory the board has and, at 8 GB,
 writes the settings for it: one small model doing every job instead of three
-different ones, and memory floors and generation timeouts sized for that model.
+different ones, a three-thread inference cap to preserve capacity for the rest
+of the system, and memory floors and generation timeouts sized for that model.
 It prints what it chose.
 
 Those numbers are in force from the first run, not held in reserve.
@@ -128,6 +129,11 @@ reported as the brain being offline. `QA_MIN_FREE_MB` is the free-memory floor
 a reader-triggered read has to clear, and the reasoned read behind a contested
 story still asks for one. They are also the numbers an answer would use, sized
 so they are already right if you turn the question box back on.
+
+`OLLAMA_REQUEST_NUM_THREAD=3` is sent inside each generation request. It is not
+an Ollama service setting. On the measured four-core board it reduced runner CPU
+and made the representative grading request faster; `0` keeps Ollama's automatic
+choice on other machines.
 
 The question box is the one thing `make env` turns off on a board this size.
 Everything else runs: it fetches, it stores, it scores, it writes the gists and
@@ -476,6 +482,182 @@ make news
 
 Do not install pnpm yourself on any of them. `corepack enable` fetches the
 version this project pins; a different one resolves the lockfile differently.
+
+<details>
+<summary><b>Run it as a server</b> — the console as a service, reachable from a phone</summary>
+
+### QUICK START
+
+On the board, from the directory that contains the `OSINT` checkout:
+
+```bash
+cd OSINT
+git switch feat/board-as-a-server
+git pull --ff-only origin feat/board-as-a-server
+make env-check        # optional; read-only
+make serve-build
+make serve-install    # first install, or after service-installer changes
+make serve
+```
+
+For an ordinary update after the services are installed, skip
+`make serve-install`; pulling, rebuilding the console, and running `make serve`
+is enough. Do **not** run `make env`: serve mode derives its address settings
+without rewriting the board's existing `.env`.
+
+Everything above gets a console running on the machine you typed it into, but
+`make up` runs that console as a development server, and a development server
+dies with the power. This turns it into a service that starts on its own, and
+turns the board into something you can reach from a phone.
+
+**Every command here is the board's.** They derive a tailnet identity and install
+systemd units, so they refuse anywhere else and say so. `make up` and `make
+share` stay the laptop's commands and are unaffected.
+
+### Before you start
+
+Three things, each of which will otherwise stop you later:
+
+- **Tailscale**, on the board and on whatever you'll read the console from.
+  This repository does not install it — follow [its own
+  instructions](https://tailscale.com).
+- **MagicDNS on** for your tailnet — a switch under DNS in the admin console,
+  on by default. The install uses that name for its private HTTPS certificate,
+  so it refuses without it rather than letting you discover it after reboot.
+- **HTTPS Certificates enabled** under DNS in the Tailscale admin console.
+  MagicDNS is separate from this switch; install checks certificate eligibility
+  before it writes or enables either system service.
+- **`API_AUTH_TOKEN` set in `.env`.** It is the only thing between a device on
+  the tailnet and an endpoint that spends model inference per call, and serve
+  mode refuses to start without it.
+
+```bash
+sudo tailscale up
+tailscale status
+```
+
+`tailscale status` shows the name the board answers to. Nothing below asks you
+to type it — it is found automatically — but it is what you will open in a
+browser at the end.
+
+### 1. Build the console
+
+```bash
+make serve-build
+```
+
+A few minutes. It prints the private HTTPS console URL, the browser's `/api`
+path, and the loopback API address behind that proxy. The proxy route is part
+of the build, so changing the API port requires another build, not just a
+restart.
+
+### 2. Install the service
+
+```bash
+make serve-install
+```
+
+Linux only. Run it as yourself and let it ask for `sudo` — it refuses if you
+run the whole thing under `sudo`. It prints both units in full and asks you to
+confirm before writing anything, then installs:
+
+| Path | What it is |
+|---|---|
+| `/etc/systemd/system/osint-console.service` | the console process |
+| `/etc/systemd/system/osint-stack.service` | the containers |
+| `/etc/osint-console.env` | root-only runtime settings for the console |
+
+It also persists a Tailscale Serve route from the board's private HTTPS name to
+the console on loopback. That secure origin is what lets Chrome and Safari
+install the console and News as separate apps. It stays inside the tailnet and
+returns after a reboot; it is not Tailscale Funnel and is not public.
+
+**Two services, because a reboot has two halves to get right.** The API and
+console both listen on loopback, which exists before Docker or Tailscale. The
+private HTTPS edge reaches the console; the console's `/api` proxy reaches the
+API locally. `osint-stack` checks the host-published API, not only the health
+check inside its container. It asks Docker for the current published port, so
+an `API_PORT` edit is read from `.env` at reboot instead of being overridden by
+stale unit configuration. `osint-console` then checks `/api/health` through the
+built proxy. Either failure is visible to systemd and retried instead of leaving
+an active service over an unreachable endpoint.
+
+**Why it wants you rather than root:** the console runs as the account you
+install it from, because it writes its build cache inside your checkout. A root
+service leaves you a directory you can no longer write to, which surfaces as
+the *next* `make serve-build` failing on a permission error in your own files.
+The container start does run as root — talking to the Docker socket is root
+either way.
+
+### 3. Start it
+
+```bash
+make serve
+```
+
+Brings the containers up with the API published on loopback only,
+rebuilds the backend image from whatever you have pulled, then restarts the
+loopback console behind the persistent private HTTPS route.
+
+### 4. Prove it
+
+```bash
+sudo reboot
+```
+
+Then open the printed `https://...ts.net` address from your phone. Install `/`
+as the console and `/news` as News using the browser's Add to Home Screen or
+Install action. That is the actual test, and the only one that proves it.
+
+### Everyday, on the board
+
+| Command | When |
+|---|---|
+| `make serve` | start or restart — **after every pull** |
+| `make serve-build` | after every pull too, and after changing the token, API port or any `NEXT_PUBLIC_*` |
+| `make down` | stop the containers — the console's service keeps running, and it says so |
+| `make logs` | watch what the stack is doing |
+| *after a reboot* | nothing — both units are enabled and come back on their own |
+
+After a pull, both, in this order:
+
+```bash
+git pull --ff-only origin feat/board-as-a-server
+make serve-build
+make serve
+```
+
+`make serve` rebuilds the backend but **not** the console — that is
+`make serve-build`'s job. If the console is older than the backend, `make
+serve` says so rather than serving a stale build quietly.
+
+**From here on, `make serve` is this board's command and `make up` is not.**
+`make up` starts development processes beside the installed services. They
+compete for the same frontend port and ownership of the same processes. It
+notices the service is installed and asks first, so it is a mistake you get one
+chance to catch — but the command you want is `make serve`.
+
+### If it does not come back
+
+The symptom says which half to look at:
+
+| Symptom | Look at |
+|---|---|
+| page does not load at all | the console — `systemctl status osint-console`, then `journalctl -u osint-console -n 50` |
+| page loads, every panel empty | the containers — `systemctl status osint-stack`, then `docker compose ps` |
+
+An old build serving quietly looks the same as a working one, so the console's
+unit logs the commit it is serving at every start.
+
+### One thing this is not
+
+The console has no login, and the bundle it serves carries the API token to
+whoever downloads it — anyone reaching the tailnet address can use it. **The
+tailnet is the entire boundary.** Do not port-forward the console beyond it: a
+URL reachable from the open internet needs an identity layer in front of it,
+and that is separate work, not a setting here.
+
+</details>
 
 ## Basic commands
 

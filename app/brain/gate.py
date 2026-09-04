@@ -6,6 +6,9 @@ Two cheap checks, no new dependency:
      heartbeat. That table already tracks every heavy analytical job; the
      I/O-bound fetchers deliberately don't use it, so it is a true
      "heavy work in progress" signal.
+
+The second check yields to other work, which on a machine where other work
+never stops means yielding forever, so it has a floor: `narrate_starved`.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.brain import client
-from app.db_models import JobRunRow
+from app.db_models import BrainNarrativeRow, JobRunRow
 from app.runtime import load as runtime_load
 from app.settings import settings
 
@@ -170,7 +173,27 @@ def heavy_job_active(session: Session, *, now: datetime | None = None) -> bool:
     return row is not None
 
 
-def should_run(session: Session, *, now: datetime | None = None) -> tuple[bool, str]:
+def narrate_starved(session: Session, *, now: datetime | None = None) -> bool:
+    """Has the narrative gone unwritten for longer than the box may claim?
+
+    A box that has never narrated is the starved case at its worst, not an
+    exception to it: what the reader opens is empty either way.
+
+    Asked in SQL rather than by reading a timestamp back out, because the
+    heartbeat check next door already compares that way and a stored naive
+    datetime would compare wrong here.
+    """
+    now = now or datetime.now(UTC)
+    cutoff = now - timedelta(minutes=settings.brain_narrate_starvation_minutes)
+    row = session.execute(
+        select(BrainNarrativeRow.id).where(BrainNarrativeRow.created_at >= cutoff).limit(1)
+    ).first()
+    return row is None
+
+
+def should_run(
+    session: Session, *, now: datetime | None = None, allow_when_starved: bool = False
+) -> tuple[bool, str]:
     """(allowed, human reason). Reason powers the task log and the card's
     degraded state so backoff is visible, never a silent lie."""
     if not settings.brain_enabled:
@@ -188,6 +211,19 @@ def should_run(session: Session, *, now: datetime | None = None) -> tuple[bool, 
     if reason := runtime_load.busy_reason(now=now):
         return False, reason
     if heavy_job_active(session, now=now):
+        #: The escape from #409's backoff, and only for the caller that asks.
+        #: The heavy beats on a busy board — clustering a backlog, grading
+        #: headlines through a model, the checks that follow both — can run
+        #: nose to tail for hours, and the beat that always yields to them
+        #: never runs at all. The enrichment pass does not ask: a tag nobody
+        #: has written is invisible, an empty console is not, and only one of
+        #: them is worth loading a model into a box already working.
+        if allow_when_starved and narrate_starved(session, now=now):
+            return True, (
+                "starved: no narrative in "
+                f"{settings.brain_narrate_starvation_minutes}m — running "
+                "despite the heavy job in flight"
+            )
         return False, "heavy job in flight — backing off"
     if resident:
         return True, f"ok: {settings.brain_model} already loaded, no heavy job"

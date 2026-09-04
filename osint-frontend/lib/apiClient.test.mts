@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import {
+  API_BASE,
+  CLIENT_LIMITS,
   fetchAllEventPages,
   fetchAllUpdatedEventPages,
   fetchEvents,
@@ -12,6 +14,10 @@ import type { EventRow } from "./types"
 afterEach(() => vi.restoreAllMocks())
 
 describe("apiClient", () => {
+  it("uses the same-origin API proxy by default", () => {
+    expect(API_BASE).toBe("/api")
+  })
+
   it("builds the events query string", async () => {
     const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify([]), { status: 200 }),
@@ -181,5 +187,16 @@ describe("apiClient", () => {
     expect(url).toContain("since=")
     expect(url).toContain("country=US")
     expect(url).toContain("limit=200")
+  })
+})
+
+/** The three polls that fill the map buffer asked for 8,500 rows into a buffer
+ *  of 7,500, so they evicted each other on every cycle and the sparsest of them
+ *  lost. A buffer smaller than what is fetched into it cannot be right. */
+describe("CLIENT_LIMITS", () => {
+  it("holds everything the polls that fill it ask for", () => {
+    const fetched =
+      CLIENT_LIMITS.eventWindow + CLIENT_LIMITS.hazardEvents + CLIENT_LIMITS.cyberEvents
+    expect(CLIENT_LIMITS.eventBuffer).toBeGreaterThanOrEqual(fetched)
   })
 })

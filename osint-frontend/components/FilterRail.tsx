@@ -31,20 +31,16 @@ import {
   Triangle,
   Wind,
 } from "lucide-react"
-import { useEvents } from "@/app/providers"
-import { mergeEventRows } from "@/lib/eventMerge"
 import { useEventsInWindow } from "@/lib/queries"
 import {
   HAZARD_SOURCE_KEYS,
   HAZARD_TYPE_FILTERS,
   SOURCE_FILTERS,
-  sourceKeyForEvent,
   type EventRow,
   type HazardTypeKey,
   type SourceFilterDef,
   type SourceKey,
 } from "@/lib/types"
-import { hazardKind } from "@/lib/hazardSymbols"
 import {
   FULL_SEVERITY,
   activeExclusions,
@@ -293,11 +289,6 @@ export function FilterRail({
   //: rail to leave (#944).
   const deckOpen = usePanelLayoutStore((s) => s.left)
 
-  const baseEvents = useEvents()
-  const allEvents = useMemo(
-    () => mergeEventRows(baseEvents, supplementalEvents),
-    [baseEvents, supplementalEvents],
-  )
   const sources = useStore((s) => s.sources)
   const severity = useStore((s) => s.severity)
   const toggleSource = useStore((s) => s.toggleSource)
@@ -333,7 +324,12 @@ export function FilterRail({
 
   /** Windowed count for the panel header — the same pipeline the map markers
    *  use, so the header and the dots always agree. */
-  const { total: visibleTotal } = useEventsInWindow(useStore, supplementalEvents)
+  const {
+    total: visibleTotal,
+    eligibleBySource: sourceCounts,
+    eligibleByHazardType: typeCounts,
+    eligibleTotal: paneTotal,
+  } = useEventsInWindow(useStore, supplementalEvents)
 
   /** Source toggles, minus the hazard sources (USGS / GDACS / EONET) — those
    *  are filtered by disaster type instead, below. */
@@ -352,36 +348,10 @@ export function FilterRail({
     [paneFilters],
   )
 
-  /** Events that could appear on the map: anything with a known source key.
-   *  sourceKeyForEvent returns null for feeds with no renderer (NASA FIRMS,
-   *  aviation), so they never reach the counts. */
-  const paneEvents = useMemo(() => {
-    return allEvents.filter((ev) => sourceKeyForEvent(ev) !== null)
-  }, [allEvents])
-
-  /** Live count of pane-scoped events per source — drives the per-row counts. */
-  const sourceCounts = useMemo(() => {
-    const m = new Map<SourceKey, number>()
-    for (const ev of paneEvents) {
-      const sk = sourceKeyForEvent(ev)
-      if (sk) m.set(sk, (m.get(sk) ?? 0) + 1)
-    }
-    return m
-  }, [paneEvents])
-
-  /** Live count of hazard events per disaster type on this pane. */
-  const typeCounts = useMemo(() => {
-    const m = new Map<HazardTypeKey, number>()
-    for (const ev of paneEvents) {
-      if (ev.category !== "hazard") continue
-      const k = hazardKind(ev)
-      if (k === "other") continue
-      m.set(k as HazardTypeKey, (m.get(k as HazardTypeKey) ?? 0) + 1)
-    }
-    return m
-  }, [paneEvents])
-
-  const paneTotal = paneEvents.length
+  //: The counts above come from the window rather than from the buffer. The
+  //: buffer holds rows no position of the scrubber can draw — 106 earthquakes
+  //: counted against the 44 that occurred in the window — and a number beside a
+  //: switch has to describe what the switch would show.
 
   //: Said in the panel rather than inferred from an empty map (#902).
   const exclusions = useMemo(
@@ -413,12 +383,11 @@ export function FilterRail({
         //: (#936) — it is a separate control with its own border, so the rail
         //: starts below it rather than sharing an edge and reading as one panel.
         isLeft ? "left-3 top-3" : "right-3 top-14",
-        //: Full height on a phone so the handle, which centres itself inside
-        //: this box, centres on the screen — the same height as the deck's
-        //: handle on the opposite edge. The panel keeps its own margins to
-        //: clear the search bar above and the scrubber's handle below; that is
-        //: the panel's problem, not the handle's.
-        narrow ? "top-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]" : "bottom-3",
+        //: The two phone handles answer to the screen's true midpoint. Safe
+        //: area clearance belongs to panel contents, not the flex box that
+        //: centres this handle; including only the bottom inset shifted this
+        //: arrow above the deck arrow on the opposite edge.
+        narrow ? "inset-y-0" : "bottom-3",
       )}
     >
       {/*: The deck's handle, exactly: it floats on the map *outside* the thing
@@ -472,7 +441,9 @@ export function FilterRail({
             //: the panel never runs off the edge it is docked to. The margins
             //: are what the handle no longer carries: the search bar is above
             //: and the scrubber's handle is below.
-            narrow ? "mt-16 mb-14 w-[min(264px,calc(100vw-4.5rem))]" : "w-[264px]",
+            narrow
+              ? "mt-[calc(env(safe-area-inset-top)+4.25rem)] mb-[calc(env(safe-area-inset-bottom)+3.5rem)] w-[min(264px,calc(100vw-4.5rem))]"
+              : "w-[264px]",
           )}
         >
           <div className="flex flex-col gap-0.5 px-1">

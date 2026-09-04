@@ -152,8 +152,8 @@ describe("sparklinePoints", () => {
 describe("totalRecentRows", () => {
   it("sums the windowed count, not the lifetime total", () => {
     const rows: SourceCoverageRow[] = [
-      { source: "a", total: 900, recent: 10, geocoded: 5, latest_occurred_at: null, latest_fetched_at: null },
-      { source: "b", total: 100, recent: 4, geocoded: 1, latest_occurred_at: null, latest_fetched_at: null },
+      { source: "a", total: 900, recent: 10, geocoded: 5, latest_occurred_at: null, earliest_occurred_at: null, latest_fetched_at: null },
+      { source: "b", total: 100, recent: 4, geocoded: 1, latest_occurred_at: null, earliest_occurred_at: null, latest_fetched_at: null },
     ]
     expect(totalRecentRows(rows)).toBe(14)
   })

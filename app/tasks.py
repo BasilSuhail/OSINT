@@ -686,6 +686,21 @@ def ingest_watchdog() -> dict[str, Any]:
         }
 
 
+@app.task(name="app.tasks.announce_developing")
+def announce_developing() -> dict[str, Any]:
+    """Send newly pinned developing stories, once each (#1039).
+
+    The watchdog pages when a source goes quiet. Nothing said anything when the
+    news moved. Same table and same dedup as that one — see
+    `app.stories.announce` for why the reading page's headlines ride along
+    rather than triggering anything of their own.
+    """
+    from app.stories.announce import announce_developing as _announce
+
+    with session_scope() as session:
+        return _announce(session)
+
+
 @app.task(name="app.tasks.run_housekeeping")
 def run_housekeeping() -> dict[str, int]:
     """Apply per-source retention plus the storage size cap to events.
@@ -854,6 +869,13 @@ app.conf.beat_schedule = {
     "disagreement-30min": {
         "task": "app.tasks.score_disagreement",
         "schedule": crontab(minute="22,52"),
+    },
+    # Newly pinned developing stories (#1039). Five past the clustering beat
+    # at :07/:37, so it reads what that run produced rather than the previous
+    # window. Cheap: two selects and at most one outbound POST.
+    "announce-developing-30min": {
+        "task": "app.tasks.announce_developing",
+        "schedule": crontab(minute="12,42"),
     },
     "journal-daily-2am-utc": {
         "task": "app.tasks.journal_daily",

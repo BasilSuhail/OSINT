@@ -279,17 +279,38 @@ class TestApiParser:
             {"iso2": "GU", "iso3": "GUM", "countryname": "Guam"},
         ]
 
-    def test_active_event_stamped_at_fetch_time(self) -> None:
-        # GDACS only lists active events, but a long-running hazard keeps an old
-        # onset (fromdate). It must read as current so it stays in the dashboard's
-        # live window; the real onset is preserved in the payload (#252).
+    def test_an_event_happened_when_the_feed_says_it_happened(self) -> None:
+        # The bug this replaces: every active event was stamped at fetch time so
+        # a long-running wildfire would not fall outside the live window. That is
+        # no longer what keeps an active hazard visible — feed presence is (#340)
+        # — and applied to an earthquake it moved the quake's date forward on
+        # every poll. A reader saw a quake dated days after it happened.
         at = datetime(2026, 7, 2, tzinfo=UTC)
         feature = _api_feature("WF", 42)
         feature["properties"]["fromdate"] = "2026-06-16T00:00:00"
         ev = feature_to_event_api(feature, fetched_at=at)
         assert ev is not None
-        assert ev.occurred_at == at
+        assert ev.occurred_at == datetime(2026, 6, 16, tzinfo=UTC)
         assert ev.payload["from_date"] == "2026-06-16T00:00:00"
+
+    def test_a_quake_keeps_its_own_moment_across_polls(self) -> None:
+        feature = _api_feature("EQ", 1560644)
+        feature["properties"]["fromdate"] = "2026-08-20T10:08:00"
+        first = feature_to_event_api(feature, fetched_at=datetime(2026, 8, 20, 11, tzinfo=UTC))
+        later = feature_to_event_api(feature, fetched_at=datetime(2026, 8, 24, 10, 49, tzinfo=UTC))
+        assert first is not None and later is not None
+        # Same quake, four days apart, one date.
+        assert first.occurred_at == later.occurred_at == datetime(2026, 8, 20, 10, 8, tzinfo=UTC)
+
+    def test_a_missing_onset_falls_back_to_the_fetch_time(self) -> None:
+        # No usable onset does not make it less of a current hazard; the feed
+        # listing it is then the best evidence of when available.
+        at = datetime(2026, 7, 2, tzinfo=UTC)
+        feature = _api_feature("TC", 43)
+        feature["properties"]["fromdate"] = None
+        assert feature_to_event_api(feature, fetched_at=at).occurred_at == at
+        feature["properties"]["fromdate"] = "not a date"
+        assert feature_to_event_api(feature, fetched_at=at).occurred_at == at
 
     def test_feature_to_event_api_parses_eq_magnitude_depth(self) -> None:
         at = datetime(2026, 6, 26, tzinfo=UTC)

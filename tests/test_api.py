@@ -585,6 +585,14 @@ def test_event_coverage_returns_per_source_counts(db_session):
     assert by_source["rss-bbc-world"]["recent"] == 1
     assert by_source["rss-bbc-world"]["geocoded"] == 0
     assert by_source["eonet"]["latest_fetched_at"] is not None
+    # The time scrubber sizes its reach from this, so it has to be the oldest
+    # row the source still holds rather than the oldest inside `days`.
+    earliest = datetime.fromisoformat(by_source["rss-bbc-world"]["earliest_occurred_at"])
+    # SQLite hands timestamps back without a zone, Postgres with one; the value
+    # under test is the instant, not which of the two the fixture ran on.
+    if earliest.tzinfo is None:
+        earliest = earliest.replace(tzinfo=UTC)
+    assert abs((earliest - (now - timedelta(days=40))).total_seconds()) < 1
 
 
 def test_events_ordered_occurred_at_desc(db_session):

@@ -4,15 +4,20 @@ Declared mechanics, no tuning at read time. A story is "developing" when
 four things hold at once:
 
     max(member severity) >= 0.6     it is about harm, not a heritage listing
-    distinct member countries >= 3  the world is telling it, not one capital
+    >= 3 independent owners         the world is telling it, not one newsroom
     >= 1 member added in 12 h       coverage is still arriving
     first_seen at least 24 h ago    it has lasted more than one news cycle
 
 Ranked velocity first, so the pin tracks what is *moving*, not what is
-merely large. Corroboration is deliberately absent from every gate: a
-widely-told story with few independent owners is exactly what the card must
-keep visible (#363/#365, #641), so it is displayed alongside the pin rather
-than used to suppress it.
+merely large.
+
+The owner gate is the one place independence decides anything (#1031). Every
+other surface keeps the #363/#365 and #641 rule: a widely-told story with few
+independent owners is exactly what must stay *visible*, and it does — it sits
+in /stories/top with its corroboration score shown beside it, never suppressed
+by it. The pinned slot asks a narrower question. There is one of it, above
+everything else, and the claim it makes on the reader's behalf is "the world
+is telling this". That claim is about tellers, so the slot counts tellers.
 
 Re-checked 2026-07-26 at 98.4% coverage (25,433 of ~25,855 rows) while the #597
 severity regrade was still finishing (~400 rows remaining). The thresholds are
@@ -21,12 +26,18 @@ confirmed unchanged; the gates returned the same four candidates as at 90% cover
 the naive outlet-count rule's false pins: Mount Olympus Unesco listing, Tour de
 France stage report, Indian cabinet appointment. The known false negative persists:
 France wildfires (42,000 hectares, 220,000 evacuated) fails at max severity 0.5
-with only 2 distinct countries because 15 of its 22 members carry the new grade.
-Country spread is the binding gate, and it is less binding than it was: at the
-2026-07-26 check 69.9% of story members carried NULL events.country, and
-re-measured 2026-08-11 that is 17.4% (3,329 of 4,029 members in a 48h window
-now resolve). The selector stays conservative by design, but the gate it leans
-on is no longer mostly missing data.
+because 15 of its 22 members carry the new grade.
+
+The country gate those checks describe was removed 2026-08-19 (#1031). It
+counted `distinct events.country`, which answers "which country is this story
+about" and not "who is telling it" (`app/sources/rss_news_fetcher.py`); every
+member of a story about one place resolves to that one place however many
+newsrooms filed, so the slot stood empty almost always. Counts under
+MIN_OWNERS. Country is still measured and still reported beside the pin, and
+it resolves far better than it once did: 69.9% of story members carried NULL
+events.country at the 2026-07-26 check, and 17.4% (3,329 of 4,029 members in a
+48h window) re-measured 2026-08-11. It is evidence for the reader now, not a
+gate.
 """
 
 from __future__ import annotations
@@ -45,8 +56,16 @@ CANDIDATE_LAST_SEEN_HOURS: int = 6
 MIN_AGE_HOURS: int = 24
 #: Harm floor on the news severity scale (#591).
 MIN_MAX_SEVERITY: float = 0.6
-#: Distinct member countries; below this it is a domestic story.
-MIN_COUNTRIES: int = 3
+#: Independent tellers, from `StoryRow.owner_count` — owners, not outlets, so
+#: several feeds under one parent count once (`app/stories/independence.py`).
+#: Measured on a live board 2026-08-19: 27 stories in the candidate pool (fresh
+#: within 6 h, first seen at least 24 h ago), of which 7 cleared severity and
+#: velocity, and 5 of those 7 pin at three owners. Owners and outlets agreed at
+#: 3 across that pool — nothing was passing on several feeds from one parent —
+#: so the stricter of the two measures cost nothing on the day and holds as
+#: feeds are added. The country gate this replaces passed 1 of the 27, and 0 in
+#: combination with the others (#1031).
+MIN_OWNERS: int = 3
 #: Window over which "still gathering coverage" is measured.
 VELOCITY_WINDOW_HOURS: int = 12
 MIN_NEW_MEMBERS: int = 1
@@ -86,10 +105,16 @@ def select_developing(
         )
         .join(StoryMemberRow, StoryMemberRow.story_id == StoryRow.id)
         .join(EventRow, EventRow.id == StoryMemberRow.event_id)
-        .where(StoryRow.last_seen >= fresh_cutoff, StoryRow.first_seen <= age_cutoff)
+        .where(
+            StoryRow.last_seen >= fresh_cutoff,
+            StoryRow.first_seen <= age_cutoff,
+            StoryRow.owner_count >= MIN_OWNERS,
+        )
+        # `outlet_count` is grouped because the ranking below still names it;
+        # `owner_count` needs no grouping of its own, being one value per story
+        # and so a row predicate rather than an aggregate one.
         .group_by(StoryRow.id, StoryRow.first_seen, StoryRow.outlet_count)
         .having(max_severity >= MIN_MAX_SEVERITY)
-        .having(countries >= MIN_COUNTRIES)
         .having(new_members >= MIN_NEW_MEMBERS)
         .order_by(
             new_members.desc(),

@@ -212,17 +212,12 @@ function EventMarker({
           opacity: focusOpacity(ev.opacity, focusActive, isFocused),
         }}
         className="relative grid place-items-center"
-        title={ev.ongoing ? "Ongoing — still live in its source feed, older than the window" : undefined}
+        title={
+          ev.ongoing
+            ? "Ongoing — began before this window and its source still reports it"
+            : undefined
+        }
       >
-        {/* Ongoing hazards are the only markers allowed outside the time
-         *  window, so they say so rather than passing as current events (#340). */}
-        {ev.ongoing && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-[4px] rounded-full border border-dashed"
-            style={{ borderColor: `${hazardColor(ev)}cc` }}
-          />
-        )}
         {(() => {
           const kind = hazardKind(ev)
           const iconKey = hazardIcon(kind)
@@ -1751,7 +1746,7 @@ export function MapPane({
       {!configured && (
         <PaneStatus
           mode="error"
-          message="Local API unreachable — start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)."
+          message="Local API unreachable — check the same-origin /api proxy."
         />
       )}
       {/*: The live source-count chips that floated top-left are gone. The

@@ -910,6 +910,14 @@ Environment="OLLAMA_NUM_PARALLEL=1"
 
 The cost is a reload of several seconds on each question, which is the right trade on 8 GB.
 
+Generation thread count belongs in the application's `.env`, not this systemd
+override. `OLLAMA_REQUEST_NUM_THREAD=0` lets Ollama choose; the small-machine
+profile writes up to `3`, retaining one CPU when the host has one to spare. The
+measured four-core board therefore gets `3`. The API sends it as
+`options.num_thread` on every generation request, reducing competition with the
+console, ingest and the operating system. `OLLAMA_NUM_THREAD` is not an Ollama
+service setting.
+
 `make up` starts Ollama and pulls the model itself when Ollama is installed, so the pull above only moves the download earlier. Adding it later and re-running `make up` needs nothing else redone.
 
 On a machine with 8 GB of memory, the 3B model at Q4 is roughly 2.5 GB resident against a container ceiling of about 4.3 GB. That fits, but not alongside a heavy analytical run — check with `free -h` before starting one.
@@ -1071,7 +1079,7 @@ Leave these defaults unless there is a clear reason to change them:
 
 ```dotenv
 OSINT_DATA_DIR=./data
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=/api
 API_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 RETENTION_GDELT_DAYS=30
 RETENTION_NEWS_DAYS=30
@@ -1188,11 +1196,11 @@ together from a single detected address in
 | --- | --- |
 | `API_BIND` | The published bind address. Wrong, and the guest reaches nothing. |
 | `API_CORS_ORIGINS` | The origin allow-list. Wrong, and the guest's browser makes the request and then discards the answer at the preflight. |
-| `NEXT_PUBLIC_API_URL` | Compiled into the bundle the guest downloads, so it must name an address the *guest* can resolve. The default `http://localhost:8000`, in a guest's browser, means the guest's own machine. |
+| `NEXT_PUBLIC_API_URL` | The same-origin `/api` route. Next proxies it to the local API, so HTTP LAN access and an HTTPS frontend use the same browser URL. |
 | `LAN_SHARE_HOST` → `allowedDevOrigins` | `next dev` refuses its own `/_next/*` dev resources to any host that is not localhost. Missing, and the guest gets a page shell, a websocket retrying forever, and a map that never initialises. |
 
 The fourth was missed the first time this was built, which is the argument for
-deriving all four from one address rather than configuring them by hand.
+deriving all four together rather than configuring them by hand.
 
 Whatever `.env` already configures stays configured — share mode adds the
 guest's address, it does not replace your settings.
@@ -3621,7 +3629,7 @@ docker compose logs --tail=100 api
 
 If health works in the terminal but not the browser, check:
 
-- `NEXT_PUBLIC_API_URL`;
+- the `/api` proxy target (`API_PORT` locally, or `API_PROXY_TARGET` when Next is hosted);
 - `API_CORS_ORIGINS` contains the exact browser origin;
 - API and frontend tokens match when auth is enabled;
 - no browser extension or proxy blocks local requests.
@@ -4060,11 +4068,11 @@ apply_network_mode() {
 }
 ```
 
-The derivation — bind address, CORS origins, and the API URL compiled into the
-browser bundle — lives in [`app/devx/lan_share.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/devx/lan_share.py) with its tests, because the
-API URL must name an address the *guest* can resolve, not one that only makes
-sense on the host. `locked` is two constants, so a missing virtual environment
-can never break the safe path.
+The derivation — bind address, CORS origins, the same-origin browser path and
+the dev host — lives in [`app/devx/lan_share.py`](https://github.com/BasilSuhail/OSINT/blob/main/app/devx/lan_share.py) with its tests. Next sends `/api`
+to the server-side `API_PROXY_TARGET`, so an HTTPS guest never makes a blocked
+HTTP request. `locked` is two constants, so a missing virtual environment can
+never break the safe path.
 
 **Step 3 — stores, with self-healing.** Postgres and Redis come up first.
 
@@ -4105,14 +4113,19 @@ find, the script names that specific cause rather than pointing at a log file.
 FRONTEND_MODE_FILE="logs/frontend.mode"
 
 frontend_mode_signature() {
-  printf '%s %s' "$FRONTEND_BIND" "${NEXT_PUBLIC_API_URL:-}"
+  printf '%s %s %s %s %s' \
+    "$FRONTEND_BIND" \
+    "${NEXT_PUBLIC_API_URL:-}" \
+    "${NEXT_PUBLIC_ASK_ENABLED:-}" \
+    "${API_PORT:-}" \
+    "${API_PROXY_TARGET:-}"
 }
 ```
 
-A running dashboard is only reused when its bind address *and* its compiled API
-URL match what is wanted now. `next dev` cannot be rebound in place, so a mode
-change is a restart — of both the parent and the `next-server` child, or the
-restart is a no-op.
+A running dashboard is only reused when its bind, browser flags and API proxy
+upstream match what is wanted now. `next dev` cannot be rebound in place, so a
+mode change is a restart — of both the parent and the `next-server` child, or
+the restart is a no-op.
 
 **Step 7 — wait for both, then say where things are.** The API is polled for up
 to 20 s and the dashboard for up to 60 s with a `GET`, not a `HEAD`, because

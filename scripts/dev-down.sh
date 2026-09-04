@@ -40,3 +40,16 @@ else
   echo "Docker is not reachable; stores are already stopped or Docker Desktop is closed."
 fi
 echo "all app processes + stores stopped (data preserved in \$OSINT_DATA_DIR)."
+
+#: `make down` stops what this script started. It does not stop the console's
+#: service, and it should not — stopping a system service is not what a
+#: developer's stop command was asked to do. But on a serving board the two
+#: together are the confusing state: the containers are gone and the console
+#: is still answering the phone with a page whose every panel is empty. Say so
+#: rather than leave it to be discovered.
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet osint-console.service 2>/dev/null; then
+  echo
+  echo "osint-console.service is still running behind private tailnet HTTPS."
+  echo "Its panels will be empty until the containers are back: \`make serve\`."
+  echo "To stop it as well: sudo systemctl stop osint-console osint-stack"
+fi

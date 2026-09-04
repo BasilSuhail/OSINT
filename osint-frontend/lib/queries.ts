@@ -17,19 +17,26 @@ import {
 } from "./apiClient"
 import { placeUrl } from "./placeUrl"
 import type { PlaceTarget } from "@/stores/placeStore"
-import { sourceKeyForEvent, type EventRow, type HazardTypeKey, type ScoreRow } from "./types"
+import {
+  sourceKeyForEvent,
+  type EventRow,
+  type HazardTypeKey,
+  type ScoreRow,
+  type SourceKey,
+} from "./types"
 import { hazardKind } from "./hazardSymbols"
-import { isPersistentActiveHazard } from "./hazardActivity"
 import { mergeEventRows } from "./eventMerge"
 import type { FilterStore } from "@/stores/createFilterStore"
+import { occursWithinWindow } from "./timeWindow"
+import { isPersistentActiveHazard } from "./hazardActivity"
 
 export interface VisibleEvent extends EventRow {
   /** 0 (new) .. 1 (about to expire) */
   age: number
   opacity: number
   occurredMs: number
-  /** Rendered outside the time window because its source still publishes it
-   *  as live. Drives the map's "ongoing" treatment (#340). */
+  /** Drawn although it falls outside the window, because its source still
+   *  reports it as running and it is more than routine. */
   ongoing: boolean
 }
 
@@ -38,6 +45,16 @@ export interface WindowState {
   windowStart: number
   windowEnd: number
   total: number
+  /** How many events the *window* admits per source key, before any filter is
+   *  applied. The rail reports these rather than counting the buffer, which
+   *  holds rows no window position can draw — 106 quakes counted against 44 the
+   *  map could ever show. Counted before the filters and not after, so a source
+   *  switched off still says what switching it back on would bring. */
+  eligibleBySource: Map<SourceKey, number>
+  /** The same, per disaster type. */
+  eligibleByHazardType: Map<HazardTypeKey, number>
+  /** The same, in total. */
+  eligibleTotal: number
 }
 
 const NO_SUPPLEMENTAL_EVENTS: EventRow[] = []
@@ -93,9 +110,9 @@ export function useEventsInWindow(
 
     //: Newest fetched_at per source. A hazard that has ended drops out of its
     //: upstream feed and stops being re-upserted, which is the only signal that
-    //: distinguishes it from one that is still running — its `is_current` flag
-    //: never changes (#340). Measured per source so one stalled feed cannot
-    //: expire another's events.
+    //: separates it from one still running — a stored `is_current` is written
+    //: once and can never be falsified. Measured per source so one stalled feed
+    //: cannot expire another's events.
     const feedLatest = new Map<string, number>()
     for (const ev of allEvents) {
       if (!ev.source || !ev.fetched_at) continue
@@ -106,41 +123,64 @@ export function useEventsInWindow(
     }
 
     const visible: VisibleEvent[] = []
+    const eligibleBySource = new Map<SourceKey, number>()
+    const eligibleByHazardType = new Map<HazardTypeKey, number>()
+    let eligibleTotal = 0
+
     for (const ev of allEvents) {
       const sk = sourceKeyForEvent(ev)
-      if (!sk || !sources[sk]) continue
-      // Hazards are filtered by disaster TYPE, not their lump-sum source: hide
-      // just the volcanoes / cyclones / quakes the user muted. Unknown ("other")
-      // hazards always pass so nothing silently disappears.
-      if (ev.category === "hazard") {
-        const kind = hazardKind(ev)
-        if (kind !== "other" && hazardTypes[kind as HazardTypeKey] === false) continue
-      }
-      if (ev.severity < severity[0] || ev.severity > severity[1]) continue
+      if (!sk) continue
       const occurredMs = +new Date(ev.occurred_at)
-      // Only active, stateful hazards are persistent. Closed GDACS cyclones /
-      // volcanoes and point-in-time hazards should obey the scrubber window.
-      const isPersistentHazard = isPersistentActiveHazard(
+      //: A flood's onset is the day it began, and one that began last week is
+      //: still running this week. A hazard its feed still reports, that had
+      //: started by this moment, outlives the window; everything else obeys it.
+      const persistent = isPersistentActiveHazard(
         ev,
         windowEnd,
         ev.source ? feedLatest.get(ev.source) : undefined,
       )
+      const inWindow = occursWithinWindow(occurredMs, windowStart, windowEnd)
+      if (!inWindow && !persistent) continue
       const age = windowLengthMs > 0 ? (windowEnd - occurredMs) / windowLengthMs : 0
-      if (!isPersistentHazard) {
-        if (occurredMs > windowEnd || occurredMs < windowStart) continue
-        if (age > 1) continue
+      if (inWindow && age > 1) continue
+
+      //: Tallied here, between the time test and the filters, because that is
+      //: the only place the honest number exists: after the window, so it
+      //: counts what could be drawn, and before the filters, so a category
+      //: switched off still reports what switching it on would bring.
+      const kind = ev.category === "hazard" ? hazardKind(ev) : null
+      eligibleTotal += 1
+      eligibleBySource.set(sk, (eligibleBySource.get(sk) ?? 0) + 1)
+      if (kind !== null && kind !== "other") {
+        const key = kind as HazardTypeKey
+        eligibleByHazardType.set(key, (eligibleByHazardType.get(key) ?? 0) + 1)
       }
+
+      if (!sources[sk]) continue
+      // Hazards are filtered by disaster TYPE, not their lump-sum source: hide
+      // just the volcanoes / cyclones / quakes the user muted. Unknown ("other")
+      // hazards always pass so nothing silently disappears.
+      if (kind !== null && kind !== "other" && hazardTypes[kind as HazardTypeKey] === false) {
+        continue
+      }
+      if (ev.severity < severity[0] || ev.severity > severity[1]) continue
       visible.push({
         ...ev,
-        age: isPersistentHazard ? 0 : age,
-        opacity: isPersistentHazard ? 1 : Math.max(0.1, 1 - age),
+        age: inWindow ? age : 0,
+        opacity: inWindow ? Math.max(0.1, 1 - age) : 1,
         occurredMs,
-        //: Only flag it "ongoing" when persistence is what kept it visible —
-        //: a live hazard inside the window is just a normal marker.
-        ongoing: isPersistentHazard && (occurredMs < windowStart || occurredMs > windowEnd),
+        ongoing: !inWindow,
       })
     }
-    return { events: visible, windowStart, windowEnd, total: visible.length }
+    return {
+      events: visible,
+      windowStart,
+      windowEnd,
+      total: visible.length,
+      eligibleBySource,
+      eligibleByHazardType,
+      eligibleTotal,
+    }
   }, [allEvents, sources, hazardTypes, severity, windowLengthMs, windowEndOffsetMs])
 }
 

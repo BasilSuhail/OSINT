@@ -15,10 +15,21 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 DEV_UP = ROOT / "scripts" / "dev-up.sh"
 README = ROOT / "README.md"
 SCRIPT = DEV_UP.read_text()
+
+
+#: One platform's install list, from its `<details>` summary to the close of
+#: the block. The README carries several of these, and only two of them are
+#: Linux lists that add the account to the `docker` group.
+def _install_list(summary: str) -> str:
+    text = README.read_text()
+    start = text.index(summary)
+    return text[start : text.index("</details>", start)]
 
 
 class TestTheScriptTellsThemApart:
@@ -59,8 +70,16 @@ class TestTheAdviceMatchesThePlatform:
 class TestTheReadmeSaysItPlainly:
     #: It said "then log out and back in" as part of a sentence introducing a
     #: command block, which is a thing to notice rather than a step to do.
-    def test_both_linux_lists_name_the_reboot_as_a_command(self) -> None:
-        assert README.read_text().count("sudo reboot") == 2
+    #:
+    #: Asked of each list separately, and of a fenced block rather than of the
+    #: prose around it. This was once a count of `sudo reboot` across the whole
+    #: file, which stood in for the question the name asks and answered a
+    #: different one: any new block anywhere in the README that legitimately
+    #: names a reboot — the server section's does, to prove the service comes
+    #: back — broke a test about the install lists.
+    @pytest.mark.parametrize("summary", ["Raspberry Pi 5", "Linux desktop or server"])
+    def test_both_linux_lists_name_the_reboot_as_a_command(self, summary: str) -> None:
+        assert "```bash\nsudo reboot\n```" in _install_list(summary)
 
     def test_it_says_why_rather_than_only_what(self) -> None:
         text = README.read_text()

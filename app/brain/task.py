@@ -34,7 +34,10 @@ def _narrate_body(*, now: datetime | None = None) -> dict[str, Any]:
         job_run(gate.BRAIN_JOB_NAME, session_factory=factory, evict_brain=False),
         factory() as session,
     ):
-        allowed, reason = gate.should_run(session, now=now)
+        #: The one caller that takes the starvation escape (see
+        #: `gate.should_run`): the narrative is what the reader opens the
+        #: console to read, so it is the beat allowed to stop yielding.
+        allowed, reason = gate.should_run(session, now=now, allow_when_starved=True)
         if not allowed:
             return {"persisted": False, "reason": reason}
 

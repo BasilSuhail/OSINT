@@ -30,9 +30,25 @@ class Settings(BaseSettings):
     pushover_token: str = Field(default="")
     pushover_user: str = Field(default="")
 
+    # Developing-story announcements (#1039). Absent webhook means quiet,
+    # the same rule Pushover follows above. The dry run defaults on so a
+    # first deploy measures how often a story pins before anything is sent.
+    discord_webhook_url: str = Field(default="")
+    discord_announce_dry_run: bool = Field(default=True)
+
     # WS-G local LLM validator (#378) — localhost only, never a cloud API.
     ollama_url: str = Field(default="http://localhost:11434")
     ollama_model: str = Field(default="qwen3.5:4b-q4_K_M")
+    # Per-request runner threads. Zero leaves Ollama's automatic choice alone;
+    # the measured small-machine profile uses three to reduce competition with
+    # the API and ingest while local inference runs (#1035).
+    ollama_request_num_thread: int = Field(default=0, ge=0)
+
+    @field_validator("ollama_request_num_thread", mode="before")
+    @classmethod
+    def _blank_threads_mean_automatic(cls, value: object) -> object:
+        return 0 if isinstance(value, str) and not value.strip() else value
+
     validator_batch_limit: int = Field(default=200)
     # News severity grading (#591) had no setting of its own, so it rode on the
     # validator's model above and neither could move without the other. Split so
@@ -88,6 +104,21 @@ class Settings(BaseSettings):
     # waved through a load with nowhere near room for it.
     brain_min_free_mb: int = Field(default=3500)
     brain_keep_alive: str = Field(default="30m")
+    # How long the narrative may go unwritten before the heavy-job backoff
+    # stops applying to it.
+    #
+    # The backoff is right on a laptop — do not load a model while something
+    # else has the box — but it had no floor, and a job that yields to heavy
+    # work yields forever on a machine where heavy work never stops. Measured
+    # on a small board: five consecutive narrate beats refused, and the console
+    # a reader opens showed nothing at all.
+    #
+    # Four missed beats at the 15-minute cadence. Shorter and one ordinary
+    # overrun — a clustering run working through a backlog — would count as
+    # starvation; longer and the page a reader opens is over an hour stale,
+    # which is beyond what a page describing "now" can claim. On a laptop the
+    # heavy beats finish in seconds and this never opens.
+    brain_narrate_starvation_minutes: int = Field(default=60)
     # Q&A (#433): user asks run the 4b model per-ask and evict it right after —
     # the box never keeps two models resident. Narrative and enrichment stay on
     # the warm brain_model above.
@@ -147,9 +178,13 @@ class Settings(BaseSettings):
 
     data_dir: str = Field(default="./data")
 
-    retention_gdelt_days: int = Field(default=30)
-    retention_news_days: int = Field(default=30)
-    retention_hazard_days: int = Field(default=30)
+    # Per-source retention windows in days. `0` switches the time rule off for
+    # the sources a window covers, leaving `storage_cap_gb` as the only thing
+    # that deletes an event — what a board with a large disk wants, where the
+    # limit worth having is the disk's and not the calendar's.
+    retention_gdelt_days: int = Field(default=30, ge=0)
+    retention_news_days: int = Field(default=30, ge=0)
+    retention_hazard_days: int = Field(default=30, ge=0)
     # Hard ceiling on DB disk use; oldest event-days are trimmed when exceeded.
     storage_cap_gb: int = Field(default=30)
     # Size-cap enforcement never deletes events newer than this many days.

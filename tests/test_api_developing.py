@@ -105,6 +105,26 @@ def test_pinned_story_carries_reasons_and_corroboration() -> None:
         app.dependency_overrides.clear()
 
 
+def test_single_country_story_pins_and_row_still_reports_spread() -> None:
+    """Three owners on one place earn the slot (#1031), and the row still says
+    how many countries the story spans — the spread is shown to the reader, it
+    just no longer decides."""
+
+    def seed(s: Session) -> None:
+        _seed(s, title="one place, three tellers", severity=0.7, countries=("XA", "XA", "XA"))
+
+    client = _client(seed)
+    try:
+        res = client.get("/stories/developing")
+        assert res.status_code == 200
+        body = res.json()
+        assert len(body) == 1
+        assert body[0]["pin_reasons"]["countries"] == 1
+        assert body[0]["countries"] == ["XA"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_nothing_developing_returns_empty_list() -> None:
     def seed(s: Session) -> None:
         _seed(s, title="stage win", severity=0.3, countries=("FR", "BE", "ES"))

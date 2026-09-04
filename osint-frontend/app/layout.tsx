@@ -6,6 +6,24 @@ export const metadata: Metadata = {
   title: "OSINT World Monitor · LIVE",
   description:
     "Real-time open-source intelligence dashboard. A filterable world map, scrubbable through time.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    apple: [
+      {
+        url: "/app-icons/osint-apple-touch.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "OSINT",
+    statusBarStyle: "black-translucent",
+  },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
 }
 
 export const viewport: Viewport = {

@@ -169,6 +169,13 @@ def _source_coverage_dict(row) -> dict:
         "latest_occurred_at": (
             row.latest_occurred_at.isoformat() if row.latest_occurred_at else None
         ),
+        #: How far back this source actually reaches. The time scrubber sizes
+        #: its track from the earliest of these rather than a fixed span, so a
+        #: board holding a year of history can be scrubbed across the year and
+        #: a fresh one is not offered a slider that is mostly empty.
+        "earliest_occurred_at": (
+            row.earliest_occurred_at.isoformat() if row.earliest_occurred_at else None
+        ),
         "latest_fetched_at": row.latest_fetched_at.isoformat() if row.latest_fetched_at else None,
     }
 
@@ -240,6 +247,7 @@ def event_coverage(
             recent_count.label("recent"),
             geocoded_count.label("geocoded"),
             func.max(EventRow.occurred_at).label("latest_occurred_at"),
+            func.min(EventRow.occurred_at).label("earliest_occurred_at"),
             func.max(EventRow.fetched_at).label("latest_fetched_at"),
         )
         .group_by(EventRow.source)
@@ -866,13 +874,15 @@ def stories_developing(
     session: Session = Depends(get_session),
     limit: int = Query(default=developing.DEFAULT_LIMIT, ge=1, le=10),
 ) -> list[dict]:
-    """The Situation card's pinned slot (#449) — multi-day international
-    stories still gathering coverage, best-first.
+    """The Situation card's pinned slot (#449) — multi-day stories carried by
+    several independent tellers and still gathering coverage, best-first.
 
     Same row shape as /stories/top plus `pin_reasons`, the evidence for the
-    pin: the card justifies a pin rather than asserting it. Corroboration
-    rides along and is never a gate — a widely-told story with few
-    independent owners is precisely what must stay visible.
+    pin: the card justifies a pin rather than asserting it. The one slot is
+    gated on independent owners (#1031) because "the world is telling this"
+    is what a pin claims. Everywhere else the rule is unchanged: a widely-told
+    story with few independent owners stays visible in /stories/top with its
+    corroboration score shown beside it, never suppressed by it.
     """
     picks = developing.select_developing(session, limit=limit)
     if not picks:

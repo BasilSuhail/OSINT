@@ -18,6 +18,15 @@ services:
     # platform manifest and does not resolve as image@sha256.
     image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     restart: unless-stopped
+    # Ceiling, not a reservation (measured 280 MB). Sized from the server's own
+    # settings rather than from observed use — shared_buffers 128 MB, autovacuum
+    # up to 3 x 64 MB, roughly 10 MB per backend — because Postgres grows into
+    # whatever cache it is given, and a limit set at what it happens to be using
+    # today kills it the first time a large query or a vacuum runs. Under cgroup
+    # v2 this counts page cache as well, but clean cache is reclaimed before
+    # anything is killed, so 1g bounds the cache and only the allocations have
+    # to fit inside it.
+    mem_limit: 1g
     # Docker's 64MB /dev/shm default starves parallel VACUUM/queries
     # ("could not resize shared memory segment ... No space left on device").
     shm_size: 256mb
@@ -87,7 +96,7 @@ services:
       # acceleration and would make the brain materially slower.
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       DATA_DIR: /data
-      # .env carries ABSOLUTE host paths for these (/Users/...), which do not
+      # .env carries ABSOLUTE host paths for these, which do not
       # exist inside a container. The data directory is mounted at /data, so
       # the container equivalents are known and set explicitly here —
       # `environment:` wins over `env_file:`.

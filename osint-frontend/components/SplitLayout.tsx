@@ -348,11 +348,11 @@ export function SplitLayout() {
   }
 
   return (
-    <main className="relative h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-100">
+    <main className="console-viewport relative w-full overflow-hidden bg-neutral-950 text-neutral-100">
       {/*: No status bar (#936). Eleven always-on chips cost the map the full
           width of the screen to say what three numbers in the corner say, and
           were read once and then ignored. The map gets the whole viewport. */}
-      <div className="relative h-dvh w-full overflow-hidden">
+      <div className="relative h-full w-full overflow-hidden">
         {/*: The corner cluster: whether the view is live, and whether the
             sources are. Two detached controls rather than one bar — the time
             readout has to stay legible without opening anything (#501), and
@@ -372,7 +372,7 @@ export function SplitLayout() {
         <Omnibox narrow={isNarrow} />
         {!configured && (
           <div className="absolute inset-x-0 top-0 z-50 bg-red-950/90 px-4 py-2 text-center font-mono text-xs text-red-200 backdrop-blur">
-            Local API unreachable - start it at NEXT_PUBLIC_API_URL (default http://localhost:8000)
+            Local API unreachable - check the same-origin /api proxy
           </div>
         )}
 

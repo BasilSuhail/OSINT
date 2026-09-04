@@ -204,6 +204,20 @@
   }
 }
 
+/* WebKit standalone apps subtract the home-indicator inset from `dvh`, even
+ * with viewport-fit=cover. Regular browser tabs still need the dynamic unit;
+ * installed apps use `vh`, which includes that inset and lets the map paint
+ * behind it while bottom controls continue to respect the safe area. */
+.console-viewport {
+  height: 100dvh;
+}
+
+@media (display-mode: standalone) {
+  .console-viewport {
+    height: 100vh;
+  }
+}
+
 /* Map marker popup: strip maplibre's default white chrome so our card shows through. */
 .osint-popup .maplibregl-popup-content {
   background: transparent !important;

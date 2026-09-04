@@ -35,3 +35,35 @@ describe("setAllSources", () => {
     expect(Object.values(store.getState().sources).every((on) => !on)).toBe(true)
   })
 })
+
+describe("setScrubSpan", () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  it("lets the scrubber reach as far back as the database goes", () => {
+    const store = createFilterStore()
+    store.getState().setScrubSpan(200 * DAY)
+    store.getState().setWindowEndOffset(150 * DAY)
+    //: The bug this test exists for: the reach was a 30-day constant, so a
+    //: board holding months of history could not be scrubbed into any of it.
+    expect(store.getState().windowEndOffsetMs).toBe(150 * DAY)
+  })
+
+  it("never shortens a reach that is already longer", () => {
+    const store = createFilterStore()
+    store.getState().setScrubSpan(200 * DAY)
+    store.getState().setScrubSpan(5 * DAY)
+    expect(store.getState().scrubSpanMs).toBe(200 * DAY)
+  })
+
+  it("keeps the default reach when coverage asks for less", () => {
+    const store = createFilterStore()
+    store.getState().setScrubSpan(2 * DAY)
+    expect(store.getState().scrubSpanMs).toBe(30 * DAY)
+  })
+
+  it("still refuses an offset past the current reach", () => {
+    const store = createFilterStore()
+    store.getState().setWindowEndOffset(90 * DAY)
+    expect(store.getState().windowEndOffsetMs).toBe(30 * DAY)
+  })
+})

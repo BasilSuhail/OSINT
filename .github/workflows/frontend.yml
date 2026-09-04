@@ -24,8 +24,8 @@ jobs:
       id-token: write
     runs-on: ubuntu-latest
     env:
-      # Build-time default for the local read-API base (overridden at runtime).
-      NEXT_PUBLIC_API_URL: "http://localhost:8000"
+      # Same-origin route proxied to the local API by Next.
+      NEXT_PUBLIC_API_URL: "/api"
       # Skip Next's interactive telemetry prompt — it stalls `next build` on
       # a fresh CI runner waiting on stdin.
       NEXT_TELEMETRY_DISABLED: "1"
