@@ -48,7 +48,7 @@
     "typescript": "5.7.3",
     "typescript-eslint": "^8.61.1",
     "vite": "^6.4.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   },
   "pnpm": {
     "buildComment": "Packages allowed to run their install scripts. esbuild and sharp ship native binaries and do not work without them; msw writes its service worker. pnpm does not run these unless they are named here, and a recent pnpm exits non-zero rather than warning — so a clone on a machine that has never seen this project failed at install, after the image build, with an error that read as a pnpm problem rather than a repository one (#966). The suggested fix, `pnpm approve-builds`, is interactive and cannot be part of an unattended setup. Naming them here is that decision, made once, in the repository. Add to this list only for a package whose scripts are genuinely needed.",
